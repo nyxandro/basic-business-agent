@@ -9,11 +9,12 @@ import { REQUEST_KEYS, requireContextValue } from './request-keys.ts';
 
 export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
-  inputProcessors: InputProcessorOrWorkflow[];
-  outputProcessors: OutputProcessorOrWorkflow[];
+  // Per agent, because some layers depend on its passport (e.g. baseRules: false).
+  processorsFor(rt: AgentRuntime): { input: InputProcessorOrWorkflow[]; output: OutputProcessorOrWorkflow[] };
 }
 
 export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Agent {
+  const processors = deps.processorsFor(rt);
   const subagents = Object.fromEntries(rt.subagents.map((s) => [s.passport.id, createMastraAgent(s, deps)]));
   return new Agent({
     id: rt.passport.id,
@@ -30,7 +31,7 @@ export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Age
     tools: rt.tools,
     ...(rt.skillDirs.length > 0 ? { workspace: new Workspace({ skills: rt.skillDirs }) } : {}),
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
-    inputProcessors: deps.inputProcessors,
-    outputProcessors: deps.outputProcessors,
+    inputProcessors: processors.input,
+    outputProcessors: processors.output,
   });
 }

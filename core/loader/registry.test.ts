@@ -100,7 +100,7 @@ describe('buildRegistry', () => {
   it('builds a Mastra agent that offers those tools and skills to the model', async () => {
     const reg = await registryOf(installation());
     const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
-    const agent = createMastraAgent(reg.get('sales')!, { gateway, inputProcessors: [], outputProcessors: [] });
+    const agent = createMastraAgent(reg.get('sales')!, { gateway, processorsFor: () => ({ input: [], output: [] }) });
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'u1');
     model.script({ text: 'Привет!' });
