@@ -9,3 +9,9 @@ spikes/
 .public-check/
 # Конфигурация LiteLLM, собранная из config/models.ts командой pnpm models:config
 deploy/litellm/config.json
+
+# Python environment of the document skills (pnpm skills:setup)
+.venv-skills/
+
+# Local data of the development server
+.data/

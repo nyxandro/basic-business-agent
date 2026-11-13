@@ -9,6 +9,8 @@ import { buildRegistry } from '../loader/registry.ts';
 import { PostgresStore } from '@mastra/pg';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager } from '../connections/manager.ts';
+import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
+import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -23,6 +25,7 @@ import { logEvent } from './log.ts';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = 3000;
 const CORE_SKILLS_DIR = fileURLToPath(new URL('../skills', import.meta.url));
+const SKILLS_VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
 
 async function main(): Promise<void> {
   const env = readCoreEnv(process.env);
@@ -45,7 +48,11 @@ async function main(): Promise<void> {
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
-  const mastra = createMastraRuntime({ registry, storage, gateway, db, app: installation.app, connections });
+  const sandbox = {
+    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) },
+    isolation: assertIsolationAvailable(),
+  };
+  const mastra = createMastraRuntime({ registry, storage, gateway, db, app: installation.app, connections, sandbox });
   void mastra; // used by the chat and background routes from steps 12–13
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections });
   serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));

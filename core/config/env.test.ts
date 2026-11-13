@@ -9,6 +9,7 @@ const valid = {
   LITELLM_URL: 'http://litellm:4000',
   LITELLM_MASTER_KEY: 'sk-master',
   LITELLM_CALLBACK_SECRET: 'y'.repeat(32),
+  APP_WORKSPACE_DIR: '/workspace',
 };
 
 describe('readCoreEnv', () => {

@@ -18,6 +18,7 @@
     "lint": "eslint . && node tooling/architecture/cli.ts",
     "models:config": "node --env-file=.env core/cli/models-config.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
+    "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/skills/requirements.txt",
     "start": "node core/server/main.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"

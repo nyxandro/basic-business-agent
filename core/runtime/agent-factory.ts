@@ -5,7 +5,9 @@ import type { InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastr
 import { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
 import type { ConnectionManager } from '../connections/manager.ts';
+import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
+import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { REQUEST_KEYS, requireContextValue } from './request-keys.ts';
 
@@ -13,12 +15,21 @@ export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
   memory?: Memory;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
+  // Files and commands of the employee's own folder; without it the agent only reads skills.
+  sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // Per agent, because some layers depend on its passport (e.g. baseRules: false).
   processorsFor(rt: AgentRuntime): { input: InputProcessorOrWorkflow[]; output: OutputProcessorOrWorkflow[] };
 }
 
 export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Agent {
   const processors = deps.processorsFor(rt);
+  const staticTools: Record<string, AnyTool> = { ...rt.tools };
+  if (deps.sandbox) staticTools[VIEW_IMAGE_TOOL] = createViewImageTool(deps.sandbox.deps.workspaceRoot);
+  const workspace = deps.sandbox
+    ? createAgentWorkspace(rt, deps.sandbox.deps, deps.sandbox.isolation)
+    : rt.skillDirs.length > 0
+      ? new Workspace({ skills: rt.skillDirs })
+      : undefined;
   const subagents = Object.fromEntries(rt.subagents.map((s) => [s.passport.id, createMastraAgent(s, deps)]));
   return new Agent({
     id: rt.passport.id,
@@ -36,12 +47,12 @@ export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Age
     tools:
       rt.connectorIds.length > 0 && deps.connections
         ? async ({ requestContext }) => ({
-            ...rt.tools,
+            ...staticTools,
             ...(await deps.connections!.toolsFor(requireContextValue(requestContext, REQUEST_KEYS.userId), rt.connectorIds)),
           })
-        : rt.tools,
+        : staticTools,
     ...(deps.memory ? { memory: deps.memory } : {}),
-    ...(rt.skillDirs.length > 0 ? { workspace: new Workspace({ skills: rt.skillDirs }) } : {}),
+    ...(workspace ? { workspace } : {}),
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,

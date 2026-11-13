@@ -53,6 +53,16 @@ export const ERROR_CATALOG = {
     status: 500,
     userMessage: 'Не удалось подготовить запрос к модели: не сработала защита персональных данных. Попробуйте ещё раз; если повторяется — сообщите администратору код ошибки.',
   },
+  APP_SANDBOX_UNAVAILABLE: {
+    status: 503,
+    userMessage: 'Не удалось запустить рабочую среду агента. Попробуйте ещё раз через минуту; если повторяется — сообщите администратору код ошибки.',
+  },
+  APP_SANDBOX_BUSY: { status: 503, userMessage: 'Рабочая среда сейчас занята другими задачами. Попробуйте через минуту.' },
+  APP_UPLOAD_TOO_LARGE: { status: 413, userMessage: 'Файл больше 20 МБ. Сожмите его или разделите на части.' },
+  APP_UPLOAD_TYPE_UNSUPPORTED: {
+    status: 415,
+    userMessage: 'Такой формат агент пока не читает. Подойдут PDF, Word, Excel, CSV, TXT и картинки PNG или JPG.',
+  },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

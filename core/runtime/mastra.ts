@@ -12,6 +12,7 @@ import { createMaskingProcessor } from '../masking/processor.ts';
 import { createMemory } from '../memory/memory.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
+import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
 import { createMastraAgent } from './agent-factory.ts';
 
 export interface MastraRuntimeDeps {
@@ -21,21 +22,25 @@ export interface MastraRuntimeDeps {
   db: Db;
   app: Pick<AppConfig, 'name' | 'timezone'>;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
+  sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
 }
 
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
   const memory = createMemory(deps.storage);
+  const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const agents: Record<string, Agent> = {};
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {
       gateway: deps.gateway,
       memory,
       ...(deps.connections ? { connections: deps.connections } : {}),
+      ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       processorsFor: (r) => ({
         input: [
           createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false }),
           masking,
+          ...imageView,
         ],
         output: [masking],
       }),

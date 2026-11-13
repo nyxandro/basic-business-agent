@@ -15,6 +15,8 @@ export const coreEnvSchema = z.object({
   LITELLM_URL: z.url(),
   LITELLM_MASTER_KEY: z.string().startsWith('sk-', 'must start with sk- (LiteLLM requirement)'),
   LITELLM_CALLBACK_SECRET: secret,
+  // Folder with the employees' workspaces (/workspace in the container).
+  APP_WORKSPACE_DIR: z.string().startsWith('/', 'must be an absolute path'),
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;
 
