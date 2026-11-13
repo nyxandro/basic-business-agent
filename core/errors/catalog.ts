@@ -49,6 +49,10 @@ export const ERROR_CATALOG = {
     status: 402,
     userMessage: 'На сегодня ваш лимит запросов к модели исчерпан. Он обновится завтра; если нужно раньше — обратитесь к администратору.',
   },
+  APP_MASKING_FAILED: {
+    status: 500,
+    userMessage: 'Не удалось подготовить запрос к модели: не сработала защита персональных данных. Попробуйте ещё раз; если повторяется — сообщите администратору код ошибки.',
+  },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

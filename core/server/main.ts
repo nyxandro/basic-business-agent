@@ -11,6 +11,7 @@ import { createSecretBox } from '../crypto/secret-box.ts';
 import { createModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
+import { ensureMaskingSettings } from '../masking/settings.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = new Set(installation.agents.map((a) => a.passport.id));
   await ensureLimitSettings(db, installation.app.limits);
+  await ensureMaskingSettings(db, installation.app.masking.initialKinds);
   const gateway = createModelGateway({
     db,
     client: createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY),
