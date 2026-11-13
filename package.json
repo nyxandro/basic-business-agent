@@ -1,0 +1,28 @@
+{
+  "name": "basic-business-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Лёгкая открытая база бизнес-агентов",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "prepare": "git config core.hooksPath tooling/git-hooks",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . && node tooling/architecture/cli.ts",
+    "test": "vitest run",
+    "check:public": "node tooling/no-customer-data/cli.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.14.0",
+    "globals": "17.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}
