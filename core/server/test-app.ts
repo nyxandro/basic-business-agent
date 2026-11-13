@@ -1,6 +1,7 @@
 // Test helper: the real server on a fresh database, with helpers to create people and sign in.
 import { randomInt } from 'node:crypto';
 import type { Hono } from 'hono';
+import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
@@ -25,6 +26,7 @@ export interface TestApp {
   gateway: ModelGateway;
   litellm: LiteLLMClient;
   ledgerSecret: string;
+  connections: ConnectionManager;
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -44,7 +46,9 @@ function randomIp(): string {
   return `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
 }
 
-export async function createTestApp(opts: { knownAgentIds?: string[]; limits?: Parameters<typeof ensureLimitSettings>[1] } = {}): Promise<TestApp> {
+export async function createTestApp(
+  opts: { knownAgentIds?: string[]; limits?: Parameters<typeof ensureLimitSettings>[1]; connectors?: ConnectorRuntime[] } = {},
+): Promise<TestApp> {
   const database = await createTestDatabase();
   await migrate(database.url);
   const db = createPool(database.url);
@@ -58,7 +62,8 @@ export async function createTestApp(opts: { knownAgentIds?: string[]; limits?: P
   const gateway = createModelGateway({ db, client: litellm, box: createSecretBox(TEST_ENCRYPTION_KEYS), catalog: TEST_CATALOG, timezone: 'Europe/Moscow' });
   await gateway.syncOrgBudget();
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret });
+  const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -83,6 +88,7 @@ export async function createTestApp(opts: { knownAgentIds?: string[]; limits?: P
     gateway,
     litellm,
     ledgerSecret,
+    connections,
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {
@@ -100,6 +106,7 @@ export async function createTestApp(opts: { knownAgentIds?: string[]; limits?: P
       return cookie;
     },
     async close() {
+      await connections.close();
       await db.end();
       await authPool.end();
       await database.drop();

@@ -8,6 +8,7 @@ import { loadInstallation } from '../config/load.ts';
 import { buildRegistry } from '../loader/registry.ts';
 import { PostgresStore } from '@mastra/pg';
 import { createMastraRuntime } from '../runtime/mastra.ts';
+import { createConnectionManager } from '../connections/manager.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -42,9 +43,11 @@ async function main(): Promise<void> {
   });
   await gateway.syncOrgBudget();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
-  const mastra = createMastraRuntime({ registry, storage, gateway, db, app: installation.app });
+  const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
+  const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
+  const mastra = createMastraRuntime({ registry, storage, gateway, db, app: installation.app, connections });
   void mastra; // used by the chat and background routes from steps 12–13
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections });
   serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
 }
 

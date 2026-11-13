@@ -9,7 +9,8 @@ import { configError, formatPath, type ConfigProblem, type Installation } from '
 import type { MigrationSource } from '../db/migrate.ts';
 import type { Db } from '../db/pool.ts';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
-import type { AnyTool, PluginContext } from '../plugins/public/index.ts';
+import type { ConnectorRuntime } from '../connections/manager.ts';
+import type { AnyTool, McpDefinition, PluginContext } from '../plugins/public/index.ts';
 
 export interface AgentRuntime {
   passport: AgentPassport;
@@ -19,6 +20,8 @@ export interface AgentRuntime {
   readOnly: ReadonlySet<string>;
   skillDirs: string[];
   subagents: AgentRuntime[];
+  // Plugins of this agent that work through an MCP server: their tools are built per employee.
+  connectorIds: string[];
 }
 
 export interface Registry {
@@ -26,6 +29,19 @@ export interface Registry {
   get(id: string): AgentRuntime | undefined;
   ids(): ReadonlySet<string>;
   pluginMigrations: MigrationSource[];
+  connectors: ConnectorRuntime[];
+}
+
+function connectorProblems(file: string, connection: ConnectorRuntime['mode'] | undefined, auth: string | undefined, def: McpDefinition): string[] {
+  const problems: string[] = [];
+  if (!connection || !auth) return ['a plugin with mcp must declare connection: { mode, auth }'];
+  if (!def.url) problems.push('mcp().url is empty');
+  if (connection === 'personal' && auth === 'static' && (!def.staticFields?.length || !def.headers)) problems.push('personal static access needs mcp().staticFields and mcp().headers');
+  if (connection === 'personal' && auth === 'oauth' && !def.oauth) problems.push('personal oauth access needs mcp().oauth');
+  if (connection === 'shared' && auth !== 'identity') problems.push('a shared connection uses auth: identity');
+  if (connection === 'shared' && !def.identitySecret) problems.push('a shared connection needs mcp().identitySecret');
+  if (connection === 'personal' && auth === 'identity') problems.push('identity auth is for a shared connection');
+  return problems.map((p) => `${file}: ${p}`);
 }
 
 export interface RegistryDeps {
@@ -70,13 +86,30 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   const pluginReadOnly = new Map<string, string[]>();
   const pluginSkills = new Map<string, string[]>();
   const pluginMigrations: MigrationSource[] = [];
+  const connectors: ConnectorRuntime[] = [];
   for (const plugin of installation.plugins) {
     const { passport } = plugin;
     const pluginDir = join(root, 'plugins', plugin.dir);
     const secrets = Object.fromEntries(passport.secrets.map((s) => [s, env[s] ?? '']));
     const ctx: PluginContext<unknown> = { name: passport.name, settings: plugin.settings, secrets, db };
     const tools = (passport.tools as ((c: PluginContext<unknown>) => Record<string, AnyTool>) | undefined)?.(ctx) ?? {};
-    for (const id of passport.readOnly) {
+    const mcp = (passport.mcp as ((c: PluginContext<unknown>) => McpDefinition) | undefined)?.(ctx);
+    if (mcp) {
+      for (const message of connectorProblems(`plugins/${plugin.dir}/plugin.ts`, passport.connection?.mode, passport.connection?.auth, mcp)) {
+        problems.push({ file: `plugins/${plugin.dir}/plugin.ts`, field: 'mcp', message: message.split(': ').slice(1).join(': ') });
+      }
+      connectors.push({
+        id: passport.name,
+        title: passport.title,
+        mode: passport.connection?.mode ?? 'personal',
+        auth: passport.connection?.auth ?? 'static',
+        definition: mcp,
+        readOnly: new Set(passport.readOnly),
+        ...(passport.checkTool ? { checkTool: passport.checkTool } : {}),
+      });
+    }
+    // With an MCP server the tools come from the server, so readOnly names cannot be checked here.
+    for (const id of mcp ? [] : passport.readOnly) {
       if (!tools[id]) problems.push({ file: `plugins/${plugin.dir}/plugin.ts`, field: 'readOnly', message: `there is no tool "${id}"` });
     }
     pluginTools.set(passport.name, tools);
@@ -89,11 +122,12 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     const tools: Record<string, AnyTool> = {};
     const readOnly = new Set<string>(passport.readOnly);
     for (const name of passport.plugins) {
+      const isConnector = connectors.some((c) => c.id === name);
       for (const [id, tool] of Object.entries(pluginTools.get(name) ?? {})) {
         if (tools[id]) problems.push({ file, field: 'plugins', message: `tool "${id}" comes from two plugins` });
         tools[id] = tool;
       }
-      for (const id of pluginReadOnly.get(name) ?? []) readOnly.add(id);
+      if (!isConnector) for (const id of pluginReadOnly.get(name) ?? []) readOnly.add(id);
     }
     Object.assign(tools, await loadAgentTools(dir, file, problems));
     for (const id of passport.readOnly) {
@@ -105,7 +139,8 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
       ...passport.plugins.flatMap((p) => pluginSkills.get(p) ?? []),
       ...dirIfExists(join(dir, 'skills')),
     ];
-    return { passport, dir, instructions, tools: wrapped, readOnly, skillDirs, subagents: await loadSubagents(dir, file) };
+    const connectorIds = passport.plugins.filter((p) => connectors.some((c) => c.id === p));
+    return { passport, dir, instructions, tools: wrapped, readOnly, skillDirs, subagents: await loadSubagents(dir, file), connectorIds };
   }
 
   async function loadSubagents(agentDir: string, agentFile: string): Promise<AgentRuntime[]> {
@@ -138,5 +173,5 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   if (problems.length > 0) throw configError(problems);
 
   const byId = new Map(agents.map((a) => [a.passport.id, a]));
-  return { agents, get: (id) => byId.get(id), ids: () => new Set(byId.keys()), pluginMigrations };
+  return { agents, get: (id) => byId.get(id), ids: () => new Set(byId.keys()), pluginMigrations, connectors };
 }

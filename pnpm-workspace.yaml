@@ -1,2 +1,6 @@
 packages:
   - contracts
+
+# esbuild ships its binary as an optional dependency; its install script only re-checks it.
+allowBuilds:
+  esbuild: false

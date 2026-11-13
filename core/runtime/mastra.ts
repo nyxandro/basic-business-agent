@@ -5,6 +5,7 @@ import type { Agent } from '@mastra/core/agent';
 import { MastraEditor } from '@mastra/editor';
 import type { PostgresStore } from '@mastra/pg';
 import type { AppConfig } from '../config/schemas.ts';
+import type { ConnectionManager } from '../connections/manager.ts';
 import type { Db } from '../db/pool.ts';
 import type { Registry } from '../loader/registry.ts';
 import { createMaskingProcessor } from '../masking/processor.ts';
@@ -19,6 +20,7 @@ export interface MastraRuntimeDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
   db: Db;
   app: Pick<AppConfig, 'name' | 'timezone'>;
+  connections?: Pick<ConnectionManager, 'toolsFor'>;
 }
 
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
@@ -29,6 +31,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
     agents[rt.passport.id] = createMastraAgent(rt, {
       gateway: deps.gateway,
       memory,
+      ...(deps.connections ? { connections: deps.connections } : {}),
       processorsFor: (r) => ({
         input: [
           createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false }),

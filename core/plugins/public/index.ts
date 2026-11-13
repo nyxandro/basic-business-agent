@@ -16,6 +16,20 @@ export interface PluginContext<TSettings> {
 // Mastra tools of any shape; the loader adds approval and journaling around them.
 export type AnyTool = Tool<any, any, any, any, any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+export type PersonalCredential = { kind: 'static'; fields: Record<string, string> } | { kind: 'oauth'; accessToken: string };
+
+// An MCP server the plugin connects to (spec, section 8.8):
+// - personal + static: each employee enters their own key (staticFields), headers() turns it into HTTP headers;
+// - personal + oauth: each employee signs in on the system's site, the access token goes as Bearer by default;
+// - shared + identity: one connection for everyone, the core signs "who is asking" with identitySecret.
+export interface McpDefinition {
+  url: string;
+  staticFields?: { name: string; label: string; secret: boolean }[];
+  headers?: (credential: PersonalCredential) => Record<string, string>;
+  oauth?: { authorizeUrl: string; tokenUrl: string; clientId: string; clientSecret: string; scopes: string[] };
+  identitySecret?: string;
+}
+
 export interface PluginDefinition<S extends z.ZodType> {
   name: string;
   title: string;
@@ -27,6 +41,7 @@ export interface PluginDefinition<S extends z.ZodType> {
   connection?: { mode: 'personal' | 'shared'; auth: 'oauth' | 'static' | 'identity' };
   dependsOn?: string[];
   tools?: (ctx: PluginContext<z.infer<S>>) => Record<string, AnyTool>;
+  mcp?: (ctx: PluginContext<z.infer<S>>) => McpDefinition;
 }
 
 export function definePlugin<S extends z.ZodType>(definition: PluginDefinition<S>): PluginDefinition<S> {

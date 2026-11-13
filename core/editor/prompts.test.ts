@@ -28,6 +28,7 @@ function runtime(passport: Partial<AgentPassport> & { id: string }, instructions
     readOnly: new Set(),
     skillDirs: [],
     subagents: [],
+    connectorIds: [],
   };
 }
 
@@ -38,6 +39,7 @@ const registry: Registry = {
   get: (id) => [sales, raw].find((a) => a.passport.id === id),
   ids: () => new Set(['sales', 'raw']),
   pluginMigrations: [],
+  connectors: [],
 };
 
 async function systemPromptOf(agentId: string, mode: 'published' | 'draft'): Promise<string[]> {
