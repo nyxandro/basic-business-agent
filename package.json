@@ -10,11 +10,14 @@
   },
   "packageManager": "pnpm@11.5.2",
   "scripts": {
+    "admin:create": "node --env-file=.env core/cli/admin.ts create",
+    "admin:reset-password": "node --env-file=.env core/cli/admin.ts reset-password",
     "check:public": "node tooling/no-customer-data/cli.ts",
     "db:migrate": "node --env-file=.env core/cli/migrate.ts",
     "dev:db": "docker compose --env-file .env -f deploy/compose.dev.yaml up -d --wait",
     "lint": "eslint . && node tooling/architecture/cli.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
+    "start": "node core/server/main.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -29,7 +32,10 @@
     "vitest": "5.1.0"
   },
   "dependencies": {
+    "@bba/contracts": "workspace:*",
+    "@hono/node-server": "2.1.8",
     "better-auth": "1.7.22",
+    "hono": "4.13.18",
     "pg": "8.23.1",
     "zod": "4.6.7"
   }

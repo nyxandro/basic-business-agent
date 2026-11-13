@@ -1,0 +1,31 @@
+// Start of the server: read the environment, load and validate the installation, migrate, serve.
+// Any configuration problem stops the start with APP_CONFIG_INVALID and the list of files and fields.
+import { serve } from '@hono/node-server';
+import { fileURLToPath } from 'node:url';
+import { createAuth } from '../auth/auth.ts';
+import { readCoreEnv } from '../config/env.ts';
+import { loadInstallation } from '../config/load.ts';
+import { migrate } from '../db/migrate.ts';
+import { createAuthPool, createPool } from '../db/pool.ts';
+import { isAppError } from '../errors/app-error.ts';
+import { createApp } from './app.ts';
+import { logEvent } from './log.ts';
+
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const PORT = 3000;
+
+async function main(): Promise<void> {
+  const env = readCoreEnv(process.env);
+  const installation = await loadInstallation(ROOT, process.env);
+  await migrate(env.DATABASE_URL);
+  const db = createPool(env.DATABASE_URL);
+  const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
+  const agentIds = new Set(installation.agents.map((a) => a.passport.id));
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds });
+  serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
+}
+
+main().catch((error: unknown) => {
+  logEvent('error', 'server_start_failed', { code: isAppError(error) ? error.code : 'APP_INTERNAL', error });
+  process.exit(1);
+});

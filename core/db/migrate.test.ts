@@ -35,7 +35,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
