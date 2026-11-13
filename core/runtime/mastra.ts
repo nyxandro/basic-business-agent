@@ -8,6 +8,7 @@ import type { AppConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 import type { Registry } from '../loader/registry.ts';
 import { createMaskingProcessor } from '../masking/processor.ts';
+import { createMemory } from '../memory/memory.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createMastraAgent } from './agent-factory.ts';
@@ -22,10 +23,12 @@ export interface MastraRuntimeDeps {
 
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
+  const memory = createMemory(deps.storage);
   const agents: Record<string, Agent> = {};
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {
       gateway: deps.gateway,
+      memory,
       processorsFor: (r) => ({
         input: [
           createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false }),

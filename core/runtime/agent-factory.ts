@@ -3,12 +3,14 @@
 import { Agent } from '@mastra/core/agent';
 import type { InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
+import type { Memory } from '@mastra/memory';
 import type { AgentRuntime } from '../loader/registry.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { REQUEST_KEYS, requireContextValue } from './request-keys.ts';
 
 export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
+  memory?: Memory;
   // Per agent, because some layers depend on its passport (e.g. baseRules: false).
   processorsFor(rt: AgentRuntime): { input: InputProcessorOrWorkflow[]; output: OutputProcessorOrWorkflow[] };
 }
@@ -29,6 +31,7 @@ export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Age
       return deps.gateway.modelConfig(modelId, requireContextValue(requestContext, REQUEST_KEYS.userId), rt.passport.id);
     },
     tools: rt.tools,
+    ...(deps.memory ? { memory: deps.memory } : {}),
     ...(rt.skillDirs.length > 0 ? { workspace: new Workspace({ skills: rt.skillDirs }) } : {}),
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
