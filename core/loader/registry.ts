@@ -4,11 +4,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createTool } from '@mastra/core/tools';
 import { agentPassportSchema, type AgentPassport, type ModelConfig } from '../config/schemas.ts';
 import { configError, formatPath, type ConfigProblem, type Installation } from '../config/validate.ts';
 import type { MigrationSource } from '../db/migrate.ts';
 import type { Db } from '../db/pool.ts';
+import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { AnyTool, PluginContext } from '../plugins/public/index.ts';
 
 export interface AgentRuntime {
@@ -42,10 +42,6 @@ function dirIfExists(path: string): string[] {
 
 function isTool(value: unknown): value is AnyTool {
   return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string' && 'execute' in value;
-}
-
-export function withApproval(tool: AnyTool, required: boolean): AnyTool {
-  return createTool({ ...tool, requireApproval: required }) as AnyTool;
 }
 
 async function loadAgentTools(dir: string, file: string, problems: ConfigProblem[]): Promise<Record<string, AnyTool>> {
@@ -103,7 +99,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     for (const id of passport.readOnly) {
       if (!tools[id]) problems.push({ file, field: 'readOnly', message: `the agent has no tool "${id}"` });
     }
-    const wrapped = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, withApproval(tool, !readOnly.has(id))]));
+    const wrapped = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, applyApprovalPolicy(tool, { readOnly: readOnly.has(id), db })]));
     const skillDirs = [
       ...dirIfExists(deps.coreSkillsDir),
       ...passport.plugins.flatMap((p) => pluginSkills.get(p) ?? []),
