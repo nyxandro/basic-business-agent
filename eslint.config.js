@@ -14,4 +14,6 @@ export default defineConfig(
     },
   },
   { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
+  // Vitest's asymmetric matchers (expect.any, expect.stringContaining) are typed as any.
+  { files: ['**/*.test.ts'], rules: { '@typescript-eslint/no-unsafe-assignment': 'off' } },
 );
