@@ -3,6 +3,11 @@
   "include": [
     "contracts/src",
     "core",
+    "plugins",
+    "agents",
+    "config",
+    "workflows",
+    "custom",
     "tooling",
     "*.ts"
   ]

@@ -122,6 +122,11 @@ export function validateInstallation(src: InstallationSources): Installation {
     plugins.push({ dir, passport: parsed.data, settings: settings.data });
   }
   const pluginNames = new Set(src.plugins.map((p) => p.dir));
+  for (const plugin of plugins) {
+    for (const dep of plugin.passport.dependsOn ?? []) {
+      if (!pluginNames.has(dep)) problems.push({ file: `plugins/${plugin.dir}/plugin.ts`, field: 'dependsOn', message: `plugin "${dep}" is not in plugins/` });
+    }
+  }
   for (const key of Object.keys(allSettings)) {
     if (!pluginNames.has(key)) problems.push({ file: 'config/plugins.ts', field: key, message: 'there is no such plugin in plugins/' });
   }

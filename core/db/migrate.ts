@@ -28,8 +28,16 @@ function listMigrations(dir: string): string[] {
   return files;
 }
 
-export async function migrate(databaseUrl: string, dir: string = MIGRATIONS_DIR): Promise<string[]> {
-  const files = listMigrations(dir);
+export interface MigrationSource {
+  // Prefix of migration ids from this folder, e.g. "plugin:example-notes"; empty for the core.
+  prefix: string;
+  dir: string;
+}
+
+// Core migrations first, then each plugin's own folder (plugins/<name>/migrations), in name order.
+export async function migrate(databaseUrl: string, dir: string = MIGRATIONS_DIR, extra: MigrationSource[] = []): Promise<string[]> {
+  const sources: MigrationSource[] = [{ prefix: '', dir }, ...[...extra].sort((a, b) => a.prefix.localeCompare(b.prefix))];
+  const files = sources.flatMap((s) => listMigrations(s.dir).map((file) => ({ id: s.prefix ? `${s.prefix}/${file}` : file, path: join(s.dir, file) })));
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   try {
@@ -41,9 +49,9 @@ export async function migrate(databaseUrl: string, dir: string = MIGRATIONS_DIR)
     );
     const done = new Set((await client.query<{ id: string }>('SELECT id FROM app.schema_migrations')).rows.map((r) => r.id));
     const applied: string[] = [];
-    for (const file of files) {
+    for (const { id: file, path } of files) {
       if (done.has(file)) continue;
-      const sql = readFileSync(join(dir, file), 'utf8');
+      const sql = readFileSync(path, 'utf8');
       try {
         await client.query('BEGIN');
         await client.query(sql);

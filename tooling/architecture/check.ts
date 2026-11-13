@@ -1,11 +1,11 @@
 // Import boundaries of the repository (spec, section 17.2):
 // - core/ does not import plugins/, web/ or the installation zone;
-// - a plugin uses core/ only through core/<module>/public/ and never another plugin
-//   (declared plugin dependencies arrive with plugin passports, step 6);
+// - a plugin uses core/ only through core/<module>/public/, and another plugin only through its
+//   public/ part when the passport declares it in `dependsOn`;
 // - the installation zone uses core/ and plugins/ only through their public/ folders;
 // - web/ imports only web/, the contracts package and npm packages;
 // - contracts/ imports nothing from the repository.
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
@@ -51,7 +51,15 @@ function targetOf(path: string): Target {
   return { zone: zoneOf(path), top: parts[0] ?? '', isPublic: parts[2] === PUBLIC_DIR };
 }
 
-function reasonFor(source: Zone, target: Target): string | null {
+// Plugins named in `dependsOn: [...]` of plugins/<name>/plugin.ts (a literal list, read as text).
+function declaredDependencies(root: string, plugin: string): Set<string> {
+  const file = join(root, 'plugins', plugin, 'plugin.ts');
+  if (!existsSync(file)) return new Set();
+  const list = /dependsOn:\s*\[([^\]]*)\]/.exec(readFileSync(file, 'utf8'))?.[1] ?? '';
+  return new Set([...list.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]!));
+}
+
+function reasonFor(source: Zone, target: Target, deps: (plugin: string) => Set<string>): string | null {
   const { zone, top, isPublic } = target;
   if (zone.kind === 'other') return null;
   switch (source.kind) {
@@ -61,7 +69,9 @@ function reasonFor(source: Zone, target: Target): string | null {
       if (zone.kind === 'contracts') return null;
       if (zone.kind === 'core') return isPublic ? null : 'plugins/ may import core/ only through core/<module>/public/';
       if (zone.kind === 'plugin') {
-        return zone.name === source.name ? null : `plugins/${source.name} may not import another plugin (plugins/${zone.name})`;
+        if (zone.name === source.name) return null;
+        if (!deps(source.name).has(zone.name)) return `plugins/${source.name} may not import plugins/${zone.name}: it is not in dependsOn`;
+        return isPublic ? null : `plugins/${source.name} may import plugins/${zone.name} only through its public/ part`;
       }
       return `plugins/ must not import ${top}/`;
     case 'install':
@@ -112,6 +122,11 @@ function lineAt(text: string, pos: number): number {
 
 export function checkBoundaries(root: string): Violation[] {
   const violations: Violation[] = [];
+  const depsCache = new Map<string, Set<string>>();
+  const deps = (plugin: string): Set<string> => {
+    if (!depsCache.has(plugin)) depsCache.set(plugin, declaredDependencies(root, plugin));
+    return depsCache.get(plugin)!;
+  };
   for (const fileAbs of sourceFiles(root)) {
     const file = toPosix(relative(root, fileAbs));
     const source = zoneOf(file);
@@ -121,7 +136,7 @@ export function checkBoundaries(root: string): Violation[] {
     for (const imported of importedFiles) {
       const target = resolveTarget(root, fileAbs, imported.fileName);
       if (!target) continue;
-      const reason = reasonFor(source, target);
+      const reason = reasonFor(source, target, deps);
       if (reason) violations.push({ file, line: lineAt(text, imported.pos), specifier: imported.fileName, reason });
     }
   }

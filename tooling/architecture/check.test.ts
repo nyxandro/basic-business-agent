@@ -93,11 +93,17 @@ describe('checkBoundaries', () => {
     ]);
   });
 
-  it('forbids a plugin importing another plugin', () => {
+  it('forbids a plugin importing another plugin it does not declare', () => {
     const r = repo({ 'plugins/mail/send.ts': "import '../bitrix24/public/index.ts';\n" });
-    expect(checkBoundaries(r).map((v) => v.reason)).toEqual([
-      'plugins/mail may not import another plugin (plugins/bitrix24)',
-    ]);
+    expect(checkBoundaries(r).map((v) => v.reason)).toEqual(['plugins/mail may not import plugins/bitrix24: it is not in dependsOn']);
+  });
+
+  it('lets a plugin import the public part of a plugin declared in dependsOn, and nothing else of it', () => {
+    const r = repo({
+      'plugins/mail/plugin.ts': "export default { name: 'mail', dependsOn: ['bitrix24'] };\n",
+      'plugins/mail/send.ts': "import '../bitrix24/public/index.ts';\nimport '../bitrix24/internal/token.ts';\n",
+    });
+    expect(checkBoundaries(r).map((v) => `${v.line}: ${v.reason}`)).toEqual(['2: plugins/mail may import plugins/bitrix24 only through its public/ part']);
   });
 
   it('forbids a plugin importing the installation zone or web', () => {

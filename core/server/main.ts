@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createAuth } from '../auth/auth.ts';
 import { readCoreEnv } from '../config/env.ts';
 import { loadInstallation } from '../config/load.ts';
+import { buildRegistry } from '../loader/registry.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -18,14 +19,16 @@ import { logEvent } from './log.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = 3000;
+const CORE_SKILLS_DIR = fileURLToPath(new URL('../skills', import.meta.url));
 
 async function main(): Promise<void> {
   const env = readCoreEnv(process.env);
   const installation = await loadInstallation(ROOT, process.env);
-  await migrate(env.DATABASE_URL);
   const db = createPool(env.DATABASE_URL);
+  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, coreSkillsDir: CORE_SKILLS_DIR });
+  await migrate(env.DATABASE_URL, undefined, registry.pluginMigrations);
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
-  const agentIds = new Set(installation.agents.map((a) => a.passport.id));
+  const agentIds = registry.ids();
   await ensureLimitSettings(db, installation.app.limits);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
   const gateway = createModelGateway({

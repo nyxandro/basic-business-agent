@@ -94,5 +94,9 @@ export const pluginPassportSchema = z.strictObject({
   connection: z
     .strictObject({ mode: z.enum(['personal', 'shared']), auth: z.enum(['oauth', 'static', 'identity']) })
     .optional(),
+  // Other plugins whose public/ part this one imports (checked by tooling/architecture too).
+  dependsOn: z.array(z.string()).optional(),
+  // Builds the plugin's tools from its settings and secrets; called once at start-up.
+  tools: z.custom<(ctx: never) => Record<string, unknown>>((v) => typeof v === 'function', 'must be a function').optional(),
 });
 export type PluginPassport = z.infer<typeof pluginPassportSchema>;
