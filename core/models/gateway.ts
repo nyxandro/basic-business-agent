@@ -28,6 +28,8 @@ export interface ModelGateway {
   translateError(error: unknown, userId: string): Promise<AppError>;
   syncOrgBudget(): Promise<void>;
   syncUserBudget(userId: string): Promise<void>;
+  // Removes the employee's LiteLLM key (deletion of an employee).
+  forgetUser(userId: string): Promise<void>;
   health(): Promise<boolean>;
 }
 
@@ -195,6 +197,12 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       if (!key) return; // the key gets the current limit when it is created on the first request
       const { monthlyRub } = await effectiveUserLimits(db, userId);
       await client.updateKey(key, monthlyRub);
+    },
+
+    async forgetUser(userId) {
+      const key = await storedKey(userId);
+      if (key) await client.deleteKey(key);
+      await db.query('DELETE FROM app.model_keys WHERE user_id = $1', [userId]);
     },
 
     health: () => client.health(),

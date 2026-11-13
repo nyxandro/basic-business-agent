@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
 import { registerUsageReportRoutes } from '../admin/routes/usage.ts';
+import { registerAdminSections } from '../admin/routes/sections.ts';
 import type { Auth } from '../auth/auth.ts';
 import { registerBackgroundRoutes } from '../background/routes.ts';
 import type { BackgroundService } from '../background/service.ts';
@@ -47,12 +48,18 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   });
 
   registerAuthRoutes(app, deps);
-  registerPeopleRoutes(app, deps);
+  registerPeopleRoutes(app, {
+    db: deps.db,
+    publicUrl: deps.publicUrl,
+    gateway: deps.gateway,
+    deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot },
+  });
   registerRoleRoutes(app, deps);
   registerUsageRoutes(app, { db: deps.db, catalog: deps.gateway.catalog, ledgerSecret: deps.ledgerSecret });
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background });
+  registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, catalog: deps.gateway.catalog, timezone: deps.timezone });
   return app;
 }

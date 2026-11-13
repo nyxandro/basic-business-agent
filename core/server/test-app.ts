@@ -46,6 +46,7 @@ export interface TestApp {
   model: FakeModel;
   mastra: Mastra;
   background: BackgroundService;
+  workspaceRoot: string;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
@@ -173,6 +174,7 @@ export async function createTestApp(
     model,
     mastra,
     background,
+    workspaceRoot,
     sentMail,
     call,
     roleId,

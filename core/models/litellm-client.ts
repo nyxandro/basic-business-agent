@@ -19,6 +19,7 @@ export interface LiteLLMClient {
   generateKey(userId: string, maxBudget: number | null): Promise<string>;
   updateKey(key: string, maxBudget: number | null): Promise<void>;
   keyBalance(key: string): Promise<Balance>;
+  deleteKey(key: string): Promise<void>;
 }
 
 export function gatewayUnavailable(message: string, cause?: unknown): AppError {
@@ -97,6 +98,10 @@ export function createLiteLLMClient(baseUrl: string, masterKey: string, teamId: 
     },
     async updateKey(key, maxBudget) {
       await call('POST', '/key/update', { key, max_budget: maxBudget, budget_duration: BUDGET_DURATION });
+    },
+    async deleteKey(key) {
+      // Deleting a key that is already gone is fine: removal of an employee repeats safely.
+      await call('POST', '/key/delete', { keys: [key] }, true);
     },
     async keyBalance(key) {
       const res = await call<{ info?: RawBalance }>('GET', `/key/info?key=${encodeURIComponent(key)}`);
