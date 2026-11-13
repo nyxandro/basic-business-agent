@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone });
   backgroundRef.current = background;
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.

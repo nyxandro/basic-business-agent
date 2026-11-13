@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
+import { registerUsageReportRoutes } from '../admin/routes/usage.ts';
 import type { Auth } from '../auth/auth.ts';
 import { registerBackgroundRoutes } from '../background/routes.ts';
 import type { BackgroundService } from '../background/service.ts';
@@ -29,6 +30,7 @@ export interface ServerDeps {
   connections: ConnectionManager;
   chat: ChatDeps & { copilot: CopilotHandler };
   background: BackgroundService;
+  timezone: string;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -51,5 +53,6 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background });
+  registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, catalog: deps.gateway.catalog, timezone: deps.timezone });
   return app;
 }

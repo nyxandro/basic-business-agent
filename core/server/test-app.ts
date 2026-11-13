@@ -144,7 +144,7 @@ export async function createTestApp(
   backgroundRef.current = background;
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections, chat, background });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(

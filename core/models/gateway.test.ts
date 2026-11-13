@@ -135,6 +135,20 @@ describe('model gateway', () => {
     await expect(t.gateway.assertCanCall(userId, 'test-paid')).resolves.toBeUndefined();
   });
 
+  it('keeps our ledger equal to what LiteLLM charged the employee', async () => {
+    const userId = await t.createUser({ email: 'ledger@example.com' });
+    for (let i = 0; i < 3; i++) await ask(userId, 'test-paid');
+    const rows = await waitForUsage(userId, 3);
+    const ours = rows.reduce((s, r) => s + Number(r.cost_rub), 0);
+    const key = (await t.gateway.modelConfig('test-paid', userId, 'sales')).apiKey;
+    let theirs = 0;
+    for (let i = 0; i < 40 && Math.abs(theirs - ours) > 1e-9; i++) {
+      theirs = (await t.litellm.keyBalance(key)).spend;
+      if (Math.abs(theirs - ours) > 1e-9) await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(theirs).toBeCloseTo(ours, 8);
+  });
+
   it('accepts usage records only with the shared secret', async () => {
     const res = await t.app.request('/app/api/internal/usage', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', authorization: 'Bearer wrong' } });
     expect(res.status).toBe(401);
