@@ -12,23 +12,26 @@
   "scripts": {
     "admin:create": "node --env-file=.env core/cli/admin.ts create",
     "admin:reset-password": "node --env-file=.env core/cli/admin.ts reset-password",
+    "build:web": "pnpm -C web build",
     "check:public": "node tooling/no-customer-data/cli.ts",
     "db:migrate": "node --env-file=.env core/cli/migrate.ts",
     "dev:db": "docker compose --env-file .env -f deploy/compose.dev.yaml up -d --wait",
+    "dev:web": "pnpm -C web dev",
     "lint": "eslint . && node tooling/architecture/cli.ts",
     "models:config": "node --env-file=.env core/cli/models-config.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
     "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/skills/requirements.txt",
     "start": "node core/server/main.ts",
     "tasks": "node --env-file=.env core/cli/tasks.ts",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "test": "vitest run && pnpm -C web test",
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
     "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "fast-check": "4.10.2",
     "globals": "17.14.0",
     "typescript": "6.0.3",

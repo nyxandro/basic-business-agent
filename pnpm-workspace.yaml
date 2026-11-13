@@ -1,6 +1,19 @@
 packages:
   - contracts
+  - web
 
 # esbuild ships its binary as an optional dependency; its install script only re-checks it.
 allowBuilds:
   esbuild: false
+
+minimumReleaseAgeExclude:
+  - '@copilotkit/runtime@2.0.0-rc.49'
+  - '@copilotkit/shared@2.0.0-rc.49'
+  - '@copilotkit/core@2.0.0-rc.49'
+  - '@copilotkit/learning@2.0.0-rc.49'
+  - '@copilotkit/markdown@2.0.0-rc.49'
+  - '@copilotkit/mcp-apps-renderer@2.0.0-rc.49'
+  - '@copilotkit/react-core@2.0.0-rc.49'
+  - '@copilotkit/web-components@2.0.0-rc.49'
+  - '@copilotkit/web-inspector@2.0.0-rc.49'
+  - jsdom@31.0.1

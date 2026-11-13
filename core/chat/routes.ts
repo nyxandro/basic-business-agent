@@ -1,5 +1,6 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
+import type { AgentListResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -30,7 +31,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const agents = deps.registry.agents
       .filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id))
       .map((rt) => ({ id: rt.passport.id, name: rt.passport.name, description: rt.passport.description, starters: rt.passport.starters }));
-    return c.json({ agents });
+    const body: AgentListResponse = { agents };
+    return c.json(body);
   });
 
   app.all(`${COPILOT_BASE_PATH}/*`, async (c) => {

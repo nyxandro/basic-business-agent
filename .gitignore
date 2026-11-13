@@ -15,3 +15,6 @@ deploy/litellm/config.json
 
 # Local data of the development server
 .data/
+
+# Built web interface (pnpm build:web)
+dist/
