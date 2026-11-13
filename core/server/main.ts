@@ -18,6 +18,8 @@ import { createModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
+import { createCopilotHandler } from '../chat/copilot.ts';
+import { createMemory } from '../memory/memory.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
@@ -37,24 +39,26 @@ async function main(): Promise<void> {
   const agentIds = registry.ids();
   await ensureLimitSettings(db, installation.app.limits);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
+  const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   const gateway = createModelGateway({
     db,
     client: createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY),
-    box: createSecretBox(env.APP_ENCRYPTION_KEYS),
+    box,
     catalog: installation.models,
     timezone: installation.app.timezone,
   });
   await gateway.syncOrgBudget();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
-  const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
+  const memory = createMemory(storage);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
   const sandbox = {
     deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) },
     isolation: assertIsolationAvailable(),
   };
-  const mastra = createMastraRuntime({ registry, storage, gateway, db, app: installation.app, connections, sandbox });
-  void mastra; // used by the chat and background routes from steps 12–13
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, connections, sandbox });
+  const editor = { db, mastra, registry };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, copilot: createCopilotHandler({ editor }) };
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat });
   serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
 }
 

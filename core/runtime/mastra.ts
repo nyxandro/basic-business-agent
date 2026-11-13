@@ -3,13 +3,14 @@
 import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { MastraEditor } from '@mastra/editor';
+import type { Memory } from '@mastra/memory';
 import type { PostgresStore } from '@mastra/pg';
 import type { AppConfig } from '../config/schemas.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import type { Db } from '../db/pool.ts';
 import type { Registry } from '../loader/registry.ts';
 import { createMaskingProcessor } from '../masking/processor.ts';
-import { createMemory } from '../memory/memory.ts';
+import { createApprovalRecorder } from '../approvals/requests.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
@@ -18,6 +19,7 @@ import { createMastraAgent } from './agent-factory.ts';
 export interface MastraRuntimeDeps {
   registry: Registry;
   storage: PostgresStore;
+  memory: Memory;
   gateway: Pick<ModelGateway, 'modelConfig'>;
   db: Db;
   app: Pick<AppConfig, 'name' | 'timezone'>;
@@ -27,7 +29,8 @@ export interface MastraRuntimeDeps {
 
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
-  const memory = createMemory(deps.storage);
+  const memory = deps.memory;
+  const recorder = createApprovalRecorder(deps.db);
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const agents: Record<string, Agent> = {};
   for (const rt of deps.registry.agents) {
@@ -42,7 +45,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
           masking,
           ...imageView,
         ],
-        output: [masking],
+        output: [masking, recorder],
       }),
     });
   }

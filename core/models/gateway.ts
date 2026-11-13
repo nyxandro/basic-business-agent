@@ -23,6 +23,8 @@ export interface ModelGateway {
   catalog: ModelConfig[];
   modelConfig(modelId: string, userId: string, agentId: string): Promise<ModelCallConfig>;
   assertCanCall(userId: string, modelId: string): Promise<void>;
+  // Monthly limits by our own ledger: checked before an approved action runs (spec, section 8.4).
+  assertWithinBudget(userId: string): Promise<void>;
   translateError(error: unknown, userId: string): Promise<AppError>;
   syncOrgBudget(): Promise<void>;
   syncUserBudget(userId: string): Promise<void>;
@@ -125,6 +127,30 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       }
     },
 
+    async assertWithinBudget(userId) {
+      const [{ monthlyRub }, settings] = await Promise.all([effectiveUserLimits(db, userId), getLimitSettings(db)]);
+      const monthStart = `(date_trunc('month', now() AT TIME ZONE $1) AT TIME ZONE $1)`;
+      const nextMonth = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+      nextMonth.setMonth(nextMonth.getMonth() + 1, 1);
+      const date = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(nextMonth);
+      if (monthlyRub !== null) {
+        const { rows } = await db.query<{ s: string }>(`SELECT coalesce(sum(cost_rub), 0) AS s FROM app.usage_events WHERE user_id = $2 AND at >= ${monthStart}`, [timezone, userId]);
+        if (Number(rows[0]?.s) >= monthlyRub) {
+          throw appError('APP_USAGE_LIMIT_EXCEEDED', `employee spent ${rows[0]?.s} of ${monthlyRub} RUB this month`, {
+            userMessage: `Ваш лимит расходов на этот месяц исчерпан. Новый лимит начнётся ${date}. Если нужно раньше — обратитесь к администратору.`,
+          });
+        }
+      }
+      if (settings.orgMonthlyRub !== null) {
+        const { rows } = await db.query<{ s: string }>(`SELECT coalesce(sum(cost_rub), 0) AS s FROM app.usage_events WHERE at >= ${monthStart}`, [timezone]);
+        if (Number(rows[0]?.s) >= settings.orgMonthlyRub) {
+          throw appError('APP_USAGE_ORG_LIMIT_EXCEEDED', `organisation spent ${rows[0]?.s} of ${settings.orgMonthlyRub} RUB this month`, {
+            userMessage: `Лимит расходов организации на этот месяц исчерпан. Новый лимит начнётся ${date}. Обратитесь к администратору.`,
+          });
+        }
+      }
+    },
+
     async translateError(error, userId) {
       const { status, text } = httpDetails(error);
       const lower = text.toLowerCase();
@@ -154,7 +180,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       if (lower.includes('context') && (lower.includes('length') || lower.includes('window'))) {
         return appError('APP_MODEL_CONTEXT_EXCEEDED', text.slice(0, 300), { cause: error });
       }
-      if (status === 429) return appError('APP_MODEL_RATE_LIMITED', text.slice(0, 300), { cause: error });
+      if (status === 429 || /rate.?limit|too many requests|\b429\b/i.test(text)) return appError('APP_MODEL_RATE_LIMITED', text.slice(0, 300), { cause: error });
       if (status === 401 || status === 403) return appError('APP_MODEL_AUTH_FAILED', text.slice(0, 300), { cause: error });
       return appError('APP_MODEL_UNAVAILABLE', `model call failed (${status ?? 'no status'}): ${text.slice(0, 300)}`, { cause: error });
     },

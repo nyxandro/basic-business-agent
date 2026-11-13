@@ -5,6 +5,9 @@ import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
 import type { Auth } from '../auth/auth.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
+import type { CopilotHandler } from '../chat/copilot.ts';
+import { registerChatRoutes } from '../chat/routes.ts';
+import type { ChatDeps } from '../chat/run.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import { registerConnectionRoutes } from '../connections/routes.ts';
 import type { Db } from '../db/pool.ts';
@@ -22,6 +25,7 @@ export interface ServerDeps {
   gateway: ModelGateway;
   ledgerSecret: string;
   connections: ConnectionManager;
+  chat: ChatDeps & { copilot: CopilotHandler };
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -42,5 +46,6 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerRoleRoutes(app, deps);
   registerUsageRoutes(app, { db: deps.db, catalog: deps.gateway.catalog, ledgerSecret: deps.ledgerSecret });
   registerConnectionRoutes(app, deps);
+  registerChatRoutes(app, deps.chat);
   return app;
 }

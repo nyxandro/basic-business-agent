@@ -9,6 +9,7 @@ import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
+import { createMemory } from '../memory/memory.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { getPromptState, publishDraft, resolveAgent, revertToFile, saveDraft, type EditorDeps } from './prompts.ts';
@@ -65,7 +66,7 @@ beforeAll(async () => {
   model = await startFakeModel();
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
-  mastra = createMastraRuntime({ registry, storage, gateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' } });
+  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' } });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {

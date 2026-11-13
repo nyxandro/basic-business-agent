@@ -1,6 +1,19 @@
 // Test helper: the real server on a fresh database, with helpers to create people and sign in.
 import { randomInt } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { createTool } from '@mastra/core/tools';
+import { PostgresStore } from '@mastra/pg';
 import type { Hono } from 'hono';
+import { z } from 'zod';
+import { applyApprovalPolicy } from '../approvals/policy.ts';
+import { createCopilotHandler } from '../chat/copilot.ts';
+import type { AgentRuntime, Registry } from '../loader/registry.ts';
+import { ensureMaskingSettings } from '../masking/settings.ts';
+import { createMemory } from '../memory/memory.ts';
+import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
+import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
@@ -27,6 +40,10 @@ export interface TestApp {
   litellm: LiteLLMClient;
   ledgerSecret: string;
   connections: ConnectionManager;
+  // The model behind the test agents: script its answers, read what it received.
+  model: FakeModel;
+  // Actions the test agent "sales" performed (its mail_send tool).
+  sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -46,6 +63,19 @@ function randomIp(): string {
   return `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
 }
 
+function testAgent(id: string, name: string, tools: AgentRuntime['tools']): AgentRuntime {
+  return {
+    passport: { id, name, description: `Тестовый агент ${name}`, model: 'test-paid', plugins: [], readOnly: [], starters: ['Покажи мои сделки'] },
+    dir: `/agents/${id}`,
+    instructions: `Ты тестовый агент «${name}».`,
+    tools,
+    readOnly: new Set(),
+    skillDirs: [],
+    subagents: [],
+    connectorIds: [],
+  };
+}
+
 export async function createTestApp(
   opts: { knownAgentIds?: string[]; limits?: Parameters<typeof ensureLimitSettings>[1]; connectors?: ConnectorRuntime[] } = {},
 ): Promise<TestApp> {
@@ -63,7 +93,40 @@ export async function createTestApp(
   await gateway.syncOrgBudget();
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
   const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections });
+  await ensureMaskingSettings(db, []);
+  const model = await startFakeModel();
+  const sentMail: { to: string; text: string }[] = [];
+  const salesTools = {
+    crm_search: applyApprovalPolicy(
+      createTool({ id: 'crm_search', description: 'Найти сделки', inputSchema: z.object({ q: z.string() }), execute: () => Promise.resolve({ deals: 12 }) }),
+      { readOnly: true, db },
+    ),
+    mail_send: applyApprovalPolicy(
+      createTool({
+        id: 'mail_send',
+        description: 'Отправить письмо клиенту',
+        inputSchema: z.object({ to: z.string(), text: z.string() }),
+        execute: (input) => (sentMail.push(input), Promise.resolve({ sent: true })),
+      }),
+      { readOnly: false, db },
+    ),
+  };
+  const agents = [testAgent('sales', 'Продажи', salesTools), testAgent('assistant', 'Помощник', {})].filter((a) => known.has(a.passport.id));
+  const registry: Registry = {
+    agents,
+    get: (id) => agents.find((a) => a.passport.id === id),
+    ids: () => new Set(agents.map((a) => a.passport.id)),
+    pluginMigrations: [],
+    connectors: opts.connectors ?? [],
+  };
+  const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
+  const memory = createMemory(storage);
+  const fakeGateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway: fakeGateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' }, connections });
+  const editor = { db, mastra, registry };
+  const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, copilot: createCopilotHandler({ editor }) };
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections, chat });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -89,6 +152,8 @@ export async function createTestApp(
     litellm,
     ledgerSecret,
     connections,
+    model,
+    sentMail,
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {
@@ -106,6 +171,8 @@ export async function createTestApp(
       return cookie;
     },
     async close() {
+      await model.close();
+      rmSync(workspaceRoot, { recursive: true, force: true });
       await connections.close();
       await db.end();
       await authPool.end();

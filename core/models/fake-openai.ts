@@ -4,8 +4,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export type FakeTurn =
-  | { text: string; chunkSize?: number }
-  | { toolCalls: { name: string; args: Record<string, unknown> }[] };
+  | { text: string; chunkSize?: number; delayMs?: number }
+  | { toolCalls: { name: string; args: Record<string, unknown> }[] }
+  | { status: number; error: string };
 
 export interface FakeRequest {
   model: string;
@@ -34,6 +35,10 @@ function sse(res: import('node:http').ServerResponse, chunks: object[], finish: 
 }
 
 function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream: boolean): void {
+  if ('status' in turn) {
+    res.writeHead(turn.status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: turn.error, type: 'error', code: turn.status } }));
+    return;
+  }
   if ('toolCalls' in turn) {
     const calls = turn.toolCalls.map((c, i) => ({ id: `call_${Date.now()}_${i}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
     if (stream) return sse(res, [{ role: 'assistant', tool_calls: calls.map((c, index) => ({ index, ...c })) }], 'tool_calls');
@@ -62,7 +67,9 @@ export async function startFakeModel(): Promise<FakeModel> {
       const record: FakeRequest = { ...parsed, stream: Boolean(parsed.stream), headers: req.headers };
       requests.push(record);
       const next = queue.shift() ?? { text: 'Готово.' };
-      respond(res, typeof next === 'function' ? next(record) : next, record.stream);
+      const turn = typeof next === 'function' ? next(record) : next;
+      const delay = 'delayMs' in turn ? (turn.delayMs ?? 0) : 0;
+      setTimeout(() => respond(res, turn, record.stream), delay);
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
