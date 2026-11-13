@@ -11,6 +11,10 @@ export const coreEnvSchema = z.object({
   DATABASE_URL: z.string().startsWith('postgres', 'must be a postgresql:// connection string'),
   APP_PUBLIC_URL: z.url(),
   BETTER_AUTH_SECRET: secret,
+  APP_ENCRYPTION_KEYS: z.string().min(1),
+  LITELLM_URL: z.url(),
+  LITELLM_MASTER_KEY: z.string().startsWith('sk-', 'must start with sk- (LiteLLM requirement)'),
+  LITELLM_CALLBACK_SECRET: secret,
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;
 

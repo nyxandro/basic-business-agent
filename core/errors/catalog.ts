@@ -35,6 +35,20 @@ export const ERROR_CATALOG = {
     status: 500,
     userMessage: 'Удалено не всё. Нажмите «Удалить» ещё раз — повтор безопасен. Пока удаление не завершено, сотрудник заблокирован.',
   },
+  APP_MODEL_GATEWAY_UNAVAILABLE: { status: 503, userMessage: 'Сервис моделей сейчас не отвечает. Попробуйте через минуту; если повторяется — сообщите администратору код ошибки.' },
+  APP_MODEL_UNAVAILABLE: { status: 503, userMessage: 'Модель сейчас не отвечает. Попробуйте ещё раз через минуту; если повторяется — сообщите администратору код ошибки.' },
+  APP_MODEL_RATE_LIMITED: { status: 429, userMessage: 'Слишком много запросов к модели. Подождите минуту и отправьте сообщение снова.' },
+  APP_MODEL_AUTH_FAILED: { status: 502, userMessage: 'Не удалось обратиться к модели: проблема с настройками доступа. Сообщите администратору код ошибки.' },
+  APP_MODEL_CONTEXT_EXCEEDED: { status: 400, userMessage: 'Разговор стал слишком длинным для модели. Начните новый — агент помнит важное о вас.' },
+  APP_USAGE_LIMIT_EXCEEDED: {
+    status: 402,
+    userMessage: 'Ваш лимит расходов на этот месяц исчерпан. Новый лимит начнётся {date}. Если нужно раньше — обратитесь к администратору.',
+  },
+  APP_USAGE_ORG_LIMIT_EXCEEDED: { status: 402, userMessage: 'Лимит расходов организации на этот месяц исчерпан. Новый лимит начнётся {date}. Обратитесь к администратору.' },
+  APP_USAGE_DAILY_CAP_EXCEEDED: {
+    status: 402,
+    userMessage: 'На сегодня ваш лимит запросов к модели исчерпан. Он обновится завтра; если нужно раньше — обратитесь к администратору.',
+  },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

@@ -7,3 +7,5 @@ node_modules/
 spikes/
 # Локальный список имён заказчиков для проверки «нет данных заказчиков» — не публикуется
 .public-check/
+# Конфигурация LiteLLM, собранная из config/models.ts командой pnpm models:config
+deploy/litellm/config.json

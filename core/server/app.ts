@@ -7,6 +7,8 @@ import type { Auth } from '../auth/auth.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import type { ModelGateway } from '../models/gateway.ts';
+import { registerUsageRoutes } from '../models/routes.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
 
@@ -15,6 +17,8 @@ export interface ServerDeps {
   auth: Auth;
   publicUrl: string;
   knownAgentIds: () => ReadonlySet<string>;
+  gateway: ModelGateway;
+  ledgerSecret: string;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -26,11 +30,13 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
 
   app.get('/app/api/health', async (c) => {
     await deps.db.query('SELECT 1');
+    if (!(await deps.gateway.health())) throw appError('APP_MODEL_GATEWAY_UNAVAILABLE', 'LiteLLM liveliness check failed');
     return c.json({ status: 'ok' });
   });
 
   registerAuthRoutes(app, deps);
   registerPeopleRoutes(app, deps);
   registerRoleRoutes(app, deps);
+  registerUsageRoutes(app, { db: deps.db, catalog: deps.gateway.catalog, ledgerSecret: deps.ledgerSecret });
   return app;
 }

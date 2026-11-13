@@ -1,6 +1,11 @@
 // Test helper: the real server on a fresh database, with helpers to create people and sign in.
 import { randomInt } from 'node:crypto';
 import type { Hono } from 'hono';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
+import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
+import { ensureLimitSettings } from '../models/limits.ts';
+import { TEST_CATALOG } from '../models/test-catalog.ts';
 import { createAuth, type Auth } from '../auth/auth.ts';
 import { builtinRoleId } from '../auth/roles.ts';
 import { acceptInvite, createInvite } from '../auth/users.ts';
@@ -17,6 +22,9 @@ export interface TestApp {
   app: Hono<AppEnv>;
   db: Db;
   auth: Auth;
+  gateway: ModelGateway;
+  litellm: LiteLLMClient;
+  ledgerSecret: string;
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -24,18 +32,33 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set: start the dev stand (pnpm dev:db) and copy .env.example to .env`);
+  return value;
+}
+
+export const TEST_ENCRYPTION_KEYS = `1:${Buffer.alloc(32, 7).toString('base64')}`;
+
 function randomIp(): string {
   return `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
 }
 
-export async function createTestApp(opts: { knownAgentIds?: string[] } = {}): Promise<TestApp> {
+export async function createTestApp(opts: { knownAgentIds?: string[]; limits?: Parameters<typeof ensureLimitSettings>[1] } = {}): Promise<TestApp> {
   const database = await createTestDatabase();
   await migrate(database.url);
   const db = createPool(database.url);
   const authPool = createAuthPool(database.url);
   const auth = createAuth({ db, authPool, secret: 'test-secret-that-is-long-enough-1234567890', publicUrl: TEST_PUBLIC_URL });
   const known = new Set(opts.knownAgentIds ?? ['assistant', 'sales']);
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known });
+  await ensureLimitSettings(db, opts.limits ?? { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null });
+  // Each test database gets its own LiteLLM team, so balances never leak between test files or runs.
+  const teamId = `test-${database.url.split('/').pop()}`;
+  const litellm = createLiteLLMClient(requireEnv('LITELLM_TEST_URL'), requireEnv('LITELLM_TEST_MASTER_KEY'), teamId);
+  const gateway = createModelGateway({ db, client: litellm, box: createSecretBox(TEST_ENCRYPTION_KEYS), catalog: TEST_CATALOG, timezone: 'Europe/Moscow' });
+  await gateway.syncOrgBudget();
+  const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -57,6 +80,9 @@ export async function createTestApp(opts: { knownAgentIds?: string[] } = {}): Pr
     app,
     db,
     auth,
+    gateway,
+    litellm,
+    ledgerSecret,
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {

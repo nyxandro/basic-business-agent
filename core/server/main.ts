@@ -7,6 +7,10 @@ import { readCoreEnv } from '../config/env.ts';
 import { loadInstallation } from '../config/load.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { createModelGateway } from '../models/gateway.ts';
+import { createLiteLLMClient } from '../models/litellm-client.ts';
+import { ensureLimitSettings } from '../models/limits.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
@@ -21,7 +25,16 @@ async function main(): Promise<void> {
   const db = createPool(env.DATABASE_URL);
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = new Set(installation.agents.map((a) => a.passport.id));
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds });
+  await ensureLimitSettings(db, installation.app.limits);
+  const gateway = createModelGateway({
+    db,
+    client: createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY),
+    box: createSecretBox(env.APP_ENCRYPTION_KEYS),
+    catalog: installation.models,
+    timezone: installation.app.timezone,
+  });
+  await gateway.syncOrgBudget();
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET });
   serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
 }
 

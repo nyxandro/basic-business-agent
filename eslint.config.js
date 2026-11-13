@@ -13,6 +13,11 @@ export default defineConfig(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
   },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' }],
+    },
+  },
   { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
   // Vitest's asymmetric matchers (expect.any, expect.stringContaining) are typed as any.
   { files: ['**/*.test.ts'], rules: { '@typescript-eslint/no-unsafe-assignment': 'off' } },
