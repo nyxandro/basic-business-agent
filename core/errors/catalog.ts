@@ -63,6 +63,10 @@ export const ERROR_CATALOG = {
     status: 415,
     userMessage: 'Такой формат агент пока не читает. Подойдут PDF, Word, Excel, CSV, TXT и картинки PNG или JPG.',
   },
+  APP_BACKGROUND_RUN_SKIPPED: { status: 409, userMessage: 'Запуск задачи пропущен: предыдущий запуск ещё ждёт вашего решения.' },
+  APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },
+  APP_APPROVAL_EXPIRED: { status: 410, userMessage: 'Истекло: действие не выполнено. Если оно ещё нужно, запустите задачу снова.' },
+  APP_APPROVAL_DECIDED: { status: 409, userMessage: 'По этому действию решение уже принято.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

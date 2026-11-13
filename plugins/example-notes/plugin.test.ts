@@ -21,7 +21,7 @@ const as = toolContextFor;
 
 describe('example-notes plugin', () => {
   it('keeps each employee’s notes separate and lists the newest first', async () => {
-    const tools = plugin.tools!({ name: 'example-notes', settings: { maxNotes: 10 }, secrets: {}, db });
+    const tools = plugin.tools!({ name: 'example-notes', settings: { maxNotes: 10 }, secrets: {}, db, startAgentRun: () => Promise.reject(new Error('not used')) });
     await tools.notes_add!.execute!({ text: 'Позвонить в Альфа-Строй' }, as('u1') as never);
     await tools.notes_add!.execute!({ text: 'Счёт до пятницы' }, as('u1') as never);
     await tools.notes_add!.execute!({ text: 'Чужая заметка' }, as('u2') as never);

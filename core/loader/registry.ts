@@ -10,7 +10,7 @@ import type { MigrationSource } from '../db/migrate.ts';
 import type { Db } from '../db/pool.ts';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { ConnectorRuntime } from '../connections/manager.ts';
-import type { AnyTool, McpDefinition, PluginContext } from '../plugins/public/index.ts';
+import type { AnyTool, McpDefinition, PluginContext, PluginTrigger } from '../plugins/public/index.ts';
 
 export interface AgentRuntime {
   passport: AgentPassport;
@@ -30,6 +30,12 @@ export interface Registry {
   ids(): ReadonlySet<string>;
   pluginMigrations: MigrationSource[];
   connectors: ConnectorRuntime[];
+  triggers: { plugin: string; trigger: PluginTrigger }[];
+}
+
+// Agent runs started by plugins: bound after the background service exists (it needs the registry).
+export interface AgentRunner {
+  startAgentRun: PluginContext<unknown>['startAgentRun'];
 }
 
 function connectorProblems(file: string, connection: ConnectorRuntime['mode'] | undefined, auth: string | undefined, def: McpDefinition): string[] {
@@ -50,6 +56,7 @@ export interface RegistryDeps {
   env: Record<string, string | undefined>;
   db: Db;
   coreSkillsDir: string;
+  runner?: AgentRunner;
 }
 
 function dirIfExists(path: string): string[] {
@@ -87,11 +94,16 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   const pluginSkills = new Map<string, string[]>();
   const pluginMigrations: MigrationSource[] = [];
   const connectors: ConnectorRuntime[] = [];
+  const triggers: Registry['triggers'] = [];
+  const startAgentRun: PluginContext<unknown>['startAgentRun'] = (input) => {
+    if (!deps.runner) throw new Error('startAgentRun called before the background service started');
+    return deps.runner.startAgentRun(input);
+  };
   for (const plugin of installation.plugins) {
     const { passport } = plugin;
     const pluginDir = join(root, 'plugins', plugin.dir);
     const secrets = Object.fromEntries(passport.secrets.map((s) => [s, env[s] ?? '']));
-    const ctx: PluginContext<unknown> = { name: passport.name, settings: plugin.settings, secrets, db };
+    const ctx: PluginContext<unknown> = { name: passport.name, settings: plugin.settings, secrets, db, startAgentRun };
     const tools = (passport.tools as ((c: PluginContext<unknown>) => Record<string, AnyTool>) | undefined)?.(ctx) ?? {};
     const mcp = (passport.mcp as ((c: PluginContext<unknown>) => McpDefinition) | undefined)?.(ctx);
     if (mcp) {
@@ -112,6 +124,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     for (const id of mcp ? [] : passport.readOnly) {
       if (!tools[id]) problems.push({ file: `plugins/${plugin.dir}/plugin.ts`, field: 'readOnly', message: `there is no tool "${id}"` });
     }
+    for (const trigger of (passport.triggers as ((c: PluginContext<unknown>) => PluginTrigger[]) | undefined)?.(ctx) ?? []) triggers.push({ plugin: passport.name, trigger });
     pluginTools.set(passport.name, tools);
     pluginReadOnly.set(passport.name, passport.readOnly);
     pluginSkills.set(passport.name, dirIfExists(join(pluginDir, 'skills')));
@@ -173,5 +186,5 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   if (problems.length > 0) throw configError(problems);
 
   const byId = new Map(agents.map((a) => [a.passport.id, a]));
-  return { agents, get: (id) => byId.get(id), ids: () => new Set(byId.keys()), pluginMigrations, connectors };
+  return { agents, get: (id) => byId.get(id), ids: () => new Set(byId.keys()), pluginMigrations, connectors, triggers };
 }

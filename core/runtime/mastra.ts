@@ -25,6 +25,8 @@ export interface MastraRuntimeDeps {
   app: Pick<AppConfig, 'name' | 'timezone'>;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
+  // Mastra workflows of the core, e.g. "background-run" for background tasks.
+  workflows?: ConstructorParameters<typeof Mastra>[0] extends infer O ? (O extends { workflows?: infer W } ? W : never) : never;
 }
 
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
@@ -49,5 +51,5 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       }),
     });
   }
-  return new Mastra({ agents, storage: deps.storage, editor: new MastraEditor() });
+  return new Mastra({ agents, storage: deps.storage, editor: new MastraEditor(), ...(deps.workflows ? { workflows: deps.workflows } : {}) });
 }

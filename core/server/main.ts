@@ -19,6 +19,7 @@ import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
 import { createCopilotHandler } from '../chat/copilot.ts';
+import { createBackgroundService, createBackgroundWorkflow, type BackgroundService } from '../background/service.ts';
 import { createMemory } from '../memory/memory.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
@@ -33,7 +34,10 @@ async function main(): Promise<void> {
   const env = readCoreEnv(process.env);
   const installation = await loadInstallation(ROOT, process.env);
   const db = createPool(env.DATABASE_URL);
-  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, coreSkillsDir: CORE_SKILLS_DIR });
+  // The registry and the Mastra workflow need the background service, which itself needs them.
+  const backgroundRef: { current?: BackgroundService } = {};
+  const runner = { startAgentRun: (input: Parameters<BackgroundService['startAgentRun']>[0]) => backgroundRef.current!.startAgentRun(input) };
+  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, coreSkillsDir: CORE_SKILLS_DIR, runner });
   await migrate(env.DATABASE_URL, undefined, registry.pluginMigrations);
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = registry.ids();
@@ -55,11 +59,35 @@ async function main(): Promise<void> {
     deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) },
     isolation: assertIsolationAvailable(),
   };
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, connections, sandbox });
+  const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone });
+  backgroundRef.current = background;
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat });
-  serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background });
+  await background.syncSchedules();
+  const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
+  // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
+  await mastra.startWorkers();
+  background.start();
+  void background.catchUp().catch((error: unknown) => logEvent('error', 'background_catch_up_failed', { error }));
+  for (const { plugin, trigger } of registry.triggers) {
+    await Promise.resolve(trigger.start()).catch((error: unknown) => logEvent('error', 'plugin_trigger_start_failed', { plugin, error }));
+  }
+
+  // Docker stops the container with SIGTERM: finish what runs, then close connections.
+  const shutdown = async (signal: string) => {
+    logEvent('info', 'server_stopping', { signal });
+    for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
+    background.stop();
+    await mastra.stopWorkers();
+    await connections.close();
+    server.close();
+    await db.end();
+    process.exit(0);
+  };
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, (s) => void shutdown(s));
 }
 
 main().catch((error: unknown) => {

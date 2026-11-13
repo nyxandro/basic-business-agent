@@ -100,5 +100,7 @@ export const pluginPassportSchema = z.strictObject({
   tools: z.custom<(ctx: never) => Record<string, unknown>>((v) => typeof v === 'function', 'must be a function').optional(),
   // Describes the plugin's MCP server and how employees connect to it (core/plugins/public: McpDefinition).
   mcp: z.custom<(ctx: never) => unknown>((v) => typeof v === 'function', 'must be a function').optional(),
+  // Event sources of the plugin; each gets start()/stop() (core/plugins/public: PluginTrigger).
+  triggers: z.custom<(ctx: never) => unknown>((v) => typeof v === 'function', 'must be a function').optional(),
 });
 export type PluginPassport = z.infer<typeof pluginPassportSchema>;

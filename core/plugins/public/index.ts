@@ -11,6 +11,15 @@ export interface PluginContext<TSettings> {
   secrets: Record<string, string>;
   // Plugins keep their own tables in schema plugin_<name>, created by plugins/<name>/migrations/*.sql.
   db: Db;
+  // Runs an agent without a chat on behalf of an employee, e.g. "a letter came to the requests box"
+  // (spec, section 8.6). Mark the event as handled only after this resolves, so a restart loses nothing.
+  startAgentRun(input: { agentId: string; userId: string; prompt: string; title: string }): Promise<{ threadId: string }>;
+}
+
+// An event source of a plugin (a mailbox poller, a webhook queue reader): started after the server starts.
+export interface PluginTrigger {
+  start(): void | Promise<void>;
+  stop(): void | Promise<void>;
 }
 
 // Mastra tools of any shape; the loader adds approval and journaling around them.
@@ -42,6 +51,7 @@ export interface PluginDefinition<S extends z.ZodType> {
   dependsOn?: string[];
   tools?: (ctx: PluginContext<z.infer<S>>) => Record<string, AnyTool>;
   mcp?: (ctx: PluginContext<z.infer<S>>) => McpDefinition;
+  triggers?: (ctx: PluginContext<z.infer<S>>) => PluginTrigger[];
 }
 
 export function definePlugin<S extends z.ZodType>(definition: PluginDefinition<S>): PluginDefinition<S> {

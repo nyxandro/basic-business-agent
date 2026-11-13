@@ -41,6 +41,7 @@ const registry: Registry = {
   ids: () => new Set(['sales', 'raw']),
   pluginMigrations: [],
   connectors: [],
+  triggers: [],
 };
 
 async function systemPromptOf(agentId: string, mode: 'published' | 'draft'): Promise<string[]> {
