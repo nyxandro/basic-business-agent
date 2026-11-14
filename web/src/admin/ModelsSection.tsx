@@ -1,19 +1,21 @@
 // «Нейросеть» (spec, scenario 9; mockup): the state of the model gateway, the organisation's
 // choice at a glance, the catalog of models with prices in roubles and a switch each, their keys,
-// and the parameters. Everything goes to LiteLLM; our database is the source of truth.
-import type { ModelDto, ModelSettings, ModelsResponse } from '@bba/contracts';
+// the pool of ChatGPT accounts and the parameters. Everything goes to LiteLLM; our database is the
+// source of truth.
+import type { ChatGptAccountDto, ModelDto, ModelSettings, ModelsResponse } from '@bba/contracts';
 import { useState } from 'react';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dateTime } from '../ui/format.ts';
+import { dateTime, plural } from '../ui/format.ts';
 import { Skeleton } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { numCell, Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
+import { AccountsPool } from './AccountsPool.tsx';
 import { adminApi } from './api.ts';
 import { KeysList } from './KeysList.tsx';
 import { ModelForm } from './ModelForm.tsx';
@@ -32,8 +34,9 @@ function role(m: ModelDto, s: ModelSettings): { text: string; tone: 'accent' | '
   return null;
 }
 
-function connection(m: ModelDto): string {
-  if (m.connection === 'chatgpt') return 'подписка ChatGPT';
+function connection(m: ModelDto, accounts: ChatGptAccountDto[]): string {
+  // «пул из 3 аккаунтов», as in the mockup.
+  if (m.connection === 'chatgpt') return accounts.length > 0 ? `пул из ${accounts.length} ${plural(accounts.length, ['аккаунта', 'аккаунтов', 'аккаунтов'])}` : 'подписка ChatGPT · нет аккаунтов';
   const keys = m.keys.length;
   return keys === 1 ? `ключ организации · …${m.keys[0]!.last4}` : `ключей: ${keys}`;
 }
@@ -56,13 +59,26 @@ function Gateway({ gateway }: { gateway: ModelsResponse['gateway'] }) {
   );
 }
 
+const countOf = (n: number) => (n === 1 ? 'один' : String(n));
+
+// «Аккаунты подписки: 2 из 3 активны» and what is wrong with the rest.
+function poolTile(accounts: ChatGptAccountDto[]): { value: string; sub: string; tone: 'warn' | 'bad' | null } {
+  if (accounts.length === 0) return { value: 'Не подключены', sub: 'подписка не используется', tone: null };
+  const cooling = accounts.filter((a) => a.state === 'cooldown').length;
+  const refused = accounts.filter((a) => a.state === 'auth_error').length;
+  const issues = [cooling ? `${countOf(cooling)} в охлаждении` : null, refused ? `${countOf(refused)} — ошибка доступа` : null].filter(Boolean).join(', ');
+  return { value: `${accounts.length - cooling - refused} из ${accounts.length} активны`, sub: issues || 'все в работе', tone: refused ? 'bad' : cooling ? 'warn' : null };
+}
+
 function Summary({ data }: { data: ModelsResponse }) {
   const label = (id: string | null) => data.models.find((m) => m.id === id)?.label ?? null;
   const primary = data.models.find((m) => m.id === data.settings.primaryModelId);
+  const pool = poolTile(data.accounts);
   const tiles = [
-    { title: 'Основная модель', value: primary?.label ?? 'Не выбрана', sub: primary ? connection(primary) : 'агенты не отвечают', bad: !primary },
-    { title: 'При сбое переключаться на', value: label(data.settings.fallbackModelId) ?? 'Без запасной', sub: data.settings.fallbackModelId ? 'автоматически' : 'сбой основной — ошибка в чате', bad: false },
-    { title: 'Распознавание речи', value: label(data.settings.transcriptionModelId) ?? 'Нет', sub: data.settings.transcriptionModelId ? 'микрофон в чате' : 'микрофон скрыт', bad: false },
+    { title: 'Основная модель', value: primary?.label ?? 'Не выбрана', sub: primary ? connection(primary, data.accounts) : 'агенты не отвечают', tone: primary ? null : 'bad' },
+    { title: 'При сбое переключаться на', value: label(data.settings.fallbackModelId) ?? 'Без запасной', sub: data.settings.fallbackModelId ? 'автоматически' : 'сбой основной — ошибка в чате', tone: null },
+    { title: 'Распознавание речи', value: label(data.settings.transcriptionModelId) ?? 'Нет', sub: data.settings.transcriptionModelId ? 'микрофон в чате' : 'микрофон скрыт', tone: null },
+    { title: 'Аккаунты подписки', value: pool.value, sub: pool.sub, tone: pool.tone },
   ];
   return (
     <div className={`${styles.tiles} rise`}>
@@ -70,7 +86,7 @@ function Summary({ data }: { data: ModelsResponse }) {
         <Card key={t.title} className={styles.tile}>
           <div className={section.sub}>{t.title}</div>
           <div className={styles.tileValue}>{t.value}</div>
-          <div className={cx(section.sub, t.bad && styles.bad)}>{t.sub}</div>
+          <div className={cx(section.sub, t.tone === 'bad' && styles.bad, t.tone === 'warn' && styles.warn)}>{t.sub}</div>
         </Card>
       ))}
     </div>
@@ -144,7 +160,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
               <li key={m.id} className={styles.phoneRow}>
                 <div className={styles.phoneMain}>
                   <div className={styles.modelName}>{m.label}</div>
-                  <div className={section.sub}>{connection(m)}</div>
+                  <div className={section.sub}>{connection(m, data.accounts)}</div>
                 </div>
                 {r ? <Pill tone={r.tone}>{r.text}</Pill> : null}
                 <Switch size="lg" checked={m.enabled} label={m.label} onChange={(on) => void toggle(m, on)} />
@@ -185,7 +201,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
                     </div>
                     <div className={styles.mono}>{m.providerModel}</div>
                   </td>
-                  <td className={styles.muted}>{connection(m)}</td>
+                  <td className={styles.muted}>{connection(m, data.accounts)}</td>
                   <td className={cx(numCell, styles.mono)}>{m.pricePerMinute !== null ? `${money(m.pricePerMinute)} за мин` : m.prices ? money(m.prices.input) : '0'}</td>
                   <td className={cx(numCell, styles.mono)}>{m.pricePerMinute !== null ? '—' : m.prices ? money(m.prices.output) : '0'}</td>
                   <td>{r ? <Pill tone={r.tone}>{r.text}</Pill> : null}</td>
@@ -239,6 +255,7 @@ export function ModelsSection() {
       <Summary data={data} />
       <Catalog data={data} onChanged={reload} />
       <div className={styles.columns}>
+        <AccountsPool accounts={data.accounts} onChanged={reload} />
         <ModelParams key={JSON.stringify(data.settings)} models={data.models} settings={data.settings} onSaved={reload} />
       </div>
     </div>

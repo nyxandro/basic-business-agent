@@ -1,8 +1,10 @@
 // A model of the catalog (spec, scenario 9; mockup): what it does — chat or speech recognition,
 // its name, «провайдер/модель» as LiteLLM names it, an address for a non-standard provider, the key
 // and the prices in roubles. «Проверить и сохранить» checks the key at the provider first:
-// «Проверяю ключ…» → «Ключ подошёл». Editing changes the name, «Видит картинки» and the prices.
-import type { ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
+// «Проверяю ключ…» → «Ключ подошёл». A chat model may come through «Подписка ChatGPT» instead: no
+// key and no prices, the accounts of the pool answer. Editing changes the name, «Видит картинки»
+// and the prices.
+import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
 import { Button, cx } from '../ui/Button.tsx';
 import { Field, Input } from '../ui/Field.tsx';
@@ -59,6 +61,7 @@ function Chips<V extends string>({ label, value, options, onChange, disabled }: 
 function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; onClose: () => void; onSaved: () => void }) {
   const editing = model !== null;
   const [kind, setKind] = useState<ModelKind>(model?.kind ?? 'chat');
+  const [conn, setConn] = useState<ModelConnection>(model?.connection ?? 'api_key');
   const [label, setLabel] = useState(model?.label ?? '');
   const [providerModel, setProviderModel] = useState(model?.providerModel ?? '');
   const [apiBase, setApiBase] = useState(model?.apiBase ?? '');
@@ -69,8 +72,9 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const [perMinute, setPerMinute] = useState(toField(model?.pricePerMinute ?? null));
   const [problem, setProblem] = useState<string | null>(null);
   const { busy, error, run } = useAction();
-  const subscription = model?.connection === 'chatgpt';
   const transcription = kind === 'transcription';
+  // Only a chat model comes through the subscription.
+  const subscription = conn === 'chatgpt' && !transcription;
   // A chat model has no price per minute; an image price matters only to a chat model.
   const effective: Prices = transcription ? { ...prices, image: prices.image || '0' } : prices;
 
@@ -86,8 +90,10 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
       if (ok) onSaved();
       return;
     }
-    const input: ModelCreate = { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: apiBase.trim() || null, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim() };
-    if (await run(() => adminApi.createModel(input), 'Ключ подошёл')) onSaved();
+    const input: ModelCreate = subscription
+      ? { kind: 'chat', label: label.trim(), connection: 'chatgpt', providerModel: providerModel.trim(), vision }
+      : { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: apiBase.trim() || null, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim() };
+    if (await run(() => adminApi.createModel(input), subscription ? 'Модель добавлена' : 'Ключ подошёл')) onSaved();
   }
 
   return (
@@ -110,15 +116,28 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
           { value: 'transcription', label: 'Распознавание речи' },
         ]}
       />
+      {transcription ? null : (
+        <Chips
+          label="Подключение"
+          value={conn}
+          disabled={editing}
+          onChange={setConn}
+          options={[
+            { value: 'api_key', label: 'Ключ провайдера' },
+            { value: 'chatgpt', label: 'Подписка ChatGPT' },
+          ]}
+        />
+      )}
+      {subscription && !editing ? <p className={section.note}>Без ключа и цен: запросы идут через аккаунты пула, токены считаются в дневной потолок сотрудника.</p> : null}
       <div className={section.row}>
         <Field label="Название">
           <Input required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="GigaChat 2 Max" />
         </Field>
-        <Field label="Провайдер и модель" hint="Как в LiteLLM: провайдер/модель.">
-          <Input mono required disabled={editing} value={providerModel} onChange={(e) => setProviderModel(e.target.value)} placeholder="openai/gpt-4.1-mini" />
+        <Field label="Провайдер и модель" hint={subscription ? 'chatgpt/ и модель подписки.' : 'Как в LiteLLM: провайдер/модель.'}>
+          <Input mono required disabled={editing} value={providerModel} onChange={(e) => setProviderModel(e.target.value)} placeholder={subscription ? 'chatgpt/gpt-5.4' : 'openai/gpt-4.1-mini'} />
         </Field>
       </div>
-      {editing ? null : (
+      {editing || subscription ? null : (
         <div className={section.row}>
           <Field label="Адрес провайдера (если не стандартный)">
             <Input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="https://…" />
@@ -181,7 +200,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
       <div className={section.formActions}>
         <Button onClick={onClose}>Отмена</Button>
         <Button type="submit" variant="primary" disabled={busy}>
-          {editing ? 'Сохранить' : busy ? 'Проверяю ключ…' : 'Проверить и сохранить'}
+          {editing || subscription ? 'Сохранить' : busy ? 'Проверяю ключ…' : 'Проверить и сохранить'}
         </Button>
       </div>
     </form>

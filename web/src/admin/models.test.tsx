@@ -13,7 +13,7 @@ const SETTINGS = { primaryModelId: 'gigachat', fallbackModelId: null, transcript
 function server(models: object[] = [GIGA, TEXT_ONLY]) {
   return mockServer({
     'GET /app/api/me': { body: ADMIN },
-    'GET /app/api/admin/models': { body: { models, settings: SETTINGS, gateway: { reachable: true, checkedAt: '2026-11-14T08:00:00Z', pendingModelIds: [] } } },
+    'GET /app/api/admin/models': { body: { models, settings: SETTINGS, accounts: [], gateway: { reachable: true, checkedAt: '2026-11-14T08:00:00Z', pendingModelIds: [] } } },
   });
 }
 

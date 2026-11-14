@@ -12,6 +12,31 @@ test('«Нейросеть» shows the gateway, the catalog and the parameters',
   await expect(page.getByRole('combobox', { name: 'Модель распознавания речи' })).toHaveValue('');
 });
 
+test('«Пул аккаунтов подписки» shows the states and connects an account by the code on OpenAI’s page', async ({ browser }) => {
+  const page = await pageAs(browser, 'igor@example.com');
+  await page.goto('/admin/models');
+  const pool = page.getByRole('list', { name: 'Аккаунты подписки' });
+  const account = (email: string) => pool.getByRole('listitem').filter({ hasText: email });
+  await expect(account('sales.gpt@example.com')).toContainText('Работает · последний успешный запрос');
+  await expect(account('office.gpt@example.com')).toContainText('Охлаждение — ошибка 429, вернётся в');
+  await expect(account('reserve.gpt@example.com')).toContainText('Нет запросов');
+  await expect(page.getByText('2 из 3 активны')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Добавить аккаунт' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
+  await expect(dialog.getByText(/Жду входа… осталось 1[45]:\d\d/)).toBeVisible();
+  const code = (await dialog.getByLabel('Код входа').textContent())!;
+  const [site] = await Promise.all([page.context().waitForEvent('page'), dialog.getByRole('link', { name: 'Открыть сайт OpenAI' }).click()]);
+  await site.getByLabel('Код').fill(code);
+  await site.getByLabel('Почта аккаунта').fill('new.gpt@example.com');
+  await site.getByRole('button', { name: 'Продолжить' }).click();
+  await expect(site.getByText('Вход выполнен')).toBeVisible();
+  await site.close();
+  await expect(page.getByText('Аккаунт подключён: new.gpt@example.com')).toBeVisible();
+  await expect(account('new.gpt@example.com')).toContainText('Нет запросов');
+  await expect(page.getByText('3 из 4 активны')).toBeVisible();
+});
+
 test('«Скиллы» lists the uploaded skill for the whole organisation with its switch', async ({ browser }) => {
   const page = await pageAs(browser, 'igor@example.com');
   await page.goto('/admin/skills');

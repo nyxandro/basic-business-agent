@@ -12,6 +12,8 @@ import type {
   IssuedLink,
   JournalPage,
   LimitSettingsBody,
+  ChatGptLoginDto,
+  ChatGptLoginStatus,
   ModelCreate,
   ModelDto,
   ModelKeyDto,
@@ -104,6 +106,9 @@ export const adminApi = {
   addModelKey: (id: string, key: string) => api<ModelKeyDto>('POST', `${A}/models/${enc(id)}/keys`, { key }),
   deleteModelKey: (id: string, keyId: string) => api<Ok>('DELETE', `${A}/models/${enc(id)}/keys/${enc(keyId)}`),
   saveModelSettings: (settings: ModelSettings) => api<ModelSettings>('PUT', `${A}/models/settings`, settings),
+  startChatGptLogin: (accountId: string | null) => api<ChatGptLoginDto>('POST', `${A}/chatgpt/logins`, { accountId }),
+  pollChatGptLogin: (loginId: string) => api<ChatGptLoginStatus>('GET', `${A}/chatgpt/logins/${enc(loginId)}`),
+  disconnectChatGptAccount: (accountId: string) => api<Ok>('DELETE', `${A}/chatgpt/accounts/${enc(accountId)}`),
 
   skills: () => api<SkillsResponse>('GET', `${A}/skills`),
   checkSkill: (file: File) => apiForm<SkillPreview>(`${A}/skills?check=1`, skillForm(file)),

@@ -243,3 +243,127 @@ td.mono {
   flex: 1;
   min-width: 0;
 }
+
+.warn {
+  color: var(--warn);
+}
+
+/* «Пул аккаунтов подписки» (mockup). */
+.poolCard {
+  overflow: hidden;
+}
+
+.poolHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px 8px;
+}
+
+.poolTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.pool {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 12px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.accountMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.accountName {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state_works {
+  color: var(--ok);
+}
+
+.state_cooldown {
+  color: var(--warn);
+}
+
+.state_auth_error {
+  color: var(--bad);
+}
+
+.state_no_requests {
+  color: var(--muted);
+}
+
+.usage {
+  width: 140px;
+  flex: none;
+}
+
+.usageText {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Connecting an account: the code to enter on OpenAI's page. */
+.code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface2);
+}
+
+.codeText {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.openSite {
+  align-self: flex-start;
+  color: var(--acc-text);
+  font-weight: 500;
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--ring);
+  border-top-color: var(--acc);
+  animation: bba-spin 0.8s linear infinite;
+}
+
+@media (max-width: 859px) {
+  .usage {
+    display: none;
+  }
+}
