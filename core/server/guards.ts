@@ -37,6 +37,16 @@ export function requirePermission(section: AdminSection): MiddlewareHandler<AppE
   };
 }
 
+// Reading a list that a neighbouring section needs: whoever invites people picks roles and
+// departments, whoever builds departments picks people and agents. Changes keep their own right.
+export function requireAnyPermission(...sections: AdminSection[]): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const permissions = c.get('access').permissions;
+    if (!sections.some((s) => permissions.has(s))) throw appError('APP_ADMIN_FORBIDDEN', `missing any of permissions ${sections.join(', ')}`);
+    return next();
+  };
+}
+
 // Nobody grants rights they do not have: closes "give myself more rights" through roles or invites.
 export function assertCanGrant(ctx: AccessContext, permissions: readonly Permission[], grantsSuperadmin: boolean): void {
   if (grantsSuperadmin && !ctx.isSuperadmin) throw appError('APP_ADMIN_FORBIDDEN', 'only a superadmin can grant or remove the superadmin role');

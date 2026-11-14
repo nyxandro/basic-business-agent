@@ -7,7 +7,6 @@ export type LoadState<T> = { status: 'loading' } | { status: 'ready'; data: T } 
 
 interface Settled<T> {
   load: () => Promise<T>;
-  attempt: number;
   state: LoadState<T>;
 }
 
@@ -21,10 +20,10 @@ export function useLoad<T>(load: () => Promise<T>): { state: LoadState<T>; reloa
     let current = true;
     load().then(
       (data) => {
-        if (current) setSettled({ load, attempt, state: { status: 'ready', data } });
+        if (current) setSettled({ load, state: { status: 'ready', data } });
       },
       (error: unknown) => {
-        if (current) setSettled({ load, attempt, state: { status: 'error', error: asApiError(error) } });
+        if (current) setSettled({ load, state: { status: 'error', error: asApiError(error) } });
       },
     );
     return () => {
@@ -32,7 +31,8 @@ export function useLoad<T>(load: () => Promise<T>): { state: LoadState<T>; reloa
     };
   }, [load, attempt]);
 
-  // A result of an older loader or attempt is not shown: the screen is loading again.
-  const state = settled && settled.load === load && settled.attempt === attempt ? settled.state : LOADING;
+  // A repeat of the same loader keeps showing the last result until the new one comes (no
+  // flicker after a save, forms with fresh links stay); a new loader starts from «loading».
+  const state = settled && settled.load === load ? settled.state : LOADING;
   return { state, reload: () => setAttempt((n) => n + 1) };
 }

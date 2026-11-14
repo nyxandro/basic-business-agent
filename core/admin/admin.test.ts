@@ -74,6 +74,29 @@ describe('admin sections', () => {
   });
 });
 
+describe('lists the related sections need', () => {
+  it('lets the people who invite see roles and departments, and those who build departments see people and agents', async () => {
+    const inviter = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Кадры', permissions: ['users'] } }));
+    await t.createUser({ email: 'hr@example.com', roleIds: [inviter.id] });
+    const hr = await t.signIn('hr@example.com');
+    for (const path of ['/app/api/admin/roles', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: hr })).status, path).toBe(200);
+    expect((await t.call('POST', '/app/api/admin/roles', { cookie: hr, body: { name: 'x', permissions: [] } })).status).toBe(403);
+
+    const builder = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Оргструктура', permissions: ['departments'] } }));
+    await t.createUser({ email: 'org@example.com', roleIds: [builder.id] });
+    const org = await t.signIn('org@example.com');
+    for (const path of ['/app/api/admin/users', '/app/api/admin/agents']) expect((await t.call('GET', path, { cookie: org })).status, path).toBe(200);
+    expect((await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: org })).status).toBe(403);
+  });
+
+  it('shows the personal limits set on top of the defaults', async () => {
+    const zoe = await t.createUser({ email: 'zoe@example.com', name: 'Зоя' });
+    await t.call('PUT', `/app/api/admin/users/${zoe}/limits`, { cookie: admin, body: { monthlyRub: 700, dailySubscriptionTokens: null } });
+    const { users } = await json<{ users: { userId: string; monthlyRub: number | null; dailySubscriptionTokens: number | null }[] }>(await t.call('GET', '/app/api/admin/limits/users', { cookie: admin }));
+    expect(users.find((u) => u.userId === zoe)).toEqual({ userId: zoe, monthlyRub: 700, dailySubscriptionTokens: null });
+  });
+});
+
 describe('removing an employee', () => {
   it('removes access, conversations, workspace and account in steps, and a repeat finishes the job', async () => {
     const petr = await t.createUser({ email: 'petr@example.com', name: 'Пётр' });

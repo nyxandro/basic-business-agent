@@ -124,7 +124,9 @@ describe('rights', () => {
     await t.createUser({ email: 'hr@example.com', roleIds: [hrRole] });
     const hr = await t.signIn('hr@example.com');
     expect((await t.call('GET', '/app/api/admin/users', { cookie: hr })).status).toBe(200);
-    expect((await t.call('GET', '/app/api/admin/roles', { cookie: hr })).status).toBe(403);
+    // Roles can be read to pick them in an invite, but not changed without the «Роли» right.
+    expect((await t.call('GET', '/app/api/admin/roles', { cookie: hr })).status).toBe(200);
+    expect((await t.call('PUT', `/app/api/admin/roles/${hrRole}`, { cookie: hr, body: { name: 'Кадры', permissions: ['users', 'roles'] } })).status).toBe(403);
 
     const toSuperadmin = await t.call('POST', '/app/api/admin/invites', {
       cookie: hr,

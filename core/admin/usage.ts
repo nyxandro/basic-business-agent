@@ -1,25 +1,16 @@
 // Spend for the employee («Настройки → Мои расходы», F5) and for the admin («Расходы»),
 // read from our ledger app.usage_events (spec, section 8.1), never from LiteLLM's own tables.
-import type { MyUsage } from '@bba/contracts';
+import type { MyUsage, UsageGroup, UsageRow } from '@bba/contracts';
 import type { ModelConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 import { effectiveUserLimits, getLimitSettings } from '../models/limits.ts';
 import { todaySubscriptionTokens } from '../models/usage.ts';
 
-export type UsageGroup = 'user' | 'agent' | 'model' | 'deployment';
+export type { UsageGroup, UsageRow } from '@bba/contracts';
 
 // The shape is read by the web interface («Мои расходы»).
 export type EmployeeUsage = MyUsage;
 
-export interface UsageRow {
-  key: string;
-  label: string;
-  calls: number;
-  inputTokens: number;
-  outputTokens: number;
-  costRub: number;
-  lastCallAt: string | null;
-}
 
 const MONTH_START = `(date_trunc('month', now() AT TIME ZONE $1) AT TIME ZONE $1)`;
 

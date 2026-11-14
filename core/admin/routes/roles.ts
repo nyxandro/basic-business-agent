@@ -12,7 +12,7 @@ import {
 import { createRole, deleteRole, listRoles, updateRole } from '../../auth/roles.ts';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
-import { assertCanGrant, requirePermission } from '../../server/guards.ts';
+import { assertCanGrant, requireAnyPermission, requirePermission } from '../../server/guards.ts';
 import { access, parseJson, type AppEnv } from '../../server/http.ts';
 
 export function registerRoleRoutes(app: Hono<AppEnv>, deps: { db: Db; knownAgentIds: () => ReadonlySet<string> }): void {
@@ -20,7 +20,7 @@ export function registerRoleRoutes(app: Hono<AppEnv>, deps: { db: Db; knownAgent
   const roles = requirePermission('roles');
   const departments = requirePermission('departments');
 
-  app.get('/app/api/admin/roles', roles, async (c) => c.json({ roles: await listRoles(db) }));
+  app.get('/app/api/admin/roles', requireAnyPermission('roles', 'users'), async (c) => c.json({ roles: await listRoles(db) }));
   app.post('/app/api/admin/roles', roles, async (c) => {
     const input = await parseJson(c, roleBodySchema);
     assertCanGrant(access(c), input.permissions, false);
@@ -37,7 +37,7 @@ export function registerRoleRoutes(app: Hono<AppEnv>, deps: { db: Db; knownAgent
     return c.json({ ok: true });
   });
 
-  app.get('/app/api/admin/departments', departments, async (c) => c.json({ departments: await listDepartments(db) }));
+  app.get('/app/api/admin/departments', requireAnyPermission('departments', 'users'), async (c) => c.json({ departments: await listDepartments(db) }));
   app.post('/app/api/admin/departments', departments, async (c) => {
     const { name } = await parseJson(c, departmentBodySchema);
     return c.json({ id: await createDepartment(db, access(c).userId, name) }, 201);

@@ -15,6 +15,7 @@ import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory } from './history.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 
+export const DRAFT_HEADER = 'x-bba-draft';
 const RUN_PATH = /^\/agent\/([^/]+)\/(run|connect|stop)/;
 const memoryBody = z.object({ text: z.string().max(20_000) });
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
@@ -50,7 +51,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
 
   app.all(`${COPILOT_BASE_PATH}/*`, async (c) => {
     const a = access(c);
-    const mode = c.req.query('draft') === '1' ? 'draft' : 'published';
+    // The admin's draft check: CopilotKit adds headers to its requests but not query parameters.
+    const mode = c.req.query('draft') === '1' || c.req.header(DRAFT_HEADER) === '1' ? 'draft' : 'published';
     const match = RUN_PATH.exec(c.req.path.slice(COPILOT_BASE_PATH.length));
     if (!match) {
       const agentIds = deps.registry.agents.map((rt) => rt.passport.id).filter((id) => a.isSuperadmin || a.agentIds.has(id));

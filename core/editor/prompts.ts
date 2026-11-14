@@ -2,6 +2,7 @@
 // stored as Mastra Editor versions. Verified at step 0 (V2): an Editor record must exist before the
 // first edit, a code agent is served with its file until a version is activated, and clearing the
 // active version returns the file. We keep who holds the draft and the file hash in agent_overrides.
+import type { PromptState } from '@bba/contracts';
 import { createHash } from 'node:crypto';
 import type { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
@@ -18,18 +19,8 @@ export interface EditorDeps {
   registry: Registry;
 }
 
-export interface PromptState {
-  agentId: string;
-  fileInstructions: string;
-  publishedInstructions: string | null;
-  draftInstructions: string | null;
-  draftVersionId: string | null;
-  draftBy: string | null;
-  publishedAt: string | null;
-  fileChangedSincePublish: boolean;
-  modelId: string | null;
-  allowedModels: string[];
-}
+// The shape is read by the web interface («Агенты»).
+export type { PromptState } from '@bba/contracts';
 
 interface OverrideRow {
   draft_version_id: string | null;

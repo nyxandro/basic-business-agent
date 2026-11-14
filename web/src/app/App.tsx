@@ -7,19 +7,25 @@ import { ChatPage } from '../chat/ChatPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { AppLayout } from '../layout/AppLayout.tsx';
+import { COPILOT_PRIVACY, COPILOT_RUNTIME_URL } from './copilot.ts';
+import { AdminIndex, AdminLayout, RequireSection } from '../admin/AdminLayout.tsx';
+import { AgentsSection } from '../admin/AgentsSection.tsx';
+import { ConnectionsSection } from '../admin/ConnectionsSection.tsx';
+import { DepartmentsSection } from '../admin/DepartmentsSection.tsx';
+import { DraftCheckPage } from '../admin/DraftCheckPage.tsx';
+import { JournalSection } from '../admin/JournalSection.tsx';
+import { LimitsSection } from '../admin/LimitsSection.tsx';
+import { MaskingSection } from '../admin/MaskingSection.tsx';
+import { OrgProfileSection } from '../admin/OrgProfileSection.tsx';
+import { RolesSection } from '../admin/RolesSection.tsx';
+import { UsageSection } from '../admin/UsageSection.tsx';
+import { UsersSection } from '../admin/UsersSection.tsx';
 import { ApprovalsPage } from '../approvals/ApprovalsPage.tsx';
 import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { SettingsLayout } from '../settings/SettingsLayout.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
 
-// The CopilotKit runtime of the server (core/chat/copilot.ts); the session cookie goes with it.
-export const COPILOT_RUNTIME_URL = '/app/api/copilotkit';
-
-// The development Inspector of CopilotKit sends usage events to telemetry.copilotkit.ai and loads
-// fonts from Google; the Intelligence indicator belongs to their cloud. Employees' browsers of a
-// closed installation talk only to our server, so both stay off in every build.
-const COPILOT_PRIVACY = { enableInspector: false, showIntelligenceIndicator: false } as const;
 
 export function App() {
   return (
@@ -45,6 +51,20 @@ export function App() {
             <Route path="memory" element={<MemoryPage />} />
             <Route path="usage" element={<UsagePage />} />
             <Route path="connections" element={<ConnectionsPage />} />
+          </Route>
+          <Route path="admin" element={<AdminLayout />}>
+            <Route index element={<AdminIndex />} />
+            <Route path="users" element={<RequireSection section="users"><UsersSection /></RequireSection>} />
+            <Route path="roles" element={<RequireSection section="roles"><RolesSection /></RequireSection>} />
+            <Route path="departments" element={<RequireSection section="departments"><DepartmentsSection /></RequireSection>} />
+            <Route path="limits" element={<RequireSection section="limits"><LimitsSection /></RequireSection>} />
+            <Route path="usage" element={<RequireSection section="usage"><UsageSection /></RequireSection>} />
+            <Route path="agents" element={<RequireSection section="agents"><AgentsSection /></RequireSection>} />
+            <Route path="agents/:agentId/check" element={<RequireSection section="agents"><DraftCheckPage /></RequireSection>} />
+            <Route path="org-profile" element={<RequireSection section="org_profile"><OrgProfileSection /></RequireSection>} />
+            <Route path="masking" element={<RequireSection section="masking"><MaskingSection /></RequireSection>} />
+            <Route path="connections" element={<RequireSection section="connections"><ConnectionsSection /></RequireSection>} />
+            <Route path="journal" element={<RequireSection section="journal"><JournalSection /></RequireSection>} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

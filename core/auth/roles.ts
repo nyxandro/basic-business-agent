@@ -1,16 +1,11 @@
 // Roles created in the admin panel; the two built-in ones are immutable (spec, section 8.2).
-import type { Permission } from '@bba/contracts';
+import type { AdminRole, Permission } from '@bba/contracts';
 import { writeAudit } from '../audit/audit.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 
-export interface Role {
-  id: string;
-  name: string;
-  permissions: Permission[];
-  builtin: 'superadmin' | 'employee' | null;
-  userCount: number;
-}
+// The shape is read by the web interface («Роли»).
+export type Role = AdminRole;
 
 const UNIQUE_VIOLATION = '23505';
 

@@ -18,7 +18,7 @@ import type { Registry } from '../../loader/registry.ts';
 import { getMaskingKinds, setMaskingKinds } from '../../masking/settings.ts';
 import type { ModelGateway } from '../../models/gateway.ts';
 import { getLimitSettings } from '../../models/limits.ts';
-import { requirePermission } from '../../server/guards.ts';
+import { requireAnyPermission, requirePermission } from '../../server/guards.ts';
 import { access, parseJson, type AppEnv } from '../../server/http.ts';
 
 const JOURNAL_PAGE_SIZE = 100;
@@ -46,8 +46,17 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     return c.json({ ok: true });
   });
 
+  app.get('/app/api/admin/limits/users', requirePermission('limits'), async (c) => {
+    const { rows } = await db.query<{ user_id: string; monthly_rub: string | null; daily_subscription_tokens: string | null }>(
+      'SELECT user_id, monthly_rub, daily_subscription_tokens FROM app.user_limits ORDER BY user_id',
+    );
+    const toNumber = (v: string | null) => (v === null ? null : Number(v));
+    // Only personal values: null means the default from «Лимиты» applies.
+    return c.json({ users: rows.map((r) => ({ userId: r.user_id, monthlyRub: toNumber(r.monthly_rub), dailySubscriptionTokens: toNumber(r.daily_subscription_tokens) })) });
+  });
+
   const agents = requirePermission('agents');
-  app.get('/app/api/admin/agents', agents, async (c) => {
+  app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments'), async (c) => {
     const { rows } = await db.query<{ agent_id: string }>('SELECT DISTINCT agent_id FROM app.department_agents ORDER BY agent_id');
     const known = deps.registry.ids();
     return c.json({

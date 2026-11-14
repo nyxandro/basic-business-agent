@@ -225,6 +225,22 @@ describe('history of a conversation for the chat window', () => {
     expect(events[2]!.outcome).toBeUndefined();
   });
 
+  it('opens the admin’s draft check through a header, apart from their own conversations', async () => {
+    const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+    const role = (await t.db.query<{ id: string }>(`INSERT INTO app.roles (name, permissions) VALUES ('Агенты', '["agents"]') RETURNING id`)).rows[0]!.id;
+    await t.db.query('INSERT INTO app.user_roles (user_id, role_id) VALUES ($1, $2)', [igorId, role]);
+    const threadId = randomUUID();
+    const res = await t.app.request(`/app/api/copilotkit/agent/sales/run`, {
+      method: 'POST',
+      headers: { cookie: igor, origin: 'http://localhost:8080', 'content-type': 'application/json', 'x-bba-draft': '1' },
+      body: JSON.stringify({ threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: 'Проверка черновика' }], tools: [], context: [], state: {}, forwardedProps: {} }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    const thread = await t.mastra.getAgentById('sales').getMemory().then((m) => m!.getThreadById({ threadId }));
+    expect(thread?.resourceId).toBe(`draft:${igorId}`);
+  });
+
   it('opens a new conversation empty and refuses someone else’s', async () => {
     const empty = await connect(olga, randomUUID());
     expect(empty.events.find((e) => e.type === 'MESSAGES_SNAPSHOT')?.messages).toEqual([]);
