@@ -34,6 +34,7 @@ export interface SidebarProps {
   chatProjectId: string | null;
   onProjectsChanged: () => void;
   onNewThread: () => void;
+  onSearch: () => void;
   // A phone closes the drawer after a choice.
   onNavigate: () => void;
   // The phone's drawer adds its «Закрыть меню» here.
@@ -85,6 +86,10 @@ export function Sidebar(props: SidebarProps) {
         {props.topRight}
       </div>
       <div className={styles.topRow}>
+        <button type="button" className={styles.searchButton} onClick={props.onSearch}>
+          <Icon name="search" size={15} />
+          {ru.search.open}
+        </button>
         <IconButton icon="plus" label={ru.shell.newThread} variant="outline" onClick={props.onNewThread} />
       </div>
 

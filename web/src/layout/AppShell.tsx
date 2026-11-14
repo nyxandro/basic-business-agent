@@ -2,11 +2,12 @@
 // a drawer below that; the screen of the route on the right. The agents of the person and the
 // signal to reload «Недавние» reach the screens through the outlet context.
 import type { AgentSummary, MyUsage } from '@bba/contracts';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useMatch, useNavigate, useOutletContext, useSearchParams } from 'react-router';
 import { fetchAgents } from '../agents/api.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
+import { SearchDialog } from '../search/SearchDialog.tsx';
 import { fetchMyUsage } from '../settings/api.ts';
 import { Notice } from '../ui/ErrorBanner.tsx';
 import { useLoad } from '../ui/use-load.ts';
@@ -71,6 +72,7 @@ export function AppShell() {
   const [threadsKey, setThreadsKey] = useState(0);
   const [projectsKey, setProjectsKey] = useState(0);
   const [chatProjectId, showChatProject] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { state: agentsLoad, reload } = useLoad(fetchAgents);
   const { state: usageLoad } = useLoad(fetchMyUsage);
   // The layout sits above the chat route, so the agent comes from the address itself.
@@ -88,13 +90,28 @@ export function AppShell() {
   const refreshProjects = useCallback(() => setProjectsKey((n) => n + 1), []);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const openSearch = useCallback(() => {
+    setMenuOpen(false);
+    setSearchOpen(true);
+  }, []);
+  // Ctrl+K (⌘K on a Mac) opens the search from anywhere; the key code keeps it working in any layout.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+        e.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openSearch]);
   const newThread = () => {
     const target = agentId ?? lastAgent() ?? (agents.status === 'ready' ? agents.agents[0]?.id : undefined);
     closeMenu();
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}`);
   };
 
-  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread };
+  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: openSearch };
   const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, refreshProjects, showChatProject };
   return (
     <NotificationsProvider>
@@ -105,6 +122,7 @@ export function AppShell() {
           <Outlet context={context} />
         </main>
       </div>
+      <SearchDialog open={searchOpen} wide={wide} onClose={() => setSearchOpen(false)} />
     </NotificationsProvider>
   );
 }

@@ -38,6 +38,20 @@
   max-width: 460px;
 }
 
+.fullLayer {
+  padding: 0;
+}
+
+.full {
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg);
+  box-shadow: none;
+}
+
 .sheetLayer {
   align-items: flex-end;
   padding: 0;

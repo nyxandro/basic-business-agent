@@ -4,11 +4,14 @@ import { vi } from 'vitest';
 export interface MockCall {
   method: string;
   path: string;
+  // The query string as an object: ?q=a&scope=all → { q: 'a', scope: 'all' }.
+  query: Record<string, string>;
   body: unknown;
 }
 
-type Reply = { status?: number; body?: unknown; raw?: string };
-type Route = Reply | ((call: MockCall) => Reply);
+export type Reply = { status?: number; body?: unknown; raw?: string };
+// A route may answer later (a Promise) to test answers that come out of order.
+export type Route = Reply | ((call: MockCall) => Reply | Promise<Reply>);
 
 export function apiError(code: string, message: string, status: number): Reply {
   return { status, body: { error: { code, message } } };
@@ -29,13 +32,14 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();
       const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
-      const call = { method, path: url.pathname, body };
+      const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body };
       calls.push(call);
       const route = table.get(`${method} ${url.pathname}`);
       if (!route) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'APP_NOT_FOUND', message: 'нет такого адреса в тесте' } }), { status: 404 }));
-      const reply = typeof route === 'function' ? route(call) : route;
-      const text = reply.raw ?? JSON.stringify(reply.body ?? {});
-      return Promise.resolve(new Response(text, { status: reply.status ?? 200, headers: { 'content-type': 'application/json' } }));
+      return Promise.resolve(typeof route === 'function' ? route(call) : route).then((reply) => {
+        const text = reply.raw ?? JSON.stringify(reply.body ?? {});
+        return new Response(text, { status: reply.status ?? 200, headers: { 'content-type': 'application/json' } });
+      });
     }),
   );
   return { calls, set: (key, route) => table.set(key, route) };

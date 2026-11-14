@@ -1,6 +1,7 @@
 // Numbers and dates as the Russian interface writes them.
 const MS_PER_MINUTE = 60_000;
 const MINUTES_PER_HOUR = 60;
+const MS_PER_DAY = 24 * MINUTES_PER_HOUR * MS_PER_MINUTE;
 const THOUSAND = 1000;
 
 export const rub = (value: number): string => `${Math.round(value).toLocaleString('ru-RU')} ₽`;
@@ -18,6 +19,16 @@ export function dayMonth(isoDate: string): string {
 
 // «14 ноября, 09:00» in the browser's time zone.
 export const dateTime = (iso: string): string => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+// «сегодня», «вчера» or «2 ноября» (with the year when it is not this one), in the browser's zone.
+export function dayLabel(iso: string, now: Date = new Date()): string {
+  const day = new Date(iso);
+  const start = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((start(now) - start(day)) / MS_PER_DAY);
+  if (days === 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  return day.toLocaleDateString('ru-RU', day.getFullYear() === now.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 // «3 ч 5 мин» until a moment; «меньше минуты» when it is close or past.
 export function timeLeft(iso: string, now: number = Date.now()): string {
