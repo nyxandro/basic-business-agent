@@ -1,7 +1,7 @@
 // Which model answers (spec, section 8.1): the order of choice, the daily cap of the subscription,
 // an empty installation, and V15 — the fallback model takes over on an error and on silence.
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { startFakeModel, type FakeModel } from './fake-openai.ts';
 import { chooseModels } from './resolve.ts';
@@ -136,15 +136,23 @@ describe('the fallback model (V15)', () => {
     await fallback.close();
   });
 
+  const fallbackLogged = (log: { mock: { calls: unknown[][] } }) => log.mock.calls.some(([line]) => String(line).includes('"model_fallback_used"'));
+
   it('answers on the primary while it works', async () => {
+    const log = vi.spyOn(console, 'log');
     primary.script({ text: 'Ответила основная' });
     expect(await ask('привет')).toBe('Ответила основная');
+    expect(fallbackLogged(log)).toBe(false);
+    log.mockRestore();
   });
 
   it('goes on the fallback when the primary fails', async () => {
     primary.script({ status: 500, error: 'provider is down' });
     const before = fallback.requests.length;
+    const log = vi.spyOn(console, 'log');
     expect(await ask('привет')).toBe('Ответила запасная');
+    expect(fallbackLogged(log)).toBe(true);
+    log.mockRestore();
     expect(fallback.requests.length).toBe(before + 1);
     expect(fallback.requests.at(-1)!.headers[AGENT_HEADER]).toBe('sales');
   });
@@ -152,7 +160,10 @@ describe('the fallback model (V15)', () => {
   it('goes on the fallback when the primary sends nothing in time', async () => {
     primary.script({ text: 'Слишком поздно', delayMs: 3_000 });
     const started = Date.now();
+    const log = vi.spyOn(console, 'log');
     expect(await ask('привет')).toBe('Ответила запасная');
+    expect(fallbackLogged(log)).toBe(true);
+    log.mockRestore();
     expect(Date.now() - started).toBeLessThan(2_900);
   });
 });

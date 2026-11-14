@@ -1,7 +1,7 @@
 // Builds the Mastra agent of an agent runtime: model on the employee's key, tools of plugins and
 // connected systems, interface blocks, memory, the sandbox and sub-agents.
 import { Agent, type ModelWithRetries } from '@mastra/core/agent';
-import { StreamErrorRetryProcessor, type InputProcessorOrWorkflow, type OutputProcessorOrWorkflow } from '@mastra/core/processors';
+import { StreamErrorRetryProcessor, type ErrorProcessor, type InputProcessorOrWorkflow, type OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -10,6 +10,7 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
+import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from './request-keys.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
@@ -20,6 +21,22 @@ export const FALLBACK_FIRST_CHUNK_MS = 60_000;
 // LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
 // repeat only delays the switch; without one Mastra keeps its own repeat.
 const SWITCH_AT_ONCE = new StreamErrorRetryProcessor({ maxRetries: 0 });
+
+// Mastra has no event of the switch itself; the failure of the primary that causes it reaches the
+// error processors first. Only the first failure of a request is the primary's.
+const FALLBACK_LOG: ErrorProcessor = {
+  id: 'bba-model-fallback-log',
+  processAPIError({ error, requestContext, state }) {
+    if (state.logged) return;
+    state.logged = true;
+    logEvent('warn', 'model_fallback_used', {
+      agentId: optionalContextValue(requestContext, REQUEST_KEYS.agentId),
+      primary: optionalContextValue(requestContext, REQUEST_KEYS.modelId),
+      fallback: optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId),
+      error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+    });
+  },
+};
 
 export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
@@ -82,6 +99,6 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,
-    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [SWITCH_AT_ONCE] : []),
+    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_LOG, SWITCH_AT_ONCE] : []),
   });
 }
