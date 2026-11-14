@@ -13,15 +13,25 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
-import { identityOf, type ChatGptAuthClient, type ChatGptAuthFile } from './chatgpt-login.ts';
+import type { AccountFailure } from './account-events.ts';
+import { identityOf, jwtClaims, type ChatGptAuthClient, type ChatGptAuthFile } from './chatgpt-login.ts';
 import type { GatewayWriter } from './gateway-writer.ts';
+import { COOLDOWN_SECONDS } from './litellm-config.ts';
 
 // OpenAI keeps a device code for 15 minutes.
 const LOGIN_TTL_MINUTES = 15;
 // What the access errors of an account look like: LiteLLM turns a refused or failed token refresh
 // into 401 (GetAccessTokenError), and ChatGPT answers 401 to a revoked token. A 403 (e.g. a
 // country ChatGPT does not serve) is not cured by a new login, so it does not count.
+// A refresh that failed for a moment (OpenAI's 5xx, a broken connection) also comes as 401, so
+// the account leaves LiteLLM only when a second 401 comes after its cooldown with no success in
+// between: LiteLLM has tried to refresh the token again meanwhile.
 const ACCESS_ERROR = 401;
+// While a poll asks OpenAI (two requests of up to 15 s and the gateway queue), nobody else asks.
+const POLL_BUSY_SECONDS = 90;
+// LiteLLM rewrites a login file in place (empty first, then written): a file read empty or broken
+// is read once more before the server replaces it.
+const REREAD_DELAY_MS = 500;
 const SUCCESS_WINDOW_DAYS = 30;
 // A login file of an account, or a temporary one left by a write that did not finish.
 const AUTH_FILE_NAME = /^(a-[0-9a-f]{8})\.json(\.[0-9a-f]{8}\.tmp)?$/;
@@ -30,9 +40,25 @@ const authFileSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1),
   id_token: z.string().min(1),
-  expires_at: z.number(),
+  // LiteLLM writes null when the access token carries no exp; then the token's own claim counts.
+  expires_at: z.number().nullable(),
   account_id: z.string().nullable(),
 });
+
+// What an error says in a log without its text: a JSON error quotes a piece of the file (a token).
+// A login file of LiteLLM from its text; expires_at always set (from the access token if need be).
+function parseAuth(text: string): ChatGptAuthFile {
+  const file = authFileSchema.parse(JSON.parse(text));
+  const exp = file.expires_at ?? jwtClaims(file.access_token).exp;
+  if (typeof exp !== 'number') throw new Error('login file without an expiry');
+  return { ...file, expires_at: exp };
+}
+
+function errorKind(error: unknown): { name: string; code?: string } {
+  if (!(error instanceof Error)) return { name: typeof error };
+  const code = (error as { code?: unknown }).code;
+  return { name: error.name, ...(typeof code === 'string' ? { code } : {}) };
+}
 
 export interface ChatGptAccountsDeps {
   db: Db;
@@ -50,8 +76,8 @@ export interface ChatGptAccounts {
   // Asked by the admin's page every `intervalSeconds`; a login is never polled by a timer here.
   pollLogin(actorUserId: string, loginId: string): Promise<ChatGptLoginStatus>;
   disconnect(actorUserId: string, accountId: string): Promise<void>;
-  // LiteLLM reported a failed attempt of an account; an access error takes it out of LiteLLM.
-  attemptFailed(accountId: string, status: number | null): Promise<void>;
+  // LiteLLM reported a failed attempt of an account; a confirmed access error takes it out of LiteLLM.
+  attemptFailed(failure: Pick<AccountFailure, 'accountId' | 'status' | 'at'>): Promise<void>;
   // At the start, before the copy into LiteLLM: every account's file in place, with the fresher token.
   prepare(): Promise<void>;
 }
@@ -63,6 +89,7 @@ interface AccountRow {
   auth_ciphertext: Buffer;
   auth_iv: Buffer;
   auth_key_version: number;
+  auth_updated_at: Date;
   status: 'active' | 'auth_error';
   connected_at: Date;
 }
@@ -115,30 +142,34 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
     await rename(tmp, path);
   }
 
-  async function readAuthFile(accountId: string): Promise<ChatGptAuthFile | null> {
+  // The file as it is, 'missing', or 'broken' (unreadable JSON or fields).
+  async function readOnce(accountId: string): Promise<ChatGptAuthFile | 'missing' | 'broken'> {
     let text: string;
     try {
       text = await readFile(fileOf(accountId), 'utf8');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
       throw error;
     }
-    let parsed: z.ZodSafeParseResult<ChatGptAuthFile>;
     try {
-      parsed = authFileSchema.safeParse(JSON.parse(text));
-    } catch (error) {
-      logEvent('warn', 'chatgpt_auth_file_invalid', { accountId, error });
-      return null;
+      return parseAuth(text);
+    } catch {
+      return 'broken';
     }
-    if (!parsed.success) {
-      logEvent('warn', 'chatgpt_auth_file_invalid', { accountId, fields: parsed.error.issues.map((i) => i.path.join('.')) });
-      return null;
+  }
+
+  async function readAuthFile(accountId: string): Promise<ChatGptAuthFile | null> {
+    let file = await readOnce(accountId);
+    if (file === 'broken') {
+      await new Promise((r) => setTimeout(r, REREAD_DELAY_MS));
+      file = await readOnce(accountId);
     }
-    return parsed.data;
+    if (file === 'broken') logEvent('warn', 'chatgpt_auth_file_invalid', { accountId });
+    return typeof file === 'string' ? null : file;
   }
 
   function openAuth(r: AccountRow): ChatGptAuthFile {
-    return authFileSchema.parse(JSON.parse(box.open({ ciphertext: r.auth_ciphertext, iv: r.auth_iv, keyVersion: r.auth_key_version })));
+    return parseAuth(box.open({ ciphertext: r.auth_ciphertext, iv: r.auth_iv, keyVersion: r.auth_key_version }));
   }
 
   async function accountRow(accountId: string): Promise<AccountRow | undefined> {
@@ -194,9 +225,12 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
       try {
         await save();
       } catch (error) {
-        // A new account that was not saved leaves no tokens in the volume; a new login of an
-        // existing one keeps the fresher file, which the next start takes into the database.
-        if (!login.account_id) await rm(fileOf(accountId), { force: true });
+        // A new account that was not saved leaves neither deployments in LiteLLM nor tokens in the
+        // volume; a new login of an existing one keeps the fresher file for the next start.
+        if (!login.account_id) {
+          await writer.apply(await writer.state()).catch((cleanup: unknown) => logEvent('error', 'gateway_sync_failed', { code: 'APP_GATEWAY_SYNC_FAILED', accountId, error: cleanup }));
+          await rm(fileOf(accountId), { force: true });
+        }
         throw error;
       }
       return dtoOf(accountId);
@@ -244,16 +278,24 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
          VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(mins => $8), $9) RETURNING expires_at`,
         [id, sealed.ciphertext, sealed.iv, sealed.keyVersion, code.userCode, code.intervalSeconds, accountId, LOGIN_TTL_MINUTES, actorUserId],
       );
-      return { id, userCode: code.userCode, verifyUrl: auth.verifyUrl, expiresAt: rows[0]!.expires_at.toISOString(), intervalSeconds: code.intervalSeconds };
+      return {
+        id,
+        userCode: code.userCode,
+        verifyUrl: auth.verifyUrl,
+        expiresAt: rows[0]!.expires_at.toISOString(),
+        expiresInSeconds: LOGIN_TTL_MINUTES * 60,
+        intervalSeconds: code.intervalSeconds,
+      };
     },
 
     async pollLogin(actorUserId, loginId) {
-      // One question to OpenAI per interval, whoever asks (two tabs of the admin ask twice as often).
+      // One question to OpenAI per interval, whoever asks (two tabs of the admin ask twice as often);
+      // the login is taken for the time of the question and given back when OpenAI says «not yet».
       const { rows: due } = await db.query<LoginRow>(
-        `UPDATE app.chatgpt_logins SET polled_at = now()
+        `UPDATE app.chatgpt_logins SET polled_at = now() + make_interval(secs => $2)
           WHERE id = $1 AND (polled_at IS NULL OR polled_at <= now() - make_interval(secs => interval_seconds))
           RETURNING *, expires_at <= now() AS expired`,
-        [loginId],
+        [loginId, POLL_BUSY_SECONDS],
       );
       const login = due[0] ?? (await db.query<LoginRow>('SELECT *, expires_at <= now() AS expired FROM app.chatgpt_logins WHERE id = $1', [loginId])).rows[0];
       if (!login) throw notFound(`login ${loginId}`, 'Вход не найден: он уже завершился или истёк. Начните заново.');
@@ -268,10 +310,12 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
         file = await auth.poll({ deviceAuthId, userCode: login.user_code });
       } catch (error) {
         await dropLogin(loginId);
-        logEvent('warn', 'chatgpt_login_failed', { loginId, error });
         throw error;
       }
-      if (!file) return { status: 'pending', expiresAt: login.expires_at.toISOString() };
+      if (!file) {
+        await db.query('UPDATE app.chatgpt_logins SET polled_at = now() WHERE id = $1', [loginId]);
+        return { status: 'pending', expiresAt: login.expires_at.toISOString() };
+      }
       try {
         return { status: 'connected', account: await complete(actorUserId, login, file) };
       } finally {
@@ -291,12 +335,22 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
         await rm(fileOf(accountId), { force: true });
       }),
 
-    attemptFailed: (accountId, status) =>
+    attemptFailed: ({ accountId, status, at }) =>
       status !== ACCESS_ERROR
         ? Promise.resolve()
         : writer.serial(async () => {
-            const account = await accountRow(accountId);
-            if (account?.status !== 'active') return;
+            // An attempt with the token of before the last login says nothing of the new one; the
+            // earlier 401 must be at least a cooldown back, with no success of the account since.
+            const { rows } = await db.query<{ status: string; confirmed: boolean }>(
+              `SELECT a.status,
+                      EXISTS (SELECT 1 FROM app.account_events e
+                               WHERE e.account_id = a.id AND e.status = $3 AND e.at > a.auth_updated_at AND e.at <= $2::timestamptz - make_interval(secs => $4)
+                                 AND NOT EXISTS (SELECT 1 FROM app.usage_events u
+                                                  WHERE u.is_subscription AND split_part(u.deployment, ':', 2) = a.id AND u.at > e.at AND u.at <= $2)) AS confirmed
+                 FROM app.chatgpt_accounts a WHERE a.id = $1 AND $2 > a.auth_updated_at`,
+              [accountId, at, ACCESS_ERROR, COOLDOWN_SECONDS],
+            );
+            if (rows[0]?.status !== 'active' || !rows[0].confirmed) return;
             const state = await writer.state();
             await writer.apply({ ...state, accounts: state.accounts.filter((a) => a.id !== accountId) });
             await db.query("UPDATE app.chatgpt_accounts SET status = 'auth_error' WHERE id = $1", [accountId]);
@@ -323,7 +377,7 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
         try {
           await prepareOne(r);
         } catch (error) {
-          logEvent('error', 'chatgpt_auth_prepare_failed', { accountId: r.id, error });
+          logEvent('error', 'chatgpt_auth_prepare_failed', { accountId: r.id, error: errorKind(error) });
         }
       }
     },

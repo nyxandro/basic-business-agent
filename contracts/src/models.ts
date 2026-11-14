@@ -118,6 +118,8 @@ export interface ChatGptLoginDto {
   userCode: string;
   verifyUrl: string;
   expiresAt: string;
+  // The countdown runs from the answer, so a wrong clock of the admin's computer does not matter.
+  expiresInSeconds: number;
   // Ask about the login no more often than this.
   intervalSeconds: number;
 }

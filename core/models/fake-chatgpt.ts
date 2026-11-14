@@ -22,6 +22,8 @@ export interface FakeChatGpt {
   // OpenAI refused the login.
   refuse(userCode: string): void;
   answer(email: string, answer: AccountAnswer): void;
+  // OpenAI's login service answers 503 to the questions «has the person entered the code?».
+  outage(on: boolean): void;
   // Emails of the accounts the requests to ChatGPT came with, in order.
   calls: string[];
   close(): Promise<void>;
@@ -83,6 +85,7 @@ export async function startFakeChatGpt(opts: { port?: number; host?: '127.0.0.1'
   const codes = new Map<string, { email: string; workspace: string }>();
   const calls: string[] = [];
   let n = 0;
+  let down = false;
 
   const server: Server = createServer((req, res) => {
     let body = '';
@@ -106,6 +109,7 @@ export async function startFakeChatGpt(opts: { port?: number; host?: '127.0.0.1'
         return;
       }
       if (path === '/api/accounts/deviceauth/token') {
+        if (down) return json(res, 503, { error: { message: 'service unavailable' } });
         const { user_code: userCode } = JSON.parse(body) as { user_code: string };
         if (refused.has(userCode)) return json(res, 400, { error: { message: 'access denied' } });
         const who = approved.get(userCode);
@@ -148,6 +152,7 @@ export async function startFakeChatGpt(opts: { port?: number; host?: '127.0.0.1'
     approve: (userCode, who) => void approved.set(userCode, { email: who.email, workspace: who.workspace ?? `ws-${who.email}` }),
     refuse: (userCode) => void refused.add(userCode),
     answer: (email, answer) => void answers.set(email, answer),
+    outage: (on) => void (down = on),
     calls,
     close: () =>
       new Promise((resolve) => {

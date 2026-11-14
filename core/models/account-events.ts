@@ -20,7 +20,8 @@ const NOT_COOLING_CLASS = 'APIConnectionError';
 const failureSchema = z.object({
   litellm_call_id: z.string().min(1),
   status: z.string(),
-  startTime: z.union([z.number(), z.string()]),
+  // When the attempt failed: its cooldown runs from then, not from its start.
+  endTime: z.union([z.number(), z.string()]),
   model_id: z.string().nullish(),
   error_information: z.object({ error_code: z.string().nullish(), error_class: z.string().nullish() }).nullish(),
 });
@@ -29,6 +30,7 @@ export interface AccountFailure {
   accountId: string;
   deployment: string;
   status: number | null;
+  at: Date;
 }
 
 function httpStatus(code: string | null | undefined): number | null {
@@ -52,7 +54,7 @@ export async function ingestAccountEvents(db: Db, payload: unknown): Promise<Acc
     const r = parsed.data;
     const accountId = ACCOUNT_DEPLOYMENT.exec(r.model_id ?? '')?.[1];
     if (r.status !== 'failure' || !accountId) continue;
-    const at = toLedgerDate(r.startTime);
+    const at = toLedgerDate(r.endTime);
     const status = httpStatus(r.error_information?.error_code);
     const code = r.error_information?.error_class ?? null;
     const cooldownUntil = cools(status, code) ? new Date(at.getTime() + COOLDOWN_SECONDS * 1000) : null;
@@ -63,9 +65,9 @@ export async function ingestAccountEvents(db: Db, payload: unknown): Promise<Acc
        ON CONFLICT (litellm_call_id, deployment) DO NOTHING`,
       [at, accountId, r.model_id, status, code, cooldownUntil, r.litellm_call_id],
     );
-    if (!rowCount) continue;
-    await db.query(`DELETE FROM app.account_events WHERE account_id = $1 AND at < now() - make_interval(days => $2)`, [accountId, RETENTION_DAYS]);
-    kept.push({ accountId, deployment: r.model_id!, status });
+    if (rowCount) kept.push({ accountId, deployment: r.model_id!, status, at });
   }
+  // Of every account, quiet ones too; failures are rare, so the table stays small.
+  if (kept.length > 0) await db.query('DELETE FROM app.account_events WHERE at < now() - make_interval(days => $1)', [RETENTION_DAYS]);
   return kept;
 }

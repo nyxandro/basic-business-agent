@@ -42,7 +42,7 @@ export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSec
     const payload: unknown = await c.req.json();
     try {
       const kept = await ingestAccountEvents(deps.db, payload);
-      for (const failure of kept) await deps.accounts.attemptFailed(failure.accountId, failure.status);
+      for (const failure of kept) await deps.accounts.attemptFailed(failure);
       return c.json({ kept: kept.length });
     } catch (error) {
       logEvent('error', 'account_events_ingest_failed', { error });

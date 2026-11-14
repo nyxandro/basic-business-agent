@@ -24,8 +24,8 @@ test('«Пул аккаунтов подписки» shows the states and connec
 
   await page.getByRole('button', { name: 'Добавить аккаунт' }).click();
   const dialog = page.getByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
-  await expect(dialog.getByText(/Жду входа… осталось 1[45]:\d\d/)).toBeVisible();
-  const code = (await dialog.getByLabel('Код входа').textContent())!;
+  await expect(dialog.getByRole('timer')).toHaveText(/осталось 1[45]:\d\d/);
+  const code = await dialog.getByLabel('Код входа').inputValue();
   const [site] = await Promise.all([page.context().waitForEvent('page'), dialog.getByRole('link', { name: 'Открыть сайт OpenAI' }).click()]);
   await site.getByLabel('Код').fill(code);
   await site.getByLabel('Почта аккаунта').fill('new.gpt@example.com');

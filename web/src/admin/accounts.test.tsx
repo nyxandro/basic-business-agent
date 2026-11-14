@@ -14,7 +14,8 @@ const BACK_AT = new Date(2026, 10, 14, 14, 32).toISOString();
 const COOLING = { ...ACCOUNT, id: 'a-00000002', email: 'busy.gpt@example.com', state: 'cooldown', failureStatus: 429, cooldownUntil: BACK_AT, tokensToday: 390_000 };
 const REVOKED = { ...ACCOUNT, id: 'a-00000003', email: 'old.gpt@example.com', state: 'auth_error', failureStatus: 401 };
 const SILENT = { ...ACCOUNT, id: 'a-00000004', email: 'new.gpt@example.com', state: 'no_requests' };
-const LOGIN = { id: 'l-00000001', userCode: 'ABCD-EFGH', verifyUrl: 'https://auth.openai.com/codex/device', expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), intervalSeconds: 1 };
+// The server's clock is 10 minutes ahead of the admin's computer: the countdown still says 15 minutes.
+const LOGIN = { id: 'l-00000001', userCode: 'ABCD-EFGH', verifyUrl: 'https://auth.openai.com/codex/device', expiresAt: new Date(Date.now() + 25 * 60_000).toISOString(), expiresInSeconds: 900, intervalSeconds: 1 };
 
 function server(accounts: object[] = [WORKS, COOLING, REVOKED, SILENT]) {
   return mockServer({
@@ -51,9 +52,10 @@ describe('«Пул аккаунтов подписки»', () => {
     expect(await screen.findByText('Аккаунтов пока нет')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Подключить аккаунт ChatGPT' }));
     const dialog = await screen.findByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
-    expect(await within(dialog).findByLabelText('Код входа')).toHaveTextContent('ABCD-EFGH');
+    expect(await within(dialog).findByLabelText('Код входа')).toHaveValue('ABCD-EFGH');
     expect(within(dialog).getByRole('link', { name: 'Открыть сайт OpenAI' })).toHaveAttribute('href', LOGIN.verifyUrl);
-    expect(within(dialog).getByText(/Жду входа… осталось 1[45]:\d\d/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('status')).toHaveTextContent('Жду входа…');
+    expect(within(dialog).getByRole('timer')).toHaveTextContent(/^осталось 1[45]:\d\d$/);
     expect(s.calls.find((c) => c.method === 'POST')?.body).toEqual({ accountId: null });
     expect(await screen.findByText('Аккаунт подключён: new.gpt@example.com')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Подключить аккаунт ChatGPT' })).not.toBeInTheDocument();
@@ -71,7 +73,7 @@ describe('«Пул аккаунтов подписки»', () => {
     s.set('POST /app/api/admin/chatgpt/logins', { status: 201, body: { ...LOGIN, id: 'l-00000002', userCode: 'WXYZ-1234' } });
     s.set('GET /app/api/admin/chatgpt/logins/l-00000002', { body: { status: 'pending', expiresAt: LOGIN.expiresAt } });
     await user.click(within(dialog).getByRole('button', { name: 'Начать заново' }));
-    expect(await within(dialog).findByLabelText('Код входа')).toHaveTextContent('WXYZ-1234');
+    expect(await within(dialog).findByLabelText('Код входа')).toHaveValue('WXYZ-1234');
     expect(s.calls.filter((c) => c.method === 'POST')).toHaveLength(2);
   });
 
@@ -81,7 +83,7 @@ describe('«Пул аккаунтов подписки»', () => {
     renderApp('/admin/models');
     const user = userEvent.setup();
     const pool = await screen.findByRole('list', { name: 'Аккаунты подписки' });
-    await user.click(within(within(pool).getByText('old.gpt@example.com').closest('li')!).getByRole('button', { name: 'Войти заново' }));
+    await user.click(within(pool).getByRole('button', { name: 'Войти заново: old.gpt@example.com' }));
     expect(await screen.findByRole('dialog', { name: 'Войти заново: old.gpt@example.com' })).toBeInTheDocument();
     await waitFor(() => expect(s.calls.find((c) => c.method === 'POST')?.body).toEqual({ accountId: 'a-00000003' }));
   });
@@ -120,5 +122,48 @@ describe('«Пул аккаунтов подписки»', () => {
       providerModel: 'chatgpt/gpt-5.4-mini',
       vision: true,
     });
+  });
+
+  it('asks before closing while it waits, and closed stops asking the server', async () => {
+    const s = server([]);
+    s.set('GET /app/api/admin/chatgpt/logins/l-00000001', { body: { status: 'pending', expiresAt: LOGIN.expiresAt } });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Подключить аккаунт ChatGPT' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
+    await within(dialog).findByLabelText('Код входа');
+    await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    const question = screen.getByRole('alertdialog', { name: 'Прервать вход?' });
+    await user.click(within(question).getByRole('button', { name: 'Отмена' }));
+    expect(screen.getByRole('dialog', { name: 'Подключить аккаунт ChatGPT' })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Прервать вход?' })).getByRole('button', { name: 'Прервать' }));
+    expect(screen.queryByRole('dialog', { name: 'Подключить аккаунт ChatGPT' })).not.toBeInTheDocument();
+    const polls = () => s.calls.filter((c) => c.path === '/app/api/admin/chatgpt/logins/l-00000001').length;
+    const before = polls();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(polls()).toBe(before);
+  });
+
+  it('asks again with the same code after a broken connection, and starts over after the server ended the login', async () => {
+    const s = server([]);
+    s.set('GET /app/api/admin/chatgpt/logins/l-00000001', () => Promise.reject(new TypeError('Failed to fetch')));
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Подключить аккаунт ChatGPT' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
+    await within(dialog).findByRole('button', { name: 'Повторить' });
+    expect(within(dialog).queryByRole('button', { name: 'Начать заново' })).not.toBeInTheDocument();
+
+    // The connection broke just as the login finished: the server has ended it.
+    s.set('GET /app/api/admin/chatgpt/logins/l-00000001', apiError('APP_NOT_FOUND', 'Вход не найден: он уже завершился или истёк. Начните заново.', 404));
+    const listed = () => s.calls.filter((c) => c.path === '/app/api/admin/models').length;
+    const before = listed();
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }));
+    expect(await within(dialog).findByText('Вход не найден: он уже завершился или истёк. Начните заново.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Начать заново' })).toBeInTheDocument();
+    await waitFor(() => expect(listed()).toBeGreaterThan(before));
+    expect(s.calls.filter((c) => c.method === 'POST' && c.path === '/app/api/admin/chatgpt/logins')).toHaveLength(1);
   });
 });

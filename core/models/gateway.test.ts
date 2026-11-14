@@ -220,15 +220,23 @@ describe('model gateway', () => {
     expect((await stateOf(first)).state).toBe('works');
 
     // The second account's login is revoked: its failed attempt is reported, the retry answers
-    // through the first, and the server takes the second out of LiteLLM.
+    // through the first, and the server takes the second out of LiteLLM. Its first 401 is put a
+    // minute back, after its last success; the live one confirms it.
+    const secondDeployment = `${model.id}:${second}`;
+    await t.db.query("UPDATE app.usage_events SET at = at - interval '10 minutes' WHERE deployment = $1", [secondDeployment]);
+    await t.db.query("UPDATE app.chatgpt_accounts SET auth_updated_at = now() - interval '10 minutes' WHERE id = $1", [second]);
+    await t.db.query(
+      `INSERT INTO app.account_events (at, account_id, deployment, status, code, litellm_call_id) VALUES (now() - interval '61 seconds', $1, $2, 401, 'AuthenticationError', 'first-401')`,
+      [second, secondDeployment],
+    );
     openai.answer('pool-second@example.com', { status: 401, code: 'token_revoked' });
     for (let i = 0; i < 20 && (await stateOf(second)).state !== 'auth_error'; i++) {
       expect(await ask(userId, model.id)).toBe(FAKE_SUBSCRIPTION_ANSWER);
       await new Promise((r) => setTimeout(r, 300));
     }
     expect(await stateOf(second)).toMatchObject({ state: 'auth_error', failureStatus: 401 });
-    const { rows: reported } = await t.db.query<{ deployment: string; status: number }>('SELECT deployment, status FROM app.account_events WHERE account_id = $1', [second]);
-    expect(reported[0]).toMatchObject({ deployment: `${model.id}:${second}`, status: 401 });
+    const { rows: reported } = await t.db.query<{ deployment: string; status: number }>("SELECT deployment, status FROM app.account_events WHERE account_id = $1 AND litellm_call_id <> 'first-401'", [second]);
+    expect(reported[0]).toMatchObject({ deployment: secondDeployment, status: 401 });
     const callsBefore = openai.calls.length;
     for (let i = 0; i < 6; i++) expect(await ask(userId, model.id)).toBe(FAKE_SUBSCRIPTION_ANSWER);
     expect(new Set(openai.calls.slice(callsBefore))).toEqual(new Set(['pool-first@example.com']));

@@ -10,6 +10,10 @@ export const COOLDOWN_SECONDS = 60;
 // a revoked or rate-limited account); LiteLLM logs it, so the retry is observable.
 const POOL_RETRIES = 1;
 const ALLOWED_FAILS_BEFORE_COOLDOWN = 1;
+// LiteLLM resends a record our server did not take (a broken connection, a 5xx): 1+2+4+8+16 s cover
+// a restart of the app. Both endpoints keep a record once, by its call id.
+const CALLBACK_RETRIES = 5;
+const CALLBACK_RETRY_DELAY_SECONDS = 1;
 
 // A deployment written into the file. Only the test LiteLLM has them: mock models of the tests.
 export interface StaticDeployment {
@@ -51,6 +55,8 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
         log_format: 'single',
         event_types: ['llm_api_success'],
         headers: { Authorization: 'os.environ/LITELLM_CALLBACK_AUTHORIZATION' },
+        max_retries: CALLBACK_RETRIES,
+        retry_delay: CALLBACK_RETRY_DELAY_SECONDS,
       },
       [ACCOUNT_EVENTS_CALLBACK_NAME]: {
         callback_type: 'generic_api',
@@ -58,6 +64,8 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
         log_format: 'single',
         event_types: ['llm_api_failure'],
         headers: { Authorization: 'os.environ/LITELLM_CALLBACK_AUTHORIZATION' },
+        max_retries: CALLBACK_RETRIES,
+        retry_delay: CALLBACK_RETRY_DELAY_SECONDS,
       },
     },
     router_settings: {

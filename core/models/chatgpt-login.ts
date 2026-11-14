@@ -3,6 +3,7 @@
 // opens OpenAI's page, enters the code there, and the server exchanges the result for the tokens.
 // The server only asks; the person's page polls it every `interval` seconds, so no timer runs here.
 import { appError } from '../errors/catalog.ts';
+import { logEvent } from '../server/log.ts';
 
 export const OPENAI_AUTH_BASE = 'https://auth.openai.com';
 // The public client of the Codex CLI, which LiteLLM also uses for ChatGPT subscriptions.
@@ -118,9 +119,20 @@ export function createChatGptAuthClient(authBase: string): ChatGptAuthClient {
     },
 
     async poll({ deviceAuthId, userCode }) {
-      const res = await post('/api/accounts/deviceauth/token', { json: { device_auth_id: deviceAuthId, user_code: userCode } });
+      let res: Response;
+      try {
+        res = await post('/api/accounts/deviceauth/token', { json: { device_auth_id: deviceAuthId, user_code: userCode } });
+      } catch (error) {
+        // OpenAI did not answer this time: the code is still valid, the page asks again.
+        logEvent('warn', 'chatgpt_login_poll_unanswered', { cause: error instanceof Error && error.cause instanceof Error ? error.cause.name : 'unknown' });
+        return null;
+      }
       // OpenAI answers 403 or 404 while the person has not entered the code.
       if (res.status === 403 || res.status === 404) return null;
+      if (res.status === 429 || res.status >= 500) {
+        logEvent('warn', 'chatgpt_login_poll_unanswered', { status: res.status });
+        return null;
+      }
       const grant = await json(res, 'device token');
       const code = str(grant, 'authorization_code');
       const verifier = str(grant, 'code_verifier');

@@ -106,7 +106,9 @@
       ],
       "headers": {
         "Authorization": "os.environ/LITELLM_CALLBACK_AUTHORIZATION"
-      }
+      },
+      "max_retries": 5,
+      "retry_delay": 1
     },
     "bba_account_events": {
       "callback_type": "generic_api",
@@ -117,7 +119,9 @@
       ],
       "headers": {
         "Authorization": "os.environ/LITELLM_CALLBACK_AUTHORIZATION"
-      }
+      },
+      "max_retries": 5,
+      "retry_delay": 1
     }
   },
   "router_settings": {

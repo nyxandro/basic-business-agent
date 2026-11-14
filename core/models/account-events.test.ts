@@ -21,7 +21,8 @@ function failure(over: Record<string, unknown> = {}): Record<string, unknown> {
     id: 'c-1',
     litellm_call_id: 'c-1',
     status: 'failure',
-    startTime: STARTED,
+    startTime: STARTED - 2,
+    endTime: STARTED,
     model_group: 'm-sub00001',
     model_id: 'm-sub00001:a-0000000a',
     error_str: 'litellm.RateLimitError: usage limit reached',
@@ -96,7 +97,7 @@ describe('failed attempts of the ChatGPT accounts', () => {
     await t.db.query(
       `INSERT INTO app.account_events (at, account_id, deployment, status, code, litellm_call_id) VALUES (now() - interval '31 days', 'a-0000000a', 'm-sub00001:a-0000000a', 429, 'RateLimitError', 'old')`,
     );
-    await post(failure({ id: 'c-9', litellm_call_id: 'c-9', startTime: Date.now() / 1000 }));
+    await post(failure({ id: 'c-9', litellm_call_id: 'c-9', endTime: Date.now() / 1000 }));
     const { rows } = await t.db.query<{ litellm_call_id: string }>("SELECT litellm_call_id FROM app.account_events WHERE account_id = 'a-0000000a' ORDER BY id");
     expect(rows.map((r) => r.litellm_call_id)).toEqual(['c-1', 'c-9']);
   });

@@ -104,7 +104,8 @@ td.mono {
 
 .columns {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  /* Never wider than the screen: a 360 px phone has less than 340 px for a column. */
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
   gap: 16px;
   align-items: start;
 }
@@ -323,6 +324,7 @@ td.mono {
 /* Connecting an account: the code to enter on OpenAI's page. */
 .code {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
@@ -331,7 +333,14 @@ td.mono {
 }
 
 .codeText {
-  flex: 1;
+  /* The button goes under the code when both do not fit (a narrow phone). */
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 24px;
   font-weight: 600;

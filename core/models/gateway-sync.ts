@@ -102,14 +102,21 @@ export interface SyncResult {
   removed: string[];
 }
 
-// Brings LiteLLM to exactly the desired deployments of this owner.
+// Brings LiteLLM to exactly the desired deployments of this owner. What goes away goes first: a
+// refusal of LiteLLM to take another model's deployment must not keep a removed key or a revoked
+// account in it.
 export async function reconcile(client: LiteLLMClient, owner: string, desired: DeploymentSpec[]): Promise<SyncResult> {
   const result: SyncResult = { added: [], updated: [], removed: [] };
   try {
     const current = new Map((await client.listDeployments()).filter((d) => d.inDatabase && d.info.bba_owner === owner).map((d) => [d.id, d]));
+    const wanted = new Set(desired.map((d) => d.id));
+    for (const id of current.keys()) {
+      if (wanted.has(id)) continue;
+      await client.deleteDeployment(id);
+      result.removed.push(id);
+    }
     for (const spec of desired) {
       const existing = current.get(spec.id);
-      current.delete(spec.id);
       if (!existing) {
         await client.addDeployment(spec);
         result.added.push(spec.id);
@@ -117,10 +124,6 @@ export async function reconcile(client: LiteLLMClient, owner: string, desired: D
         await client.updateDeployment(spec);
         result.updated.push(spec.id);
       }
-    }
-    for (const id of current.keys()) {
-      await client.deleteDeployment(id);
-      result.removed.push(id);
     }
   } catch (error) {
     throw syncFailed(`gateway sync failed after ${JSON.stringify(result)}: ${error instanceof Error ? error.message : String(error)}`, error);

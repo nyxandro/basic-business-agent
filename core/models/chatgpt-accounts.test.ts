@@ -1,12 +1,18 @@
 // The pool of ChatGPT accounts in «Нейросеть» (spec, scenario 9, section 8.1): login by a device
 // code against a fake OpenAI, the login files, LiteLLM's deployments, the states of the accounts.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChatGptAccountDto, ChatGptLoginDto, ChatGptLoginStatus, ModelDto, ModelsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestApp, type TestApp } from '../server/test-app.ts';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/test-app.ts';
+import { createChatGptAccounts } from './chatgpt-accounts.ts';
+import { createChatGptAuthClient } from './chatgpt-login.ts';
 import { fakeJwt, startFakeChatGpt, type FakeChatGpt } from './fake-chatgpt.ts';
 import { GATEWAY_AUTH_DIR } from './gateway-sync.ts';
+import { createGatewayWriter } from './gateway-writer.ts';
+import { createLiteLLMClient } from './litellm-client.ts';
+import { TEST_MODEL_IDS } from './test-catalog.ts';
 
 let t: TestApp;
 let openai: FakeChatGpt;
@@ -34,6 +40,27 @@ async function connect(email: string, workspace?: string): Promise<ChatGptAccoun
   if (status.status !== 'connected') throw new Error(`login of ${email} is still ${status.status}`);
   return status.account;
 }
+
+// What LiteLLM sends of a failed attempt of the account, `secondsAgo` before now.
+async function reportFailure(deployment: string, status: number, secondsAgo = 0): Promise<void> {
+  const at = Date.now() / 1000 - secondsAgo;
+  const res = await t.app.request('/app/api/internal/account-events', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${t.ledgerSecret}` },
+    body: JSON.stringify({
+      litellm_call_id: `c-${status}-${Math.random()}`,
+      status: 'failure',
+      startTime: at - 1,
+      endTime: at,
+      model_id: deployment,
+      error_information: { error_code: String(status), error_class: status === 401 ? 'AuthenticationError' : 'PermissionDeniedError' },
+    }),
+  });
+  expect(res.status).toBe(200);
+}
+
+// The account was connected a while ago, so failures of the last minutes are its own.
+const connectedLongAgo = (accountId: string) => t.db.query("UPDATE app.chatgpt_accounts SET auth_updated_at = now() - interval '10 minutes' WHERE id = $1", [accountId]);
 
 async function accounts(): Promise<ChatGptAccountDto[]> {
   return (await json<ModelsResponse>(await t.call('GET', '/app/api/admin/models', { cookie: igor }))).accounts;
@@ -113,6 +140,32 @@ describe('the login to a ChatGPT account', () => {
     expect((await t.db.query('SELECT 1 FROM app.chatgpt_logins WHERE id = $1', [login.id])).rows).toHaveLength(0);
   });
 
+  it('waits on when OpenAI does not answer for a moment', async () => {
+    const login = await startLogin();
+    openai.outage(true);
+    try {
+      expect((await json<ChatGptLoginStatus>(await poll(login.id))).status).toBe('pending');
+    } finally {
+      openai.outage(false);
+    }
+    openai.approve(login.userCode, { email: 'patient@example.com' });
+    await new Promise((r) => setTimeout(r, 1100));
+    expect(await json<ChatGptLoginStatus>(await poll(login.id))).toMatchObject({ status: 'connected', account: { email: 'patient@example.com' } });
+  });
+
+  it('leaves neither a file, a row nor deployments when LiteLLM refuses a new account', async () => {
+    const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+    const writer = createGatewayWriter({ db: t.db, box, client: createLiteLLMClient('http://127.0.0.1:9', 'sk-x'), owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const offline = createChatGptAccounts({ db: t.db, box, writer, auth: createChatGptAuthClient(openai.url), authDir: t.chatgptAuthDir, timezone: 'Europe/Moscow' });
+    const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+    const filesBefore = readdirSync(t.chatgptAuthDir).length;
+    const login = await offline.startLogin(igorId, null);
+    openai.approve(login.userCode, { email: 'refused@example.com' });
+    await expect(offline.pollLogin(igorId, login.id)).rejects.toMatchObject({ code: 'APP_GATEWAY_SYNC_FAILED' });
+    expect(readdirSync(t.chatgptAuthDir)).toHaveLength(filesBefore);
+    expect((await accounts()).some((a) => a.email === 'refused@example.com')).toBe(false);
+  });
+
   it('says the login failed when OpenAI refused it', async () => {
     const login = await startLogin();
     openai.refuse(login.userCode);
@@ -140,15 +193,16 @@ describe('the login to a ChatGPT account', () => {
 });
 
 describe('an account in the pool', () => {
-  it('leaves LiteLLM on an access error and comes back after «Войти заново» into the same account only', async () => {
+  it('leaves LiteLLM on a second 401 after the cooldown and comes back after «Войти заново» into the same account only', async () => {
     const account = await connect('revoked@example.com');
     const deployment = `${model.id}:${account.id}`;
-    const res = await t.app.request('/app/api/internal/account-events', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${t.ledgerSecret}` },
-      body: JSON.stringify({ litellm_call_id: 'c-401', status: 'failure', startTime: Date.now() / 1000, model_id: deployment, error_information: { error_code: '401', error_class: 'AuthenticationError' } }),
-    });
-    expect(res.status).toBe(200);
+    await connectedLongAgo(account.id);
+    // One 401 may be a refresh that failed for a moment: the account stays.
+    await reportFailure(deployment, 401, 61);
+    expect((await accounts()).find((a) => a.id === account.id)?.state).not.toBe('auth_error');
+    expect((await deployments()).has(deployment)).toBe(true);
+    // Again after the cooldown, nothing answered in between: the login is gone.
+    await reportFailure(deployment, 401);
     expect((await accounts()).find((a) => a.id === account.id)).toMatchObject({ state: 'auth_error', failureStatus: 401 });
     expect((await deployments()).has(deployment)).toBe(false);
 
@@ -162,11 +216,29 @@ describe('an account in the pool', () => {
     expect(back).toMatchObject({ status: 'connected', account: { id: account.id } });
     expect((await accounts()).find((a) => a.id === account.id)?.state).not.toBe('auth_error');
     expect((await deployments()).has(deployment)).toBe(true);
+    // A 401 of a request that began with the old token, reported late, says nothing of the new one.
+    await reportFailure(deployment, 401, 30);
+    await reportFailure(deployment, 401);
+    expect((await accounts()).find((a) => a.id === account.id)?.state).not.toBe('auth_error');
+  });
+
+  it('stays after two 401 with a success in between, after two 401 within the cooldown and after 403', async () => {
+    const account = await connect('flaky@example.com');
+    const deployment = `${model.id}:${account.id}`;
+    await connectedLongAgo(account.id);
+    await reportFailure(deployment, 401, 120);
+    await t.db.query(`INSERT INTO app.usage_events (at, model, deployment, is_subscription, litellm_call_id) VALUES (now() - interval '60 seconds', $1, $2, true, 'u-between')`, [model.id, deployment]);
+    await reportFailure(deployment, 401, 30);
+    await reportFailure(deployment, 401);
+    await reportFailure(deployment, 403, 200);
+    await reportFailure(deployment, 403);
+    expect((await accounts()).find((a) => a.id === account.id)?.state).not.toBe('auth_error');
+    expect((await deployments()).has(deployment)).toBe(true);
   });
 
   it('stays in LiteLLM after a rate limit and shows the cooldown', async () => {
     const account = await connect('busy@example.com');
-    await t.accounts.attemptFailed(account.id, 429);
+    await t.accounts.attemptFailed({ accountId: account.id, status: 429, at: new Date() });
     expect((await deployments()).has(`${model.id}:${account.id}`)).toBe(true);
     await t.db.query(
       `INSERT INTO app.account_events (at, account_id, deployment, status, code, cooldown_until, litellm_call_id)
@@ -218,6 +290,8 @@ describe('the start of the server', () => {
     writeFileSync(lostFile, '{ broken');
     const orphan = join(t.chatgptAuthDir, 'a-0badf00d.json');
     writeFileSync(orphan, '{}');
+    const unfinished = join(t.chatgptAuthDir, `${lost.id}.json.0badf00d.tmp`);
+    writeFileSync(unfinished, '{}');
 
     await t.accounts.prepare();
     // A second start with the same files changes nothing.
@@ -226,6 +300,7 @@ describe('the start of the server', () => {
     expect(JSON.parse(readFileSync(refreshedFile, 'utf8'))).toMatchObject({ refresh_token: 'refresh-rotated' });
     expect(JSON.parse(readFileSync(lostFile, 'utf8'))).toMatchObject({ refresh_token: 'refresh-lost@example.com' });
     expect(existsSync(orphan)).toBe(false);
+    expect(existsSync(unfinished)).toBe(false);
     // The database took the fresher token: losing the volume would not bring back the replaced one.
     writeFileSync(refreshedFile, '');
     await t.accounts.prepare();

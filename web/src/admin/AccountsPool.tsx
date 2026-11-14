@@ -106,7 +106,7 @@ export function AccountsPool({ accounts, onChanged }: { accounts: ChatGptAccount
                 <div className={cx(section.sub, a.state === 'auth_error' && styles.bad)}>{accountStateText(a)}</div>
               </div>
               {a.state === 'auth_error' ? (
-                <Button size="sm" onClick={() => setConnecting(a)}>
+                <Button size="sm" aria-label={`Войти заново: ${a.email}`} onClick={() => setConnecting(a)}>
                   Войти заново
                 </Button>
               ) : (
@@ -120,7 +120,7 @@ export function AccountsPool({ accounts, onChanged }: { accounts: ChatGptAccount
           ))}
         </ul>
       )}
-      {connecting !== undefined ? <ChatGptConnect account={connecting} onClose={() => setConnecting(undefined)} onConnected={connected} /> : null}
+      {connecting !== undefined ? <ChatGptConnect account={connecting} onClose={() => setConnecting(undefined)} onConnected={connected} onEnded={onChanged} /> : null}
     </Card>
   );
 }
