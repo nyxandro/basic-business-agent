@@ -3,3 +3,4 @@ export * from './auth.ts';
 export * from './genui.ts';
 export * from './admin.ts';
 export * from './chat.ts';
+export * from './settings.ts';

@@ -11,6 +11,8 @@ import { AppError } from '../errors/app-error.ts';
 import { toHistory, type HistoryMessage } from './history.ts';
 
 const APPROVAL_PREFIX = 'mastra-approval::';
+// Conversations of background tasks are "bg:<taskId>" (core/background/service.ts).
+const BACKGROUND_THREAD_PREFIX = 'bg:';
 
 type AguiMessage =
   | { id: string; role: 'user'; content: string }
@@ -78,6 +80,10 @@ export async function connectResponse(deps: { db: Db; memory: Memory }, input: {
     messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
     // Opening the conversation shows the result of a background task: it is no longer «новое».
     if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
+    // The menu counter of fresh task results reads the task's own flag.
+    if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
+      await deps.db.query('UPDATE app.background_tasks SET unread_result = false WHERE id = $1 AND owner_user_id = $2', [threadId.slice(BACKGROUND_THREAD_PREFIX.length), input.userId]);
+    }
   }
   const pending = thread ? await pendingForThread(deps.db, input.userId, threadId) : [];
   const interrupts = pending.map((p) => ({

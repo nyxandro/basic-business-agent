@@ -80,6 +80,12 @@ export async function readMemory(memory: Memory, userId: string): Promise<string
   return (await memory.getWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId })) ?? '';
 }
 
+// Nothing remembered: the memory is blank or still the template the agents fill in.
+export function isBlankMemory(text: string): boolean {
+  const normalise = (t: string) => t.replace(/\s+/g, ' ').trim();
+  return normalise(text) === '' || normalise(text) === normalise(WORKING_MEMORY_TEMPLATE);
+}
+
 export async function writeMemory(memory: Memory, userId: string, text: string): Promise<void> {
   await memory.updateWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId, workingMemory: text });
 }

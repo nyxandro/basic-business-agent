@@ -1,0 +1,29 @@
+// Numbers and dates as the Russian interface writes them.
+const MS_PER_MINUTE = 60_000;
+const MINUTES_PER_HOUR = 60;
+const THOUSAND = 1000;
+
+export const rub = (value: number): string => `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+
+// «120 тыс.» for token counts.
+export const thousands = (value: number): string => (value >= THOUSAND ? `${Math.round(value / THOUSAND).toLocaleString('ru-RU')} тыс.` : value.toLocaleString('ru-RU'));
+
+// «1 декабря» from a date like 2026-12-01 (a calendar day, no time zone shift).
+export function dayMonth(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
+  if (!match) throw new Error(`expected a date like 2026-12-01, got "${isoDate}"`);
+  const day = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return day.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+}
+
+// «14 ноября, 09:00» in the browser's time zone.
+export const dateTime = (iso: string): string => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+// «3 ч 5 мин» until a moment; «меньше минуты» when it is close or past.
+export function timeLeft(iso: string, now: number = Date.now()): string {
+  const minutes = Math.floor((new Date(iso).getTime() - now) / MS_PER_MINUTE);
+  if (minutes < 1) return 'меньше минуты';
+  const h = Math.floor(minutes / MINUTES_PER_HOUR);
+  const m = minutes % MINUTES_PER_HOUR;
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}

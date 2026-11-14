@@ -51,7 +51,7 @@ export function ThreadList({ agentId, currentThreadId, refreshKey, onNew, onDele
             <li key={t.id} className={t.id === currentThreadId ? 'current' : undefined}>
               <Link to={`?thread=${encodeURIComponent(t.id)}`}>
                 {t.title}
-                {t.unread ? <span className="badge">{ru.chat.unread}</span> : null}
+                {t.unread && t.id !== currentThreadId ? <span className="badge">{ru.chat.unread}</span> : null}
               </Link>
               <button type="button" className="link-button" aria-label={`${ru.chat.deleteThread}: ${t.title}`} onClick={() => void remove(t)}>
                 ×

@@ -1,3 +1,5 @@
+import type { Memory } from '@mastra/memory';
+
 // A conversation as the chat screen shows it after a reload: text and tool calls with results.
 export interface HistoryToolCall {
   id: string;
@@ -54,4 +56,11 @@ export function toHistory(messages: StoredMessage[]): HistoryMessage[] {
     flush();
   }
   return out;
+}
+
+// Arguments of the tool calls of a conversation as the model sent them. The approval table keeps
+// only a summary (no addresses, no secrets); the person deciding «Да» needs the real values.
+export async function toolCallArgsOf(memory: Memory, threadId: string, resourceId: string): Promise<Map<string, unknown>> {
+  const { messages } = await memory.recall({ threadId, resourceId, perPage: false });
+  return new Map(toHistory(messages).flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
 }

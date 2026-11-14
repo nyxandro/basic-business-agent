@@ -15,7 +15,14 @@ export function apiError(code: string, message: string, status: number): Reply {
 }
 
 export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; set: (key: string, route: Route) => void } {
-  const table = new Map(Object.entries(routes));
+  // The menu counters are asked on every screen; tests that care override them.
+  // CopilotKit asks its runtime which agents exist when the provider mounts.
+  const table = new Map<string, Route>([
+    ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unreadResults: 0 } }],
+    ['POST /app/api/copilotkit', { body: { agents: {} } }],
+    ['GET /app/api/copilotkit/info', { body: { agents: {} } }],
+    ...Object.entries(routes),
+  ]);
   const calls: MockCall[] = [];
   vi.stubGlobal(
     'fetch',

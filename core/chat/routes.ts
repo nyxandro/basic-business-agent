@@ -1,11 +1,11 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
-import type { AgentListResponse } from '@bba/contracts';
+import type { AgentListResponse, MemoryResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
-import { deleteThread, draftResourceId, forgetAll, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
+import { deleteThread, draftResourceId, forgetAll, isBlankMemory, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
 import { deleteThreadUploads, MAX_UPLOAD_BYTES, saveUpload } from '../sandbox/uploads.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
@@ -101,7 +101,11 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json({ ok: true });
   });
 
-  app.get('/app/api/me/memory', async (c) => c.json({ text: await readMemory(deps.memory, access(c).userId) }));
+  app.get('/app/api/me/memory', async (c) => {
+    const text = await readMemory(deps.memory, access(c).userId);
+    const body: MemoryResponse = { text, empty: isBlankMemory(text) };
+    return c.json(body);
+  });
   app.put('/app/api/me/memory', async (c) => {
     const { text } = await parseJson(c, memoryBody);
     await writeMemory(deps.memory, access(c).userId, text);

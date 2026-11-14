@@ -2,6 +2,7 @@
 // Mastra opens an MCP connection before it knows who asks, so a server with personal access gets
 // its own client per (employee, system); our shared server gets one client that signs "who is asking"
 // into every request. Tools that are not read-only go through the approval policy like any other.
+import type { MyConnection } from '@bba/contracts';
 import { MCPClient } from '@mastra/mcp';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
@@ -27,14 +28,8 @@ export interface ConnectorRuntime {
   checkTool?: string;
 }
 
-export interface ConnectionStatus {
-  id: string;
-  title: string;
-  auth: ConnectorRuntime['auth'];
-  fields: { name: string; label: string; secret: boolean }[];
-  status: 'not_connected' | CredentialStatus;
-  checkedAt: string | null;
-}
+// The shape is read by the web interface («Настройки → Подключения»).
+export type ConnectionStatus = MyConnection;
 
 export interface ConnectionManager {
   connectors: ReadonlyMap<string, ConnectorRuntime>;

@@ -40,6 +40,12 @@ describe('background tasks', () => {
     expect(await journalOf('morning')).toEqual(['background_started:started', 'background_finished:ok']);
     const notes = (await (await t.call('GET', '/app/api/me/notifications', { cookie: olga })).json()) as { unreadResults: number };
     expect(notes.unreadResults).toBe(1);
+
+    // Opening the task's conversation in the chat window reads the result.
+    const body = { threadId: 'bg:morning', runId: 'r1', messages: [], tools: [], context: [], state: {}, forwardedProps: {} };
+    expect((await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie: olga, body })).status).toBe(200);
+    const after = (await (await t.call('GET', '/app/api/me/notifications', { cookie: olga })).json()) as { unreadResults: number };
+    expect(after.unreadResults).toBe(0);
   });
 
   it('puts an action on the approvals screen, skips runs while it waits, and runs it after "Да"', async () => {
@@ -49,7 +55,8 @@ describe('background tasks', () => {
     expect(t.sentMail).toEqual([]);
 
     const screen = (await (await t.call('GET', '/app/api/approvals', { cookie: olga })).json()) as { pending: { id: string; tool: string; task: string }[] };
-    expect(screen.pending).toMatchObject([{ tool: 'mail_send', task: 'Сводка reminders' }]);
+    // The person decides on the real recipient, not on the summary kept in the database.
+    expect(screen.pending).toMatchObject([{ tool: 'mail_send', task: 'Сводка reminders', args: { to: 'supplier@example.com', text: 'Напоминаем о КП' } }]);
     expect(await t.background.runTask('reminders', 'manual')).toBe('skipped');
     expect((await journalOf('reminders')).at(-1)).toBe('background_skipped:skipped:APP_BACKGROUND_RUN_SKIPPED');
 

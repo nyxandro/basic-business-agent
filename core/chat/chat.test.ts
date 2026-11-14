@@ -242,10 +242,14 @@ describe('history of a conversation for the chat window', () => {
 
 describe('memory and attachments', () => {
   it('shows, edits and forgets the employee’s memory', async () => {
+    expect(((await (await t.call('GET', '/app/api/me/memory', { cookie: olga })).json()) as { empty: boolean }).empty).toBe(true);
     expect((await t.call('PUT', '/app/api/me/memory', { cookie: olga, body: { text: '# О сотруднике\n- ведёт юрлиц' } })).status).toBe(200);
+    expect(((await (await t.call('GET', '/app/api/me/memory', { cookie: olga })).json()) as { empty: boolean }).empty).toBe(false);
     expect(((await (await t.call('GET', '/app/api/me/memory', { cookie: olga })).json()) as { text: string }).text).toContain('ведёт юрлиц');
     await t.call('DELETE', '/app/api/me/memory', { cookie: olga });
-    expect(((await (await t.call('GET', '/app/api/me/memory', { cookie: olga })).json()) as { text: string }).text).not.toContain('ведёт юрлиц');
+    const forgotten = (await (await t.call('GET', '/app/api/me/memory', { cookie: olga })).json()) as { text: string; empty: boolean };
+    expect(forgotten.text).not.toContain('ведёт юрлиц');
+    expect(forgotten.empty).toBe(true);
   });
 
   it('stores an attachment of a conversation', async () => {

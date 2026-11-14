@@ -17,6 +17,10 @@ const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name
 await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [dep, olga]);
 await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'sales'), ($1, 'assistant')`, [dep]);
 
+// A background task that has already asked Ольга a question («Ждёт подтверждения»).
+await t.background.createTask({ id: 'morning', title: 'Утренняя сводка', agentId: 'sales', ownerUserId: olga, cron: '0 9 * * *', prompt: 'Напиши письмо клиенту со сводкой по сделкам' });
+await t.background.runTask('morning', 'manual');
+
 const server = serve({ fetch: t.app.fetch, port: PORT }, () => {
   console.log(`stand: server on :${PORT}; sign in as olga@example.com or igor@example.com, password ${TEST_PASSWORD}`);
 });

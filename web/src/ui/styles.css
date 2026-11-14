@@ -565,3 +565,95 @@ label {
 .genui-form-field label {
   margin: 0;
 }
+
+/* Approvals and settings */
+.muted {
+  color: var(--bba-muted);
+}
+
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.failure {
+  color: var(--bba-error-text);
+}
+
+.submenu {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--bba-border);
+}
+
+.submenu a {
+  padding: 0.4rem 0;
+  text-decoration: none;
+  color: var(--bba-muted);
+}
+
+.submenu a.active {
+  color: var(--bba-text);
+  border-bottom: 2px solid var(--bba-accent);
+}
+
+.settings-panel {
+  max-width: 720px;
+}
+
+.row-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.memory-text {
+  white-space: pre-wrap;
+  background: var(--bba-surface);
+  border: 1px solid var(--bba-border);
+  border-radius: var(--bba-radius);
+  padding: 0.75rem 1rem;
+}
+
+progress {
+  width: 100%;
+  max-width: 420px;
+}
+
+.connection {
+  background: var(--bba-surface);
+  border: 1px solid var(--bba-border);
+  border-radius: var(--bba-radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.connection-head {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: var(--bba-muted);
+}
+
+.status-connected {
+  color: var(--bba-ok-text);
+}
+
+.status-auth_error {
+  color: var(--bba-error-text);
+}

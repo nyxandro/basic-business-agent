@@ -7,6 +7,11 @@ import { ChatPage } from '../chat/ChatPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { AppLayout } from '../layout/AppLayout.tsx';
+import { ApprovalsPage } from '../approvals/ApprovalsPage.tsx';
+import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
+import { MemoryPage } from '../settings/MemoryPage.tsx';
+import { SettingsLayout } from '../settings/SettingsLayout.tsx';
+import { UsagePage } from '../settings/UsagePage.tsx';
 
 // The CopilotKit runtime of the server (core/chat/copilot.ts); the session cookie goes with it.
 export const COPILOT_RUNTIME_URL = '/app/api/copilotkit';
@@ -34,6 +39,13 @@ export function App() {
         >
           <Route index element={<AgentsPage />} />
           <Route path="agents/:agentId" element={<ChatPage />} />
+          <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="settings" element={<SettingsLayout />}>
+            <Route index element={<Navigate to="memory" replace />} />
+            <Route path="memory" element={<MemoryPage />} />
+            <Route path="usage" element={<UsagePage />} />
+            <Route path="connections" element={<ConnectionsPage />} />
+          </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

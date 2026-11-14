@@ -1,5 +1,6 @@
 // Spend for the employee («Настройки → Мои расходы», F5) and for the admin («Расходы»),
 // read from our ledger app.usage_events (spec, section 8.1), never from LiteLLM's own tables.
+import type { MyUsage } from '@bba/contracts';
 import type { ModelConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 import { effectiveUserLimits, getLimitSettings } from '../models/limits.ts';
@@ -7,10 +8,8 @@ import { todaySubscriptionTokens } from '../models/usage.ts';
 
 export type UsageGroup = 'user' | 'agent' | 'model' | 'deployment';
 
-export interface EmployeeUsage {
-  month: { spentRub: number; limitRub: number | null; resetsOn: string };
-  daily: { usedTokens: number; capTokens: number } | null;
-}
+// The shape is read by the web interface («Мои расходы»).
+export type EmployeeUsage = MyUsage;
 
 export interface UsageRow {
   key: string;

@@ -58,7 +58,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerUsageRoutes(app, { db: deps.db, catalog: deps.gateway.catalog, ledgerSecret: deps.ledgerSecret });
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
-  registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background });
+  registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, catalog: deps.gateway.catalog, timezone: deps.timezone });
   return app;
