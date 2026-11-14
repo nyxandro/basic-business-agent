@@ -90,7 +90,8 @@
   "litellm_settings": {
     "timezone": "Europe/Moscow",
     "callbacks": [
-      "bba_ledger"
+      "bba_ledger",
+      "bba_account_events"
     ],
     "always_include_stream_usage": true,
     "turn_off_message_logging": true
@@ -102,6 +103,17 @@
       "log_format": "single",
       "event_types": [
         "llm_api_success"
+      ],
+      "headers": {
+        "Authorization": "os.environ/LITELLM_CALLBACK_AUTHORIZATION"
+      }
+    },
+    "bba_account_events": {
+      "callback_type": "generic_api",
+      "endpoint": "http://host.docker.internal:39999/app/api/internal/account-events",
+      "log_format": "single",
+      "event_types": [
+        "llm_api_failure"
       ],
       "headers": {
         "Authorization": "os.environ/LITELLM_CALLBACK_AUTHORIZATION"

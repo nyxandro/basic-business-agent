@@ -19,7 +19,7 @@ services:
         condition: service_healthy
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.108.4
+    image: ghcr.io/berriai/litellm:v1.109.1@sha256:11175975a3093e05e92faee2fe2fe3412a3ae2fcaa849eb0fe25d5f0d8bcb2e9
     command: ["--config", "/app/config.json", "--port", "4000"]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
@@ -29,6 +29,9 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in .env}
     volumes:
       - ./litellm/config.json:/app/config.json:ro
+      # Login files of the ChatGPT accounts: the server on this machine writes them, LiteLLM reads
+      # them and writes refreshed tokens back (pnpm dev:stack creates the folder first).
+      - ${APP_CHATGPT_AUTH_DIR:?set APP_CHATGPT_AUTH_DIR in .env}:/chatgpt-auth
     ports:
       - "127.0.0.1:${LITELLM_PORT:?set LITELLM_PORT in .env}:4000"
     # In development the server runs on this machine; LiteLLM reports usage to it through the host.

@@ -34,10 +34,13 @@ services:
       LITELLM_CALLBACK_URL: http://app:3000/app/api/internal/usage
     volumes:
       - litellm-config:/app/deploy/litellm
+      # Mounted here first, so the new volume takes the app's ownership of /chatgpt-auth from the
+      # image: LiteLLM, which starts next, would create it owned by root and the app could not write.
+      - chatgpt-auth:/chatgpt-auth
     restart: "no"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.108.4
+    image: ghcr.io/berriai/litellm:v1.109.1@sha256:11175975a3093e05e92faee2fe2fe3412a3ae2fcaa849eb0fe25d5f0d8bcb2e9
     command: ["--config", "/config/config.json", "--port", "4000"]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in deploy/.env}
@@ -47,6 +50,8 @@ services:
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in deploy/.env}
     volumes:
       - litellm-config:/config:ro
+      # Login files of the ChatGPT accounts: the app writes them, LiteLLM refreshes tokens in them.
+      - chatgpt-auth:/chatgpt-auth
     depends_on:
       db:
         condition: service_healthy
@@ -79,8 +84,10 @@ services:
       APP_WORKSPACE_DIR: /workspace
       # Unpacked copies of uploaded skills; the archives are in the database, so no volume is needed.
       APP_SKILLS_DIR: /app/skills-unpacked
+      APP_CHATGPT_AUTH_DIR: /chatgpt-auth
     volumes:
       - workspace:/workspace
+      - chatgpt-auth:/chatgpt-auth
     # bubblewrap isolates skill scripts with user namespaces: Docker's default seccomp profile plus
     # the 7 calls of the isolation (tooling/seccomp/build-profile.ts). No extra capabilities.
     security_opt:
@@ -121,4 +128,5 @@ volumes:
   db-data:
   workspace:
   litellm-config:
+  chatgpt-auth:
   caddy-data:

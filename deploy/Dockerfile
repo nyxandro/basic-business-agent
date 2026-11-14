@@ -42,10 +42,12 @@ COPY --from=app-deps /src/node_modules node_modules
 COPY --from=app-deps /src/contracts/node_modules contracts/node_modules
 COPY . .
 # The code belongs to root and cannot be changed by the app; the app writes only the employees'
-# workspaces, the unpacked skills and the generated LiteLLM config (compose: one-shot service litellm-config).
+# workspaces, the unpacked skills, the generated LiteLLM config (compose: one-shot service litellm-config)
+# and the login files of the ChatGPT accounts.
 RUN useradd --system --create-home --uid 10001 app \
-  && mkdir -p /workspace /app/deploy/litellm /app/skills-unpacked \
-  && chown app /workspace /app/deploy/litellm /app/skills-unpacked
+  && mkdir -p /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth \
+  && chown app /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth \
+  && chmod 700 /chatgpt-auth
 ENV NODE_ENV=production
 USER app
 EXPOSE 3000

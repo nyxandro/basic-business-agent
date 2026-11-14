@@ -34,7 +34,8 @@ const logSchema = z.object({
     .nullish(),
 });
 
-function toDate(start: number | string): Date {
+// LiteLLM's startTime: seconds since 1970 with a fraction, or an ISO date.
+export function toLedgerDate(start: number | string): Date {
   return typeof start === 'number' ? new Date(start * 1000) : new Date(start);
 }
 
@@ -56,7 +57,7 @@ export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
                COALESCE((SELECT m.connection = 'chatgpt' FROM app.models m WHERE m.id = $5), false),
                $7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (litellm_call_id) DO NOTHING`,
       [
-        toDate(r.startTime),
+        toLedgerDate(r.startTime),
         r.metadata?.user_api_key_user_id ?? null,
         r.metadata?.user_api_key_team_id ?? null,
         typeof agentHeader === 'string' ? agentHeader : null,

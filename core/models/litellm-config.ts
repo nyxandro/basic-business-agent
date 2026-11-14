@@ -1,8 +1,11 @@
-// LiteLLM configuration of an installation (spec, section 8.1): how it reports usage, routes over a
-// pool and where it keeps models. Models are not in the file: the server puts the admin's models
-// into LiteLLM's database (store_model_in_db), see gateway-sync.ts.
+// LiteLLM configuration of an installation (spec, section 8.1): how it reports usage and failed
+// attempts, routes over a pool and where it keeps models. Models are not in the file: the server
+// puts the admin's models into LiteLLM's database (store_model_in_db), see gateway-sync.ts.
 export const LEDGER_CALLBACK_NAME = 'bba_ledger';
-const COOLDOWN_SECONDS = 60;
+// Every failed attempt of a deployment (each retry too), for the states of the ChatGPT accounts.
+export const ACCOUNT_EVENTS_CALLBACK_NAME = 'bba_account_events';
+// How long LiteLLM skips a deployment it cooled down; the account states show it as «вернётся в …».
+export const COOLDOWN_SECONDS = 60;
 // One retry moves a failed request to another account of the same pool (verified transient:
 // a revoked or rate-limited account); LiteLLM logs it, so the retry is observable.
 const POOL_RETRIES = 1;
@@ -17,8 +20,17 @@ export interface StaticDeployment {
 
 export interface LiteLLMConfigOptions {
   timezone: string;
+  // POST /app/api/internal/usage of the server, as LiteLLM reaches it.
   callbackUrl: string;
   staticDeployments: StaticDeployment[];
+}
+
+const USAGE_PATH = '/app/api/internal/usage';
+
+// Failed attempts go next to the usage records: /app/api/internal/account-events.
+export function accountEventsUrlOf(usageUrl: string): string {
+  if (!usageUrl.endsWith(USAGE_PATH)) throw new Error(`APP_CONFIG_INVALID: .env: LITELLM_CALLBACK_URL: must end with ${USAGE_PATH}`);
+  return `${usageUrl.slice(0, -USAGE_PATH.length)}/app/api/internal/account-events`;
 }
 
 export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, unknown> {
@@ -28,7 +40,7 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
       : {}),
     litellm_settings: {
       timezone: opts.timezone,
-      callbacks: [LEDGER_CALLBACK_NAME],
+      callbacks: [LEDGER_CALLBACK_NAME, ACCOUNT_EVENTS_CALLBACK_NAME],
       always_include_stream_usage: true,
       turn_off_message_logging: true,
     },
@@ -38,6 +50,13 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
         endpoint: opts.callbackUrl,
         log_format: 'single',
         event_types: ['llm_api_success'],
+        headers: { Authorization: 'os.environ/LITELLM_CALLBACK_AUTHORIZATION' },
+      },
+      [ACCOUNT_EVENTS_CALLBACK_NAME]: {
+        callback_type: 'generic_api',
+        endpoint: accountEventsUrlOf(opts.callbackUrl),
+        log_format: 'single',
+        event_types: ['llm_api_failure'],
         headers: { Authorization: 'os.environ/LITELLM_CALLBACK_AUTHORIZATION' },
       },
     },
