@@ -3,6 +3,7 @@
 import { CopilotKit } from '@copilotkit/react-core';
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router';
+import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { ApprovalsPage } from '../approvals/ApprovalsPage.tsx';
 import { LoginPage } from '../auth/LoginPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
@@ -27,50 +28,52 @@ export function App() {
       <ToastProvider>
         <ConfirmProvider>
         <SessionProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/invite/:token" element={<PasswordLinkPage kind="invite" />} />
-            <Route path="/reset/:token" element={<PasswordLinkPage kind="reset" />} />
-            <Route
-              element={
-                <RequireAuth>
-                  <CopilotKit {...COPILOT_OPTIONS}>
-                    <Outlet />
-                  </CopilotKit>
-                </RequireAuth>
-              }
-            >
-              {/* The admin panel has its own frame (mockup «Админка»). */}
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/invite/:token" element={<PasswordLinkPage kind="invite" />} />
+              <Route path="/reset/:token" element={<PasswordLinkPage kind="reset" />} />
               <Route
-                path="admin/*"
                 element={
-                  <Suspense fallback={<Skeleton rows={4} />}>
-                    <AdminRoutes />
-                  </Suspense>
+                  <RequireAuth>
+                    <CopilotKit {...COPILOT_OPTIONS}>
+                      <Outlet />
+                    </CopilotKit>
+                  </RequireAuth>
                 }
-              />
-              <Route element={<AppShell />}>
-                <Route index element={<Home />} />
-                <Route path="agents/:agentId" element={<ChatPage />} />
+              >
+                {/* The admin panel has its own frame (mockup «Админка»). */}
                 <Route
-                  path="projects/:projectId"
+                  path="admin/*"
                   element={
                     <Suspense fallback={<Skeleton rows={4} />}>
-                      <ProjectPage />
+                      <AdminRoutes />
                     </Suspense>
                   }
                 />
-                <Route path="approvals" element={<ApprovalsPage />} />
-                <Route path="settings">
-                  <Route index element={<Navigate to="memory" replace />} />
-                  <Route path="memory" element={<MemoryPage />} />
-                  <Route path="usage" element={<UsagePage />} />
-                  <Route path="connections" element={<ConnectionsPage />} />
+                <Route element={<AppShell />}>
+                  <Route index element={<Home />} />
+                  <Route path="agents/:agentId" element={<ChatPage />} />
+                  <Route
+                    path="projects/:projectId"
+                    element={
+                      <Suspense fallback={<Skeleton rows={4} />}>
+                        <ProjectPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route path="approvals" element={<ApprovalsPage />} />
+                  <Route path="settings">
+                    <Route index element={<Navigate to="memory" replace />} />
+                    <Route path="memory" element={<MemoryPage />} />
+                    <Route path="usage" element={<UsagePage />} />
+                    <Route path="connections" element={<ConnectionsPage />} />
+                  </Route>
                 </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </SessionProvider>
         </ConfirmProvider>
       </ToastProvider>

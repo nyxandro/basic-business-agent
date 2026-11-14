@@ -5,10 +5,14 @@ import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { COPILOT_OPTIONS } from '../app/copilot.ts';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
-import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { Card, PageHead } from '../ui/Display.tsx';
+import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
+import { Icon } from '../ui/Icon.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import styles from './agents.module.css';
 import { adminApi } from './api.ts';
+import section from './section.module.css';
 
 // The server serves the draft version when this header comes with the CopilotKit requests.
 const DRAFT_HEADERS = { 'x-bba-draft': '1' };
@@ -24,16 +28,24 @@ export function DraftCheckPage() {
   if (state.status === 'loading') return <Skeleton rows={3} />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
   const agent = state.data.agents.find((a) => a.id === agentId);
-  if (!agent) return <p className="banner banner-error">Этот агент больше не доступен.</p>;
+  if (!agent) return <Notice>Этот агент больше не доступен.</Notice>;
   return (
-    <div>
-      <h1>Проверка черновика: {agent.name}</h1>
-      <p className="muted">
-        Отвечает сохранённый черновик промпта. <Link to="/admin/agents">Вернуться к агентам</Link>
-      </p>
-      <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
-        <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: [], actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
-      </CopilotKit>
+    <div className={section.stack}>
+      <PageHead
+        title={`Проверка черновика: ${agent.name}`}
+        lead="Отвечает сохранённый черновик промпта. Расход идёт на вас, у проверки своя память."
+        actions={
+          <Link to="/admin/agents" className={styles.check}>
+            <Icon name="back" size={16} />
+            Вернуться к агентам
+          </Link>
+        }
+      />
+      <Card className={styles.checkChat}>
+        <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
+          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
+        </CopilotKit>
+      </Card>
     </div>
   );
 }

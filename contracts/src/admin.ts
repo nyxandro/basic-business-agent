@@ -100,6 +100,13 @@ export interface AdminAgent {
   description: string;
   // The agent's own model from the catalog; null — the organisation's model.
   modelId: string | null;
+  // Departments that see the agent.
+  departmentNames: string[];
+  // Starter questions of the empty chat: the admin's when set (startersCustom), else the passport's.
+  starters: string[];
+  startersCustom: boolean;
+  // A version of the prompt edited in the admin panel is in use.
+  promptChanged: boolean;
 }
 
 export interface AdminAgentsResponse {
@@ -118,7 +125,8 @@ export interface PromptState {
   publishedAt: string | null;
   fileChangedSincePublish: boolean;
   modelId: string | null;
-  allowedModels: string[];
+  // Chat models an agent may take while «Агенты выбирают модель из каталога» is on; else empty.
+  allowedModels: { id: string; label: string }[];
 }
 
 export const USAGE_GROUPS = ['user', 'agent', 'model', 'deployment'] as const;

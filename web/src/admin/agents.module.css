@@ -1,0 +1,213 @@
+/* «Агенты и промпты» (mockup). */
+.layout {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.list {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agentItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.agent:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.agentOn {
+  border-color: var(--acc);
+}
+
+.agentHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.agentText {
+  min-width: 0;
+}
+
+.agentName {
+  display: block;
+  font-weight: 600;
+}
+
+.agentDepts {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.panel {
+  flex: 999 1 560px;
+  min-width: 0;
+}
+
+.editor {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editorHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editorTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.layersTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.layers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.layer,
+.layerOn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.layerOn {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+.arrow {
+  color: var(--muted);
+}
+
+.prompt {
+  background: var(--surface2);
+  line-height: 1.6;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.starters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inline {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.fill {
+  flex: 1;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.check:hover {
+  background: var(--hover);
+}
+
+.missing {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bad-soft);
+  color: var(--text);
+}
+
+.stopped {
+  padding: 16px 18px;
+}
+
+.stoppedTitle {
+  font-weight: 600;
+}
+
+.stoppedList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.checkChat {
+  height: calc(100dvh - 220px);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

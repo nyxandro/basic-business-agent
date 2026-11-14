@@ -9,6 +9,7 @@ import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { SearchDialog } from '../search/SearchDialog.tsx';
 import { fetchMyUsage } from '../settings/api.ts';
+import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { Notice } from '../ui/ErrorBanner.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { MODELS_PATH } from './EmptyInstallation.tsx';
@@ -78,6 +79,7 @@ export function AppShell() {
   // The layout sits above the chat route, so the agent comes from the address itself.
   const agentId = useMatch('/agents/:agentId')?.params.agentId;
   const [params] = useSearchParams();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
 
   const agents: AgentsState =
@@ -119,7 +121,10 @@ export function AppShell() {
         {wide ? <Sidebar {...sidebar} onNavigate={closeMenu} /> : <MobileDrawer {...sidebar} open={menuOpen} onClose={closeMenu} />}
         <main className={styles.main}>
           <ForbiddenNotice />
-          <Outlet context={context} />
+          {/* A screen that fails to draw shows its message; the panel stays, the next screen starts clean. */}
+          <ErrorBoundary key={pathname}>
+            <Outlet context={context} />
+          </ErrorBoundary>
         </main>
       </div>
       <SearchDialog open={searchOpen} wide={wide} onClose={() => setSearchOpen(false)} />

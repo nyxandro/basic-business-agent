@@ -52,6 +52,31 @@ describe('stage 2 additions', () => {
     expect(await starters()).toEqual(['Покажи мои сделки']);
   });
 
+  it('lists the agents for the admin with their departments, starters and a mark of an edited prompt', async () => {
+    type Agent = { id: string; departmentNames: string[]; starters: string[]; startersCustom: boolean; promptChanged: boolean };
+    const sales = async () => (await json<{ agents: Agent[] }>(await t.call('GET', '/app/api/admin/agents', { cookie: admin }))).agents.find((a) => a.id === 'sales')!;
+    expect(await sales()).toMatchObject({ departmentNames: ['Продажи'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: false });
+    await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['Сводка за неделю'] } });
+    const draft = await json<{ draftVersionId: string }>(await t.call('PUT', '/app/api/admin/agents/sales/prompt/draft', { cookie: admin, body: { text: 'Ты агент продаж. Кратко.', baseDraftVersionId: null } }));
+    expect(draft.draftVersionId).toBeTruthy();
+    await t.call('POST', '/app/api/admin/agents/sales/prompt/publish', { cookie: admin, body: {} });
+    expect(await sales()).toMatchObject({ starters: ['Сводка за неделю'], startersCustom: true, promptChanged: true });
+    await t.call('POST', '/app/api/admin/agents/sales/prompt/revert', { cookie: admin, body: {} });
+    await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: null } });
+  });
+
+  it('offers the agent’s model by names, only while agents may choose', async () => {
+    type Prompt = { allowedModels: { id: string; label: string }[] };
+    const prompt = async () => json<Prompt>(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }));
+    await t.db.query('UPDATE app.model_settings SET agents_choose_model = false');
+    expect((await prompt()).allowedModels).toEqual([]);
+    await t.db.query('UPDATE app.model_settings SET agents_choose_model = true');
+    const allowed = (await prompt()).allowedModels;
+    expect(allowed.length).toBeGreaterThan(0);
+    expect(allowed[0]).toEqual({ id: expect.any(String), label: expect.any(String) });
+    await t.db.query('UPDATE app.model_settings SET agents_choose_model = false');
+  });
+
   it('names an action and the fields of its card from the tool’s description, and keeps them with a task’s question', async () => {
     const sales = (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!;
     expect(sales.actions.mail_send).toEqual({ title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false });

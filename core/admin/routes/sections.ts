@@ -58,12 +58,29 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
 
   const agents = requirePermission('agents');
   app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments'), async (c) => {
-    const { rows } = await db.query<{ agent_id: string }>('SELECT DISTINCT agent_id FROM app.department_agents ORDER BY agent_id');
-    const own = await db.query<{ agent_id: string; model_id: string }>('SELECT agent_id, model_id FROM app.agent_overrides WHERE model_id IS NOT NULL');
-    const ownModel = new Map(own.rows.map((r) => [r.agent_id, r.model_id]));
+    const { rows } = await db.query<{ agent_id: string; names: string[] }>(
+      'SELECT da.agent_id, array_agg(d.name ORDER BY d.name) AS names FROM app.department_agents da JOIN app.departments d ON d.id = da.department_id GROUP BY da.agent_id ORDER BY da.agent_id',
+    );
+    const departments = new Map(rows.map((r) => [r.agent_id, r.names]));
+    const own = await db.query<{ agent_id: string; model_id: string | null; starters: string[] | null; published_version_id: string | null }>(
+      'SELECT agent_id, model_id, starters, published_version_id FROM app.agent_overrides',
+    );
+    const override = new Map(own.rows.map((r) => [r.agent_id, r]));
     const known = deps.registry.ids();
     return c.json({
-      agents: deps.registry.agents.map((a) => ({ id: a.passport.id, name: a.passport.name, description: a.passport.description, modelId: ownModel.get(a.passport.id) ?? null })),
+      agents: deps.registry.agents.map((a) => {
+        const o = override.get(a.passport.id);
+        return {
+          id: a.passport.id,
+          name: a.passport.name,
+          description: a.passport.description,
+          modelId: o?.model_id ?? null,
+          departmentNames: departments.get(a.passport.id) ?? [],
+          starters: o?.starters ?? a.passport.starters,
+          startersCustom: o?.starters !== null && o?.starters !== undefined,
+          promptChanged: Boolean(o?.published_version_id),
+        };
+      }),
       // Departments still pointing at agents removed from the installation (spec, section 10).
       missingAgents: rows.map((r) => r.agent_id).filter((id) => !known.has(id)),
     });

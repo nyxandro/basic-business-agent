@@ -167,16 +167,16 @@ export async function revertToFile(deps: EditorDeps, actorUserId: string, agentI
 
 // Models an agent may get as its own: enabled chat models of the catalog, while «Агенты выбирают
 // модель из каталога» is on (spec, section 8.1).
-async function choosableModels(db: Db): Promise<string[]> {
-  const { rows } = await db.query<{ id: string }>(
-    `SELECT m.id FROM app.models m, app.model_settings s WHERE s.agents_choose_model AND m.kind = 'chat' AND m.enabled ORDER BY m.label, m.id`,
+async function choosableModels(db: Db): Promise<{ id: string; label: string }[]> {
+  const { rows } = await db.query<{ id: string; label: string }>(
+    `SELECT m.id, m.label FROM app.models m, app.model_settings s WHERE s.agents_choose_model AND m.kind = 'chat' AND m.enabled ORDER BY m.label, m.id`,
   );
-  return rows.map((r) => r.id);
+  return rows;
 }
 
 export async function setAgentModel(deps: EditorDeps, actorUserId: string, agentId: string, modelId: string | null): Promise<void> {
   runtimeOf(deps, agentId);
-  if (modelId !== null && !(await choosableModels(deps.db)).includes(modelId)) {
+  if (modelId !== null && !(await choosableModels(deps.db)).some((m) => m.id === modelId)) {
     throw appError('APP_VALIDATION_FAILED', `model ${modelId} is not a choosable chat model for agent ${agentId}`, {
       details: { field: 'modelId' },
       userMessage: 'Эту модель нельзя выбрать агенту: включите «Агенты выбирают модель из каталога» и выберите включённую модель чата.',

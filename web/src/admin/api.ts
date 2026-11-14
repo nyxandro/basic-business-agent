@@ -65,6 +65,7 @@ export const adminApi = {
   publish: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/publish`, {}),
   revert: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/revert`, {}),
   setModel: (agentId: string, modelId: string | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/model`, { modelId }),
+  setStarters: (agentId: string, starters: string[] | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/starters`, { starters }),
   tasks: () => api<{ tasks: AdminTask[] }>('GET', `${A}/tasks`),
 
   orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),

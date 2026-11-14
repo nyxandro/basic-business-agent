@@ -8,6 +8,7 @@ import { useMe } from '../auth/session.tsx';
 import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Avatar } from '../ui/Display.tsx';
+import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { useTheme } from '../ui/theme/ThemeProvider.tsx';
 import styles from './admin.module.css';
@@ -117,7 +118,9 @@ export function AdminLayout() {
       <main className={cx(styles.main, 'scroll-thin')}>
         {/* A new section starts from its top. */}
         <div key={pathname} className={styles.content}>
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>
