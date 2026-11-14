@@ -105,6 +105,13 @@ describe('model gateway', () => {
     expect((await askError(userId, 'test-down')).code).toBe('APP_MODEL_UNAVAILABLE');
   });
 
+  it('recognises a refused provider key in the text of a chat stream error, which has no status', async () => {
+    const userId = await t.createUser({ email: 'auth@example.com' });
+    // As it reaches the chat in RUN_ERROR: the AI SDK message of LiteLLM's 401, without the response.
+    const raw = "AI_APICallError: litellm.AuthenticationError: AuthenticationError: OpenAIException - Incorrect API key provided: sk-x*****. LiteLLM: model group 'main' failed with the error above.";
+    expect((await t.gateway.translateError(new Error(raw), userId)).code).toBe('APP_MODEL_AUTH_FAILED');
+  });
+
   it('reports an unreachable LiteLLM as the gateway being down', async () => {
     const userId = await t.createUser({ email: 'gateway@example.com' });
     const config = await t.gateway.modelConfig('test-paid', userId, 'sales');

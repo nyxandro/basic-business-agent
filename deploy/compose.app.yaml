@@ -1,0 +1,43 @@
+# LiteLLM of the installation for development, on top of compose.dev.yaml (pnpm dev / pnpm dev:stack):
+# the models of config/models.ts (pnpm models:config writes deploy/litellm/config.json), provider
+# keys from .env. Kept apart so that tests (pnpm dev:db) do not need provider keys.
+# Its own database litellm_dev on the development server: checks inside LiteLLM's migrations look
+# for constraints across the whole database and trip over the test LiteLLM's schema next door.
+# A deployment has one LiteLLM, so there it uses the schema litellm of the main database.
+services:
+  # Creates the database litellm_dev once; does nothing when it exists.
+  litellm-dev-db:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    command: ["sh", "-c", "psql -tAc \"SELECT 1 FROM pg_database WHERE datname = 'litellm_dev'\" | grep -q 1 || psql -c 'CREATE DATABASE litellm_dev'"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.108.4
+    command: ["--config", "/app/config.json", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      LITELLM_CALLBACK_AUTHORIZATION: Bearer ${LITELLM_CALLBACK_SECRET:?set LITELLM_CALLBACK_SECRET in .env}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/litellm_dev
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env — the key of the provider in config/models.ts}
+    volumes:
+      - ./litellm/config.json:/app/config.json:ro
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:?set LITELLM_PORT in .env}:4000"
+    # In development the server runs on this machine; LiteLLM reports usage to it through the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      litellm-dev-db:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]
+      interval: 3s
+      timeout: 3s
+      retries: 60

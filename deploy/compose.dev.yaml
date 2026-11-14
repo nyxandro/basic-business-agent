@@ -1,5 +1,6 @@
 # Development stand on the developer's machine: the database and a LiteLLM with mock models for tests.
 # Start: pnpm dev:db. Values come from .env in the repository root (see .env.example).
+# `pnpm dev` adds compose.app.yaml: the LiteLLM of the installation with real models.
 name: bba-dev
 
 services:

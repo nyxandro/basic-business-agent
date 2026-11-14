@@ -183,7 +183,9 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
         return appError('APP_MODEL_CONTEXT_EXCEEDED', text.slice(0, 300), { cause: error });
       }
       if (status === 429 || /rate.?limit|too many requests|\b429\b/i.test(text)) return appError('APP_MODEL_RATE_LIMITED', text.slice(0, 300), { cause: error });
-      if (status === 401 || status === 403) return appError('APP_MODEL_AUTH_FAILED', text.slice(0, 300), { cause: error });
+      // In the chat stream the error arrives as text only: LiteLLM names the provider's refusal of the key.
+      const keyRefused = /authenticationerror|authentication_error|permissiondeniederror|incorrect api key|invalid api key/.test(lower);
+      if (status === 401 || status === 403 || keyRefused) return appError('APP_MODEL_AUTH_FAILED', text.slice(0, 300), { cause: error });
       return appError('APP_MODEL_UNAVAILABLE', `model call failed (${status ?? 'no status'}): ${text.slice(0, 300)}`, { cause: error });
     },
 

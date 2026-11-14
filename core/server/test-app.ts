@@ -90,6 +90,9 @@ export async function createTestApp(
     modelFallback?: (req: FakeRequest) => FakeTurn;
     // Gives the test agent "assistant" a sub-agent "mailer" that sends letters (needs "Да").
     assistantSubagent?: boolean;
+    // A real installation instead of the test agents (e.g. the demo of the repository); its plugin
+    // migrations are applied to the test database.
+    registry?: (db: Db) => Promise<Registry>;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -127,14 +130,17 @@ export async function createTestApp(
   const assistant = testAgent('assistant', 'Помощник', {});
   if (opts.assistantSubagent) assistant.subagents = [testAgent('mailer', 'Почтальон', { mail_send: salesTools.mail_send })];
   const agents = [testAgent('sales', 'Продажи', salesTools), assistant].filter((a) => known.has(a.passport.id));
-  const registry: Registry = {
-    agents,
-    get: (id) => agents.find((a) => a.passport.id === id),
-    ids: () => new Set(agents.map((a) => a.passport.id)),
-    pluginMigrations: [],
-    connectors: opts.connectors ?? [],
-    triggers: [],
-  };
+  const registry: Registry = opts.registry
+    ? await opts.registry(db)
+    : {
+        agents,
+        get: (id) => agents.find((a) => a.passport.id === id),
+        ids: () => new Set(agents.map((a) => a.passport.id)),
+        pluginMigrations: [],
+        connectors: opts.connectors ?? [],
+        triggers: [],
+      };
+  if (registry.pluginMigrations.length > 0) await migrate(database.url, undefined, registry.pluginMigrations);
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const memory = createMemory(storage);
   const fakeGateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
@@ -155,7 +161,7 @@ export async function createTestApp(
   backgroundRef.current = background;
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => known, gateway, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
