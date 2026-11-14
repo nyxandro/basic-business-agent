@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { GENUI_TOOL_IDS } from '@bba/contracts';
-import { agentPassportSchema, type AgentPassport, type ModelConfig } from '../config/schemas.ts';
+import { agentPassportSchema, type AgentPassport } from '../config/schemas.ts';
 import { configError, formatPath, type ConfigProblem, type Installation } from '../config/validate.ts';
 import type { MigrationSource } from '../db/migrate.ts';
 import type { Db } from '../db/pool.ts';
@@ -90,7 +90,6 @@ async function loadAgentTools(dir: string, file: string, problems: ConfigProblem
 export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   const { root, installation, env, db } = deps;
   const problems: ConfigProblem[] = [];
-  const modelIds = new Set(installation.models.map((m: ModelConfig) => m.id));
 
   const pluginTools = new Map<string, Record<string, AnyTool>>();
   const pluginTitles = new Map<string, string>();
@@ -179,7 +178,6 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
         problems.push(...parsed.error.issues.map((i) => ({ file, field: formatPath(i.path) || '(file)', message: i.message })));
         continue;
       }
-      if (!modelIds.has(parsed.data.model)) problems.push({ file, field: 'model', message: `"${parsed.data.model}" is not in config/models.ts` });
       const instructionsPath = join(dir, 'instructions.md');
       const instructions = existsSync(instructionsPath) ? readFileSync(instructionsPath, 'utf8') : '';
       if (!instructions.trim()) problems.push({ file: file.replace(/agent\.ts$/, 'instructions.md'), field: '(file)', message: 'is missing or empty' });

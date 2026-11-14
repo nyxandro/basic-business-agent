@@ -1,7 +1,6 @@
 // The model gateway as the rest of the core sees it (spec, section 8.1):
 // every call goes to LiteLLM with the employee's own virtual key, so LiteLLM counts spend per
 // employee and per organisation and refuses calls past the monthly budgets before the model runs.
-import type { ModelConfig } from '../config/schemas.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { inTransaction } from '../db/pool.ts';
@@ -9,7 +8,7 @@ import type { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { LiteLLMClient } from './litellm-client.ts';
 import { effectiveUserLimits, getLimitSettings } from './limits.ts';
-import { AGENT_HEADER, todaySubscriptionTokens } from './usage.ts';
+import { AGENT_HEADER } from './usage.ts';
 
 export interface ModelCallConfig {
   providerId: string;
@@ -20,9 +19,8 @@ export interface ModelCallConfig {
 }
 
 export interface ModelGateway {
-  catalog: ModelConfig[];
+  // The call of a model chosen by resolve.ts, on the employee's own key.
   modelConfig(modelId: string, userId: string, agentId: string): Promise<ModelCallConfig>;
-  assertCanCall(userId: string, modelId: string): Promise<void>;
   // Monthly limits by our own ledger: checked before an approved action runs (spec, section 8.4).
   assertWithinBudget(userId: string): Promise<void>;
   translateError(error: unknown, userId: string): Promise<AppError>;
@@ -37,7 +35,6 @@ export interface GatewayDeps {
   db: Db;
   client: LiteLLMClient;
   box: SecretBox;
-  catalog: ModelConfig[];
   timezone: string;
 }
 
@@ -74,8 +71,7 @@ function formatResetDate(date: Date | null, timezone: string): string {
 }
 
 export function createModelGateway(deps: GatewayDeps): ModelGateway {
-  const { db, client, box, catalog, timezone } = deps;
-  const byId = new Map(catalog.map((m) => [m.id, m]));
+  const { db, client, box, timezone } = deps;
 
   async function storedKey(userId: string): Promise<string | null> {
     const { rows } = await db.query<{ c: Buffer; iv: Buffer; v: number }>(
@@ -107,9 +103,7 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
   }
 
   return {
-    catalog,
     async modelConfig(modelId, userId, agentId) {
-      if (!byId.has(modelId)) throw new Error(`APP_CONFIG_INVALID: model "${modelId}" is not in config/models.ts`);
       return {
         providerId: PROVIDER_ID,
         modelId,
@@ -117,16 +111,6 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
         apiKey: await userKey(userId),
         headers: { [AGENT_HEADER]: agentId },
       };
-    },
-
-    async assertCanCall(userId, modelId) {
-      if (!byId.get(modelId)?.subscription) return;
-      const { dailySubscriptionTokens } = await effectiveUserLimits(db, userId);
-      if (dailySubscriptionTokens === null) return;
-      const used = await todaySubscriptionTokens(db, userId, timezone);
-      if (used >= dailySubscriptionTokens) {
-        throw appError('APP_USAGE_DAILY_CAP_EXCEEDED', `daily subscription cap reached: ${used} >= ${dailySubscriptionTokens} tokens`);
-      }
     },
 
     async assertWithinBudget(userId) {

@@ -1,7 +1,6 @@
 // Spend for the employee («Настройки → Мои расходы», F5) and for the admin («Расходы»),
 // read from our ledger app.usage_events (spec, section 8.1), never from LiteLLM's own tables.
 import type { MyUsage, UsageGroup, UsageRow } from '@bba/contracts';
-import type { ModelConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 import { effectiveUserLimits, getLimitSettings } from '../models/limits.ts';
 import { todaySubscriptionTokens } from '../models/usage.ts';
@@ -20,12 +19,13 @@ function nextMonthStart(timezone: string): string {
   return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
-export async function employeeUsage(db: Db, userId: string, timezone: string, catalog: ModelConfig[]): Promise<EmployeeUsage> {
-  const [{ monthlyRub, dailySubscriptionTokens }, spent] = await Promise.all([
+export async function employeeUsage(db: Db, userId: string, timezone: string): Promise<EmployeeUsage> {
+  const [{ monthlyRub, dailySubscriptionTokens }, spent, subscription] = await Promise.all([
     effectiveUserLimits(db, userId),
     db.query<{ s: string }>(`SELECT coalesce(sum(cost_rub), 0) AS s FROM app.usage_events WHERE user_id = $2 AND at >= ${MONTH_START}`, [timezone, userId]),
+    db.query("SELECT 1 FROM app.models WHERE connection = 'chatgpt' AND enabled LIMIT 1"),
   ]);
-  const hasSubscription = catalog.some((m) => m.subscription);
+  const hasSubscription = (subscription.rowCount ?? 0) > 0;
   return {
     month: { spentRub: Number(spent.rows[0]?.s ?? 0), limitRub: monthlyRub, resetsOn: nextMonthStart(timezone) },
     daily: hasSubscription && dailySubscriptionTokens !== null ? { usedTokens: await todaySubscriptionTokens(db, userId, timezone), capTokens: dailySubscriptionTokens } : null,
@@ -36,7 +36,7 @@ const GROUP_COLUMN: Record<UsageGroup, string> = { user: 'e.user_id', agent: 'e.
 
 export async function usageReport(
   db: Db,
-  input: { from: Date; to: Date; groupBy: UsageGroup; agentNames: ReadonlyMap<string, string>; catalog: ModelConfig[] },
+  input: { from: Date; to: Date; groupBy: UsageGroup; agentNames: ReadonlyMap<string, string> },
 ): Promise<{ rows: UsageRow[]; totalRub: number; orgLimitRub: number | null }> {
   const column = GROUP_COLUMN[input.groupBy];
   const { rows } = await db.query<{ key: string | null; user_name: string | null; calls: number; input: string; output: string; cost: string; last: Date | null }>(
@@ -47,7 +47,8 @@ export async function usageReport(
       GROUP BY ${column} ORDER BY sum(e.cost_rub) DESC, count(*) DESC`,
     [input.from, input.to],
   );
-  const modelLabels = new Map(input.catalog.map((m) => [m.id, m.label]));
+  const models = await db.query<{ id: string; label: string }>('SELECT id, label FROM app.models');
+  const modelLabels = new Map(models.rows.map((m) => [m.id, m.label]));
   const label = (key: string | null, userName: string | null): string => {
     if (key === null) return '—';
     if (input.groupBy === 'user') return userName ?? key;

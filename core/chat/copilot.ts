@@ -31,8 +31,8 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
   const contexts = new WeakMap<Request, CopilotRequestContext>();
 
   async function agentFor(agentId: string, run: PreparedRun): Promise<AbstractAgent> {
-    const { agent, modelId } = await resolveAgent(deps.editor, agentId, run.mode);
-    return new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext: requestContextFor(run, modelId) });
+    const agent = await resolveAgent(deps.editor, agentId, run.mode);
+    return new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext: requestContextFor(run) });
   }
 
   const runtime = new CopilotRuntime({
@@ -41,7 +41,7 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
       if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run) };
       const entries = await Promise.all(
-        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null })] as const),
+        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, models: null })] as const),
       );
       return Object.fromEntries(entries);
     },

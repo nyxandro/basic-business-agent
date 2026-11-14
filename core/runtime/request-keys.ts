@@ -4,7 +4,10 @@ export const REQUEST_KEYS = {
   userId: 'bba.userId',
   threadId: 'bba.threadId',
   agentId: 'bba.agentId',
+  // The models chosen by core/models/resolve.ts for this run: the fallback answers when the
+  // primary fails or stays silent.
   modelId: 'bba.modelId',
+  fallbackModelId: 'bba.fallbackModelId',
   runKind: 'bba.runKind',
   taskId: 'bba.taskId',
   // Project of the conversation, when it is in one: the sandbox then works in the project's files.

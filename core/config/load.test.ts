@@ -25,10 +25,9 @@ afterEach(() => {
 
 const BASE = {
   'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: ['passport'] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: 3000, initialDailySubscriptionTokens: null } };`,
-  'config/models.ts': `export default [{ id: 'main', label: 'Основная', subscription: false, prices: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1.25, reasoning: 2, image: 0.5 }, deployments: [{ id: 'd1', litellm: { model: 'openai/x' } }] }];`,
   'config/plugins.ts': `export default { notes: { folder: 'Заметки' } };`,
   'plugins/notes/plugin.ts': `import { z } from 'zod';\nexport default { name: 'notes', title: 'Заметки', settings: z.object({ folder: z.string() }), secrets: [], readOnly: ['list'] };`,
-  'agents/assistant/agent.ts': `export default { id: 'assistant', name: 'Помощник', description: 'Общий помощник', model: 'main', plugins: ['notes'], readOnly: [], starters: [] };`,
+  'agents/assistant/agent.ts': `export default { id: 'assistant', name: 'Помощник', description: 'Общий помощник', plugins: ['notes'], readOnly: [], starters: [] };`,
   'agents/assistant/instructions.md': 'Ты общий помощник.',
 };
 
@@ -38,6 +37,14 @@ describe('loadInstallation', () => {
     expect(inst.agents.map((a) => a.passport.id)).toEqual(['assistant']);
     expect(inst.agents[0]?.instructions).toBe('Ты общий помощник.');
     expect(inst.plugins.map((p) => [p.passport.name, p.settings])).toEqual([['notes', { folder: 'Заметки' }]]);
+  });
+
+  // A copy of an installation updated from stage 1 still has the file; its models would be silently ignored.
+  it('stops on config/models.ts left from stage 1: models are added in «Нейросеть»', async () => {
+    await expect(loadInstallation(installation({ ...BASE, 'config/models.ts': 'export default [];' }), {})).rejects.toMatchObject({
+      code: 'APP_CONFIG_INVALID',
+      details: { problems: [{ file: 'config/models.ts', field: '(file)', message: expect.stringContaining('«Нейросеть»') }] },
+    });
   });
 
   it('reports a missing config file and a file that cannot be loaded', async () => {

@@ -29,7 +29,7 @@ BETTER_AUTH_SECRET=$(random)
 APP_ENCRYPTION_KEYS=1:$(openssl rand -base64 32)
 LITELLM_MASTER_KEY=sk-$(random)
 LITELLM_CALLBACK_SECRET=$(random)
-OPENAI_API_KEY=smoke-check-never-calls-a-model
+LITELLM_SALT_KEY=sk-$(random)
 ENV
 
 compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$HERE/compose.yaml" "$@"; }

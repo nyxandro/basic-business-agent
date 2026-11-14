@@ -22,14 +22,14 @@ services:
     mem_limit: 1536m
     restart: unless-stopped
 
-  # Writes LiteLLM's config from config/models.ts of the image; runs once before LiteLLM starts.
+  # Writes LiteLLM's config (usage callback, routing) from the image; runs once before LiteLLM starts.
   litellm-config:
     image: bba-app:local
     build:
       context: ..
       dockerfile: deploy/Dockerfile
       target: app
-    command: ["node", "core/cli/models-config.ts"]
+    command: ["node", "core/cli/gateway-config.ts"]
     environment:
       LITELLM_CALLBACK_URL: http://app:3000/app/api/internal/usage
     volumes:
@@ -43,7 +43,8 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in deploy/.env}
       LITELLM_CALLBACK_AUTHORIZATION: Bearer ${LITELLM_CALLBACK_SECRET:?set LITELLM_CALLBACK_SECRET in deploy/.env}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=litellm
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in deploy/.env — the key of the provider in config/models.ts}
+      # Encrypts the provider keys LiteLLM keeps in its database; never change it once models are added.
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in deploy/.env}
     volumes:
       - litellm-config:/config:ro
     depends_on:
@@ -51,7 +52,7 @@ services:
         condition: service_healthy
       litellm-config:
         condition: service_completed_successfully
-        # A rebuilt config (models changed in config/models.ts) restarts LiteLLM with it.
+        # A rebuilt config (a new version of the app) restarts LiteLLM with it.
         restart: true
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]

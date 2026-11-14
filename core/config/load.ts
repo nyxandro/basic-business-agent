@@ -34,7 +34,10 @@ export async function loadInstallation(root: string, env: Record<string, string 
   };
 
   const app = await importDefault('config/app.ts');
-  const models = await importDefault('config/models.ts');
+  // Stage 1 kept models in this file; a copy updated since would silently lose them.
+  if (existsSync(join(root, 'config/models.ts'))) {
+    problems.push({ file: 'config/models.ts', field: '(file)', message: 'is no longer read: models and keys are added in «Нейросеть» of the admin panel; add them there and delete the file' });
+  }
   const pluginSettings = await importDefault('config/plugins.ts');
 
   const agents: InstallationSources['agents'] = [];
@@ -50,5 +53,5 @@ export async function loadInstallation(root: string, env: Record<string, string 
   }
 
   if (problems.length > 0) throw configError(problems);
-  return validateInstallation({ app, models, pluginSettings, agents, plugins, env });
+  return validateInstallation({ app, pluginSettings, agents, plugins, env });
 }

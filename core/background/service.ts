@@ -20,6 +20,7 @@ import type { Registry } from '../loader/registry.ts';
 import { ensureThread } from '../memory/memory.ts';
 import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
+import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 
@@ -57,7 +58,7 @@ export interface BackgroundDeps {
   db: Db;
   memory: Memory;
   registry: Registry;
-  gateway: Pick<ModelGateway, 'assertCanCall' | 'assertWithinBudget' | 'translateError'>;
+  gateway: Pick<ModelGateway, 'assertWithinBudget' | 'translateError'>;
   editor: EditorDeps;
   timezone: string;
 }
@@ -104,7 +105,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     logEvent('warn', 'background_task_paused', { taskId: row.id, reason });
   }
 
-  async function contextFor(row: { id: string | null; agent_id: string; thread_id: string }, userId: string, modelId: string | null): Promise<RequestContext> {
+  async function contextFor(row: { id: string | null; agent_id: string; thread_id: string }, userId: string, models: ModelChoice): Promise<RequestContext> {
     const projectId = await projectOfThread(db, userId, row.thread_id);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
@@ -112,7 +113,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, 'background');
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
-    if (modelId) rc.set(REQUEST_KEYS.modelId, modelId);
+    rc.set(REQUEST_KEYS.modelId, models.primary);
+    if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
     if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
     return rc;
   }
@@ -128,11 +130,11 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     const journalBase = { userId, agentId: row.agent_id, runKind: 'background' as const, taskId: row.id };
     try {
       await deps.gateway.assertWithinBudget(userId);
-      const { agent, modelId } = await resolveAgent(deps.editor, row.agent_id, 'published');
-      await deps.gateway.assertCanCall(userId, modelId ?? deps.registry.get(row.agent_id)!.passport.model);
+      const agent = await resolveAgent(deps.editor, row.agent_id, 'published');
+      const models = await chooseModels(db, deps.timezone, userId, row.agent_id);
       await ensureThread(memory, { threadId: row.thread_id, resourceId: userId, agentId: row.agent_id, kind: 'background', title: `Задача: ${row.title}` });
       await writeJournal(db, { ...journalBase, event: 'background_started', result: 'started' });
-      const stream = await agent.stream(row.prompt, { memory: { thread: row.thread_id, resource: userId }, requestContext: await contextFor(row, userId, modelId) });
+      const stream = await agent.stream(row.prompt, { memory: { thread: row.thread_id, resource: userId }, requestContext: await contextFor(row, userId, models) });
       let awaiting = false;
       for await (const part of stream.fullStream) {
         if (part.type === 'tool-call-approval') awaiting = true;
@@ -160,8 +162,9 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
     const row = { id: approval.taskId, agent_id: approval.agentId, thread_id: approval.threadId };
-    const { agent, modelId } = await resolveAgent(deps.editor, approval.agentId, 'published');
-    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.userId, modelId) };
+    const agent = await resolveAgent(deps.editor, approval.agentId, 'published');
+    const models = await chooseModels(db, deps.timezone, approval.userId, approval.agentId);
+    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.userId, models) };
     const stream = approved
       ? await agent.approveToolCall(options)
       : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
@@ -216,9 +219,11 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
         } else {
           try {
             await deps.gateway.assertWithinBudget(userId);
+            await chooseModels(db, deps.timezone, userId, approval.agentId);
           } catch (error) {
             if (!isAppError(error)) throw error;
-            failure = new AppError({ code: error.code, message: error.message, userMessage: 'Действие не выполнено: лимит расходов исчерпан.', status: error.status, cause: error });
+            const spent = error.code.startsWith('APP_USAGE_');
+            failure = new AppError({ code: error.code, message: error.message, userMessage: spent ? 'Действие не выполнено: лимит расходов исчерпан.' : `Действие не выполнено: ${error.userMessage}`, status: error.status, cause: error });
           }
         }
         if (failure) {

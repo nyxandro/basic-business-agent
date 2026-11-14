@@ -15,15 +15,18 @@ import type { Registry } from '../loader/registry.ts';
 import { draftResourceId, ensureThread, titleFrom } from '../memory/memory.ts';
 import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
+import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 
 export interface ChatDeps {
   db: Db;
   memory: Memory;
   registry: Registry;
-  gateway: Pick<ModelGateway, 'assertCanCall' | 'assertWithinBudget' | 'translateError'>;
+  gateway: Pick<ModelGateway, 'assertWithinBudget' | 'translateError'>;
   editor: EditorDeps;
   workspaceRoot: string;
+  // Time zone of the installation: the day of the subscription's daily cap.
+  timezone: string;
 }
 
 export interface RunInput {
@@ -40,6 +43,8 @@ export interface PreparedRun {
   mode: 'published' | 'draft';
   // Project of the conversation: the sandbox works in its files, the prompt gets its instructions.
   projectId: string | null;
+  // The models of the run (core/models/resolve.ts); null where no model is called (agent listing).
+  models: ModelChoice | null;
 }
 
 // A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
@@ -84,13 +89,16 @@ function textOf(content: unknown): string {
   return '';
 }
 
-export function requestContextFor(run: PreparedRun, modelId: string | null): RequestContext {
+export function requestContextFor(run: PreparedRun): RequestContext {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, run.userId);
   rc.set(REQUEST_KEYS.threadId, run.threadId);
   rc.set(REQUEST_KEYS.agentId, run.agentId);
   rc.set(REQUEST_KEYS.runKind, (run.mode === 'draft' ? 'draft' : 'chat') satisfies RunKind);
-  if (modelId) rc.set(REQUEST_KEYS.modelId, modelId);
+  if (run.models) {
+    rc.set(REQUEST_KEYS.modelId, run.models.primary);
+    if (run.models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, run.models.fallback);
+  }
   if (run.projectId) rc.set(REQUEST_KEYS.projectId, run.projectId);
   return rc;
 }
@@ -106,7 +114,7 @@ async function journalDecline(deps: ChatDeps, run: PreparedRun, tool: string, er
 }
 
 // A new message instead of "Да"/"Нет" cancels the waiting action (spec, scenario 2).
-async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent, modelId: string | null): Promise<ApprovalRequest[]> {
+async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Promise<ApprovalRequest[]> {
   const cancelled: ApprovalRequest[] = [];
   for (const pending of await pendingForThread(deps.db, run.userId, run.threadId)) {
     if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
@@ -116,7 +124,7 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent, mod
       toolCallId: pending.toolCallId,
       reason: SUPERSEDED,
       memory: { thread: run.threadId, resource: run.resourceId },
-      requestContext: requestContextFor(run, modelId),
+      requestContext: requestContextFor(run),
     });
     await stream.consumeStream();
     await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
@@ -130,7 +138,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   // A draft check of a prompt never belongs to the admin's projects.
   const projectId = mode === 'draft' ? null : await projectOfThread(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId, models: null };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
 
@@ -147,8 +155,8 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   try {
     const resume = input.resume?.[0];
     const call = parseInterrupt(resume?.interruptId);
-    const { agent, modelId } = await resolveAgent(deps.editor, agentId, mode);
-    const passportModel = deps.registry.get(agentId)!.passport.model;
+    const agent = await resolveAgent(deps.editor, agentId, mode);
+    const choose = () => chooseModels(deps.db, deps.timezone, run.userId, agentId);
 
     if (call) {
       const pending = await findByCall(deps.db, run.userId, call.runId, call.toolCallId);
@@ -163,11 +171,13 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
         if (!(await decide(deps.db, pending.id, 'declined'))) throw appError('APP_APPROVAL_DECIDED', `approval ${pending.id} was decided meanwhile`);
         await journalDecline(deps, run, pending.tool, null);
         declinedCalls.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: false });
+        // The agent goes on after "Нет": a refusal is recorded even when no model can answer now.
+        run.models = await choose();
       } else {
         // The approved action runs only if access and limits still hold now (spec, section 8.4).
         try {
           await deps.gateway.assertWithinBudget(run.userId);
-          await deps.gateway.assertCanCall(run.userId, modelId ?? passportModel);
+          run.models = await choose();
         } catch (error) {
           await decide(deps.db, pending.id, 'failed', error instanceof AppError ? error.code : 'APP_INTERNAL');
           throw error;
@@ -176,8 +186,8 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       }
     } else {
       await deps.gateway.assertWithinBudget(run.userId);
-      await deps.gateway.assertCanCall(run.userId, modelId ?? passportModel);
-      for (const p of await cancelPending(deps, run, agent, modelId)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
+      run.models = await choose();
+      for (const p of await cancelPending(deps, run, agent)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
     }
   } catch (error) {
     busyThreads.delete(threadId);

@@ -6,9 +6,8 @@ export default defineAgent({
   id: 'assistant',
   name: 'Общий помощник',
   description: 'Отвечает на вопросы, ведёт ваши заметки и читает прикреплённые документы.',
-  model: 'main',
   plugins: ['example-notes'],
   readOnly: [],
   starters: ['Запиши заметку: позвонить поставщику в пятницу', 'Покажи мои заметки', 'Что ты умеешь?'],
-  editable: { instructions: true, models: [] },
+  editable: { instructions: true },
 });

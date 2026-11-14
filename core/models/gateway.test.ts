@@ -7,7 +7,7 @@ import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { createLiteLLMClient } from './litellm-client.ts';
 import { createModelGateway } from './gateway.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
-import { TEST_CATALOG, TEST_CALLBACK_PORT } from './test-catalog.ts';
+import { TEST_CALLBACK_PORT } from './test-catalog.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
 let t: TestApp;
@@ -119,7 +119,6 @@ describe('model gateway', () => {
       db: t.db,
       client: createLiteLLMClient('http://127.0.0.1:9', 'sk-x'),
       box: createSecretBox(TEST_ENCRYPTION_KEYS),
-      catalog: TEST_CATALOG,
       timezone: 'Europe/Moscow',
     });
     const agent = new Agent({ id: 'sales', name: 'sales', instructions: 'x', model: { ...config, url: 'http://127.0.0.1:9/v1' } });
@@ -128,18 +127,6 @@ describe('model gateway', () => {
       (e: unknown) => broken.translateError(e, userId),
     );
     expect(error?.code).toBe('APP_MODEL_GATEWAY_UNAVAILABLE');
-  });
-
-  it('refuses a subscription call past the daily token cap, before calling the model', async () => {
-    const userId = await t.createUser({ email: 'daily@example.com' });
-    await t.db.query('INSERT INTO app.user_limits (user_id, daily_subscription_tokens) VALUES ($1, 500)', [userId]);
-    await t.db.query(
-      `INSERT INTO app.usage_events (at, user_id, model, is_subscription, input_tokens, output_tokens, litellm_call_id)
-       VALUES (now(), $1, 'test-sub', true, 400, 200, 'manual-' || $1)`,
-      [userId],
-    );
-    await expect(t.gateway.assertCanCall(userId, 'test-sub')).rejects.toMatchObject({ code: 'APP_USAGE_DAILY_CAP_EXCEEDED' });
-    await expect(t.gateway.assertCanCall(userId, 'test-paid')).resolves.toBeUndefined();
   });
 
   it('keeps our ledger equal to what LiteLLM charged the employee', async () => {

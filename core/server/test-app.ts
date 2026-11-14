@@ -19,10 +19,13 @@ import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from 
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
+import { createModelCatalog, type ModelCatalog } from '../models/catalog.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
-import { TEST_CATALOG } from '../models/test-catalog.ts';
+import { reconcile } from '../models/gateway-sync.ts';
+import { seedTestModels } from '../models/test-catalog.ts';
+import { AGENT_HEADER } from '../models/usage.ts';
 import { createAuth, type Auth } from '../auth/auth.ts';
 import { builtinRoleId } from '../auth/roles.ts';
 import { acceptInvite, createInvite } from '../auth/users.ts';
@@ -40,6 +43,9 @@ export interface TestApp {
   db: Db;
   auth: Auth;
   gateway: ModelGateway;
+  // «Нейросеть» of the test installation; its deployments in the test LiteLLM carry `gatewayOwner`.
+  models: ModelCatalog;
+  gatewayOwner: string;
   litellm: LiteLLMClient;
   ledgerSecret: string;
   connections: ConnectionManager;
@@ -73,7 +79,7 @@ function randomIp(): string {
 
 function testAgent(id: string, name: string, tools: AgentRuntime['tools']): AgentRuntime {
   return {
-    passport: { id, name, description: `Тестовый агент ${name}`, model: 'test-paid', plugins: [], readOnly: [], starters: ['Покажи мои сделки'] },
+    passport: { id, name, description: `Тестовый агент ${name}`, plugins: [], readOnly: [], starters: ['Покажи мои сделки'] },
     dir: `/agents/${id}`,
     instructions: `Ты тестовый агент «${name}».`,
     tools,
@@ -96,6 +102,12 @@ export async function createTestApp(
     // A real installation instead of the test agents (e.g. the demo of the repository); its plugin
     // migrations are applied to the test database.
     registry?: (db: Db) => Promise<Registry>;
+    // A test of an empty installation: no models in the catalog.
+    noModels?: boolean;
+    // Shortens the wait for the primary model's first chunk before the fallback answers.
+    firstChunkMs?: number;
+    // The models behind the test agents (default: every model answers from `model`).
+    modelConfig?: (modelId: string) => { url: string; apiKey: string };
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -108,8 +120,10 @@ export async function createTestApp(
   // Each test database gets its own LiteLLM team, so balances never leak between test files or runs.
   const teamId = `test-${database.url.split('/').pop()}`;
   const litellm = createLiteLLMClient(requireEnv('LITELLM_TEST_URL'), requireEnv('LITELLM_TEST_MASTER_KEY'), teamId);
-  const gateway = createModelGateway({ db, client: litellm, box: createSecretBox(TEST_ENCRYPTION_KEYS), catalog: TEST_CATALOG, timezone: 'Europe/Moscow' });
+  const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+  const gateway = createModelGateway({ db, client: litellm, box, timezone: 'Europe/Moscow' });
   await gateway.syncOrgBudget();
+  if (!opts.noModels) await seedTestModels(db);
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
   const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
   await ensureMaskingSettings(db, []);
@@ -146,7 +160,11 @@ export async function createTestApp(
   if (registry.pluginMigrations.length > 0) await migrate(database.url, undefined, registry.pluginMigrations);
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const memory = createMemory(storage);
-  const fakeGateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
+  // The test agents call the fake model directly, not through LiteLLM, with the header LiteLLM gets.
+  const fakeGateway = {
+    modelConfig: (modelId: string, _userId: string, agentId: string) =>
+      Promise.resolve({ providerId: 'fake', modelId, ...(opts.modelConfig?.(modelId) ?? { url: model.url, apiKey: 'x' }), headers: { [AGENT_HEADER]: agentId } }),
+  };
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
@@ -158,14 +176,17 @@ export async function createTestApp(
     db,
     app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' },
     workspaceRoot,
+    ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     connections,
     workflows: { [workflow.id]: workflow },
   });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow' });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', copilot: createCopilotHandler({ editor }) };
+  const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
+  const models = createModelCatalog({ db, box, client: litellm, owner: teamId, agentName });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -188,6 +209,8 @@ export async function createTestApp(
     db,
     auth,
     gateway,
+    models,
+    gatewayOwner: teamId,
     litellm,
     ledgerSecret,
     connections,
@@ -215,6 +238,8 @@ export async function createTestApp(
     },
     async close() {
       background.stop();
+      // Deployments this test database put into the shared test LiteLLM leave with it.
+      await reconcile(litellm, teamId, []);
       await mastra.stopWorkers();
       await model.close();
       rmSync(workspaceRoot, { recursive: true, force: true });

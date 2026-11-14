@@ -49,7 +49,8 @@ export function AgentsSection() {
             <div className="row-line">
               <strong>{a.name}</strong>
               <span className="muted">
-                {a.description} · модель {a.model}
+                {a.description}
+                {a.modelId ? ` · своя модель ${a.modelId}` : ''}
               </span>
               <button type="button" className="link-button" onClick={() => setOpen(open === a.id ? null : a.id)}>
                 Промпт

@@ -1,7 +1,6 @@
 // «Мои расходы» for every employee and «Расходы» for admins with the "usage" right.
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import type { ModelConfig } from '../../config/schemas.ts';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
 import type { Registry } from '../../loader/registry.ts';
@@ -15,8 +14,8 @@ const reportQuery = z.object({
   groupBy: z.enum(['user', 'agent', 'model', 'deployment']),
 });
 
-export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; registry: Registry; catalog: ModelConfig[]; timezone: string }): void {
-  app.get('/app/api/me/usage', async (c) => c.json(await employeeUsage(deps.db, access(c).userId, deps.timezone, deps.catalog)));
+export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; registry: Registry; timezone: string }): void {
+  app.get('/app/api/me/usage', async (c) => c.json(await employeeUsage(deps.db, access(c).userId, deps.timezone)));
 
   app.get('/app/api/admin/usage', requirePermission('usage'), async (c) => {
     const parsed = reportQuery.safeParse(c.req.query());
@@ -24,6 +23,6 @@ export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; reg
     const to = new Date(`${parsed.data.to}T00:00:00Z`);
     to.setUTCDate(to.getUTCDate() + 1); // the "to" day is included
     const agentNames = new Map(deps.registry.agents.map((a) => [a.passport.id, a.passport.name]));
-    return c.json(await usageReport(deps.db, { from: new Date(`${parsed.data.from}T00:00:00Z`), to, groupBy: parsed.data.groupBy, agentNames, catalog: deps.catalog }));
+    return c.json(await usageReport(deps.db, { from: new Date(`${parsed.data.from}T00:00:00Z`), to, groupBy: parsed.data.groupBy, agentNames }));
   });
 }

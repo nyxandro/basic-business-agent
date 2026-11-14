@@ -1,45 +1,31 @@
-// LiteLLM configuration generated from config/models.ts (spec, section 8.1).
-// Prices go to LiteLLM in roubles per token, so its spend and budgets are in roubles.
-// Provider keys appear only as "os.environ/NAME" references: the app never holds them.
-import type { ModelConfig, Prices } from '../config/schemas.ts';
-
+// LiteLLM configuration of an installation (spec, section 8.1): how it reports usage, routes over a
+// pool and where it keeps models. Models are not in the file: the server puts the admin's models
+// into LiteLLM's database (store_model_in_db), see gateway-sync.ts.
 export const LEDGER_CALLBACK_NAME = 'bba_ledger';
-const TOKENS_PER_PRICE_UNIT = 1_000_000;
 const COOLDOWN_SECONDS = 60;
 // One retry moves a failed request to another account of the same pool (verified transient:
 // a revoked or rate-limited account); LiteLLM logs it, so the retry is observable.
 const POOL_RETRIES = 1;
 const ALLOWED_FAILS_BEFORE_COOLDOWN = 1;
 
+// A deployment written into the file. Only the test LiteLLM has them: mock models of the tests.
+export interface StaticDeployment {
+  modelName: string;
+  id: string;
+  params: Record<string, string | number | boolean>;
+}
+
 export interface LiteLLMConfigOptions {
   timezone: string;
   callbackUrl: string;
+  staticDeployments: StaticDeployment[];
 }
 
-function perToken(rubPerMillion: number): number {
-  return rubPerMillion / TOKENS_PER_PRICE_UNIT;
-}
-
-export function pricesToLiteLLM(prices: Prices): Record<string, number> {
+export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, unknown> {
   return {
-    input_cost_per_token: perToken(prices.input),
-    output_cost_per_token: perToken(prices.output),
-    cache_read_input_token_cost: perToken(prices.cacheRead),
-    cache_creation_input_token_cost: perToken(prices.cacheWrite),
-    output_cost_per_reasoning_token: perToken(prices.reasoning),
-    input_cost_per_image: prices.image,
-  };
-}
-
-export function buildLiteLLMConfig(models: ModelConfig[], opts: LiteLLMConfigOptions): Record<string, unknown> {
-  return {
-    model_list: models.flatMap((m) =>
-      m.deployments.map((d) => ({
-        model_name: m.id,
-        litellm_params: { ...d.litellm, ...pricesToLiteLLM(m.prices) },
-        model_info: { id: d.id },
-      })),
-    ),
+    ...(opts.staticDeployments.length > 0
+      ? { model_list: opts.staticDeployments.map((d) => ({ model_name: d.modelName, litellm_params: d.params, model_info: { id: d.id } })) }
+      : {}),
     litellm_settings: {
       timezone: opts.timezone,
       callbacks: [LEDGER_CALLBACK_NAME],
@@ -64,6 +50,8 @@ export function buildLiteLLMConfig(models: ModelConfig[], opts: LiteLLMConfigOpt
     general_settings: {
       master_key: 'os.environ/LITELLM_MASTER_KEY',
       database_url: 'os.environ/DATABASE_URL',
+      // Provider keys in LiteLLM's database are encrypted with LITELLM_SALT_KEY.
+      store_model_in_db: true,
     },
   };
 }

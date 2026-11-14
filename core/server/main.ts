@@ -14,7 +14,9 @@ import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
+import { createModelCatalog } from '../models/catalog.ts';
 import { createModelGateway } from '../models/gateway.ts';
+import { GATEWAY_OWNER } from '../models/gateway-sync.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
@@ -44,14 +46,17 @@ async function main(): Promise<void> {
   await ensureLimitSettings(db, installation.app.limits);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
-  const gateway = createModelGateway({
-    db,
-    client: createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY),
-    box,
-    catalog: installation.models,
-    timezone: installation.app.timezone,
-  });
+  const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
+  const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
   await gateway.syncOrgBudget();
+  const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
+  const models = createModelCatalog({ db, box, client: litellm, owner: GATEWAY_OWNER, agentName });
+  // Our database is the source of truth: LiteLLM gets the admin's models at every start. A refusal
+  // does not stop the server — «Нейросеть» shows what LiteLLM has not applied.
+  await models.sync().then(
+    (result) => logEvent('info', 'gateway_synced', { ...result }),
+    (error: unknown) => logEvent('error', 'gateway_sync_failed', { code: 'APP_GATEWAY_SYNC_FAILED', error }),
+  );
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
   const memory = createMemory(storage);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
@@ -64,8 +69,8 @@ async function main(): Promise<void> {
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, copilot: createCopilotHandler({ editor }) };
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.

@@ -58,9 +58,11 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
   const agents = requirePermission('agents');
   app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments'), async (c) => {
     const { rows } = await db.query<{ agent_id: string }>('SELECT DISTINCT agent_id FROM app.department_agents ORDER BY agent_id');
+    const own = await db.query<{ agent_id: string; model_id: string }>('SELECT agent_id, model_id FROM app.agent_overrides WHERE model_id IS NOT NULL');
+    const ownModel = new Map(own.rows.map((r) => [r.agent_id, r.model_id]));
     const known = deps.registry.ids();
     return c.json({
-      agents: deps.registry.agents.map((a) => ({ id: a.passport.id, name: a.passport.name, description: a.passport.description, model: a.passport.model })),
+      agents: deps.registry.agents.map((a) => ({ id: a.passport.id, name: a.passport.name, description: a.passport.description, modelId: ownModel.get(a.passport.id) ?? null })),
       // Departments still pointing at agents removed from the installation (spec, section 10).
       missingAgents: rows.map((r) => r.agent_id).filter((id) => !known.has(id)),
     });

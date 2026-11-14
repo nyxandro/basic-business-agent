@@ -28,7 +28,7 @@ const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
 function runtime(passport: Partial<AgentPassport> & { id: string }, instructions: string): AgentRuntime {
   return {
-    passport: { name: passport.id, description: 'x', model: 'main', plugins: [], readOnly: [], starters: [], ...passport },
+    passport: { name: passport.id, description: 'x', plugins: [], readOnly: [], starters: [], ...passport },
     dir: `/agents/${passport.id}`,
     instructions,
     tools: {},
@@ -52,9 +52,10 @@ const registry: Registry = {
 };
 
 async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string): Promise<string[]> {
-  const { agent } = await resolveAgent(deps, agentId, mode);
+  const agent = await resolveAgent(deps, agentId, mode);
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, 'olga');
+  rc.set(REQUEST_KEYS.modelId, 'test-paid');
   const threadId = `t-${Date.now()}`;
   rc.set(REQUEST_KEYS.threadId, threadId);
   if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
@@ -117,9 +118,10 @@ describe('prompt layers', () => {
   });
 
   it('keeps the current time out of the stored conversation', async () => {
-    const { agent } = await resolveAgent(deps, 'sales', 'published');
+    const agent = await resolveAgent(deps, 'sales', 'published');
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'olga');
+    rc.set(REQUEST_KEYS.modelId, 'test-paid');
     rc.set(REQUEST_KEYS.threadId, 'time-check');
     model.script({ text: 'Ок.' });
     await agent.generate('который час?', { requestContext: rc, maxSteps: 1, memory: { thread: 'time-check', resource: 'olga' } });

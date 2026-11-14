@@ -1,6 +1,6 @@
 # LiteLLM of the installation for development, on top of compose.dev.yaml (pnpm dev / pnpm dev:stack):
-# the models of config/models.ts (pnpm models:config writes deploy/litellm/config.json), provider
-# keys from .env. Kept apart so that tests (pnpm dev:db) do not need provider keys.
+# pnpm gateway:config writes deploy/litellm/config.json; models and provider keys come from
+# «Нейросеть» into LiteLLM's database. Kept apart so that tests (pnpm dev:db) do not start it.
 # Its own database litellm_dev on the development server: checks inside LiteLLM's migrations look
 # for constraints across the whole database and trip over the test LiteLLM's schema next door.
 # A deployment has one LiteLLM, so there it uses the schema litellm of the main database.
@@ -25,7 +25,8 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
       LITELLM_CALLBACK_AUTHORIZATION: Bearer ${LITELLM_CALLBACK_SECRET:?set LITELLM_CALLBACK_SECRET in .env}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/litellm_dev
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env — the key of the provider in config/models.ts}
+      # Encrypts the provider keys LiteLLM keeps in its database; never change it once models are added.
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in .env}
     volumes:
       - ./litellm/config.json:/app/config.json:ro
     ports:

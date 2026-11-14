@@ -1,7 +1,7 @@
 // Builds the Mastra agent of an agent runtime: model on the employee's key, tools of plugins and
 // connected systems, interface blocks, memory, the sandbox and sub-agents.
-import { Agent } from '@mastra/core/agent';
-import type { InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
+import { Agent, type ModelWithRetries } from '@mastra/core/agent';
+import { StreamErrorRetryProcessor, type InputProcessorOrWorkflow, type OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -10,10 +10,21 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
-import { REQUEST_KEYS, requireContextValue } from './request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue } from './request-keys.ts';
+
+// With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
+// Only the first chunk is timed: a total deadline would end the run instead of switching.
+export const FALLBACK_FIRST_CHUNK_MS = 60_000;
+
+// Mastra repeats a call that failed with a transient error once before it tries the fallback.
+// LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
+// repeat only delays the switch; without one Mastra keeps its own repeat.
+const SWITCH_AT_ONCE = new StreamErrorRetryProcessor({ maxRetries: 0 });
 
 export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
+  // FALLBACK_FIRST_CHUNK_MS in an installation; tests shorten it.
+  firstChunkMs: number;
   memory?: Memory;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
   // Files and commands of the employee's own folder; without it the agent only reads skills.
@@ -44,12 +55,19 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     name: rt.passport.name,
     description: rt.passport.description,
     instructions: rt.instructions,
-    // Each call runs on the employee's own LiteLLM key; the model is the passport's unless the
-    // admin chose another one allowed by the passport (set by the entry point of the run).
-    model: async ({ requestContext }) => {
-      const chosen = requestContext.get(REQUEST_KEYS.modelId);
-      const modelId = typeof chosen === 'string' && chosen ? chosen : rt.passport.model;
-      return deps.gateway.modelConfig(modelId, requireContextValue(requestContext, REQUEST_KEYS.userId), rt.passport.id);
+    // Each call runs on the employee's own LiteLLM key, on the models the entry point of the run
+    // chose (core/models/resolve.ts).
+    model: async ({ requestContext }): Promise<Awaited<ReturnType<ModelGateway['modelConfig']>> | ModelWithRetries[]> => {
+      const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
+      const primaryId = requireContextValue(requestContext, REQUEST_KEYS.modelId);
+      const fallbackId = optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId);
+      const primary = await deps.gateway.modelConfig(primaryId, userId, rt.passport.id);
+      if (!fallbackId) return primary;
+      // LiteLLM already retries within a model's pool, so Mastra does not retry a model itself.
+      return [
+        { id: primaryId, model: primary, maxRetries: 0, modelSettings: { timeout: { firstChunkMs: deps.firstChunkMs } } },
+        { id: fallbackId, model: await deps.gateway.modelConfig(fallbackId, userId, rt.passport.id), maxRetries: 0 },
+      ];
     },
     // Tools of connected systems are built per employee and request (their personal access).
     tools:
@@ -64,5 +82,6 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,
+    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [SWITCH_AT_ONCE] : []),
   });
 }

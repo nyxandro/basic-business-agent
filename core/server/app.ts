@@ -1,6 +1,7 @@
 // The HTTP server of the installation. Only our routes exist: Mastra's built-in routes are never
 // registered (no MastraServer.init()), and everything that matches nothing answers 404 (spec, 17.6).
 import { Hono } from 'hono';
+import { registerModelRoutes } from '../admin/routes/models.ts';
 import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
 import { registerUsageReportRoutes } from '../admin/routes/usage.ts';
@@ -16,6 +17,7 @@ import type { ConnectionManager } from '../connections/manager.ts';
 import { registerConnectionRoutes } from '../connections/routes.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import type { ModelCatalog } from '../models/catalog.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { registerUsageRoutes } from '../models/routes.ts';
 import { registerProjectRoutes } from '../projects/routes.ts';
@@ -29,6 +31,7 @@ export interface ServerDeps {
   publicUrl: string;
   knownAgentIds: () => ReadonlySet<string>;
   gateway: ModelGateway;
+  models: ModelCatalog;
   ledgerSecret: string;
   connections: ConnectionManager;
   chat: ChatDeps & { copilot: CopilotHandler };
@@ -57,7 +60,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
     deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot },
   });
   registerRoleRoutes(app, deps);
-  registerUsageRoutes(app, { db: deps.db, catalog: deps.gateway.catalog, ledgerSecret: deps.ledgerSecret });
+  registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret });
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot };
@@ -65,6 +68,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerSearchRoutes(app, projects);
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
-  registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, catalog: deps.gateway.catalog, timezone: deps.timezone });
+  registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
+  registerModelRoutes(app, deps.models);
   return app;
 }

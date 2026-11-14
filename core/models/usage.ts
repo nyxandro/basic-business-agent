@@ -1,7 +1,6 @@
 // Our copy of the usage ledger (spec, section 8.1): LiteLLM sends one record per model call
 // to POST /app/api/internal/usage; reports read app.usage_events, not LiteLLM's own tables.
 import { z } from 'zod';
-import type { ModelConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 
 export const AGENT_HEADER = 'x-bba-agent-id';
@@ -38,9 +37,8 @@ function toDate(start: number | string): Date {
   return typeof start === 'number' ? new Date(start * 1000) : new Date(start);
 }
 
-export async function ingestUsage(db: Db, catalog: ModelConfig[], payload: unknown): Promise<number> {
+export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
   const records = Array.isArray(payload) ? payload : [payload];
-  const subscription = new Set(catalog.filter((m) => m.subscription).map((m) => m.id));
   let inserted = 0;
   for (const raw of records) {
     const parsed = logSchema.safeParse(raw);
@@ -52,7 +50,10 @@ export async function ingestUsage(db: Db, catalog: ModelConfig[], payload: unkno
     const { rowCount } = await db.query(
       `INSERT INTO app.usage_events (at, user_id, team_id, agent_id, model, deployment, is_subscription, input_tokens, output_tokens,
                                      cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_rub, aborted, litellm_call_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (litellm_call_id) DO NOTHING`,
+       -- A call is on the subscription when its model is connected through ChatGPT accounts.
+       VALUES ($1,$2,$3,$4,$5,$6,
+               COALESCE((SELECT m.connection = 'chatgpt' FROM app.models m WHERE m.id = $5), false),
+               $7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (litellm_call_id) DO NOTHING`,
       [
         toDate(r.startTime),
         r.metadata?.user_api_key_user_id ?? null,
@@ -60,7 +61,6 @@ export async function ingestUsage(db: Db, catalog: ModelConfig[], payload: unkno
         typeof agentHeader === 'string' ? agentHeader : null,
         r.model_group ?? 'unknown',
         r.model_id ?? null,
-        subscription.has(r.model_group ?? ''),
         r.prompt_tokens ?? 0,
         r.completion_tokens ?? 0,
         usage?.prompt_tokens_details?.cached_tokens ?? 0,

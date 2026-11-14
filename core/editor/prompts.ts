@@ -33,6 +33,10 @@ interface OverrideRow {
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
+// An Editor record must name a model, but the agent's model stays in code (a function resolved per
+// run, core/models/resolve.ts) and the Editor never overrides it, so this name is never called.
+const EDITOR_RECORD_MODEL = { provider: 'litellm', name: 'resolved-per-run' };
+
 function editor(deps: EditorDeps) {
   const e = deps.mastra.getEditor();
   if (!e) throw new Error('Mastra Editor is not configured on the Mastra instance');
@@ -74,7 +78,7 @@ export async function getPromptState(deps: EditorDeps, agentId: string): Promise
     publishedAt: row?.published_at?.toISOString() ?? null,
     fileChangedSincePublish: Boolean(row?.published_version_id && row.file_instructions_hash !== hash(rt.instructions)),
     modelId: row?.model_id ?? null,
-    allowedModels: rt.passport.editable?.models ?? [],
+    allowedModels: await choosableModels(deps.db),
   };
 }
 
@@ -84,7 +88,7 @@ async function ensureEditorRecord(deps: EditorDeps, rt: AgentRuntime): Promise<v
   const e = editor(deps);
   const store = await deps.mastra.getStorage()!.getStore('agents');
   if (await store!.getById(rt.passport.id)) return;
-  await e.agent.create({ id: rt.passport.id, name: rt.passport.name, instructions: rt.instructions, model: { provider: 'litellm', name: rt.passport.model } });
+  await e.agent.create({ id: rt.passport.id, name: rt.passport.name, instructions: rt.instructions, model: EDITOR_RECORD_MODEL });
   await e.agent.update({ id: rt.passport.id, activeVersionId: null } as never);
 }
 
@@ -161,10 +165,22 @@ export async function revertToFile(deps: EditorDeps, actorUserId: string, agentI
   await writeAudit(deps.db, { actorUserId, action: 'agent.prompt.revert', target: agentId });
 }
 
+// Models an agent may get as its own: enabled chat models of the catalog, while «Агенты выбирают
+// модель из каталога» is on (spec, section 8.1).
+async function choosableModels(db: Db): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT m.id FROM app.models m, app.model_settings s WHERE s.agents_choose_model AND m.kind = 'chat' AND m.enabled ORDER BY m.label, m.id`,
+  );
+  return rows.map((r) => r.id);
+}
+
 export async function setAgentModel(deps: EditorDeps, actorUserId: string, agentId: string, modelId: string | null): Promise<void> {
-  const rt = runtimeOf(deps, agentId);
-  if (modelId !== null && !(rt.passport.editable?.models ?? []).includes(modelId)) {
-    throw appError('APP_VALIDATION_FAILED', `model ${modelId} is not allowed for agent ${agentId}`, { details: { field: 'modelId' } });
+  runtimeOf(deps, agentId);
+  if (modelId !== null && !(await choosableModels(deps.db)).includes(modelId)) {
+    throw appError('APP_VALIDATION_FAILED', `model ${modelId} is not a choosable chat model for agent ${agentId}`, {
+      details: { field: 'modelId' },
+      userMessage: 'Эту модель нельзя выбрать агенту: включите «Агенты выбирают модель из каталога» и выберите включённую модель чата.',
+    });
   }
   await deps.db.query(
     'INSERT INTO app.agent_overrides (agent_id, model_id) VALUES ($1, $2) ON CONFLICT (agent_id) DO UPDATE SET model_id = EXCLUDED.model_id',
@@ -174,12 +190,10 @@ export async function setAgentModel(deps: EditorDeps, actorUserId: string, agent
 }
 
 // The agent a run uses: employees get the published version, the admin's draft check gets the draft.
-export async function resolveAgent(deps: EditorDeps, agentId: string, mode: 'published' | 'draft'): Promise<{ agent: Agent; modelId: string | null }> {
+export async function resolveAgent(deps: EditorDeps, agentId: string, mode: 'published' | 'draft'): Promise<Agent> {
   runtimeOf(deps, agentId);
   const row = await overrideRow(deps.db, agentId);
-  const agent: Agent =
-    mode === 'draft' && row?.draft_version_id
-      ? ((await deps.mastra.getAgentById(agentId, { versionId: row.draft_version_id })) as Agent)
-      : ((await deps.mastra.getAgentById(agentId, { status: 'published' })) as Agent);
-  return { agent, modelId: row?.model_id ?? null };
+  return mode === 'draft' && row?.draft_version_id
+    ? ((await deps.mastra.getAgentById(agentId, { versionId: row.draft_version_id })) as Agent)
+    : ((await deps.mastra.getAgentById(agentId, { status: 'published' })) as Agent);
 }

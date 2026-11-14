@@ -1,5 +1,6 @@
 // Declarative configuration of an installation (spec, sections 17.2–17.3):
-// config/app.ts, config/models.ts, config/plugins.ts, agents/<id>/agent.ts, plugins/<name>/plugin.ts.
+// config/app.ts, config/plugins.ts, agents/<id>/agent.ts, plugins/<name>/plugin.ts. Models are
+// not configured in files: the admin adds them in «Нейросеть» (core/models/catalog.ts).
 import { z } from 'zod';
 
 export const MASKING_KINDS = ['passport', 'snils', 'card', 'inn', 'phone', 'email'] as const;
@@ -32,53 +33,14 @@ export const appConfigSchema = z.strictObject({
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
 
-// Prices in roubles: per 1 million tokens of each kind, and per image. LiteLLM silently falls back
-// to its own dollar prices for any kind left empty, so every kind is required.
-export const pricesSchema = z.strictObject({
-  input: rub,
-  output: rub,
-  cacheRead: rub,
-  cacheWrite: rub,
-  reasoning: rub,
-  image: rub,
-});
-export type Prices = z.infer<typeof pricesSchema>;
-
-const litellmParam = z.union([z.string(), z.number(), z.boolean()]);
-
-export const deploymentSchema = z.strictObject({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'use lowercase letters, digits and dashes'),
-  // Passed to LiteLLM as litellm_params; secrets only as "os.environ/NAME" references.
-  litellm: z.record(z.string(), litellmParam).refine((p) => typeof p.model === 'string', 'must contain "model"'),
-});
-
-export const modelSchema = z
-  .strictObject({
-    id: z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, 'use lowercase letters, digits, dots and dashes'),
-    label: z.string().min(1),
-    subscription: z.boolean(),
-    prices: pricesSchema,
-    deployments: z.array(deploymentSchema).min(1),
-  })
-  .superRefine((model, ctx) => {
-    if (!model.subscription) return;
-    for (const [kind, price] of Object.entries(model.prices)) {
-      if (price !== 0) ctx.addIssue({ code: 'custom', path: ['prices', kind], message: 'must be 0 for a subscription model' });
-    }
-  });
-export type ModelConfig = z.infer<typeof modelSchema>;
-
-export const modelsConfigSchema = z.array(modelSchema).min(1);
-
 export const agentPassportSchema = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/, 'use 2–41 lowercase letters, digits and dashes, starting with a letter'),
   name: z.string().min(1),
   description: z.string().min(1),
-  model: z.string().min(1),
   plugins: z.array(z.string()),
   readOnly: z.array(z.string()),
   starters: z.array(z.string().min(1)).max(3),
-  editable: z.strictObject({ instructions: z.boolean(), models: z.array(z.string()) }).optional(),
+  editable: z.strictObject({ instructions: z.boolean() }).optional(),
   // Spec 8.3: core rules are switched off only explicitly.
   baseRules: z.boolean().optional(),
 });

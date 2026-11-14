@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { loadInstallation } from '../config/load.ts';
 import type { Db } from '../db/pool.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
-import { createMastraAgent } from '../runtime/agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { buildRegistry } from './registry.ts';
 
@@ -33,17 +33,16 @@ function installation(overrides: Record<string, string> = {}): string {
   root = mkdtempSync(join(CACHE, 'bba-registry-'));
   const files: Record<string, string> = {
     'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: [] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null } };`,
-    'config/models.ts': `export default [{ id: 'main', label: 'Основная', subscription: false, prices: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1.25, reasoning: 2, image: 0.5 }, deployments: [{ id: 'd1', litellm: { model: 'openai/x' } }] }];`,
     'config/plugins.ts': `export default {};`,
     'plugins/notes/plugin.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default { name: 'notes', title: 'Заметки', settings: z.object({}), secrets: [], readOnly: ['notes_list'], tools: () => ({ notes_list: ${TOOL('notes_list')}, notes_add: ${TOOL('notes_add')} }) };`,
     'plugins/notes/skills/note-taking/SKILL.md': SKILL('note-taking'),
-    'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', model: 'main', plugins: ['notes'], readOnly: [], starters: [] };`,
+    'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: [], starters: [] };`,
     'agents/sales/instructions.md': 'Ты агент отдела продаж.',
     'agents/sales/tools/report.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default ${TOOL('sales_report')};`,
     'agents/sales/skills/sales-playbook/SKILL.md': SKILL('sales-playbook'),
-    'agents/sales/subagents/researcher/agent.ts': `export default { id: 'researcher', name: 'Исследователь', description: 'Ищет сведения о клиенте', model: 'main', plugins: [], readOnly: [], starters: [] };`,
+    'agents/sales/subagents/researcher/agent.ts': `export default { id: 'researcher', name: 'Исследователь', description: 'Ищет сведения о клиенте', plugins: [], readOnly: [], starters: [] };`,
     'agents/sales/subagents/researcher/instructions.md': 'Ты ищешь сведения о клиенте.',
-    'agents/helper/agent.ts': `export default { id: 'helper', name: 'Помощник', description: 'Общий помощник', model: 'main', plugins: [], readOnly: [], starters: [] };`,
+    'agents/helper/agent.ts': `export default { id: 'helper', name: 'Помощник', description: 'Общий помощник', plugins: [], readOnly: [], starters: [] };`,
     'agents/helper/instructions.md': 'Ты общий помощник.',
     'core-skills/read-documents/SKILL.md': SKILL('read-documents'),
     ...overrides,
@@ -84,7 +83,7 @@ describe('buildRegistry', () => {
   it('lets the agent passport mark its own tool as read-only', async () => {
     const reg = await registryOf(
       installation({
-        'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', model: 'main', plugins: ['notes'], readOnly: ['sales_report'], starters: [] };`,
+        'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: ['sales_report'], starters: [] };`,
       }),
     );
     expect(reg.get('sales')!.tools.sales_report!.requireApproval).toBe(false);
@@ -99,7 +98,7 @@ describe('buildRegistry', () => {
 
   it('reports read-only entries that name no tool', async () => {
     const dir = installation({
-      'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', model: 'main', plugins: ['notes'], readOnly: ['ghost'], starters: [] };`,
+      'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: ['ghost'], starters: [] };`,
     });
     await expect(registryOf(dir)).rejects.toMatchObject({
       code: 'APP_CONFIG_INVALID',
@@ -110,9 +109,10 @@ describe('buildRegistry', () => {
   it('builds a Mastra agent that offers those tools and skills to the model', async () => {
     const reg = await registryOf(installation());
     const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
-    const agent = createMastraAgent(reg.get('sales')!, { gateway, processorsFor: () => ({ input: [], output: [] }) });
+    const agent = createMastraAgent(reg.get('sales')!, { gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, processorsFor: () => ({ input: [], output: [] }) });
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'u1');
+    rc.set(REQUEST_KEYS.modelId, 'test-paid');
     model.script({ text: 'Привет!' });
     await agent.generate('привет', { requestContext: rc, maxSteps: 1 });
     const req = model.requests.at(-1)!;

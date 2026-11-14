@@ -89,7 +89,8 @@ export interface AdminAgent {
   id: string;
   name: string;
   description: string;
-  model: string;
+  // The agent's own model from the catalog; null — the organisation's model.
+  modelId: string | null;
 }
 
 export interface AdminAgentsResponse {

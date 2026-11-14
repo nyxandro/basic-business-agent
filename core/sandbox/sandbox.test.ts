@@ -8,7 +8,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
-import { createMastraAgent } from '../runtime/agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createLimiter } from './limiter.ts';
 import { contextRoot } from '../workspace/layout.ts';
@@ -61,6 +61,7 @@ const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 async function runAs(userId: string, projectId?: string): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
+  rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
   if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
   await agent.generate('Прочитай файл', { requestContext: rc, maxSteps: 3 });
@@ -70,7 +71,7 @@ beforeAll(async () => {
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-ws-'));
   model = await startFakeModel();
   const rt: AgentRuntime = {
-    passport: { id: 'assistant', name: 'Помощник', description: 'x', model: 'main', plugins: [], readOnly: [], starters: [] },
+    passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [], starters: [] },
     dir: '/x',
     instructions: 'Ты помощник.',
     tools: {},
@@ -83,6 +84,7 @@ beforeAll(async () => {
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   agent = createMastraAgent(rt, {
     gateway,
+    firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
     sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
     processorsFor: () => ({ input: [createImageViewProcessor(workspaceRoot)], output: [] }),
   });

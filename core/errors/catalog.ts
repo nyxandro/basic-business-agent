@@ -43,6 +43,10 @@ export const ERROR_CATALOG = {
   APP_MODEL_RATE_LIMITED: { status: 429, userMessage: 'Слишком много запросов к модели. Подождите минуту и отправьте сообщение снова.' },
   APP_MODEL_AUTH_FAILED: { status: 502, userMessage: 'Не удалось обратиться к модели: проблема с настройками доступа. Сообщите администратору код ошибки.' },
   APP_MODEL_CONTEXT_EXCEEDED: { status: 400, userMessage: 'Разговор стал слишком длинным для модели. Начните новый — агент помнит важное о вас.' },
+  APP_MODEL_NOT_CONFIGURED: { status: 503, userMessage: 'Модели ещё не настроены. Обратитесь к администратору.' },
+  APP_MODEL_CHECK_FAILED: { status: 400, userMessage: 'Провайдер не принял ключ. Проверьте ключ и модель провайдера.' },
+  APP_MODEL_IN_USE: { status: 409, userMessage: 'Модель нужна агентам. Сначала выберите основную модель организации или другую модель этим агентам.' },
+  APP_GATEWAY_SYNC_FAILED: { status: 502, userMessage: 'Шлюз не принял изменения. Попробуйте ещё раз; если повторяется — сообщите разработчику код.' },
   APP_USAGE_LIMIT_EXCEEDED: {
     status: 402,
     userMessage: 'Ваш лимит расходов на этот месяц исчерпан. Новый лимит начнётся {date}. Если нужно раньше — обратитесь к администратору.',

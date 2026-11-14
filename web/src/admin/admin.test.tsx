@@ -46,7 +46,7 @@ describe('agent prompt', () => {
   it('keeps the typed text when someone else changed the prompt meanwhile', async () => {
     mockServer({
       'GET /app/api/me': { body: ADMIN },
-      'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', model: 'main' }], missingAgents: [] } },
+      'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null }], missingAgents: [] } },
       'GET /app/api/admin/tasks': { body: { tasks: [], withoutOwner: [] } },
       'GET /app/api/admin/agents/sales/prompt': { body: PROMPT },
       'PUT /app/api/admin/agents/sales/prompt/draft': apiError('APP_AGENT_DRAFT_CONFLICT', 'Пока вы редактировали, промпт изменил(а) Ольга. Скопируйте свой текст, обновите страницу и внесите правку в свежую версию.', 409),
@@ -64,7 +64,7 @@ describe('agent prompt', () => {
   it('marks a prompt changed in the admin panel and a file changed after that', async () => {
     mockServer({
       'GET /app/api/me': { body: ADMIN },
-      'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', model: 'main' }], missingAgents: ['old-agent'] } },
+      'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null }], missingAgents: ['old-agent'] } },
       'GET /app/api/admin/tasks': { body: { tasks: [], withoutOwner: [] } },
       'GET /app/api/admin/agents/sales/prompt': { body: { ...PROMPT, publishedInstructions: 'Правка', publishedAt: '2026-11-14T08:00:00.000Z', fileChangedSincePublish: true } },
     });

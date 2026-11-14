@@ -1,5 +1,7 @@
 // Test helper: an OpenAI-compatible chat endpoint that records every request and answers from a
 // script — text or tool calls. Lets tests see exactly what reached "the model" (e.g. masking).
+// Listening on 0.0.0.0, it is a provider the test LiteLLM in Docker reaches (`dockerUrl`); with
+// `acceptKey` it refuses other keys like OpenAI does. It also recognises speech: any audio → «Тестовая речь».
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -18,12 +20,15 @@ export interface FakeRequest {
 
 export interface FakeModel {
   url: string;
+  // The same server as LiteLLM in Docker sees it (host.docker.internal).
+  dockerUrl: string;
   requests: FakeRequest[];
   script(...turns: (FakeTurn | ((req: FakeRequest) => FakeTurn))[]): void;
   close(): Promise<void>;
 }
 
 const USAGE = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+export const FAKE_TRANSCRIPT = 'Тестовая речь';
 
 function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string): void {
   res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -58,14 +63,23 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
 
 // `fallback` answers when the script is empty (the browser stand answers by keywords); without it
 // the model says «Готово.».
-export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => FakeTurn } = {}): Promise<FakeModel> {
+export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => FakeTurn; host?: '127.0.0.1' | '0.0.0.0'; acceptKey?: string } = {}): Promise<FakeModel> {
   const requests: FakeRequest[] = [];
   const queue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
   const server: Server = createServer((req, res) => {
     let body = '';
-    req.on('data', (c: Buffer) => (body += c.toString()));
+    req.on('data', (c: Buffer) => (body += c.toString('latin1')));
     req.on('end', () => {
-      const parsed = JSON.parse(body) as Omit<FakeRequest, 'headers'>;
+      if (opts.acceptKey && req.headers.authorization !== `Bearer ${opts.acceptKey}`) {
+        res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: 'Incorrect API key provided', type: 'invalid_request_error', code: 'invalid_api_key' } }));
+        return;
+      }
+      if (req.url?.endsWith('/audio/transcriptions')) {
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ text: FAKE_TRANSCRIPT }));
+        return;
+      }
+      const parsed = JSON.parse(Buffer.from(body, 'latin1').toString('utf8')) as Omit<FakeRequest, 'headers'>;
       const record: FakeRequest = { ...parsed, stream: Boolean(parsed.stream), headers: req.headers };
       requests.push(record);
       const next = queue.shift() ?? opts.fallback ?? { text: 'Готово.' };
@@ -74,10 +88,11 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
       setTimeout(() => respond(res, turn, record.stream), delay);
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(0, opts.host ?? '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}/v1`,
+    dockerUrl: `http://host.docker.internal:${port}/v1`,
     requests,
     script: (...turns) => void queue.push(...turns),
     close: () => new Promise((resolve) => server.close(() => resolve())),

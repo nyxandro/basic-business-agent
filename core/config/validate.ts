@@ -2,16 +2,7 @@
 // each as "<file>: <field>: <what is wrong>" (spec, scenario 1 and section 9: APP_CONFIG_INVALID).
 import type { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
-import {
-  agentPassportSchema,
-  appConfigSchema,
-  modelsConfigSchema,
-  pluginPassportSchema,
-  type AgentPassport,
-  type AppConfig,
-  type ModelConfig,
-  type PluginPassport,
-} from './schemas.ts';
+import { agentPassportSchema, appConfigSchema, pluginPassportSchema, type AgentPassport, type AppConfig, type PluginPassport } from './schemas.ts';
 
 export interface ConfigProblem {
   file: string;
@@ -21,7 +12,6 @@ export interface ConfigProblem {
 
 export interface InstallationSources {
   app: unknown;
-  models: unknown;
   pluginSettings: unknown;
   agents: { dir: string; passport: unknown; instructions: string | null }[];
   plugins: { dir: string; passport: unknown }[];
@@ -42,7 +32,6 @@ export interface LoadedPlugin {
 
 export interface Installation {
   app: AppConfig;
-  models: ModelConfig[];
   agents: LoadedAgent[];
   plugins: LoadedPlugin[];
 }
@@ -81,17 +70,6 @@ export function validateInstallation(src: InstallationSources): Installation {
 
   const app = appConfigSchema.safeParse(src.app);
   if (!app.success) problems.push(...issuesToProblems('config/app.ts', app.error));
-
-  const models = modelsConfigSchema.safeParse(src.models);
-  if (!models.success) problems.push(...issuesToProblems('config/models.ts', models.error));
-  const catalog = models.success ? models.data : [];
-  for (const id of duplicates(catalog.map((m) => m.id))) {
-    problems.push({ file: 'config/models.ts', field: 'id', message: `model "${id}" is listed twice` });
-  }
-  for (const id of duplicates(catalog.flatMap((m) => m.deployments.map((d) => d.id)))) {
-    problems.push({ file: 'config/models.ts', field: 'deployments.id', message: `deployment "${id}" is listed twice` });
-  }
-  const modelIds = new Set(catalog.map((m) => m.id));
 
   const plugins: LoadedPlugin[] = [];
   const settingsSource = src.pluginSettings;
@@ -140,13 +118,6 @@ export function validateInstallation(src: InstallationSources): Installation {
       continue;
     }
     const agent = parsed.data;
-    // With a broken catalog every model reference would be "unknown"; the catalog problem is enough.
-    if (models.success) {
-      if (!modelIds.has(agent.model)) problems.push({ file, field: 'model', message: `"${agent.model}" is not in config/models.ts` });
-      for (const m of agent.editable?.models ?? []) {
-        if (!modelIds.has(m)) problems.push({ file, field: 'editable.models', message: `"${m}" is not in config/models.ts` });
-      }
-    }
     for (const p of agent.plugins) {
       if (!pluginNames.has(p)) problems.push({ file, field: 'plugins', message: `plugin "${p}" is not in plugins/` });
     }
@@ -160,6 +131,6 @@ export function validateInstallation(src: InstallationSources): Installation {
     problems.push({ file: 'agents/', field: 'id', message: `agent id "${id}" is used by more than one folder` });
   }
 
-  if (problems.length > 0 || !app.success || !models.success) throw configError(problems);
-  return { app: app.data, models: models.data, agents, plugins };
+  if (problems.length > 0 || !app.success) throw configError(problems);
+  return { app: app.data, agents, plugins };
 }

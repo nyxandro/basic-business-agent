@@ -1,4 +1,5 @@
-// Thin client of LiteLLM's admin API (master key): the organisation team, employee keys, balances.
+// Thin client of LiteLLM's admin API (master key): the organisation team, employee keys, balances,
+// the deployments of the admin's models and the check of a provider key.
 import { AppError } from '../errors/app-error.ts';
 
 export const ORG_TEAM_ID = 'org';
@@ -10,6 +11,26 @@ export interface Balance {
   resetAt: Date | null;
 }
 
+// A deployment of a model in LiteLLM's database: model_info.id is ours (`<model>:<key>`), and
+// model_info carries which installation wrote it and a fingerprint of its parameters.
+export interface DeploymentSpec {
+  id: string;
+  modelName: string;
+  params: Record<string, string | number | boolean>;
+  info: Record<string, string | number | boolean>;
+}
+
+export interface StoredDeployment {
+  id: string;
+  modelName: string;
+  info: Record<string, unknown>;
+  // Written into the database through the API; deployments of the configuration file are not.
+  inDatabase: boolean;
+}
+
+export type ConnectionCheck = { ok: true } | { ok: false; error: string };
+export type CheckMode = 'chat' | 'audio_transcription';
+
 export interface LiteLLMClient {
   baseUrl: string;
   health(): Promise<boolean>;
@@ -20,6 +41,12 @@ export interface LiteLLMClient {
   updateKey(key: string, maxBudget: number | null): Promise<void>;
   keyBalance(key: string): Promise<Balance>;
   deleteKey(key: string): Promise<void>;
+  listDeployments(): Promise<StoredDeployment[]>;
+  addDeployment(spec: DeploymentSpec): Promise<void>;
+  updateDeployment(spec: DeploymentSpec): Promise<void>;
+  deleteDeployment(id: string): Promise<void>;
+  // LiteLLM's own probe of a provider with these parameters: nothing is stored.
+  checkConnection(params: Record<string, string | number | boolean>, mode: CheckMode): Promise<ConnectionCheck>;
 }
 
 export function gatewayUnavailable(message: string, cause?: unknown): AppError {
@@ -38,6 +65,13 @@ interface RawBalance {
   budget_reset_at?: string | null;
 }
 
+const DEPLOYMENTS_PAGE_SIZE = 200;
+
+interface RawDeployment {
+  model_name: string;
+  model_info?: Record<string, unknown> & { id?: string; db_model?: boolean };
+}
+
 function toBalance(raw: RawBalance | undefined): Balance {
   return {
     spend: raw?.spend ?? 0,
@@ -48,7 +82,7 @@ function toBalance(raw: RawBalance | undefined): Balance {
 
 // teamId is ORG_TEAM_ID in an installation; tests pass their own so they never share balances.
 export function createLiteLLMClient(baseUrl: string, masterKey: string, teamId: string = ORG_TEAM_ID): LiteLLMClient {
-  async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, allow404 = false): Promise<T | null> {
+  async function call<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, allow404 = false): Promise<T | null> {
     let res: Response;
     try {
       res = await fetch(new URL(path, baseUrl), {
@@ -106,6 +140,32 @@ export function createLiteLLMClient(baseUrl: string, masterKey: string, teamId: 
     async keyBalance(key) {
       const res = await call<{ info?: RawBalance }>('GET', `/key/info?key=${encodeURIComponent(key)}`);
       return toBalance(res?.info);
+    },
+    async listDeployments() {
+      const all: StoredDeployment[] = [];
+      for (let page = 1; ; page++) {
+        const res = await call<{ data: RawDeployment[]; total_pages: number }>('GET', `/v2/model/info?page=${page}&size=${DEPLOYMENTS_PAGE_SIZE}`);
+        for (const d of res?.data ?? []) {
+          if (!d.model_info?.id) continue;
+          all.push({ id: d.model_info.id, modelName: d.model_name, info: d.model_info, inDatabase: d.model_info.db_model === true });
+        }
+        if (!res || page >= res.total_pages) return all;
+      }
+    },
+    async addDeployment(spec) {
+      await call('POST', '/model/new', { model_name: spec.modelName, litellm_params: spec.params, model_info: { ...spec.info, id: spec.id } });
+    },
+    async updateDeployment(spec) {
+      // PATCH replaces model_info too; POST /model/update keeps the old model_info (checked, V17).
+      await call('PATCH', `/model/${encodeURIComponent(spec.id)}/update`, { model_name: spec.modelName, litellm_params: spec.params, model_info: { ...spec.info, id: spec.id } });
+    },
+    async deleteDeployment(id) {
+      await call('POST', '/model/delete', { id }, true);
+    },
+    async checkConnection(params, mode) {
+      const res = await call<{ status: string; result?: { error?: string } }>('POST', '/health/test_connection', { litellm_params: params, mode });
+      if (res?.status === 'success') return { ok: true };
+      return { ok: false, error: res?.result?.error ?? `LiteLLM answered status ${res?.status ?? 'none'}` };
     },
   };
 }
