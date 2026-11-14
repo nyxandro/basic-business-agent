@@ -1,11 +1,12 @@
-import type { UploadedFile } from '@bba/contracts';
-import { createContext, useContext } from 'react';
+import type { AgentSummary, UploadedFile } from '@bba/contracts';
+import { createContext, useContext, type ReactElement } from 'react';
+import type { ApiRequestError } from '../api/client.ts';
 
 // What the chat window slot needs from the page: CopilotChat renders the slot itself, so the
 // values travel through context instead of props.
 export interface ChatExtras {
+  agent: AgentSummary;
   agentId: string;
-  agentName: string;
   threadId: string;
   attachments: UploadedFile[];
   addAttachment: (file: UploadedFile) => void;
@@ -14,6 +15,10 @@ export interface ChatExtras {
   onSubmitted: () => void;
   onRunFinished: () => void;
   onUploadError: (error: unknown) => void;
+  // The confirmation card of a waiting action, placed under the feed.
+  interrupt: ReactElement | null;
+  // The last failure of a run or an upload, shown above the input.
+  error: ApiRequestError | null;
 }
 
 export const ChatExtrasContext = createContext<ChatExtras | null>(null);

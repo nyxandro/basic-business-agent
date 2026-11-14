@@ -1,0 +1,576 @@
+/* The conversation (mockup «Чат с агентом»): the feed in a 768 px column and the composer under it. */
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 24px 12px;
+}
+
+.feed {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Welcome of an empty conversation. */
+.welcome {
+  padding: 120px 0 20px;
+  text-align: center;
+  animation: bba-rise 0.5s var(--ease-rise) both;
+}
+
+.welcomeMark {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 18px;
+  border-radius: 16px;
+  background: var(--acc);
+  color: var(--on-acc);
+  display: grid;
+  place-items: center;
+}
+
+.welcomeTitle {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.welcomeText {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.starter {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  animation: bba-rise 0.5s var(--ease-rise) both;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.starter:nth-child(1) {
+  animation-delay: 0.08s;
+}
+.starter:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.starter:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.starter:hover {
+  background: var(--hover);
+}
+
+.starter:active {
+  transform: scale(0.97);
+}
+
+/* Messages. */
+.user {
+  align-self: flex-end;
+  max-width: 70%;
+  background: var(--user-bubble);
+  padding: 10px 16px;
+  border-radius: 20px 20px 6px 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: bba-rise 0.45s var(--ease-rise) both;
+}
+
+.userFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.assistant {
+  display: flex;
+  gap: 14px;
+  animation: bba-rise 0.45s var(--ease-rise) both;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--acc);
+  color: var(--on-acc);
+  display: grid;
+  place-items: center;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown :global(p) {
+  margin: 0 0 10px;
+}
+
+.markdown :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown :global(ul),
+.markdown :global(ol) {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.markdown :global(a) {
+  color: var(--acc-text);
+}
+
+.markdown :global(code) {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+
+.markdown :global(pre) {
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.markdown :global(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.markdown :global(table) {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown :global(th),
+.markdown :global(td) {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 2px;
+  color: var(--muted);
+}
+
+.thinking {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  animation: bba-rise 0.45s var(--ease-rise) both;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface2);
+}
+
+.dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: bba-blink 1.2s infinite ease-in-out;
+}
+
+.dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.connecting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 80px 0;
+  color: var(--muted);
+}
+
+/* The line of a tool call. */
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.tool > figure,
+.tool > pre {
+  align-self: stretch;
+}
+
+.toolLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.toolLine:hover {
+  background: var(--hover);
+}
+
+.toolLineStatic {
+  cursor: default;
+}
+
+.toolLineStatic:hover {
+  background: transparent;
+}
+
+.toolFailed {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.toolText {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolTag {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface2);
+  white-space: nowrap;
+}
+
+.toolCount {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.toolDetails {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--ring);
+  border-top-color: var(--acc);
+  animation: bba-spin 0.8s linear infinite;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: bba-shimmer 2.2s linear infinite;
+  font-weight: 500;
+}
+
+/* The confirmation card. */
+.approval {
+  border: 1px solid var(--acc);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px var(--shadow);
+  overflow: hidden;
+  animation: bba-pop 0.4s var(--ease-out) both;
+}
+
+.approvalHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.approvalWho {
+  flex: 1;
+  min-width: 0;
+}
+
+.approvalTitle {
+  font-weight: 600;
+}
+
+.approvalSub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.approvalFields {
+  margin: 0;
+  padding: 6px 16px;
+}
+
+.approvalField {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.approvalField:last-child {
+  border-bottom: 0;
+}
+
+.approvalField dt {
+  width: 140px;
+  flex: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.approvalField dd {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.approvalFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-soft);
+}
+
+.approvalHint {
+  flex: 1;
+  min-width: 200px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.approvalRunning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  color: var(--muted);
+  border-top: 1px solid var(--border-soft);
+}
+
+/* The composer. */
+.dock {
+  flex: none;
+  padding: 8px 24px 20px;
+  position: relative;
+  z-index: 5;
+}
+
+.dockInner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 26px;
+  padding: 12px 12px 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 28px var(--shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.composer:focus-within {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 4px var(--ring), 0 8px 28px var(--shadow);
+}
+
+.textarea {
+  resize: none;
+  outline: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 2px 0;
+  max-height: 220px;
+  min-height: 46px;
+}
+
+.textarea:focus-visible {
+  outline: none;
+}
+
+.textarea::placeholder {
+  color: var(--muted);
+}
+
+.composerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.fill {
+  flex: 1;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chipName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chipBad {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.send {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--surface2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease, filter 0.2s ease;
+}
+
+.sendReady {
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+.sendReady:hover {
+  filter: brightness(1.1);
+}
+
+.send:active {
+  transform: scale(0.94);
+}
+
+.send:disabled {
+  cursor: default;
+}
+
+.empty {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+  color: var(--muted);
+  padding: 16px;
+}
+
+@media (max-width: 859px) {
+  .scroll {
+    padding: 20px 14px 8px;
+  }
+  .dock {
+    padding: 6px 10px 12px;
+  }
+  .user {
+    max-width: 85%;
+  }
+  .welcome {
+    padding-top: 64px;
+  }
+  .approvalField dt {
+    width: 96px;
+  }
+}

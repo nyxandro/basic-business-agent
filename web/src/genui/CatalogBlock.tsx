@@ -6,6 +6,17 @@ import type { z } from 'zod';
 import { parseToolResult } from '../chat/tool-result.ts';
 import { ru } from '../i18n/ru.ts';
 import { BrokenData } from './BrokenData.tsx';
+import styles from './genui.module.css';
+
+// While the model is still writing the arguments of a block.
+export function Preparing() {
+  return (
+    <div className={styles.pending} role="status">
+      <span className={styles.spin} />
+      {ru.genui.preparing}
+    </div>
+  );
+}
 
 export interface CallProps {
   toolCallId: string;
@@ -15,7 +26,7 @@ export interface CallProps {
 }
 
 export function CatalogBlock<T>({ call, schema, View }: { call: CallProps; schema: z.ZodType<T>; View: ComponentType<{ block: T }> }) {
-  if (call.status === 'inProgress') return <div className="genui genui-pending">{ru.genui.preparing}</div>;
+  if (call.status === 'inProgress') return <Preparing />;
   if (call.status === 'complete' && parseToolResult(call.result).kind === 'failed') return <BrokenData data={call.parameters} />;
   const parsed = schema.safeParse(call.parameters);
   return parsed.success ? <View block={parsed.data} /> : <BrokenData data={call.parameters} />;

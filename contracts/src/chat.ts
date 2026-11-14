@@ -4,6 +4,8 @@
 export interface ActionDescription {
   title: string;
   fields: Record<string, string>;
+  // Reads only: works without «Да» («только чтение» in the chat).
+  readOnly: boolean;
 }
 
 export interface AgentSummary {

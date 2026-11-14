@@ -36,6 +36,14 @@
   --acc-text: #3f37c9;
   --acc-soft: #eeeeff;
   --acc-mid: #b9b5f7;
+  /* Chart series in fixed order, validated for colour-blind readers (dataviz: validate_palette). */
+  --series-1: #4f46e5;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-other: #9a99a8;
   --on-acc: #ffffff;
   --ring: rgba(79, 70, 229, 0.16);
   --ring-strong: rgba(79, 70, 229, 0.45);
@@ -66,6 +74,13 @@
   --acc-text: #aab0ff;
   --acc-soft: #24224a;
   --acc-mid: #3a3780;
+  --series-1: #7b74f0;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-other: #6e6d80;
   --on-acc: #ffffff;
   --ring: rgba(110, 104, 255, 0.22);
   --ring-strong: rgba(110, 104, 255, 0.55);

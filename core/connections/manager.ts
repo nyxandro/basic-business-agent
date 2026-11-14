@@ -197,8 +197,8 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
           for (const [name, tool] of Object.entries(tools)) {
             const raw = name.startsWith(prefix) ? name.slice(prefix.length) : name;
             const guarded = c.mode === 'personal' ? wrapPersonal(c, userId, tool) : tool;
-            seen.set(name, describeTool(tool));
             out[name] = applyApprovalPolicy(guarded, { readOnly: c.readOnly.has(raw), db });
+            seen.set(name, describeTool(out[name]));
           }
         } catch (error) {
           const shown = isAppError(error) ? error : unavailable(c.title, c.id, error);

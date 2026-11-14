@@ -2,6 +2,9 @@
 import type { FormBlock } from '@bba/contracts';
 import { useId, useState, type SubmitEvent } from 'react';
 import { ru } from '../i18n/ru.ts';
+import { Button } from '../ui/Button.tsx';
+import { Field, Input, Select } from '../ui/Field.tsx';
+import styles from './genui.module.css';
 
 type Field = FormBlock['fields'][number];
 
@@ -29,39 +32,35 @@ export function FormBlockView({ block, answered, onAnswer }: { block: FormBlock;
   }
 
   return (
-    <form className="genui genui-form" onSubmit={submit} noValidate>
-      <p className="genui-form-title">{block.title}</p>
+    <form className={`${styles.block} ${styles.form}`} onSubmit={submit} noValidate>
+      <p className={styles.formTitle}>{block.title}</p>
       {block.fields.map((f, i) => {
         const id = `${formId}-${i}`;
         const problem = problems[f.name];
         const set = (v: string) => setValues((prev) => ({ ...prev, [f.name]: v }));
-        const common = { id, disabled: answered, 'aria-invalid': problem ? true : undefined, 'aria-describedby': problem ? `${id}-error` : undefined };
+        const common = { id, disabled: answered, 'aria-invalid': problem ? true : undefined };
         return (
-          <div key={f.name} className="genui-form-field">
-            <label htmlFor={id}>{f.label}</label>
+          <Field key={f.name} label={f.label} error={problem ?? null}>
             {f.kind === 'select' ? (
-              <select {...common} value={values[f.name] ?? ''} onChange={(e) => set(e.target.value)}>
+              <Select {...common} value={values[f.name] ?? ''} onChange={(e) => set(e.target.value)}>
                 <option value="">{ru.genui.choose}</option>
                 {(f.options ?? []).map((o) => (
                   <option key={o} value={o}>
                     {o}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
-              <input {...common} type={f.kind === 'number' ? 'text' : f.kind} inputMode={f.kind === 'number' ? 'decimal' : undefined} value={values[f.name] ?? ''} onChange={(e) => set(e.target.value)} />
+              <Input {...common} type={f.kind === 'number' ? 'text' : f.kind} inputMode={f.kind === 'number' ? 'decimal' : undefined} value={values[f.name] ?? ''} onChange={(e) => set(e.target.value)} />
             )}
-            {problem ? (
-              <span id={`${id}-error`} className="field-error">
-                {problem}
-              </span>
-            ) : null}
-          </div>
+          </Field>
         );
       })}
-      <button type="submit" className="btn" disabled={answered}>
-        {block.submitLabel}
-      </button>
+      <div className={styles.formActions}>
+        <Button type="submit" variant="primary" disabled={answered}>
+          {block.submitLabel}
+        </Button>
+      </div>
     </form>
   );
 }

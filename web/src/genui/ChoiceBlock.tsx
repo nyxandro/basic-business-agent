@@ -1,13 +1,14 @@
 // Choice (spec, section 7): the answer leaves as an ordinary message, then the block is inactive.
 import type { ChoiceBlock } from '@bba/contracts';
+import styles from './genui.module.css';
 
 export function ChoiceBlockView({ block, answered, onAnswer }: { block: ChoiceBlock; answered: boolean; onAnswer: (text: string) => void }) {
   return (
-    <div className="genui genui-choice">
-      <p>{block.question}</p>
-      <div className="genui-options">
+    <div>
+      <p className={styles.question}>{block.question}</p>
+      <div className={styles.options}>
         {block.options.map((o) => (
-          <button key={o.value} type="button" className="btn secondary" disabled={answered} onClick={() => onAnswer(o.label)}>
+          <button key={o.value} type="button" className={styles.option} disabled={answered} onClick={() => onAnswer(o.label)}>
             {o.label}
           </button>
         ))}

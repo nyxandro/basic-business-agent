@@ -54,7 +54,7 @@ describe('stage 2 additions', () => {
 
   it('names an action and the fields of its card from the tool’s description, and keeps them with a task’s question', async () => {
     const sales = (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!;
-    expect(sales.actions.mail_send).toEqual({ title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' } });
+    expect(sales.actions.mail_send).toEqual({ title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false });
 
     const task = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, adminId, {
       title: 'Письма',

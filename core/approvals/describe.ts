@@ -9,6 +9,7 @@ const TITLE_MAX = 120;
 
 interface Described {
   id?: unknown;
+  requireApproval?: unknown;
   title?: unknown;
   description?: unknown;
   inputSchema?: unknown;
@@ -36,7 +37,8 @@ function fieldsOf(schema: unknown): Record<string, string> {
 export function describeTool(tool: AnyTool): ActionDescription {
   const t = tool as unknown as Described;
   const title = typeof t.title === 'string' && t.title.trim() ? t.title.trim() : typeof t.description === 'string' && t.description.trim() ? firstSentence(t.description) : String(t.id);
-  return { title, fields: fieldsOf(t.inputSchema) };
+  // Tools pass applyApprovalPolicy, which asks «Да» for everything but the read-only ones.
+  return { title, fields: fieldsOf(t.inputSchema), readOnly: t.requireApproval === false };
 }
 
 export function describeTools(tools: Record<string, AnyTool>): Record<string, ActionDescription> {

@@ -1,16 +1,15 @@
-// One conversation: CopilotChat bound to the agent and the thread, with our blocks, the
-// confirmation card for AG-UI interrupts, the agent's starter questions and readable errors.
+// One conversation: CopilotChat bound to the agent and the thread, drawn by our ChatView, with our
+// blocks, the confirmation card for AG-UI interrupts and readable errors.
 import type { AgentSummary, UploadedFile } from '@bba/contracts';
-import { CopilotChat, useConfigureSuggestions, useInterrupt } from '@copilotkit/react-core';
+import { CopilotChat, useInterrupt } from '@copilotkit/react-core';
 import { useMemo, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { useGenuiRenderers } from '../genui/renderers.tsx';
 import { copilotLabels } from '../i18n/copilot-labels.ts';
-import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { ApprovalCard, type ApprovalInterrupt } from './ApprovalCard.tsx';
 import { chatErrorOf } from './chat-errors.ts';
 import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
-import { ChatViewSlot } from './ChatViewSlot.tsx';
+import { ChatView } from './ChatView.tsx';
 
 const APPROVAL_REASON = 'mastra:tool_approval';
 
@@ -18,20 +17,20 @@ export function ChatPanel({ agent, threadId, onRunFinished }: { agent: AgentSumm
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<ApiRequestError | null>(null);
 
-  useGenuiRenderers(agent.systems);
-  useConfigureSuggestions({ suggestions: agent.starters.map((s) => ({ title: s, message: s })), available: 'before-first-message', consumerAgentId: agent.id }, [agent]);
-  useInterrupt({
+  useGenuiRenderers(agent);
+  const interrupt = useInterrupt({
     agentId: agent.id,
+    renderInChat: false,
     enabled: (event) => (event.value as { reason?: string } | undefined)?.reason === APPROVAL_REASON,
-    render: ({ interrupt, resolve, cancel }) => (
-      <ApprovalCard interrupt={(interrupt ?? {}) as ApprovalInterrupt} systems={agent.systems} onYes={() => void resolve({ approved: true })} onNo={() => void cancel()} />
+    render: ({ interrupt: value, resolve, cancel }) => (
+      <ApprovalCard interrupt={(value ?? {}) as ApprovalInterrupt} agent={agent} onYes={() => void resolve({ approved: true })} onNo={() => void cancel()} />
     ),
   });
 
   const extras = useMemo<ChatExtras>(
     () => ({
+      agent,
       agentId: agent.id,
-      agentName: agent.name,
       threadId,
       attachments,
       addAttachment: (file) => setAttachments((prev) => [...prev, file]),
@@ -40,16 +39,15 @@ export function ChatPanel({ agent, threadId, onRunFinished }: { agent: AgentSumm
       onSubmitted: () => setError(null),
       onRunFinished,
       onUploadError: (raw) => setError(asApiError(raw)),
+      interrupt: interrupt ?? null,
+      error,
     }),
-    [agent, threadId, attachments, onRunFinished],
+    [agent, threadId, attachments, onRunFinished, interrupt, error],
   );
 
   return (
     <ChatExtrasContext value={extras}>
-      <div className="chat-panel">
-        {error ? <ErrorBanner error={error} /> : null}
-        <CopilotChat agentId={agent.id} threadId={threadId} labels={copilotLabels} chatView={ChatViewSlot} onError={(event) => setError(chatErrorOf(event.error))} />
-      </div>
+      <CopilotChat agentId={agent.id} threadId={threadId} labels={copilotLabels} chatView={ChatView} onError={(event) => setError(chatErrorOf(event.error))} />
     </ChatExtrasContext>
   );
 }

@@ -1,0 +1,253 @@
+/* Blocks the agent draws in the chat (spec, section 17.8; mockup: the table of deals). */
+.block {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+  margin: 0;
+}
+
+.caption {
+  padding: 12px 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  background: var(--surface2);
+  color: var(--muted);
+  text-align: left;
+  padding: 10px 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 11px 14px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.table tbody tr:hover {
+  background: var(--hover);
+}
+
+.num,
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.more {
+  border: 0;
+  background: transparent;
+  color: var(--acc-text);
+  font: inherit;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.more:hover {
+  background: var(--hover);
+}
+
+/* Chart. */
+.chart {
+  padding: 8px 14px 12px;
+}
+
+.chart svg {
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+  display: block;
+}
+
+.chart svg.pie {
+  max-width: 240px;
+  margin: 0 auto;
+}
+
+.axes line {
+  stroke: var(--border-soft);
+}
+
+.axes text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* Card. */
+.card {
+  padding: 14px 16px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cardSub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fields {
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+
+.fields dt {
+  color: var(--muted);
+}
+
+.fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Choice and form. */
+.question {
+  margin: 0 0 10px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.option {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.option:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.option:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.form {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formTitle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.broken {
+  border: 1px solid var(--bad);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--bad-soft);
+}
+
+.broken p {
+  margin: 0 0 8px;
+  color: var(--bad);
+  font-weight: 500;
+}
+
+.broken pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--ring);
+  border-top-color: var(--acc);
+  animation: bba-spin 0.8s linear infinite;
+}

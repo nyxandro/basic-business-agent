@@ -4,6 +4,7 @@ import { z } from 'zod';
 // A2UI for small answers; big tables are drawn straight from tool results, not retyped by the model.
 export const MAX_TABLE_ROWS = 500;
 export const MAX_MODEL_TABLE_ROWS = 20;
+export const CHART_SERIES_MAX = 6;
 
 const cell = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
@@ -18,7 +19,8 @@ export const chartBlockSchema = z
     title: z.string().optional(),
     kind: z.enum(['bar', 'line', 'pie']),
     labels: z.array(z.string()).min(1).max(100),
-    series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(8),
+    // Six series: the interface has six colours told apart in both themes (web tokens --series-*).
+    series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(CHART_SERIES_MAX),
   })
   .refine((c) => c.series.every((s) => s.values.length === c.labels.length), { message: 'every series needs one value per label', path: ['series'] });
 

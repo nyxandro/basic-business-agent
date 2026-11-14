@@ -1,21 +1,28 @@
-// A labelled form control: the label wraps the control, so a click on the words focuses it.
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { cloneElement, useId, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from './Button.tsx';
 import styles from './controls.module.css';
 import { Icon } from './Icon.tsx';
 
-export function Field({ label, hint, error, children, className }: { label: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; className?: string }) {
+// A labelled form control. The label points at the control (htmlFor), so its name is only the
+// label — not the hint, the error or the options of a list; the hint and the error describe it.
+export function Field({ label, hint, error, children, className }: { label: ReactNode; hint?: ReactNode; error?: string | null; children: ReactElement<{ id?: string; 'aria-describedby'?: string }>; className?: string }) {
+  const id = useId();
+  const described = [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(' ') || undefined;
   return (
-    <label className={cx(styles.field, className)}>
-      {label}
-      {children}
-      {hint ? <span className={styles.hint}>{hint}</span> : null}
+    <div className={cx(styles.field, className)}>
+      <label htmlFor={children.props.id ?? id}>{label}</label>
+      {cloneElement(children, { id: children.props.id ?? id, 'aria-describedby': described })}
+      {hint ? (
+        <span id={`${id}-hint`} className={styles.hint}>
+          {hint}
+        </span>
+      ) : null}
       {error ? (
-        <span className={styles.error} role="alert">
+        <span id={`${id}-error`} className={styles.error} role="alert">
           {error}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 

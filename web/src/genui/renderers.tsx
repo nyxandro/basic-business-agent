@@ -4,10 +4,9 @@ import { useAgent, useCopilotKit, useRenderTool } from '@copilotkit/react-core';
 import { lazy, Suspense, useCallback } from 'react';
 import { z } from 'zod';
 import { ToolRow } from '../chat/ToolRow.tsx';
-import { ru } from '../i18n/ru.ts';
 import { BrokenData } from './BrokenData.tsx';
 import { CardBlockView } from './CardBlock.tsx';
-import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
+import { CatalogBlock, Preparing, type CallProps } from './CatalogBlock.tsx';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
@@ -37,7 +36,7 @@ function useAnswer(toolCallId: string): { answered: boolean; send: (text: string
 function Choice({ call }: { call: CallProps }) {
   const { answered, send } = useAnswer(call.toolCallId);
   const parsed = choiceBlockSchema.safeParse(call.parameters);
-  if (call.status === 'inProgress') return <div className="genui genui-pending">{ru.genui.preparing}</div>;
+  if (call.status === 'inProgress') return <Preparing />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
   return <ChoiceBlockView block={parsed.data} answered={answered} onAnswer={send} />;
 }
@@ -45,19 +44,19 @@ function Choice({ call }: { call: CallProps }) {
 function Form({ call }: { call: CallProps }) {
   const { answered, send } = useAnswer(call.toolCallId);
   const parsed = formBlockSchema.safeParse(call.parameters);
-  if (call.status === 'inProgress') return <div className="genui genui-pending">{ru.genui.preparing}</div>;
+  if (call.status === 'inProgress') return <Preparing />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
   return <FormBlockView block={parsed.data} answered={answered} onAnswer={send} />;
 }
 
-export function useGenuiRenderers(systems: AgentSummary['systems']): void {
+export function useGenuiRenderers(agent: AgentSummary): void {
   useRenderTool({ name: GENUI_TOOL.table, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={modelTableBlockSchema} View={TableBlockView} /> }, []);
   useRenderTool(
     {
       name: GENUI_TOOL.chart,
       parameters: anyArgs,
       render: (call) => (
-        <Suspense fallback={<div className="genui genui-pending">{ru.genui.preparing}</div>}>
+        <Suspense fallback={<Preparing />}>
           <CatalogBlock call={call} schema={chartBlockSchema} View={ChartBlockView} />
         </Suspense>
       ),
@@ -71,9 +70,9 @@ export function useGenuiRenderers(systems: AgentSummary['systems']): void {
     {
       name: '*',
       render: (call: { name: string; status: CallProps['status']; parameters?: unknown; args?: unknown; result?: string }) => (
-        <ToolRow name={call.name} status={call.status} parameters={call.parameters ?? call.args} result={call.result} systems={systems} />
+        <ToolRow name={call.name} status={call.status} parameters={call.parameters ?? call.args} result={call.result} agent={agent} />
       ),
     },
-    [systems],
+    [agent],
   );
 }

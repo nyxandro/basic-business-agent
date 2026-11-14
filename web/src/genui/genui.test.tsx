@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
-import { ChartBlockView } from './ChartBlock.tsx';
+import { ChartBlockView, pieSlices } from './ChartBlock.tsx';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
@@ -27,7 +27,8 @@ describe('catalog blocks', () => {
 
   it('draws bar, line and pie charts with a legend', () => {
     const { unmount } = render(<CatalogBlock call={call(CHART)} schema={chartBlockSchema} View={ChartBlockView} />);
-    expect(screen.getByRole('img', { name: 'Выручка' }).querySelectorAll('rect')).toHaveLength(4);
+    // Bars are paths: rounded at the data end, square on the axis.
+    expect(screen.getByRole('img', { name: 'Выручка' }).querySelectorAll('path')).toHaveLength(4);
     expect(screen.getByText('Факт')).toBeInTheDocument();
     unmount();
     const line = render(<ChartBlockView block={{ ...CHART, kind: 'line' } as never} />);
@@ -36,6 +37,13 @@ describe('catalog blocks', () => {
     render(<ChartBlockView block={{ kind: 'pie', labels: ['Юрлица', 'ИП'], series: [{ name: 'Доля', values: [3, 1] }] }} />);
     expect(screen.getByRole('img').querySelectorAll('path')).toHaveLength(2);
     expect(screen.getByText('Юрлица')).toBeInTheDocument();
+  });
+
+  it('folds the smallest slices of a pie into «Другое» past six colours', () => {
+    const labels = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
+    const slices = pieSlices({ kind: 'pie', labels, series: [{ name: 'Доля', values: [8, 7, 6, 5, 4, 3, 2, 1] }] });
+    expect(slices.map((s) => [s.label, s.value])).toEqual([['А', 8], ['Б', 7], ['В', 6], ['Г', 5], ['Д', 4], ['Другое', 6]]);
+    expect(new Set(slices.map((s) => s.color)).size).toBe(6);
   });
 
   it('draws a card with its fields', () => {

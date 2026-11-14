@@ -73,7 +73,10 @@ describe('chat', () => {
         name: 'Продажи',
         description: 'Тестовый агент Продажи',
         starters: ['Покажи мои сделки'],
-        actions: { crm_search: { title: 'Найти сделки', fields: {} }, mail_send: { title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' } } },
+        actions: {
+          crm_search: { title: 'Найти сделки', fields: {}, readOnly: true },
+          mail_send: { title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false },
+        },
         systems: { tools: {}, prefixes: {} },
       },
     ]);
