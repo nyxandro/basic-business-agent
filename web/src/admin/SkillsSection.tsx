@@ -1,7 +1,7 @@
 // «Скиллы» (spec, scenario 10; mockup): methods for the agents as `.skill` files — a card each with
 // what it does, who has it and a switch; «Добавить скилл», a new version over the old one, who has
 // it, removal after a question. Scripts run in the sandbox without network.
-import type { AdminDepartment, AdminUser, SkillAccess, SkillDto } from '@bba/contracts';
+import type { AdminDepartment, AdminPerson, SkillAccess, SkillDto } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -20,7 +20,7 @@ import section from './section.module.css';
 import { SkillUpload } from './SkillUpload.tsx';
 import styles from './skills.module.css';
 
-function AccessDialog({ skill, departments, users, onClose, onSaved }: { skill: SkillDto; departments: AdminDepartment[]; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+function AccessDialog({ skill, departments, users, onClose, onSaved }: { skill: SkillDto; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
   const [access, setAccess] = useState<SkillAccess>(skill.access);
   const { busy, error, run } = useAction();
   return (
@@ -110,8 +110,8 @@ function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: 
 
 export function SkillsSection() {
   const load = useCallback(async () => {
-    const [skills, departments, users] = await Promise.all([adminApi.skills(), adminApi.departments(), adminApi.users()]);
-    return { ...skills, departments: departments.departments, users: users.users };
+    const [skills, departments, users] = await Promise.all([adminApi.skills(), adminApi.departments(), adminApi.people()]);
+    return { ...skills, departments: departments.departments, users: users.people };
   }, []);
   const { state, reload } = useLoad(load);
   const [adding, setAdding] = useState(false);

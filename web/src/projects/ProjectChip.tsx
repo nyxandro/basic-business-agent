@@ -57,9 +57,11 @@ interface ChipProps {
   state: ThreadProjectState;
   retry: () => void;
   changed: (project: ProjectRef | null) => void;
+  // «Новый разговор в проекте» could not put the conversation into the project.
+  moveError: ApiRequestError | null;
 }
 
-export function ProjectChip({ threadId, state, retry, changed }: ChipProps) {
+export function ProjectChip({ threadId, state, retry, changed, moveError }: ChipProps) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [projects, setProjects] = useState<ProjectDto[] | null>(null);
@@ -130,9 +132,9 @@ export function ProjectChip({ threadId, state, retry, changed }: ChipProps) {
           void move({ id: p.id, name: p.name });
         }}
       />
-      {error ? (
+      {(error ?? moveError) ? (
         <span className={styles.chipError} role="alert">
-          {error.message}
+          {(error ?? moveError)!.message}
         </span>
       ) : null}
     </MenuAnchor>

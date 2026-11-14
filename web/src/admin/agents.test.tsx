@@ -82,6 +82,20 @@ describe('«Агенты и промпты»', () => {
     await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/model'))?.body).toEqual({ modelId: 'gigachat' }));
   });
 
+  it('keeps the unsaved prompt when the model of the agent changes', async () => {
+    let model: string | null = null;
+    const s = server({ ...PROMPT, allowedModels: [{ id: 'gigachat', label: 'GigaChat 2 Max' }] });
+    s.set('GET /app/api/admin/agents/sales/prompt', () => ({ body: { ...PROMPT, modelId: model, allowedModels: [{ id: 'gigachat', label: 'GigaChat 2 Max' }] } }));
+    s.set('PUT /app/api/admin/agents/sales/model', (call) => ((model = (call.body as { modelId: string }).modelId), { body: { ok: true } }));
+    renderApp('/admin/agents');
+    const user = userEvent.setup();
+    const field = await screen.findByRole('textbox', { name: 'Промпт агента' });
+    await user.type(field, ' Отвечай кратко.');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Модель агента' }), 'GigaChat 2 Max');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Модель агента' })).toHaveValue('gigachat'));
+    expect(screen.getByRole('textbox', { name: 'Промпт агента' })).toHaveValue('Ты агент продаж. Отвечай кратко.');
+  });
+
   it('names agents departments point at but the installation lost', async () => {
     server(PROMPT, [AGENT], ['old-agent']);
     renderApp('/admin/agents');

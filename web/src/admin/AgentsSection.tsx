@@ -22,8 +22,9 @@ function AgentPanel({ agent, onChanged }: { agent: AdminAgent; onChanged: () => 
     reload();
     onChanged();
   };
-  // A new key after publish, revert or another model: the editor shows the fresh version.
-  return <AgentEditor key={`${state.data.publishedAt ?? 'file'}:${state.data.draftVersionId ?? ''}:${state.data.modelId ?? ''}:${agent.starters.join('|')}`} agent={agent} state={state.data} onChanged={changed} />;
+  // A new key after publish or revert: the field shows the fresh version. A new model or starters
+  // keep the editor, so an unsaved edit of the prompt stays.
+  return <AgentEditor key={`${state.data.publishedAt ?? 'file'}:${state.data.draftVersionId ?? ''}`} agent={agent} state={state.data} onChanged={changed} />;
 }
 
 export function AgentsSection() {

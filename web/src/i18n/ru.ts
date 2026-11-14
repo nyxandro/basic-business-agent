@@ -85,6 +85,7 @@ export const ru = {
     dismiss: 'Закрыть',
     noMic: 'Нет доступа к микрофону. Разрешите его в настройках браузера.',
     tooShort: 'Запись слишком короткая. Скажите ещё раз.',
+    recorderFailed: 'Не удалось начать запись. Обновите страницу и попробуйте ещё раз.',
     time: (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
   },
   search: {
@@ -105,6 +106,7 @@ export const ru = {
     nothing: 'Ничего не нашлось',
     nothingHint: 'Попробуйте другие слова или выберите все проекты',
     searching: 'Ищу…',
+    projectsFailed: 'Список проектов не загрузился',
     threadCount: (n: number) => `${n} ${plural(n, ['разговор', 'разговора', 'разговоров'])}`,
   },
   projects: {

@@ -21,14 +21,21 @@ export async function startRecording(): Promise<Recording> {
   } catch (error) {
     throw new ApiRequestError({ code: 'APP_VOICE_NO_MIC', message: ru.voice.noMic, status: 0, cause: error });
   }
-  const recorder = new MediaRecorder(stream);
+  const release = () => stream.getTracks().forEach((track) => track.stop());
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream);
+    recorder.start();
+  } catch (error) {
+    // The microphone is already taken: give it back, or its light stays on until a reload.
+    release();
+    throw new ApiRequestError({ code: 'APP_VOICE_RECORDER_FAILED', message: ru.voice.recorderFailed, status: 0, cause: error });
+  }
   const parts: Blob[] = [];
   const startedAt = Date.now();
-  const release = () => stream.getTracks().forEach((track) => track.stop());
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) parts.push(e.data);
   };
-  recorder.start();
   return {
     finish: () =>
       new Promise((resolve) => {

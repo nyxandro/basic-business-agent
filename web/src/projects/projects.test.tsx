@@ -80,6 +80,19 @@ describe('projects of conversations', () => {
     expect(s.calls.find((c) => c.method === 'DELETE')?.path).toBe('/app/api/projects/p1/file');
   });
 
+  it('refuses a file over the limit with its own code and no repeat', async () => {
+    const s = server();
+    renderApp('/projects/p1');
+    const user = userEvent.setup();
+    await screen.findByText(/Файлов пока нет/);
+    const big = new File(['x'], 'огромный.pdf');
+    Object.defineProperty(big, 'size', { value: 21 * 1024 * 1024 });
+    await user.upload(screen.getByLabelText('Загрузить файл', { selector: 'input' }), big);
+    expect(await screen.findByText(/APP_UPLOAD_TOO_LARGE|больше 20 МБ/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument();
+    expect(s.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
   it('starts a new conversation in the project with the chosen agent', async () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000001');
     const thread = '/app/api/threads/00000000-0000-4000-8000-000000000001/project';
@@ -94,6 +107,21 @@ describe('projects of conversations', () => {
     await user.click(screen.getByRole('menuitem', { name: /Общий помощник/ }));
     expect(await screen.findByRole('button', { name: /Тендер Альфа/ })).toHaveAttribute('aria-haspopup', 'menu');
     expect(s.calls.find((c) => c.method === 'PUT' && c.path === thread)?.body).toEqual({ projectId: 'p1' });
+  });
+
+  it('keeps the chip working and says why when the new conversation could not go into the project', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000002');
+    const thread = '/app/api/threads/00000000-0000-4000-8000-000000000002/project';
+    server({
+      [`PUT ${thread}`]: apiError('APP_NOT_FOUND', 'Проект не найден.', 404),
+      [`GET ${thread}`]: { body: { projectId: null } },
+    });
+    renderApp('/projects/p1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Новый разговор в проекте' }));
+    await user.click(screen.getByRole('menuitem', { name: /Продажи/ }));
+    expect(await screen.findByRole('button', { name: /Без проекта/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('alert').some((a) => a.textContent === 'Проект не найден.')).toBe(true);
   });
 
   it('moves the conversation into a project from the chip of the input', async () => {

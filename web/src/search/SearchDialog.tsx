@@ -123,6 +123,7 @@ export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boo
   const [scope, setScope] = useState<SearchScope>('all');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [projectsFailed, setProjectsFailed] = useState(false);
   const { state, retry } = useSearch(open ? q : '', scope, projectId);
   const navigate = useNavigate();
 
@@ -131,8 +132,15 @@ export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boo
     if (!open) return;
     let current = true;
     fetchProjects().then(
-      (r) => current && setProjects(r.projects),
-      (error: unknown) => console.warn('projects for the search filter not loaded', error),
+      (r) => {
+        if (!current) return;
+        setProjects(r.projects);
+        setProjectsFailed(false);
+      },
+      (error: unknown) => {
+        console.warn('projects for the search filter not loaded', error);
+        if (current) setProjectsFailed(true);
+      },
     );
     return () => {
       current = false;
@@ -172,6 +180,7 @@ export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boo
             </Chip>
           ))}
           <span className={styles.fill} />
+          {projectsFailed ? <span className={styles.filterProblem}>{ru.search.projectsFailed}</span> : null}
           <label className={styles.selectLabel}>
             {ru.search.inProject}
             <select className={styles.select} value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
@@ -194,6 +203,7 @@ export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boo
               {p.name}
             </Chip>
           ))}
+          {projectsFailed ? <span className={styles.filterProblem}>{ru.search.projectsFailed}</span> : null}
         </div>
       )}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">

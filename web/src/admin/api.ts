@@ -3,6 +3,7 @@ import type {
   AdminAgentsResponse,
   AdminConnectionsResponse,
   AdminDepartment,
+  AdminPeopleResponse,
   AdminInvite,
   AdminRole,
   AdminTask,
@@ -51,6 +52,7 @@ type Ok = { ok: true };
 
 export const adminApi = {
   users: () => api<{ users: AdminUser[] }>('GET', `${A}/users`),
+  people: () => api<AdminPeopleResponse>('GET', `${A}/people`),
   invites: () => api<{ invites: AdminInvite[] }>('GET', `${A}/invites`),
   invite: (input: InviteCreate) => api<IssuedLink>('POST', `${A}/invites`, input),
   revokeInvite: (id: string) => api<Ok>('POST', `${A}/invites/${enc(id)}/revoke`, {}),

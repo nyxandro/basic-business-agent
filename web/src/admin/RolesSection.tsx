@@ -94,7 +94,9 @@ function RoleHead({ role, onRename, onChanged }: { role: AdminRole; onRename: ()
   );
 }
 
-function Mark({ role, right, onToggle }: { role: AdminRole; right: Permission; onToggle: () => void }) {
+// One save at a time: a mark waits while the previous one is saved, so the server keeps what the
+// screen shows.
+function Mark({ role, right, busy, onToggle }: { role: AdminRole; right: Permission; busy: boolean; onToggle: () => void }) {
   const locked = role.builtin !== null;
   const on = role.builtin === 'superadmin' || role.permissions.includes(right);
   return (
@@ -106,7 +108,8 @@ function Mark({ role, right, onToggle }: { role: AdminRole; right: Permission; o
       aria-label={`${role.name}: ${PERMISSION_LABELS[right] ?? right}`}
       title={locked ? BUILTIN_NOTE : undefined}
       className={cx(styles.mark, on && styles.markOn, locked && styles.markLocked)}
-      onClick={locked ? undefined : onToggle}
+      aria-busy={busy || undefined}
+      onClick={locked || busy ? undefined : onToggle}
     >
       <Icon name="check" size={14} />
     </button>
@@ -118,7 +121,7 @@ export function RolesSection() {
   const [roles, setRoles] = useState<AdminRole[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<AdminRole | null>(null);
-  const { error, run } = useAction();
+  const { busy, error, run } = useAction();
 
   const head = (
     <PageHead
@@ -170,7 +173,7 @@ export function RolesSection() {
                 <td>{PERMISSION_LABELS[p] ?? p}</td>
                 {shown.map((r) => (
                   <td key={r.id} className={styles.markCell}>
-                    <Mark role={r} right={p} onToggle={() => void toggle(r, p)} />
+                    <Mark role={r} right={p} busy={busy} onToggle={() => void toggle(r, p)} />
                   </td>
                 ))}
               </tr>

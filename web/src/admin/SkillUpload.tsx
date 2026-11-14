@@ -1,7 +1,7 @@
 // «Добавить скилл» (spec, scenario 10): a `.skill` file is checked before saving — its name, what it
 // does, the files and whether it has scripts; then who gets it. A skill with the same name is
 // replaced with the new version («Заменить»), its access stays. A refused archive says why.
-import type { AdminDepartment, AdminUser, SkillAccess, SkillPreview } from '@bba/contracts';
+import type { AdminDepartment, AdminPerson, SkillAccess, SkillPreview } from '@bba/contracts';
 import { useRef, useState } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { fileSize, plural } from '../ui/format.ts';
@@ -45,7 +45,7 @@ function Preview({ preview }: { preview: SkillPreview }) {
   );
 }
 
-function UploadBody({ departments, users, onClose, onSaved }: { departments: AdminDepartment[]; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+function UploadBody({ departments, users, onClose, onSaved }: { departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<SkillPreview | null>(null);
@@ -97,7 +97,7 @@ function UploadBody({ departments, users, onClose, onSaved }: { departments: Adm
   );
 }
 
-export function SkillUpload(props: { departments: AdminDepartment[]; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+export function SkillUpload(props: { departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
   return (
     <Modal open onClose={props.onClose} label="Добавить скилл">
       <UploadBody {...props} />

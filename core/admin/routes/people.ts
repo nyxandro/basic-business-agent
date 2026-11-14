@@ -1,5 +1,5 @@
 // Admin section «Пользователи»: invites, password resets, roles of a person, blocking.
-import { inviteCreateSchema, passwordResetCreateSchema, userLimitsSchema, userProfileSchema, userRolesSchema } from '@bba/contracts';
+import { inviteCreateSchema, passwordResetCreateSchema, userLimitsSchema, userProfileSchema, userRolesSchema, type AdminPeopleResponse } from '@bba/contracts';
 import { writeAudit } from '../../audit/audit.ts';
 import type { ModelGateway } from '../../models/gateway.ts';
 import { deleteEmployee, type DeletionDeps } from '../deletion.ts';
@@ -28,8 +28,13 @@ export function registerPeopleRoutes(
   const guard = requirePermission('users');
   const link = (kind: 'invite' | 'reset', token: string) => new URL(`/${kind}/${token}`, publicUrl).toString();
 
-  // Also for those who give skills and background tasks to people.
-  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits', 'skills', 'agents'), async (c) => c.json({ users: await listUsers(db) }));
+  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits'), async (c) => c.json({ users: await listUsers(db) }));
+  // Names only, to pick whom a skill or a background task is for: no e-mails, roles or blocking.
+  app.get('/app/api/admin/people', requireAnyPermission('users', 'departments', 'limits', 'skills', 'agents'), async (c) => {
+    const { rows } = await db.query<{ id: string; name: string }>('SELECT "id", "name" FROM app."user" ORDER BY "name", "id"');
+    const body: AdminPeopleResponse = { people: rows };
+    return c.json(body);
+  });
 
   app.post('/app/api/admin/invites', guard, async (c) => {
     const input = await parseJson(c, inviteCreateSchema);

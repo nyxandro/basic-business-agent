@@ -134,7 +134,7 @@ export function AgentEditor({ agent, state, onChanged }: { agent: AdminAgent; st
       </Field>
       <div className={styles.settings}>
         <AgentModel state={state} onSaved={onChanged} />
-        <Starters agent={agent} onSaved={onChanged} />
+        <Starters key={agent.starters.join('|')} agent={agent} onSaved={onChanged} />
       </div>
       <div className={styles.footer}>
         <Button variant="ghost" disabled={busy} onClick={() => void revert()}>

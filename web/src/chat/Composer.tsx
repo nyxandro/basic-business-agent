@@ -22,6 +22,28 @@ const MAX_HEIGHT = 220;
 
 const appendText = (current: string, text: string) => (current.trim() ? `${current.trimEnd()} ${text}` : text);
 
+const DRAFT_CHANGED = 'bba:draft-changed';
+interface DraftChange {
+  agentId: string;
+  threadId: string;
+}
+
+// A field of a conversation follows its draft changed from outside (recognised voice).
+function useDraftChanges(agentId: string, threadId: string, onChange: (v: string) => void): void {
+  const latest = useRef(onChange);
+  useLayoutEffect(() => {
+    latest.current = onChange;
+  });
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const { detail } = event as CustomEvent<DraftChange>;
+      if (detail.agentId === agentId && detail.threadId === threadId) latest.current(readDraft(agentId, threadId));
+    };
+    window.addEventListener(DRAFT_CHANGED, listener);
+    return () => window.removeEventListener(DRAFT_CHANGED, listener);
+  }, [agentId, threadId]);
+}
+
 // Where recognised text goes: the field while the conversation is open, its draft after that.
 function useDeliverText(agentId: string, threadId: string, value: string, onChange: (v: string) => void): (text: string) => void {
   const latest = useRef({ value, onChange, open: true });
@@ -37,8 +59,10 @@ function useDeliverText(agentId: string, threadId: string, value: string, onChan
   return useCallback(
     (text: string) => {
       const now = latest.current;
-      if (now.open) now.onChange(appendText(now.value, text));
-      else writeDraft(agentId, threadId, appendText(readDraft(agentId, threadId), text));
+      if (now.open) return now.onChange(appendText(now.value, text));
+      writeDraft(agentId, threadId, appendText(readDraft(agentId, threadId), text));
+      // The person may be back in this conversation already: its new field takes the draft.
+      window.dispatchEvent(new CustomEvent<DraftChange>(DRAFT_CHANGED, { detail: { agentId, threadId } }));
     },
     [agentId, threadId],
   );
@@ -75,6 +99,7 @@ export function Composer({ value, onChange, onSend, onStop, running, extra }: { 
   const ready = value.trim().length > 0 && !uploading;
   const me = useMe();
   const deliver = useDeliverText(extras.agentId, extras.threadId, value, onChange);
+  useDraftChanges(extras.agentId, extras.threadId, onChange);
   const voice = useVoice(extras.agentId, deliver);
   const voiceLine = voice.state.status === 'transcribing' || voice.state.status === 'failed' ? <VoiceStatus state={voice.state} onRetry={voice.retry} onDismiss={voice.dismiss} /> : null;
 

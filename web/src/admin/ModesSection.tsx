@@ -1,7 +1,7 @@
 // «Режимы работы» (spec, scenario 4; mockup): how agents work — in the chat, on a schedule, on an
 // event; the background tasks with their area, schedule, the last fire («Выполнено у 7 из 8») and
 // a switch; the breakdown of a fire by people; the rules of the core nobody turns off.
-import type { AdminAgent, AdminDepartment, AdminTask, AdminUser } from '@bba/contracts';
+import type { AdminAgent, AdminDepartment, AdminTask, AdminPerson } from '@bba/contracts';
 import { useCallback, useState } from 'react';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -89,13 +89,13 @@ interface Data {
   tasks: AdminTask[];
   agents: AdminAgent[];
   departments: AdminDepartment[];
-  users: AdminUser[];
+  users: AdminPerson[];
 }
 
 export function ModesSection() {
   const load = useCallback(async (): Promise<Data> => {
-    const [tasks, agents, departments, users] = await Promise.all([adminApi.tasks(), adminApi.agents(), adminApi.departments(), adminApi.users()]);
-    return { tasks: tasks.tasks, agents: agents.agents, departments: departments.departments, users: users.users };
+    const [tasks, agents, departments, users] = await Promise.all([adminApi.tasks(), adminApi.agents(), adminApi.departments(), adminApi.people()]);
+    return { tasks: tasks.tasks, agents: agents.agents, departments: departments.departments, users: users.people };
   }, []);
   const { state, reload } = useLoad(load);
   const wide = useMedia(WIDE_QUERY);

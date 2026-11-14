@@ -57,6 +57,16 @@ export interface AdminUser {
   createdAt: string;
 }
 
+// GET admin/people: whom a skill or a background task can be for — names only.
+export interface AdminPerson {
+  id: string;
+  name: string;
+}
+
+export interface AdminPeopleResponse {
+  people: AdminPerson[];
+}
+
 export interface AdminRole {
   id: string;
   name: string;

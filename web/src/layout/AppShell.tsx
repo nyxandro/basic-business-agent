@@ -121,8 +121,9 @@ export function AppShell() {
         {wide ? <Sidebar {...sidebar} onNavigate={closeMenu} /> : <MobileDrawer {...sidebar} open={menuOpen} onClose={closeMenu} />}
         <main className={styles.main}>
           <ForbiddenNotice />
-          {/* A screen that fails to draw shows its message; the panel stays, the next screen starts clean. */}
-          <ErrorBoundary key={pathname}>
+          {/* A screen that fails to draw shows its message; the panel stays, the next screen or
+              conversation starts clean. */}
+          <ErrorBoundary key={`${pathname}?${params.get('thread') ?? ''}`}>
             <Outlet context={context} />
           </ErrorBoundary>
         </main>

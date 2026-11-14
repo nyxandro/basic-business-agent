@@ -25,7 +25,7 @@ function server(skills: object[] = [SKILL]) {
     'GET /app/api/me': { body: ADMIN },
     'GET /app/api/admin/skills': { body: { skills, libraries: ['pandas', 'openpyxl'] } },
     'GET /app/api/admin/departments': { body: { departments: DEPARTMENTS } },
-    'GET /app/api/admin/users': { body: { users: [] } },
+    'GET /app/api/admin/people': { body: { people: [] } },
   });
 }
 

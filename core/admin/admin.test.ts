@@ -102,13 +102,18 @@ describe('lists the related sections need', () => {
     const giver = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Методисты', permissions: ['skills'] } }));
     await t.createUser({ email: 'skills@example.com', roleIds: [giver.id] });
     const methodist = await t.signIn('skills@example.com');
-    for (const path of ['/app/api/admin/users', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: methodist })).status, path).toBe(200);
+    for (const path of ['/app/api/admin/people', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: methodist })).status, path).toBe(200);
+    // Only names to pick from: no e-mails, roles or blocking.
+    const { people } = await json<{ people: Record<string, unknown>[] }>(await t.call('GET', '/app/api/admin/people', { cookie: methodist }));
+    expect(people.find((p) => p.name === 'Игорь')).toEqual({ id: adminId, name: 'Игорь' });
+    expect((await t.call('GET', '/app/api/admin/users', { cookie: methodist })).status).toBe(403);
     expect((await t.call('PUT', '/app/api/admin/departments/00000000-0000-4000-8000-000000000000', { cookie: methodist, body: { name: 'x' } })).status).toBe(403);
 
     const planner = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Задачи', permissions: ['agents'] } }));
     await t.createUser({ email: 'tasks@example.com', roleIds: [planner.id] });
     const tasks = await t.signIn('tasks@example.com');
-    for (const path of ['/app/api/admin/users', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: tasks })).status, path).toBe(200);
+    for (const path of ['/app/api/admin/people', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: tasks })).status, path).toBe(200);
+    expect((await t.call('GET', '/app/api/admin/users', { cookie: tasks })).status).toBe(403);
   });
 
   it('shows the personal limits set on top of the defaults', async () => {

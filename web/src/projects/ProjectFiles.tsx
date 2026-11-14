@@ -2,7 +2,7 @@
 // stays as a line with «Повторить». Attachments of the project's conversations land here too.
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
-import { asApiError, type ApiRequestError } from '../api/client.ts';
+import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -14,6 +14,8 @@ import { Skeleton } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { deleteProjectFile, fetchProjectFiles, projectFileUrl, uploadProjectFile } from './api.ts';
 import styles from './projects.module.css';
+
+const TOO_LARGE = 'APP_UPLOAD_TOO_LARGE';
 
 export function ProjectFiles({ projectId }: { projectId: string }) {
   const load = useCallback(() => fetchProjectFiles(projectId), [projectId]);
@@ -27,7 +29,7 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
   async function upload(file: File) {
     setFailed(null);
     if (file.size > MAX_UPLOAD_BYTES) {
-      setFailed({ file, error: asApiError(new Error(ru.chat.tooLarge)) });
+      setFailed({ file, error: new ApiRequestError({ code: TOO_LARGE, message: ru.chat.tooLarge, status: 0 }) });
       return;
     }
     setBusy(file.name);
@@ -91,11 +93,16 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
               <Icon name="alert" size={16} />
               <span className={styles.rowMain}>
                 <span className={`${styles.rowName} ${styles.rowBad}`}>{ru.projects.uploadFailed(failed.file.name)}</span>
-                <span className={styles.rowMeta}>{failed.error.message}</span>
+                <span className={styles.rowMeta}>
+                  {failed.error.message} · {failed.error.code}
+                </span>
               </span>
-              <Button size="sm" onClick={() => void upload(failed.file)}>
-                {ru.projects.retry}
-              </Button>
+              {/* The same file over the limit fails again: no repeat for it. */}
+              {failed.error.code === TOO_LARGE ? null : (
+                <Button size="sm" onClick={() => void upload(failed.file)}>
+                  {ru.projects.retry}
+                </Button>
+              )}
             </li>
           ) : null}
           {state.data.files.map((f) => (

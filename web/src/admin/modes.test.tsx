@@ -28,7 +28,7 @@ function server(tasks: object[] = [TASK]) {
     'GET /app/api/admin/tasks': { body: { tasks } },
     'GET /app/api/admin/agents': { body: { agents: AGENTS, missingAgents: [] } },
     'GET /app/api/admin/departments': { body: { departments: [{ id: SALES_DEP, name: 'Отдел продаж', userIds: [], agentIds: ['sales'] }] } },
-    'GET /app/api/admin/users': { body: { users: [] } },
+    'GET /app/api/admin/people': { body: { people: [] } },
   });
 }
 
@@ -94,6 +94,25 @@ describe('«Режимы работы»', () => {
     expect(within(question).getByText(/Вопросы, которые ждут решения сотрудников, будут отклонены/)).toBeInTheDocument();
     await user.click(within(question).getByRole('button', { name: 'Удалить' }));
     expect(await screen.findByText('Задача удалена')).toBeInTheDocument();
+  });
+
+  it('keeps the cron of a stage-1 task when only its name changes', async () => {
+    const legacy = { ...TASK, schedule: null, cron: '0 7 * * 1' };
+    const s = server([legacy]);
+    s.set('PUT /app/api/admin/tasks/t1', { body: legacy });
+    renderApp('/admin/modes');
+    const user = userEvent.setup();
+    expect(await screen.findByText('по расписанию 0 7 * * 1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Действия: Утренняя сводка' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
+    const dialog = screen.getByRole('dialog', { name: 'Утренняя сводка' });
+    expect(within(dialog).getByText(/Сейчас: по расписанию 0 7 \* \* 1/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Название'), ' руководителю');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT')?.body).toBeDefined());
+    const body = s.calls.find((c) => c.method === 'PUT')!.body as Record<string, unknown>;
+    expect(body.title).toBe('Утренняя сводка руководителю');
+    expect(body).not.toHaveProperty('schedule');
   });
 
   it('says why a task stands still', async () => {

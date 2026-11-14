@@ -1,7 +1,7 @@
 // A background task (spec, scenario 4): its name, the agent, the area — the organisation,
 // departments or employees, each runs it on their own behalf — the schedule as a preset in the
 // installation's time and what the agent is asked to do.
-import type { AdminAgent, AdminDepartment, AdminTask, AdminUser, TaskAccess, TaskSchedule } from '@bba/contracts';
+import type { AdminAgent, AdminDepartment, AdminTask, AdminPerson, TaskAccess, TaskSchedule } from '@bba/contracts';
 import { useState } from 'react';
 import { Button, cx } from '../ui/Button.tsx';
 import { Field, Input, Select, TextArea } from '../ui/Field.tsx';
@@ -11,7 +11,7 @@ import { adminApi } from './api.ts';
 import models from './models.module.css';
 import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
-import { WEEKDAYS } from './tasks-text.ts';
+import { scheduleText, WEEKDAYS } from './tasks-text.ts';
 
 type Kind = TaskSchedule['kind'];
 const KINDS: { value: Kind; label: string }[] = [
@@ -29,12 +29,18 @@ function scheduleOf(kind: Kind, time: string, weekday: number, monthDay: number)
   return { kind, time };
 }
 
-function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
   const s = task?.schedule ?? null;
   const [title, setTitle] = useState(task?.title ?? '');
   const [agentId, setAgentId] = useState(task?.agentId ?? agents[0]?.id ?? '');
   const [access, setAccess] = useState<TaskAccess>(task?.access ?? { scope: 'org', departmentIds: [], userIds: [] });
   const [kind, setKind] = useState<Kind>(s?.kind ?? 'weekdays');
+  // A task of stage 1 keeps its own cron until the admin touches the schedule.
+  const [scheduleTouched, setScheduleTouched] = useState(task === null || s !== null);
+  const touch = <T,>(set: (v: T) => void) => (v: T) => {
+    setScheduleTouched(true);
+    set(v);
+  };
   const [time, setTime] = useState(s?.time ?? DEFAULT_TIME);
   const [weekday, setWeekday] = useState(s?.kind === 'weekly' ? s.weekday : 1);
   const [monthDay, setMonthDay] = useState(s?.kind === 'monthly' ? s.monthDay : 1);
@@ -42,8 +48,9 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
   const { busy, error, run } = useAction();
 
   async function save() {
-    const input = { title: title.trim(), agentId, access, schedule: scheduleOf(kind, time, weekday, monthDay), prompt: prompt.trim() };
-    const ok = task ? await run(() => adminApi.updateTask(task.id, input)) : await run(() => adminApi.createTask(input), 'Задача создана');
+    const schedule = scheduleOf(kind, time, weekday, monthDay);
+    const input = { title: title.trim(), agentId, access, prompt: prompt.trim() };
+    const ok = task ? await run(() => adminApi.updateTask(task.id, scheduleTouched ? { ...input, schedule } : input)) : await run(() => adminApi.createTask({ ...input, schedule }), 'Задача создана');
     if (ok) onSaved();
   }
 
@@ -75,9 +82,10 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
       <p className={section.note}>Задача выполняется у каждого сотрудника области от его имени, с его доступами и лимитами; каждое действие наружу ждёт его «Да».</p>
       <fieldset className={models.prices}>
         <legend className={models.legend}>Расписание</legend>
+        {!scheduleTouched && task ? <p className={section.note}>Сейчас: {scheduleText(null, task.cron)}. Выберите вариант ниже, чтобы заменить его.</p> : null}
         <div role="group" aria-label="Расписание" className={models.chips}>
           {KINDS.map((k) => (
-            <button key={k.value} type="button" aria-pressed={kind === k.value} className={cx(models.chip, kind === k.value && models.chipOn)} onClick={() => setKind(k.value)}>
+            <button key={k.value} type="button" aria-pressed={scheduleTouched && kind === k.value} className={cx(models.chip, scheduleTouched && kind === k.value && models.chipOn)} onClick={() => touch(setKind)(k.value)}>
               {k.label}
             </button>
           ))}
@@ -85,7 +93,7 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
         <div className={cx(section.row, models.pickList)}>
           {kind === 'weekly' ? (
             <Field label="День недели">
-              <Select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
+              <Select value={weekday} onChange={(e) => touch(setWeekday)(Number(e.target.value))}>
                 {WEEKDAYS.map((d, i) => (
                   <option key={d} value={i + 1}>
                     {d}
@@ -96,7 +104,7 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
           ) : null}
           {kind === 'monthly' ? (
             <Field label="Число месяца">
-              <Select value={monthDay} onChange={(e) => setMonthDay(Number(e.target.value))}>
+              <Select value={monthDay} onChange={(e) => touch(setMonthDay)(Number(e.target.value))}>
                 {MONTH_DAYS.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -106,7 +114,7 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
             </Field>
           ) : null}
           <Field label="Время" hint="По часам установки.">
-            <Input type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
+            <Input type="time" required value={time} onChange={(e) => touch(setTime)(e.target.value)} />
           </Field>
         </div>
       </fieldset>
@@ -123,7 +131,7 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
   );
 }
 
-export function TaskForm(props: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+export function TaskForm(props: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
   return (
     <Modal open onClose={props.onClose} label={props.task ? props.task.title : 'Новая задача'}>
       <TaskFormBody {...props} />
