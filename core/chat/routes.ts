@@ -4,7 +4,7 @@ import type { AgentListResponse, MemoryResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
-import { agentActions } from '../approvals/describe.ts';
+import { agentActions, subagentCalls } from '../approvals/describe.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
 import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
@@ -50,6 +50,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         actions: {
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...agentActions(rt),
+          ...subagentCalls(rt),
         },
         systems: {
           tools: rt.toolSystems,

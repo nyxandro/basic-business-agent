@@ -137,10 +137,12 @@ export function AppShell() {
 export function Home() {
   const me = useMe();
   const { agents } = useShell();
+  // A notice brought here («Этот раздел вам недоступен») travels on to the chat.
+  const { state } = useLocation();
   if (!me.modelsConfigured && me.isSuperadmin) return <Navigate to={MODELS_PATH} replace />;
   if (!agents) return null;
   if (agents.length === 0) return <p className={styles.notice}>{ru.shell.noAgents}</p>;
   const remembered = lastAgent();
   const target = agents.find((a) => a.id === remembered) ?? agents[0]!;
-  return <Navigate to={`/agents/${encodeURIComponent(target.id)}`} replace />;
+  return <Navigate to={`/agents/${encodeURIComponent(target.id)}`} replace state={state} />;
 }

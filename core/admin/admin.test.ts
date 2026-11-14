@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { writeJournal } from '../journal/journal.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 let t: TestApp;
@@ -55,6 +56,13 @@ describe('admin sections', () => {
     expect((await t.call('GET', '/app/api/admin/connections', { cookie: admin })).status).toBe(200);
     const today = new Date().toISOString().slice(0, 10);
     expect((await t.call('GET', `/app/api/admin/journal?from=${today}&to=${today}`, { cookie: admin })).status).toBe(200);
+  });
+
+  it('names who answered «Да» in the journal', async () => {
+    await writeJournal(t.db, { userId: adminId, agentId: 'sales', runKind: 'chat', event: 'tool_call', tool: 'mail_send', approvedBy: adminId, result: 'ok' });
+    const today = new Date().toISOString().slice(0, 10);
+    const { entries } = await json<{ entries: { tool: string | null; approvedBy: string | null }[] }>(await t.call('GET', `/app/api/admin/journal?from=${today}&to=${today}`, { cookie: admin }));
+    expect(entries.find((e) => e.tool === 'mail_send')?.approvedBy).toBe('Игорь');
   });
 
   it('writes every change of the admin panel to the audit trail', async () => {

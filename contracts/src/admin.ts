@@ -172,6 +172,7 @@ export interface JournalEntry {
   event: string;
   tool: string | null;
   args: unknown;
+  // The name of who answered «Да»; null when no «Да» was needed.
   approvedBy: string | null;
   result: string;
   errorCode: string | null;

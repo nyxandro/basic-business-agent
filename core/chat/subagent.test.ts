@@ -42,3 +42,9 @@ it('asks the person once for an action a sub-agent wants, and runs it after "Д�
   const left = await t.db.query('SELECT 1 FROM app.approval_requests WHERE thread_id = $1 AND status = $2', [threadId, 'pending']);
   expect(left.rowCount).toBe(0);
 });
+
+it('names the call of a sub-agent in the chat by the sub-agent’s name', async () => {
+  const res = await t.call('GET', '/app/api/agents', { cookie });
+  const { agents } = (await res.json()) as { agents: { id: string; actions: Record<string, unknown> }[] };
+  expect(agents.find((a) => a.id === 'assistant')!.actions['agent-mailer']).toEqual({ title: 'Поручение агенту «Почтальон»', fields: {}, readOnly: false });
+});

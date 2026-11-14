@@ -50,6 +50,12 @@ interface AgentTools {
   subagents: AgentTools[];
 }
 
+// The chat line of a call of a sub-agent: Mastra names that tool `agent-<id of the sub-agent>`.
+// The sub-agent's own actions ask «Да» themselves, so the call is no read-only action.
+export function subagentCalls(rt: { subagents: { passport: { id: string; name: string } }[] }): Record<string, ActionDescription> {
+  return Object.fromEntries(rt.subagents.map((s) => [`agent-${s.passport.id}`, { title: `Поручение агенту «${s.passport.name}»`, fields: {}, readOnly: false }]));
+}
+
 // Actions of an agent and of its sub-agents: a sub-agent's question reaches its parent's chat.
 export function agentActions(rt: AgentTools): Record<string, ActionDescription> {
   return Object.assign({}, ...rt.subagents.map(agentActions), describeTools(rt.tools)) as Record<string, ActionDescription>;

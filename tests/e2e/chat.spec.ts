@@ -38,8 +38,8 @@ test('an action waits for «Да»: «Нет» cancels it, «Да» runs it and 
   const admin = await pageAs(browser, 'igor@example.com');
   await admin.goto('/admin/journal');
   const row = admin.getByRole('row').filter({ hasText: 'mail_send' }).filter({ hasText: 'Ольга' }).first();
-  await expect(row).toContainText('выполнено');
-  await expect(row).toContainText('подтвердил сотрудник');
+  await expect(row).toContainText('Выполнено');
+  await expect(row).toContainText('«Да» — Ольга');
   await admin.close();
 });
 
@@ -61,7 +61,8 @@ test('an action a sub-agent wants waits for «Да» in the chat too', async ({ 
   await say(page, 'Попроси почтальона отправить письмо');
   await expect(page.getByText('Подтвердите действие')).toBeVisible();
   await page.getByRole('button', { name: 'Да, выполнить' }).click();
-  await expect(page.getByText('Действие выполнено')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Поручение агенту «Почтальон»/ })).toBeVisible();
+  await expect(page.getByText('Подтвердите действие')).toHaveCount(0);
 });
 
 test('a reload keeps the conversation and the unsent text', async ({ browser }) => {
@@ -70,8 +71,8 @@ test('a reload keeps the conversation and the unsent text', async ({ browser }) 
   await newConversation(page);
   await say(page, 'Покажи таблицу сделок');
   await expect(page.getByRole('cell', { name: 'Поставка бетона' })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Напишите сообщение…' }).fill('Черновик вопроса');
+  await page.getByRole('textbox', { name: 'Сообщение агенту' }).fill('Черновик вопроса');
   await page.reload();
   await expect(page.getByRole('cell', { name: 'Поставка бетона' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Напишите сообщение…' })).toHaveValue('Черновик вопроса');
+  await expect(page.getByRole('textbox', { name: 'Сообщение агенту' })).toHaveValue('Черновик вопроса');
 });

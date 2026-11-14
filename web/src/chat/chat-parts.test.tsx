@@ -54,6 +54,16 @@ describe('tool line', () => {
       </MemoryRouter>,
     );
 
+  it('names the call of a sub-agent and counts nothing in its answer', () => {
+    render(
+      <MemoryRouter>
+        <ToolRow name="agent-mailer" status="complete" agent={{ systems: SYSTEMS, actions: { 'agent-mailer': { title: 'Поручение агенту «Почтальон»', fields: {}, readOnly: false } } }} result='{"text":"Готово","toolResults":[{"ok":true}]}' />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: /Поручение агенту «Почтальон»/ })).toBeInTheDocument();
+    expect(screen.queryByText(/найдено/)).not.toBeInTheDocument();
+  });
+
   it('names the system while the call runs', () => {
     row({ status: 'executing' });
     expect(screen.getByText('Ищу в «Битрикс24»…')).toBeInTheDocument();

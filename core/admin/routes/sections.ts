@@ -158,22 +158,24 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     return c.json({ connections, employeesTotal: total.rows[0]!.n });
   });
 
+  // The journal outlives the people: who answered «Да» and was removed since.
+  const REMOVED_PERSON = 'сотрудник удалён';
   app.get('/app/api/admin/journal', requirePermission('journal'), async (c) => {
     const parsed = journalQuerySchema.safeParse(c.req.query());
     if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'journal needs from and to (YYYY-MM-DD)');
     const q = parsed.data;
     const to = new Date(`${q.to}T00:00:00Z`);
     to.setUTCDate(to.getUTCDate() + 1);
-    const { rows } = await db.query<{ id: string; at: Date; user_name: string | null; agent_id: string | null; run_kind: string; event: string; tool: string | null; args_summary: unknown; approved_by: string | null; result: string; error_code: string | null }>(
-      `SELECT j.id, j.at, u."name" AS user_name, j.agent_id, j.run_kind, j.event, j.tool, j.args_summary, j.approved_by, j.result, j.error_code
-         FROM app.action_journal j LEFT JOIN app."user" u ON u."id" = j.user_id
+    const { rows } = await db.query<{ id: string; at: Date; user_name: string | null; agent_id: string | null; run_kind: string; event: string; tool: string | null; args_summary: unknown; approved_by: string | null; approver_name: string | null; result: string; error_code: string | null }>(
+      `SELECT j.id, j.at, u."name" AS user_name, j.agent_id, j.run_kind, j.event, j.tool, j.args_summary, j.approved_by, a."name" AS approver_name, j.result, j.error_code
+         FROM app.action_journal j LEFT JOIN app."user" u ON u."id" = j.user_id LEFT JOIN app."user" a ON a."id" = j.approved_by
         WHERE j.at >= $1 AND j.at < $2 AND ($3::text IS NULL OR j.user_id = $3) AND ($4::text IS NULL OR j.agent_id = $4)
         ORDER BY j.at DESC LIMIT $5 OFFSET $6`,
       [new Date(`${q.from}T00:00:00Z`), to, q.userId ?? null, q.agentId ?? null, JOURNAL_PAGE_SIZE, (q.page - 1) * JOURNAL_PAGE_SIZE],
     );
     const agentName = (id: string | null) => (id ? (deps.registry.get(id)?.passport.name ?? id) : null);
     return c.json({
-      entries: rows.map((r) => ({ id: r.id, at: r.at.toISOString(), user: r.user_name, agent: agentName(r.agent_id), runKind: r.run_kind, event: r.event, tool: r.tool, args: r.args_summary, approvedBy: r.approved_by, result: r.result, errorCode: r.error_code })),
+      entries: rows.map((r) => ({ id: r.id, at: r.at.toISOString(), user: r.user_name, agent: agentName(r.agent_id), runKind: r.run_kind, event: r.event, tool: r.tool, args: r.args_summary, approvedBy: r.approved_by ? (r.approver_name ?? REMOVED_PERSON) : null, result: r.result, errorCode: r.error_code })),
       pageSize: JOURNAL_PAGE_SIZE,
     });
   });

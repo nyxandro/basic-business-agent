@@ -20,6 +20,8 @@ export interface ToolRowProps {
   agent: Pick<AgentSummary, 'systems' | 'actions'>;
 }
 
+const SUBAGENT_CALL = 'agent-';
+
 // How many things a result holds, when it is a list or a table: «12 найдено».
 function countOf(value: unknown): number | null {
   if (Array.isArray(value)) return value.length;
@@ -74,7 +76,8 @@ export function ToolRow({ name, status, parameters, result, agent }: ToolRowProp
     );
   }
   const table = toolTableResultSchema.safeParse(outcome.value);
-  const count = countOf(outcome.value);
+  // A call of a sub-agent (Mastra names it agent-<id>) returns its answer, not found things.
+  const count = name.startsWith(SUBAGENT_CALL) ? null : countOf(outcome.value);
   return (
     <div className={styles.tool}>
       <button type="button" className={styles.toolLine} aria-expanded={open} onClick={() => setOpen((v) => !v)}>

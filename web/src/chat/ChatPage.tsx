@@ -3,7 +3,7 @@
 // employee sees why instead of the input.
 import type { AgentSummary } from '@bba/contracts';
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
@@ -76,10 +76,11 @@ export function ChatPage() {
   const { agentId } = useParams();
   const [params] = useSearchParams();
   const { agents } = useShell();
+  const location = useLocation();
   const threadId = params.get('thread');
 
   if (!agentId) throw new Error('ChatPage needs the :agentId route parameter');
-  if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace />;
+  if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace state={location.state} />;
   if (!agents) return <Skeleton rows={4} />;
   const agent = agents.find((a) => a.id === agentId);
   if (!agent) return <Notice>{ru.chat.noAgent}</Notice>;

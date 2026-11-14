@@ -8,9 +8,16 @@ const ACCOUNTANT = { ...ME, permissions: ['usage', 'journal'] };
 const USAGE = { body: { rows: [], totalRub: 0, orgLimitRub: null } };
 
 describe('the frame of the admin panel', () => {
-  it('sends a person without the right to the start page with a plain notice', async () => {
-    mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/agents': { body: { agents: [] } } });
+  it('sends a person without the right to the chat with a plain notice', async () => {
+    mockServer({
+      'GET /app/api/me': { body: ME },
+      'GET /app/api/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: '', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } }] } },
+      'GET /app/api/threads': { body: { threads: [], next: null } },
+      'GET /app/api/projects': { body: { projects: [] } },
+      'GET /app/api/copilotkit/info': { body: { version: '2.0.0', agents: { sales: { name: 'sales', description: '', className: 'MastraAgent' } } } },
+    });
     renderApp('/admin/users');
+    expect(await screen.findByRole('button', { name: /Продажи\. Выбрать агента/ })).toBeInTheDocument();
     expect(await screen.findByText('Этот раздел вам недоступен. Если он нужен для работы, обратитесь к администратору.')).toBeInTheDocument();
     expect(screen.getByText(/APP_ADMIN_FORBIDDEN/)).toBeInTheDocument();
   });
