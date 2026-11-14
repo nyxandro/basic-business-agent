@@ -37,7 +37,8 @@ export function registerRoleRoutes(app: Hono<AppEnv>, deps: { db: Db; knownAgent
     return c.json({ ok: true });
   });
 
-  app.get('/app/api/admin/departments', requireAnyPermission('departments', 'users'), async (c) => c.json({ departments: await listDepartments(db) }));
+  // Also for those who give skills and background tasks to departments and people.
+  app.get('/app/api/admin/departments', requireAnyPermission('departments', 'users', 'skills', 'agents'), async (c) => c.json({ departments: await listDepartments(db) }));
   app.post('/app/api/admin/departments', departments, async (c) => {
     const { name } = await parseJson(c, departmentBodySchema);
     return c.json({ id: await createDepartment(db, access(c).userId, name) }, 201);

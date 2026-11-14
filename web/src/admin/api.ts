@@ -17,13 +17,18 @@ import type {
   ModelSettings,
   ModelsResponse,
   ModelUpdate,
+  SkillAccess,
+  SkillDto,
+  SkillPreview,
+  SkillsResponse,
+  SkillUpdate,
   PersonalLimit,
   Permission,
   PromptState,
   UsageGroup,
   UsageReport,
 } from '@bba/contracts';
-import { api } from '../api/client.ts';
+import { api, apiForm, apiFormPut } from '../api/client.ts';
 
 const enc = encodeURIComponent;
 // Spend of one calendar day in the installation's time zone; days without calls are 0.
@@ -31,6 +36,14 @@ export type DailySpend = { day: string; costRub: number };
 type OrgProfile = { name: string; tone: string; requisites: string; industry: string };
 
 const A = '/app/api/admin';
+
+// A `.skill` file and, when saving a new one, who gets it.
+function skillForm(file: File, access?: SkillAccess): FormData {
+  const form = new FormData();
+  form.append('file', file);
+  if (access) form.append('access', JSON.stringify(access));
+  return form;
+}
 type Ok = { ok: true };
 
 export const adminApi = {
@@ -81,6 +94,13 @@ export const adminApi = {
   addModelKey: (id: string, key: string) => api<ModelKeyDto>('POST', `${A}/models/${enc(id)}/keys`, { key }),
   deleteModelKey: (id: string, keyId: string) => api<Ok>('DELETE', `${A}/models/${enc(id)}/keys/${enc(keyId)}`),
   saveModelSettings: (settings: ModelSettings) => api<ModelSettings>('PUT', `${A}/models/settings`, settings),
+
+  skills: () => api<SkillsResponse>('GET', `${A}/skills`),
+  checkSkill: (file: File) => apiForm<SkillPreview>(`${A}/skills?check=1`, skillForm(file)),
+  createSkill: (file: File, access: SkillAccess) => apiForm<SkillDto>(`${A}/skills`, skillForm(file, access)),
+  replaceSkill: (name: string, file: File) => apiFormPut<SkillDto>(`${A}/skills/${enc(name)}`, skillForm(file)),
+  updateSkill: (name: string, change: SkillUpdate) => api<SkillDto>('PUT', `${A}/skills/${enc(name)}`, change),
+  deleteSkill: (name: string) => api<Ok>('DELETE', `${A}/skills/${enc(name)}`),
 
   orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),
   saveOrgProfile: (body: OrgProfile) => api<Ok>('PUT', `${A}/org-profile`, body),

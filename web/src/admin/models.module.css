@@ -219,3 +219,7 @@ td.mono {
 .addKey > :first-child {
   flex: 1 1 220px;
 }
+
+.pickList {
+  margin-top: 12px;
+}

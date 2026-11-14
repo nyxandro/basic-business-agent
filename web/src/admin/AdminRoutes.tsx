@@ -12,6 +12,7 @@ import { MaskingSection } from './MaskingSection.tsx';
 import { ModelsSection } from './ModelsSection.tsx';
 import { OrgProfileSection } from './OrgProfileSection.tsx';
 import { RolesSection } from './RolesSection.tsx';
+import { SkillsSection } from './SkillsSection.tsx';
 import { UsersSection } from './UsersSection.tsx';
 
 export default function AdminRoutes() {
@@ -24,6 +25,7 @@ export default function AdminRoutes() {
         <Route path="roles" element={<RequireSection path="roles"><RolesSection /></RequireSection>} />
         <Route path="departments" element={<RequireSection path="departments"><DepartmentsSection /></RequireSection>} />
         <Route path="limits" element={<RequireSection path="limits"><LimitsPage /></RequireSection>} />
+        <Route path="skills" element={<RequireSection path="skills"><SkillsSection /></RequireSection>} />
         <Route path="agents" element={<RequireSection path="agents"><AgentsSection /></RequireSection>} />
         <Route path="agents/:agentId/check" element={<RequireSection path="agents"><DraftCheckPage /></RequireSection>} />
         <Route path="org-profile" element={<RequireSection path="org-profile"><OrgProfileSection /></RequireSection>} />

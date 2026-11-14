@@ -7,6 +7,8 @@ export interface MockCall {
   // The query string as an object: ?q=a&scope=all → { q: 'a', scope: 'all' }.
   query: Record<string, string>;
   body: unknown;
+  // Fields of a multipart body: text as it is, a file by its name.
+  form?: Record<string, string>;
 }
 
 export type Reply = { status?: number; body?: unknown; raw?: string };
@@ -32,7 +34,8 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();
       const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
-      const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body };
+      const form = init?.body instanceof FormData ? Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : v.name])) : undefined;
+      const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, ...(form ? { form } : {}) };
       calls.push(call);
       const route = table.get(`${method} ${url.pathname}`);
       if (!route) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'APP_NOT_FOUND', message: 'нет такого адреса в тесте' } }), { status: 404 }));

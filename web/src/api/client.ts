@@ -47,11 +47,14 @@ export async function api<T>(method: Method, path: string, body?: unknown): Prom
   return (await res.json()) as T;
 }
 
-// Multipart upload (attachments): the browser sets the boundary header itself.
-export async function apiForm<T>(path: string, form: FormData): Promise<T> {
+// Multipart upload (attachments, skills): the browser sets the boundary header itself. PUT replaces
+// what is there (a new version of a skill).
+export const apiFormPut = <T>(path: string, form: FormData): Promise<T> => apiForm<T>(path, form, 'PUT');
+
+export async function apiForm<T>(path: string, form: FormData, method: 'POST' | 'PUT' = 'POST'): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: form });
+    res = await fetch(path, { method, credentials: 'same-origin', body: form });
   } catch (error) {
     throw new ApiRequestError({ code: 'APP_NETWORK_FAILED', message: ru.clientErrors.APP_NETWORK_FAILED, status: 0, cause: error });
   }

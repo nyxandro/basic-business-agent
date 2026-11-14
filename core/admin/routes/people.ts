@@ -28,7 +28,8 @@ export function registerPeopleRoutes(
   const guard = requirePermission('users');
   const link = (kind: 'invite' | 'reset', token: string) => new URL(`/${kind}/${token}`, publicUrl).toString();
 
-  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits'), async (c) => c.json({ users: await listUsers(db) }));
+  // Also for those who give skills and background tasks to people.
+  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits', 'skills', 'agents'), async (c) => c.json({ users: await listUsers(db) }));
 
   app.post('/app/api/admin/invites', guard, async (c) => {
     const input = await parseJson(c, inviteCreateSchema);

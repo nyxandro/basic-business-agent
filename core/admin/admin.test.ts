@@ -90,6 +90,19 @@ describe('lists the related sections need', () => {
     expect((await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: org })).status).toBe(403);
   });
 
+  it('lets those who give skills and tasks to people pick departments and people', async () => {
+    const giver = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Методисты', permissions: ['skills'] } }));
+    await t.createUser({ email: 'skills@example.com', roleIds: [giver.id] });
+    const methodist = await t.signIn('skills@example.com');
+    for (const path of ['/app/api/admin/users', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: methodist })).status, path).toBe(200);
+    expect((await t.call('PUT', '/app/api/admin/departments/00000000-0000-4000-8000-000000000000', { cookie: methodist, body: { name: 'x' } })).status).toBe(403);
+
+    const planner = await json<{ id: string }>(await t.call('POST', '/app/api/admin/roles', { cookie: admin, body: { name: 'Задачи', permissions: ['agents'] } }));
+    await t.createUser({ email: 'tasks@example.com', roleIds: [planner.id] });
+    const tasks = await t.signIn('tasks@example.com');
+    for (const path of ['/app/api/admin/users', '/app/api/admin/departments']) expect((await t.call('GET', path, { cookie: tasks })).status, path).toBe(200);
+  });
+
   it('shows the personal limits set on top of the defaults', async () => {
     const zoe = await t.createUser({ email: 'zoe@example.com', name: 'Зоя' });
     await t.call('PUT', `/app/api/admin/users/${zoe}/limits`, { cookie: admin, body: { monthlyRub: 700, dailySubscriptionTokens: null } });
