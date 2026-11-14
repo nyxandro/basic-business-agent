@@ -1,5 +1,6 @@
 // End-to-end through the test LiteLLM (deploy/compose.dev.yaml: litellm-test, mock models).
-// This is the only test file that listens on TEST_CALLBACK_PORT for LiteLLM's usage callback.
+// This is the only test file that listens on TEST_CALLBACK_PORT for LiteLLM's callbacks and on
+// TEST_CHATGPT_PORT as the ChatGPT of the subscription accounts.
 import { serve, type ServerType } from '@hono/node-server';
 import { Agent } from '@mastra/core/agent';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -8,19 +9,23 @@ import { silentWav, startFakeModel } from './fake-openai.ts';
 import { createLiteLLMClient } from './litellm-client.ts';
 import { createModelGateway } from './gateway.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
-import { TEST_CALLBACK_PORT } from './test-catalog.ts';
+import { startFakeChatGpt, FAKE_SUBSCRIPTION_ANSWER, type FakeChatGpt } from './fake-chatgpt.ts';
+import { TEST_CALLBACK_PORT, TEST_CHATGPT_PORT } from './test-catalog.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
 let t: TestApp;
 let server: ServerType;
+let openai: FakeChatGpt;
 
 beforeAll(async () => {
-  t = await createTestApp();
+  openai = await startFakeChatGpt({ port: TEST_CHATGPT_PORT, host: '0.0.0.0' });
+  t = await createTestApp({ chatgpt: { authBase: openai.url, gateway: true } });
   server = serve({ fetch: t.app.fetch, port: TEST_CALLBACK_PORT, hostname: '0.0.0.0' });
 });
 afterAll(async () => {
   await new Promise((r) => server.close(r));
   await t.close();
+  await openai.close();
 });
 
 async function ask(userId: string, model: string, agentId = 'sales'): Promise<string> {
@@ -188,5 +193,50 @@ describe('model gateway', () => {
   it('accepts usage records only with the shared secret', async () => {
     const res = await t.app.request('/app/api/internal/usage', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json', authorization: 'Bearer wrong' } });
     expect(res.status).toBe(401);
+  });
+
+  // V18, V20 and check 23: two accounts serve one subscription model in the standard LiteLLM; each
+  // failed attempt comes with its deployment, even when the retry on the other account answered.
+  it('serves a subscription model through both accounts and leaves the revoked one (V18, V20)', async () => {
+    const adminId = await t.createUser({ email: 'pool-admin@example.com', roleIds: [await t.roleId('superadmin')] });
+    const userId = await t.createUser({ email: 'pool-user@example.com' });
+    const model = await t.models.create(adminId, { connection: 'chatgpt', kind: 'chat', label: 'GPT по подписке', providerModel: 'chatgpt/gpt-5.4', vision: true });
+    const connect = async (email: string) => {
+      const login = await t.accounts.startLogin(adminId, null);
+      openai.approve(login.userCode, { email });
+      const done = await t.accounts.pollLogin(adminId, login.id);
+      if (done.status !== 'connected') throw new Error(`login of ${email} is ${done.status}`);
+      return done.account.id;
+    };
+    const first = await connect('pool-first@example.com');
+    const second = await connect('pool-second@example.com');
+    const stateOf = async (id: string) => (await t.accounts.list()).find((a) => a.id === id)!;
+
+    for (let i = 0; i < 12; i++) expect(await ask(userId, model.id)).toBe(FAKE_SUBSCRIPTION_ANSWER);
+    expect(new Set(openai.calls)).toEqual(new Set(['pool-first@example.com', 'pool-second@example.com']));
+    const rows = await waitForUsage(userId, 12);
+    expect(new Set(rows.map((r) => r.deployment))).toEqual(new Set([`${model.id}:${first}`, `${model.id}:${second}`]));
+    expect(rows.every((r) => r.is_subscription && Number(r.cost_rub) === 0)).toBe(true);
+    expect((await stateOf(first)).state).toBe('works');
+
+    // The second account's login is revoked: its failed attempt is reported, the retry answers
+    // through the first, and the server takes the second out of LiteLLM.
+    openai.answer('pool-second@example.com', { status: 401, code: 'token_revoked' });
+    for (let i = 0; i < 20 && (await stateOf(second)).state !== 'auth_error'; i++) {
+      expect(await ask(userId, model.id)).toBe(FAKE_SUBSCRIPTION_ANSWER);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    expect(await stateOf(second)).toMatchObject({ state: 'auth_error', failureStatus: 401 });
+    const { rows: reported } = await t.db.query<{ deployment: string; status: number }>('SELECT deployment, status FROM app.account_events WHERE account_id = $1', [second]);
+    expect(reported[0]).toMatchObject({ deployment: `${model.id}:${second}`, status: 401 });
+    const callsBefore = openai.calls.length;
+    for (let i = 0; i < 6; i++) expect(await ask(userId, model.id)).toBe(FAKE_SUBSCRIPTION_ANSWER);
+    expect(new Set(openai.calls.slice(callsBefore))).toEqual(new Set(['pool-first@example.com']));
+
+    // The first one hits its limit: the attempt is reported with the end of the cooldown.
+    openai.answer('pool-first@example.com', { status: 429, code: 'usage_limit_reached' });
+    await askError(userId, model.id);
+    for (let i = 0; i < 30 && (await stateOf(first)).state !== 'cooldown'; i++) await new Promise((r) => setTimeout(r, 300));
+    expect(await stateOf(first)).toMatchObject({ state: 'cooldown', failureStatus: 429 });
   });
 });

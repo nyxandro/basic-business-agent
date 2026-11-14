@@ -19,6 +19,7 @@ import { registerConnectionRoutes } from '../connections/routes.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import type { ModelCatalog } from '../models/catalog.ts';
+import type { ChatGptAccounts } from '../models/chatgpt-accounts.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { registerUsageRoutes } from '../models/routes.ts';
 import { registerProjectRoutes } from '../projects/routes.ts';
@@ -36,6 +37,7 @@ export interface ServerDeps {
   knownAgentIds: () => ReadonlySet<string>;
   gateway: ModelGateway;
   models: ModelCatalog;
+  accounts: ChatGptAccounts;
   skills: SkillsDeps;
   ledgerSecret: string;
   connections: ConnectionManager;
@@ -65,7 +67,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
     deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot },
   });
   registerRoleRoutes(app, deps);
-  registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret });
+  registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts });
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot };
@@ -75,7 +77,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
-  registerModelRoutes(app, deps.models);
+  registerModelRoutes(app, deps.models, deps.accounts);
   registerSkillRoutes(app, deps.skills);
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;

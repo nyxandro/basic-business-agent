@@ -50,6 +50,8 @@ export const ERROR_CATALOG = {
   APP_VOICE_FAILED: { status: 502, userMessage: 'Не удалось распознать запись. Попробуйте ещё раз или напишите текстом.' },
   APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },
   APP_SKILL_EXISTS: { status: 409, userMessage: 'Скилл с таким именем уже загружен. Чтобы обновить его, нажмите «Заменить».' },
+  APP_CHATGPT_LOGIN_EXPIRED: { status: 410, userMessage: 'Время на вход вышло. Начните заново.' },
+  APP_CHATGPT_LOGIN_FAILED: { status: 502, userMessage: 'Вход не выполнен. Попробуйте ещё раз.' },
   APP_GATEWAY_SYNC_FAILED: { status: 502, userMessage: 'Шлюз не принял изменения. Попробуйте ещё раз; если повторяется — сообщите разработчику код.' },
   APP_USAGE_LIMIT_EXCEEDED: {
     status: 402,

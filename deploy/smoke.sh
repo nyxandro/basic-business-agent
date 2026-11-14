@@ -62,6 +62,7 @@ echo "== addresses from outside"
 check "/app/api/health through Caddy is 200" 200 "$(status "$BASE/app/api/health")"
 check "/api/agents is 404" 404 "$(status "$BASE/api/agents")"
 check "/app/api/internal/usage is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/usage")"
+check "/app/api/internal/account-events is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/account-events")"
 check "an interface page is served" 200 "$(status "$BASE/login")"
 check "/app/api without a session is 401" 401 "$(status "$BASE/app/api/me")"
 
@@ -73,6 +74,11 @@ check "inside the isolation there is no network" blocked "$(compose exec -T app 
 check "document skills' Python libraries are in the image" ok "$(compose exec -T app /app/.venv-skills/bin/python -c "import pypdf, pypdfium2, docx, openpyxl, PIL; print('ok')")"
 check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
+echo "== login files of the ChatGPT accounts (volume chatgpt-auth)"
+check "the app writes a login file" ok "$(compose exec -T app sh -c 'echo "{}" > /chatgpt-auth/a-00000000.json && echo ok || echo denied')"
+check "LiteLLM reads it and writes a refreshed token back" ok "$(compose exec -T litellm sh -c 'cat /chatgpt-auth/a-00000000.json >/dev/null && echo "{}" > /chatgpt-auth/a-00000000.json && echo ok || echo denied')"
+check "the folder is closed to other users of the container" 700 "$(compose exec -T app stat -c %a /chatgpt-auth)"
+compose exec -T app rm -f /chatgpt-auth/a-00000000.json
 
 echo "== data survives an update of the app image (migrations run again)"
 psql_db "INSERT INTO app.org_profile (tone, requisites, industry) VALUES ('smoke-marker', '', '') ON CONFLICT (id) DO UPDATE SET tone = EXCLUDED.tone" >/dev/null

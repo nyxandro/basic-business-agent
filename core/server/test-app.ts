@@ -1,7 +1,7 @@
 // Test helper: the real server on a fresh database, with helpers to create people and sign in.
 import { randomInt } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createTool } from '@mastra/core/tools';
 import { PostgresStore } from '@mastra/pg';
@@ -22,11 +22,14 @@ import { createConnectionManager, type ConnectionManager, type ConnectorRuntime 
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
 import { createModelCatalog, type ModelCatalog } from '../models/catalog.ts';
+import { createChatGptAccounts, type ChatGptAccounts } from '../models/chatgpt-accounts.ts';
+import { createChatGptAuthClient, type ChatGptAuthClient } from '../models/chatgpt-login.ts';
+import { createGatewayWriter } from '../models/gateway-writer.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
 import { reconcile } from '../models/gateway-sync.ts';
-import { seedTestModels } from '../models/test-catalog.ts';
+import { seedTestModels, TEST_CHATGPT_AUTH_DIR, TEST_MODEL_IDS } from '../models/test-catalog.ts';
 import { AGENT_HEADER } from '../models/usage.ts';
 import { createAuth, type Auth } from '../auth/auth.ts';
 import { builtinRoleId } from '../auth/roles.ts';
@@ -47,6 +50,9 @@ export interface TestApp {
   gateway: ModelGateway;
   // «Нейросеть» of the test installation; its deployments in the test LiteLLM carry `gatewayOwner`.
   models: ModelCatalog;
+  accounts: ChatGptAccounts;
+  // Where this installation writes the login files of its ChatGPT accounts.
+  chatgptAuthDir: string;
   gatewayOwner: string;
   litellm: LiteLLMClient;
   ledgerSecret: string;
@@ -112,6 +118,9 @@ export async function createTestApp(
     firstChunkMs?: number;
     // The models behind the test agents (default: every model answers from `model`).
     modelConfig?: (modelId: string) => { url: string; apiKey: string };
+    // OpenAI's login service for ChatGPT accounts (a fake, fake-chatgpt.ts). `gateway: true` writes
+    // the login files into the folder the test LiteLLM reads; otherwise into a folder of this test.
+    chatgpt?: { authBase: string; gateway?: boolean };
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -193,8 +202,20 @@ export async function createTestApp(
   backgroundRef.current = background;
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
-  const models = createModelCatalog({ db, box, client: litellm, owner: teamId, agentName });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
+  // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
+  const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS });
+  const chatgptAuthDir = opts.chatgpt?.gateway ? TEST_CHATGPT_AUTH_DIR : mkdtempSync(join(tmpdir(), 'bba-test-chatgpt-'));
+  mkdirSync(chatgptAuthDir, { recursive: true });
+  const chatgptAuth: ChatGptAuthClient = opts.chatgpt
+    ? createChatGptAuthClient(opts.chatgpt.authBase)
+    : {
+        verifyUrl: 'about:blank',
+        requestDeviceCode: () => Promise.reject(new Error('this test app has no fake OpenAI login (createTestApp({ chatgpt }))')),
+        poll: () => Promise.reject(new Error('this test app has no fake OpenAI login (createTestApp({ chatgpt }))')),
+      };
+  const accounts = createChatGptAccounts({ db, box, writer, auth: chatgptAuth, authDir: chatgptAuthDir, timezone: 'Europe/Moscow' });
+  const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -218,6 +239,8 @@ export async function createTestApp(
     auth,
     gateway,
     models,
+    accounts,
+    chatgptAuthDir,
     gatewayOwner: teamId,
     litellm,
     ledgerSecret,
@@ -250,6 +273,10 @@ export async function createTestApp(
       background.stop();
       // Deployments this test database put into the shared test LiteLLM leave with it.
       await reconcile(litellm, teamId, []);
+      // The login files of this database's accounts; other test files share the gateway's folder.
+      const { rows: own } = await db.query<{ id: string }>('SELECT id FROM app.chatgpt_accounts');
+      for (const a of own) rmSync(join(chatgptAuthDir, `${a.id}.json`), { force: true });
+      if (!opts.chatgpt?.gateway) rmSync(chatgptAuthDir, { recursive: true, force: true });
       await mastra.stopWorkers();
       await model.close();
       rmSync(workspaceRoot, { recursive: true, force: true });

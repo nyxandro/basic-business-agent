@@ -34,8 +34,8 @@ services:
       LITELLM_CALLBACK_URL: http://app:3000/app/api/internal/usage
     volumes:
       - litellm-config:/app/deploy/litellm
-      # Mounted here first, so the new volume takes the app's ownership of /chatgpt-auth from the
-      # image: LiteLLM, which starts next, would create it owned by root and the app could not write.
+      # Mounted here first, before anything can write into it: Docker gives an empty volume the
+      # owner of /chatgpt-auth in the image (the app), so the app can write the login files.
       - chatgpt-auth:/chatgpt-auth
     restart: "no"
 

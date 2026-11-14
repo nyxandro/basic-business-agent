@@ -1,5 +1,6 @@
 // Copies the admin's models into LiteLLM (spec, section 8.1). Our database is the source of truth:
-// each enabled model on keys becomes one deployment per key, `model_info.id = <model>:<key>`.
+// each enabled model on keys becomes one deployment per key, `model_info.id = <model>:<key>`; each
+// enabled subscription model — one deployment per active ChatGPT account, `<model>:<account>`.
 // The sync touches only deployments marked with this installation's owner tag, so models an
 // operator added to LiteLLM by hand — and, in tests, other test databases — stay untouched.
 import { createHash } from 'node:crypto';
@@ -7,7 +8,7 @@ import type { ModelConnection, ModelKind, TokenPrices } from '@bba/contracts';
 import { AppError } from '../errors/app-error.ts';
 import { ERROR_CATALOG } from '../errors/catalog.ts';
 import type { DeploymentSpec, LiteLLMClient } from './litellm-client.ts';
-import { perMinuteToLiteLLM, pricesToLiteLLM } from './prices.ts';
+import { perMinuteToLiteLLM, pricesToLiteLLM, ZERO_PRICES } from './prices.ts';
 
 // Owner tag of an installation's deployments; one LiteLLM serves one installation.
 export const GATEWAY_OWNER = 'bba';
@@ -31,13 +32,26 @@ export interface SyncKey {
   secret: string;
 }
 
+// An account LiteLLM may send requests to (not one in «Ошибка доступа»).
+export interface SyncAccount {
+  id: string;
+}
+
 export interface SyncState {
   models: SyncModel[];
   keys: SyncKey[];
+  accounts: SyncAccount[];
 }
 
-export function deploymentId(modelId: string, keyId: string): string {
-  return `${modelId}:${keyId}`;
+// Where LiteLLM sees the login files of the accounts: the volume chatgpt-auth (compose files).
+export const GATEWAY_AUTH_DIR = '/chatgpt-auth';
+
+export function deploymentId(modelId: string, keyOrAccountId: string): string {
+  return `${modelId}:${keyOrAccountId}`;
+}
+
+function fingerprintOf(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, FINGERPRINT_CHARS);
 }
 
 function priceParams(m: SyncModel): Record<string, number> {
@@ -49,11 +63,24 @@ function priceParams(m: SyncModel): Record<string, number> {
 export function deploymentsOf(state: SyncState, owner: string): DeploymentSpec[] {
   const out: DeploymentSpec[] = [];
   for (const m of state.models) {
-    if (!m.enabled || m.connection !== 'api_key') continue;
+    if (!m.enabled) continue;
+    if (m.connection === 'chatgpt') {
+      for (const a of state.accounts) {
+        // A subscription costs nothing per token: its tokens count against the daily cap only.
+        const params = { model: m.providerModel, chatgpt_auth_file: `${GATEWAY_AUTH_DIR}/${a.id}.json`, ...pricesToLiteLLM(ZERO_PRICES) };
+        out.push({
+          id: deploymentId(m.id, a.id),
+          modelName: m.id,
+          params,
+          info: { bba_owner: owner, bba_fingerprint: fingerprintOf({ params, kind: m.kind }), mode: 'chat' },
+        });
+      }
+      continue;
+    }
     for (const k of state.keys.filter((key) => key.modelId === m.id)) {
       const visible = { model: m.providerModel, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...priceParams(m) };
       // Keys never change in place (a new key is a new row), so the key id stands for the secret.
-      const fingerprint = createHash('sha256').update(JSON.stringify({ visible, key: k.id, kind: m.kind })).digest('hex').slice(0, FINGERPRINT_CHARS);
+      const fingerprint = fingerprintOf({ visible, key: k.id, kind: m.kind });
       out.push({
         id: deploymentId(m.id, k.id),
         modelName: m.id,

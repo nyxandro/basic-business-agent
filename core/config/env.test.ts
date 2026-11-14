@@ -11,6 +11,7 @@ const valid = {
   LITELLM_CALLBACK_SECRET: 'y'.repeat(32),
   APP_WORKSPACE_DIR: '/workspace',
   APP_SKILLS_DIR: '/app/skills-unpacked',
+  APP_CHATGPT_AUTH_DIR: '/chatgpt-auth',
 };
 
 describe('readCoreEnv', () => {

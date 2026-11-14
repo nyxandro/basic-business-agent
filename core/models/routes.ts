@@ -9,6 +9,7 @@ import { AppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
 import type { AppEnv } from '../server/http.ts';
 import { ingestAccountEvents } from './account-events.ts';
+import type { ChatGptAccounts } from './chatgpt-accounts.ts';
 import { ingestUsage } from './usage.ts';
 
 function sameSecret(given: string, expected: string): boolean {
@@ -23,7 +24,7 @@ function requireSecret(c: Context<AppEnv>, secret: string, what: string): void {
   }
 }
 
-export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSecret: string }): void {
+export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSecret: string; accounts: Pick<ChatGptAccounts, 'attemptFailed'> }): void {
   app.post('/app/api/internal/usage', async (c) => {
     requireSecret(c, deps.ledgerSecret, 'usage');
     const payload: unknown = await c.req.json();
@@ -41,6 +42,7 @@ export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSec
     const payload: unknown = await c.req.json();
     try {
       const kept = await ingestAccountEvents(deps.db, payload);
+      for (const failure of kept) await deps.accounts.attemptFailed(failure.accountId, failure.status);
       return c.json({ kept: kept.length });
     } catch (error) {
       logEvent('error', 'account_events_ingest_failed', { error });

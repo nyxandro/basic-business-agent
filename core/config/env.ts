@@ -19,6 +19,8 @@ export const coreEnvSchema = z.object({
   APP_WORKSPACE_DIR: z.string().startsWith('/', 'must be an absolute path'),
   // Folder for the unpacked copies of uploaded skills; the server refills it from the database.
   APP_SKILLS_DIR: z.string().startsWith('/', 'must be an absolute path'),
+  // Login files of the ChatGPT accounts, shared with LiteLLM (/chatgpt-auth in its container).
+  APP_CHATGPT_AUTH_DIR: z.string().startsWith('/', 'must be an absolute path'),
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;
 

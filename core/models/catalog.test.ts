@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/test-app.ts';
 import { createModelCatalog } from './catalog.ts';
+import { createGatewayWriter } from './gateway-writer.ts';
+import { TEST_MODEL_IDS } from './test-catalog.ts';
 import { startFakeModel, type FakeModel } from './fake-openai.ts';
 import { createLiteLLMClient } from './litellm-client.ts';
 
@@ -199,7 +201,10 @@ describe('models of «Нейросеть»', () => {
   });
 
   it('shows the catalog from our database when LiteLLM does not answer', async () => {
-    const offline = createModelCatalog({ db: t.db, box: createSecretBox(TEST_ENCRYPTION_KEYS), client: createLiteLLMClient('http://127.0.0.1:9', 'sk-x'), owner: t.gatewayOwner, agentName: (id) => id });
+    const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+    const client = createLiteLLMClient('http://127.0.0.1:9', 'sk-x');
+    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const offline = createModelCatalog({ db: t.db, box, client, writer, accounts: t.accounts, agentName: (id) => id });
     const list = await offline.list();
     expect(list.gateway).toMatchObject({ reachable: false, pendingModelIds: [] });
     expect(list.models.length).toBeGreaterThan(0);

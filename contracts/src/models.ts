@@ -12,19 +12,30 @@ const price = z.number().min(0).max(1_000_000).nullable();
 export const tokenPricesInputSchema = z.object({ input: price, output: price, cacheRead: price, cacheWrite: price, reasoning: price, image: price });
 export type TokenPricesInput = z.infer<typeof tokenPricesInputSchema>;
 
-export const modelCreateSchema = z.object({
-  kind: z.enum(MODEL_KINDS),
-  label: z.string(),
-  connection: z.literal('api_key'),
-  // "provider/model" as LiteLLM names it, e.g. openai/gpt-4.1-mini.
-  providerModel: z.string(),
-  apiBase: z.string().nullable(),
-  vision: z.boolean(),
-  prices: tokenPricesInputSchema.nullable(),
-  // Recognition only: roubles per minute of audio instead of token prices.
-  pricePerMinute: price,
-  key: z.string(),
-});
+export const modelCreateSchema = z.discriminatedUnion('connection', [
+  z.object({
+    connection: z.literal('api_key'),
+    kind: z.enum(MODEL_KINDS),
+    label: z.string(),
+    // "provider/model" as LiteLLM names it, e.g. openai/gpt-4.1-mini.
+    providerModel: z.string(),
+    apiBase: z.string().nullable(),
+    vision: z.boolean(),
+    prices: tokenPricesInputSchema.nullable(),
+    // Recognition only: roubles per minute of audio instead of token prices.
+    pricePerMinute: price,
+    key: z.string(),
+  }),
+  // «Подписка ChatGPT»: a chat model served by the accounts of the pool, without a key or prices.
+  z.object({
+    connection: z.literal('chatgpt'),
+    kind: z.literal('chat'),
+    label: z.string(),
+    // chatgpt/<model>, e.g. chatgpt/gpt-5.4.
+    providerModel: z.string(),
+    vision: z.boolean(),
+  }),
+]);
 export type ModelCreate = z.infer<typeof modelCreateSchema>;
 
 export const modelUpdateSchema = z.object({
@@ -78,9 +89,45 @@ export interface ModelDto {
   agentIds: string[];
 }
 
+// State of an account of the pool (spec, section 8.1):
+// - auth_error: OpenAI refused the login; the account is out of the gateway until «Войти заново»;
+// - cooldown: the gateway skips it after a failure until cooldownUntil;
+// - works: it answered within 30 days;
+// - no_requests: nothing is known yet.
+export const CHATGPT_ACCOUNT_STATES = ['works', 'cooldown', 'auth_error', 'no_requests'] as const;
+export type ChatGptAccountState = (typeof CHATGPT_ACCOUNT_STATES)[number];
+
+export interface ChatGptAccountDto {
+  id: string;
+  email: string;
+  connectedAt: string;
+  state: ChatGptAccountState;
+  // HTTP status of the last failure (cooldown and auth_error).
+  failureStatus: number | null;
+  cooldownUntil: string | null;
+  lastSuccessAt: string | null;
+  tokensToday: number;
+}
+
+// «Войти заново» names the account; a new account — null.
+export const chatgptLoginStartSchema = z.object({ accountId: z.string().nullable() });
+
+export interface ChatGptLoginDto {
+  id: string;
+  // The person enters it on OpenAI's page.
+  userCode: string;
+  verifyUrl: string;
+  expiresAt: string;
+  // Ask about the login no more often than this.
+  intervalSeconds: number;
+}
+
+export type ChatGptLoginStatus = { status: 'pending'; expiresAt: string } | { status: 'connected'; account: ChatGptAccountDto };
+
 export interface ModelsResponse {
   models: ModelDto[];
   settings: ModelSettings;
+  accounts: ChatGptAccountDto[];
   gateway: {
     reachable: boolean;
     checkedAt: string;

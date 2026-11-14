@@ -16,6 +16,9 @@ import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
 import { createModelCatalog } from '../models/catalog.ts';
+import { createChatGptAccounts } from '../models/chatgpt-accounts.ts';
+import { createChatGptAuthClient, OPENAI_AUTH_BASE } from '../models/chatgpt-login.ts';
+import { createGatewayWriter } from '../models/gateway-writer.ts';
 import { createModelGateway } from '../models/gateway.ts';
 import { GATEWAY_OWNER } from '../models/gateway-sync.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
@@ -52,7 +55,11 @@ async function main(): Promise<void> {
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
   await gateway.syncOrgBudget();
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
-  const models = createModelCatalog({ db, box, client: litellm, owner: GATEWAY_OWNER, agentName });
+  const writer = createGatewayWriter({ db, box, client: litellm, owner: GATEWAY_OWNER, fileModelIds: new Set() });
+  const accounts = createChatGptAccounts({ db, box, writer, auth: createChatGptAuthClient(OPENAI_AUTH_BASE), authDir: env.APP_CHATGPT_AUTH_DIR, timezone: installation.app.timezone });
+  const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
+  // The accounts' login files go into the volume before LiteLLM gets deployments that read them.
+  await accounts.prepare();
   // Our database is the source of truth: LiteLLM gets the admin's models at every start. A refusal
   // does not stop the server — «Нейросеть» shows what LiteLLM has not applied.
   await models.sync().then(
@@ -75,7 +82,7 @@ async function main(): Promise<void> {
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills });
   backgroundRef.current = background;
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
