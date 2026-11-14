@@ -7,6 +7,7 @@ import { access, errorJson, parseJson, type AppEnv } from '../server/http.ts';
 import { AUTH_BASE_PATH, type Auth } from './auth.ts';
 import { acceptInvite, acceptPasswordReset, findInvite, findPasswordReset } from './users.ts';
 import { recognitionModel } from '../voice/transcribe.ts';
+import { orgName } from '../admin/org-profile.ts';
 
 const SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -51,6 +52,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>, deps: { db: Db; auth: Auth
       isSuperadmin: a.isSuperadmin,
       departmentIds: a.departmentIds,
       voiceAvailable: (await recognitionModel(deps.db)) !== null,
+      organisation: { name: await orgName(deps.db) },
     };
     return c.json(body);
   });

@@ -18,6 +18,7 @@ import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
+import type { ConnectionManager } from '../connections/manager.ts';
 
 export interface ChatDeps {
   db: Db;
@@ -29,6 +30,8 @@ export interface ChatDeps {
   // Time zone of the installation: the day of the subscription's daily cap.
   timezone: string;
   skills: Pick<SkillsRuntime, 'skillsFor'>;
+  // Names of the actions of connected systems, for the confirmation card.
+  connections: Pick<ConnectionManager, 'actionsSeen'>;
 }
 
 export interface RunInput {

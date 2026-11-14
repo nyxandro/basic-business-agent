@@ -14,6 +14,7 @@ import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
+import { ensureOrgName } from '../admin/org-profile.ts';
 import { createModelCatalog } from '../models/catalog.ts';
 import { createModelGateway } from '../models/gateway.ts';
 import { GATEWAY_OWNER } from '../models/gateway-sync.ts';
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   const agentIds = registry.ids();
   await ensureLimitSettings(db, installation.app.limits);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
+  await ensureOrgName(db, installation.app.name);
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
@@ -72,7 +74,7 @@ async function main(): Promise<void> {
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));

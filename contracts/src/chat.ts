@@ -1,9 +1,20 @@
 // Agents open to the person (GET /app/api/agents): what the chat list shows on its cards.
+// What the confirmation card shows: the name of the action and the labels of its fields, taken
+// from the tool's own description (spec, section 8.4).
+export interface ActionDescription {
+  title: string;
+  fields: Record<string, string>;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;
   description: string;
+  // The admin's starter questions when set, otherwise the passport's.
   starters: string[];
+  // Actions of the agent and of its sub-agents by tool name; tools of connected systems appear
+  // once they were listed for someone.
+  actions: Record<string, ActionDescription>;
   // Which system a tool works in, for the chat line «Ищу в …»: exact tool names of plugins and
   // name prefixes of connected systems (their tools are built per employee).
   systems: { tools: Record<string, string>; prefixes: Record<string, string> };

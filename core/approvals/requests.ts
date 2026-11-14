@@ -1,6 +1,7 @@
 // Questions waiting for the employee's "Да"/"Нет" (spec, section 8.4). A Mastra output processor
 // records every tool-call approval request of a run here — in the chat and in background tasks —
 // so a decision can be applied later, after a page reload or a server restart.
+import type { ActionDescription } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
 import type { Db } from '../db/pool.ts';
 import { summariseArgs } from '../journal/journal.ts';
@@ -19,7 +20,9 @@ export interface ApprovalRequest {
   runId: string;
   toolCallId: string;
   tool: string;
+  // The name of the action and the labels of its fields as they were when asked.
   summary: string;
+  labels: Record<string, string>;
   args: unknown;
   status: ApprovalStatus;
   errorCode: string | null;
@@ -37,6 +40,7 @@ interface Row {
   tool_call_id: string;
   tool: string;
   summary: string;
+  labels: Record<string, string>;
   args: unknown;
   status: ApprovalStatus;
   error_code: string | null;
@@ -54,6 +58,7 @@ const toRequest = (r: Row): ApprovalRequest => ({
   toolCallId: r.tool_call_id,
   tool: r.tool,
   summary: r.summary,
+  labels: r.labels,
   args: r.args,
   status: r.status,
   errorCode: r.error_code,
@@ -66,7 +71,8 @@ function contextValue(ctx: { get(key: string): unknown } | undefined, key: strin
   return typeof v === 'string' && v ? v : null;
 }
 
-export function createApprovalRecorder(db: Db) {
+// `describe` names the actions of the agent's tools (core/approvals/describe.ts).
+export function createApprovalRecorder(db: Db, describe: (toolName: string) => ActionDescription | null) {
   return {
     id: 'bba-approval-recorder',
     async processOutputStream({ part, requestContext }) {
@@ -76,9 +82,10 @@ export function createApprovalRecorder(db: Db) {
       const threadId = contextValue(requestContext, REQUEST_KEYS.threadId);
       const runId = (part as { runId?: string }).runId;
       if (!userId || !threadId || !runId) throw new Error('approval request without employee, thread or run in the request context');
+      const action = describe(payload.toolName);
       await db.query(
-        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, args, status, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
+        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
         [
           userId,
           contextValue(requestContext, REQUEST_KEYS.agentId) ?? 'unknown',
@@ -87,7 +94,9 @@ export function createApprovalRecorder(db: Db) {
           runId,
           payload.toolCallId,
           payload.toolName,
-          payload.toolName,
+          // A tool unknown here (a connected system not listed yet) is named by its name.
+          action?.title ?? payload.toolName,
+          JSON.stringify(action?.fields ?? {}),
           JSON.stringify(summariseArgs(payload.args ?? {})),
           new Date(Date.now() + APPROVAL_TTL_MS),
         ],

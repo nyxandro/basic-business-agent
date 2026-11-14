@@ -53,4 +53,5 @@ export interface MeResponse {
   departmentIds: string[];
   // A recognition model is chosen and enabled in «Нейросеть»: the chat shows the microphone.
   voiceAvailable: boolean;
+  organisation: { name: string };
 }

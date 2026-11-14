@@ -67,7 +67,16 @@ describe('chat', () => {
   it('lists only the agents of the employee’s departments', async () => {
     const res = await t.call('GET', '/app/api/agents', { cookie: olga });
     const { agents } = (await res.json()) as { agents: { id: string }[] };
-    expect(agents).toEqual([{ id: 'sales', name: 'Продажи', description: 'Тестовый агент Продажи', starters: ['Покажи мои сделки'], systems: { tools: {}, prefixes: {} } }]);
+    expect(agents).toEqual([
+      {
+        id: 'sales',
+        name: 'Продажи',
+        description: 'Тестовый агент Продажи',
+        starters: ['Покажи мои сделки'],
+        actions: { crm_search: { title: 'Найти сделки', fields: {} }, mail_send: { title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' } } },
+        systems: { tools: {}, prefixes: {} },
+      },
+    ]);
   });
 
   it('refuses an agent outside the employee’s departments with 403', async () => {

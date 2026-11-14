@@ -73,12 +73,12 @@ beforeAll(async () => {
     ('igor', 'Игорь', 'igor@example.com', true), ('anna', 'Анна', 'anna@example.com', true), ('olga', 'Ольга', 'olga@example.com', true)`);
   await db.query(`INSERT INTO app.user_profiles (user_id, position) VALUES ('olga', 'менеджер по продажам')`);
   await db.query(`WITH d AS (INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id) INSERT INTO app.department_members (department_id, user_id) SELECT id, 'olga' FROM d`);
-  await db.query(`INSERT INTO app.org_profile (tone, industry) VALUES ('на «вы», без канцелярита', 'строительство')`);
+  await db.query(`INSERT INTO app.org_profile (name, tone, industry) VALUES ('Альфа-Строй', 'на «вы», без канцелярита', 'строительство')`);
   model = await startFakeModel();
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-prompts-'));
-  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' }, workspaceRoot });
+  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {

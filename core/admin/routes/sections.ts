@@ -2,6 +2,7 @@
 // «Журнал действий» (spec, scenario 5, section 17.5). Each needs its own right of the role.
 import {
   agentModelSchema,
+  agentStartersSchema,
   journalQuerySchema,
   limitSettingsSchema,
   maskingSettingsSchema,
@@ -80,23 +81,37 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     await revertToFile(deps.editor, access(c).userId, c.req.param('id'));
     return c.json({ ok: true });
   });
+  // The admin's starter questions instead of the passport's; null brings the passport's back.
+  app.put('/app/api/admin/agents/:id/starters', agents, async (c) => {
+    const id = c.req.param('id');
+    if (!deps.registry.get(id)) throw appError('APP_NOT_FOUND', `agent ${id} is not loaded`);
+    const { starters } = await parseJson(c, agentStartersSchema);
+    await db.query('INSERT INTO app.agent_overrides (agent_id, starters) VALUES ($1, $2) ON CONFLICT (agent_id) DO UPDATE SET starters = EXCLUDED.starters', [id, starters]);
+    await writeAudit(db, { actorUserId: access(c).userId, action: 'agent.starters', target: id, details: { starters } });
+    return c.json({ ok: true });
+  });
+
   app.put('/app/api/admin/agents/:id/model', agents, async (c) => {
     const { modelId } = await parseJson(c, agentModelSchema);
     await setAgentModel(deps.editor, access(c).userId, c.req.param('id'), modelId);
     return c.json({ ok: true });
   });
   const org = requirePermission('org_profile');
+  // The row exists from the first start of the server (ensureOrgName).
   app.get('/app/api/admin/org-profile', org, async (c) => {
-    const { rows } = await db.query<{ tone: string; requisites: string; industry: string }>('SELECT tone, requisites, industry FROM app.org_profile');
-    return c.json(rows[0] ?? { tone: '', requisites: '', industry: '' });
+    const { rows } = await db.query<{ name: string; tone: string; requisites: string; industry: string }>('SELECT name, tone, requisites, industry FROM app.org_profile');
+    if (!rows[0]) throw new Error('app.org_profile has no row: ensureOrgName runs at the start of the server');
+    return c.json(rows[0]);
   });
   app.put('/app/api/admin/org-profile', org, async (c) => {
     const input = await parseJson(c, orgProfileSchema);
-    await db.query(
-      `INSERT INTO app.org_profile (tone, requisites, industry, updated_by, updated_at) VALUES ($1, $2, $3, $4, now())
-       ON CONFLICT (id) DO UPDATE SET tone = EXCLUDED.tone, requisites = EXCLUDED.requisites, industry = EXCLUDED.industry, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-      [input.tone, input.requisites, input.industry, access(c).userId],
-    );
+    await db.query('UPDATE app.org_profile SET name = $1, tone = $2, requisites = $3, industry = $4, updated_by = $5, updated_at = now()', [
+      input.name,
+      input.tone,
+      input.requisites,
+      input.industry,
+      access(c).userId,
+    ]);
     await writeAudit(db, { actorUserId: access(c).userId, action: 'org_profile.update', target: null });
     return c.json({ ok: true });
   });
@@ -113,6 +128,9 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     const { rows } = await db.query<{ connector_id: string; status: string; n: number }>(
       'SELECT connector_id, status, count(*)::int AS n FROM app.connector_credentials GROUP BY connector_id, status',
     );
+    const total = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM app."user" u LEFT JOIN app.user_profiles p ON p.user_id = u."id" WHERE p.blocked_at IS NULL AND p.deletion_started_at IS NULL`,
+    );
     const connections = [...deps.connections.connectors.values()].map((conn) => ({
       id: conn.id,
       title: conn.title,
@@ -120,7 +138,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
       auth: conn.auth,
       employees: Object.fromEntries(rows.filter((r) => r.connector_id === conn.id).map((r) => [r.status, r.n])),
     }));
-    return c.json({ connections });
+    return c.json({ connections, employeesTotal: total.rows[0]!.n });
   });
 
   app.get('/app/api/admin/journal', requirePermission('journal'), async (c) => {

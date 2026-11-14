@@ -4,6 +4,7 @@ import type { AgentListResponse, MemoryResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
+import { agentActions } from '../approvals/describe.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
 import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
@@ -34,15 +35,22 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return { code: error.code, message: error.userMessage };
   }
 
-  app.get('/app/api/agents', (c) => {
+  app.get('/app/api/agents', async (c) => {
     const a = access(c);
+    const { rows } = await deps.db.query<{ agent_id: string; starters: string[] }>('SELECT agent_id, starters FROM app.agent_overrides WHERE starters IS NOT NULL');
+    const ownStarters = new Map(rows.map((r) => [r.agent_id, r.starters]));
+    const seen = deps.connections.actionsSeen();
     const agents = deps.registry.agents
       .filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id))
       .map((rt) => ({
         id: rt.passport.id,
         name: rt.passport.name,
         description: rt.passport.description,
-        starters: rt.passport.starters,
+        starters: ownStarters.get(rt.passport.id) ?? rt.passport.starters,
+        actions: {
+          ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
+          ...agentActions(rt),
+        },
         systems: {
           tools: rt.toolSystems,
           prefixes: Object.fromEntries(

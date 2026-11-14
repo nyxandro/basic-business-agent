@@ -20,6 +20,8 @@ import type {
 import { api } from '../api/client.ts';
 
 const enc = encodeURIComponent;
+type OrgProfile = { name: string; tone: string; requisites: string; industry: string };
+
 const A = '/app/api/admin';
 type Ok = { ok: true };
 
@@ -62,8 +64,8 @@ export const adminApi = {
   setModel: (agentId: string, modelId: string | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/model`, { modelId }),
   tasks: () => api<{ tasks: AdminTask[] }>('GET', `${A}/tasks`),
 
-  orgProfile: () => api<{ tone: string; requisites: string; industry: string }>('GET', `${A}/org-profile`),
-  saveOrgProfile: (body: { tone: string; requisites: string; industry: string }) => api<Ok>('PUT', `${A}/org-profile`, body),
+  orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),
+  saveOrgProfile: (body: OrgProfile) => api<Ok>('PUT', `${A}/org-profile`, body),
 
   masking: () => api<{ kinds: string[] }>('GET', `${A}/masking`),
   saveMasking: (kinds: string[]) => api<Ok>('PUT', `${A}/masking`, { kinds }),

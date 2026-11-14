@@ -10,6 +10,7 @@ import type { ConnectionManager } from '../connections/manager.ts';
 import type { Db } from '../db/pool.ts';
 import type { Registry } from '../loader/registry.ts';
 import { createMaskingProcessor } from '../masking/processor.ts';
+import { agentActions } from '../approvals/describe.ts';
 import { createApprovalRecorder } from '../approvals/requests.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
@@ -22,12 +23,12 @@ export interface MastraRuntimeDeps {
   memory: Memory;
   gateway: Pick<ModelGateway, 'modelConfig'>;
   db: Db;
-  app: Pick<AppConfig, 'name' | 'timezone'>;
+  app: Pick<AppConfig, 'timezone'>;
   // Root of the employees' workspaces: the project layer of the prompt lists the project's files.
   workspaceRoot: string;
   // FALLBACK_FIRST_CHUNK_MS unless a test shortens it.
   firstChunkMs?: number;
-  connections?: Pick<ConnectionManager, 'toolsFor'>;
+  connections?: Pick<ConnectionManager, 'toolsFor' | 'actionsSeen'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
   workflows?: ConstructorParameters<typeof Mastra>[0] extends infer O ? (O extends { workflows?: infer W } ? W : never) : never;
@@ -36,9 +37,13 @@ export interface MastraRuntimeDeps {
 export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
   const memory = deps.memory;
-  const recorder = createApprovalRecorder(deps.db);
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const agents: Record<string, Agent> = {};
+  // Questions keep the name of the action: the agent's own tools, else a connected system's.
+  const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
+    const own = agentActions(rt);
+    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
+  };
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {
       gateway: deps.gateway,
@@ -48,13 +53,13 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       processorsFor: (r, level) => ({
         input: [
-          createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot }),
+          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot }),
           masking,
           ...imageView,
         ],
         // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,
         // under the run id the chat answers to.
-        output: level === 'top' ? [masking, recorder] : [masking],
+        output: level === 'top' ? [masking, recorderOf(r)] : [masking],
       }),
     });
   }

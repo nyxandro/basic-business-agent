@@ -15,6 +15,7 @@ export type LimitSettingsBody = z.infer<typeof limitSettingsSchema>;
 export const userLimitsSchema = z.object({ monthlyRub: rub, dailySubscriptionTokens: tokens });
 
 export const orgProfileSchema = z.object({
+  name: z.string().trim().min(1).max(120),
   tone: z.string().max(2000),
   requisites: z.string().max(4000),
   industry: z.string().max(500),
@@ -25,6 +26,14 @@ export const maskingSettingsSchema = z.object({ kinds: z.array(z.enum(MASKING_KI
 
 export const promptDraftSchema = z.object({ text: z.string(), baseDraftVersionId: z.string().nullable() });
 export const agentModelSchema = z.object({ modelId: z.string().nullable() });
+// null — the starter questions of the agent's passport.
+export const agentStartersSchema = z.object({ starters: z.array(z.string().trim().min(1).max(200)).max(3).nullable() });
+
+export interface UsageDay {
+  // YYYY-MM-DD in the installation's time zone.
+  day: string;
+  costRub: number;
+}
 
 export const userProfileSchema = z.object({ name: z.string().trim().min(1), position: z.string().max(200) });
 
@@ -129,6 +138,12 @@ export interface UsageReport {
   rows: UsageRow[];
   totalRub: number;
   orgLimitRub: number | null;
+}
+
+export interface AdminConnectionsResponse {
+  connections: AdminConnection[];
+  // Active employees of the installation: «Подключено у N из M».
+  employeesTotal: number;
 }
 
 export interface AdminConnection {

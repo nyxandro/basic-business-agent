@@ -20,6 +20,7 @@ import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createSkillsRuntime } from '../skills-admin/runtime.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
+import { ensureOrgName } from '../admin/org-profile.ts';
 import { createModelCatalog, type ModelCatalog } from '../models/catalog.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
@@ -130,6 +131,7 @@ export async function createTestApp(
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
   const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
   await ensureMaskingSettings(db, []);
+  await ensureOrgName(db, 'Альфа-Строй');
   const model = await startFakeModel(opts.modelFallback ? { fallback: opts.modelFallback } : {});
   const sentMail: { to: string; text: string }[] = [];
   const salesTools = {
@@ -141,7 +143,7 @@ export async function createTestApp(
       createTool({
         id: 'mail_send',
         description: 'Отправить письмо клиенту',
-        inputSchema: z.object({ to: z.string(), text: z.string() }),
+        inputSchema: z.object({ to: z.string().describe('Кому'), text: z.string().describe('Текст письма') }),
         execute: (input) => (sentMail.push(input), Promise.resolve({ sent: true })),
       }),
       { readOnly: false, db },
@@ -180,7 +182,7 @@ export async function createTestApp(
     memory,
     gateway: fakeGateway,
     db,
-    app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' },
+    app: { timezone: 'Europe/Moscow' },
     workspaceRoot,
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     connections,
@@ -189,7 +191,7 @@ export async function createTestApp(
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   const models = createModelCatalog({ db, box, client: litellm, owner: teamId, agentName });
   const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });

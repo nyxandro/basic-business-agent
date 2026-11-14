@@ -1,4 +1,5 @@
 // Screens of the employee: «Ждёт подтверждения» and «Настройки» (spec, section 7).
+import type { ActionDescription } from './chat.ts';
 
 export interface MemoryResponse {
   text: string;
@@ -29,6 +30,8 @@ export interface PendingApproval {
   agent: string;
   task: string | null;
   tool: string;
+  // As the action was described when the question was asked.
+  action: ActionDescription;
   args: unknown;
   createdAt: string;
   expiresAt: string;

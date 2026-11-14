@@ -6,7 +6,10 @@ import { appError } from '../../errors/catalog.ts';
 import type { Registry } from '../../loader/registry.ts';
 import { requirePermission } from '../../server/guards.ts';
 import { access, type AppEnv } from '../../server/http.ts';
-import { employeeUsage, usageReport } from '../usage.ts';
+import { dailyUsage, employeeUsage, usageReport } from '../usage.ts';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_RANGE_MAX_DAYS = 366;
 
 const reportQuery = z.object({
   from: z.iso.date(),
@@ -16,6 +19,15 @@ const reportQuery = z.object({
 
 export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; registry: Registry; timezone: string }): void {
   app.get('/app/api/me/usage', async (c) => c.json(await employeeUsage(deps.db, access(c).userId, deps.timezone)));
+
+  app.get('/app/api/admin/usage/daily', requirePermission('usage'), async (c) => {
+    const parsed = z.object({ from: z.iso.date(), to: z.iso.date() }).safeParse(c.req.query());
+    const days = parsed.success ? (Date.parse(parsed.data.to) - Date.parse(parsed.data.from)) / DAY_MS : -1;
+    if (!parsed.success || days < 0 || days > DAILY_RANGE_MAX_DAYS) {
+      throw appError('APP_VALIDATION_FAILED', `daily usage needs from ≤ to within ${DAILY_RANGE_MAX_DAYS} days`, { userMessage: 'Выберите период не больше года.' });
+    }
+    return c.json({ days: await dailyUsage(deps.db, { ...parsed.data, timezone: deps.timezone }) });
+  });
 
   app.get('/app/api/admin/usage', requirePermission('usage'), async (c) => {
     const parsed = reportQuery.safeParse(c.req.query());

@@ -6,6 +6,8 @@ import type { MyConnection } from '@bba/contracts';
 import { MCPClient } from '@mastra/mcp';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import type { ActionDescription } from '@bba/contracts';
+import { describeTool } from '../approvals/describe.ts';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
@@ -34,6 +36,8 @@ export type ConnectionStatus = MyConnection;
 export interface ConnectionManager {
   connectors: ReadonlyMap<string, ConnectorRuntime>;
   toolsFor(userId: string, connectorIds: readonly string[]): Promise<Record<string, AnyTool>>;
+  // Names of the actions of connected systems listed so far (the same for every employee).
+  actionsSeen(): Record<string, ActionDescription>;
   statusFor(userId: string): Promise<ConnectionStatus[]>;
   saveStatic(userId: string, connectorId: string, fields: Record<string, string>): Promise<CredentialStatus>;
   disconnect(userId: string, connectorId: string): Promise<void>;
@@ -175,8 +179,12 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
     } as Parameters<typeof createTool>[0]) as AnyTool;
   }
 
+  // Tool definitions of a system do not depend on the employee: the last listing is kept.
+  const seen = new Map<string, ActionDescription>();
+
   return {
     connectors,
+    actionsSeen: () => Object.fromEntries(seen),
     async toolsFor(userId, connectorIds) {
       const out: Record<string, AnyTool> = {};
       for (const id of connectorIds) {
@@ -189,6 +197,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
           for (const [name, tool] of Object.entries(tools)) {
             const raw = name.startsWith(prefix) ? name.slice(prefix.length) : name;
             const guarded = c.mode === 'personal' ? wrapPersonal(c, userId, tool) : tool;
+            seen.set(name, describeTool(tool));
             out[name] = applyApprovalPolicy(guarded, { readOnly: c.readOnly.has(raw), db });
           }
         } catch (error) {

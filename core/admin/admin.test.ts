@@ -47,8 +47,9 @@ describe('admin sections', () => {
   });
 
   it('keeps the organisation profile, masking switches and shows connections and the journal', async () => {
-    expect((await t.call('PUT', '/app/api/admin/org-profile', { cookie: admin, body: { tone: 'на «вы»', requisites: 'ИНН 7707083893', industry: 'строительство' } })).status).toBe(200);
-    expect(await json(await t.call('GET', '/app/api/admin/org-profile', { cookie: admin }))).toEqual({ tone: 'на «вы»', requisites: 'ИНН 7707083893', industry: 'строительство' });
+    const profile = { name: 'Альфа-Строй', tone: 'на «вы»', requisites: 'ИНН 7707083893', industry: 'строительство' };
+    expect((await t.call('PUT', '/app/api/admin/org-profile', { cookie: admin, body: profile })).status).toBe(200);
+    expect(await json(await t.call('GET', '/app/api/admin/org-profile', { cookie: admin }))).toEqual(profile);
     expect((await t.call('PUT', '/app/api/admin/masking', { cookie: admin, body: { kinds: ['passport', 'email'] } })).status).toBe(200);
     expect(await json(await t.call('GET', '/app/api/admin/masking', { cookie: admin }))).toEqual({ kinds: ['passport', 'email'] });
     expect((await t.call('GET', '/app/api/admin/connections', { cookie: admin })).status).toBe(200);

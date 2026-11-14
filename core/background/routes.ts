@@ -39,6 +39,7 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
         agent: agentName(p.agentId),
         task: p.taskId ? (titles.get(p.taskId) ?? p.taskId) : null,
         tool: p.tool,
+        action: { title: p.summary, fields: p.labels },
         args: argsByThread.get(p.threadId)?.get(p.toolCallId) ?? p.args,
         createdAt: p.createdAt.toISOString(),
         expiresAt: p.expiresAt.toISOString(),

@@ -1,6 +1,6 @@
 // Spend for the employee («Настройки → Мои расходы», F5) and for the admin («Расходы»),
 // read from our ledger app.usage_events (spec, section 8.1), never from LiteLLM's own tables.
-import type { MyUsage, UsageGroup, UsageRow } from '@bba/contracts';
+import type { MyUsage, UsageDay, UsageGroup, UsageRow } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 import { effectiveUserLimits, getLimitSettings } from '../models/limits.ts';
 import { todaySubscriptionTokens } from '../models/usage.ts';
@@ -66,4 +66,17 @@ export async function usageReport(
     lastCallAt: r.last?.toISOString() ?? null,
   }));
   return { rows: out, totalRub: out.reduce((s, r) => s + r.costRub, 0), orgLimitRub: (await getLimitSettings(db)).orgMonthlyRub };
+}
+
+// «График по дням» (spec, scenario 5): spend of the organisation per day of the installation's time
+// zone, every day of the range, zero where nothing was spent.
+export async function dailyUsage(db: Db, input: { from: string; to: string; timezone: string }): Promise<UsageDay[]> {
+  const { rows } = await db.query<{ day: string; cost: string }>(
+    `SELECT to_char(d.day, 'YYYY-MM-DD') AS day, coalesce(sum(e.cost_rub), 0) AS cost
+       FROM generate_series($1::date, $2::date, interval '1 day') AS d(day)
+       LEFT JOIN app.usage_events e ON (e.at AT TIME ZONE $3)::date = d.day::date
+      GROUP BY d.day ORDER BY d.day`,
+    [input.from, input.to, input.timezone],
+  );
+  return rows.map((r) => ({ day: r.day, costRub: Number(r.cost) }));
 }

@@ -32,7 +32,7 @@ export function DraftCheckPage() {
         Отвечает сохранённый черновик промпта. <Link to="/admin/agents">Вернуться к агентам</Link>
       </p>
       <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
-        <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: [], systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
+        <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: [], actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
       </CopilotKit>
     </div>
   );

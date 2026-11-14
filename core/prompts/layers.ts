@@ -16,7 +16,6 @@ export const BASE_RULES = readFileSync(new URL('./base-rules.md', import.meta.ur
 
 export interface LayersDeps {
   db: Db;
-  organisationName: string;
   timezone: string;
   baseRules: boolean;
   workspaceRoot: string;
@@ -26,6 +25,7 @@ export interface LayersDeps {
 export const PROMPT_FILES_LIMIT = 100;
 
 interface OrgRow {
+  name: string | null;
   tone: string;
   requisites: string;
   industry: string;
@@ -42,11 +42,12 @@ function lines(title: string, pairs: [string, string | null | undefined][]): str
   return filled.length > 0 ? `${title}\n${filled.join('\n')}` : null;
 }
 
-export async function organisationLayer(db: Db, organisationName: string): Promise<string> {
-  const { rows } = await db.query<OrgRow>('SELECT tone, requisites, industry FROM app.org_profile');
+export async function organisationLayer(db: Db): Promise<string> {
+  const { rows } = await db.query<OrgRow>('SELECT name, tone, requisites, industry FROM app.org_profile');
   const org = rows[0];
+  if (!org?.name) throw new Error('app.org_profile has no name: ensureOrgName runs at the start of the server');
   return lines('# Профиль организации', [
-    ['Название', organisationName],
+    ['Название', org.name],
     ['Отрасль', org?.industry],
     ['Тон общения', org?.tone],
     ['Реквизиты', org?.requisites],
@@ -102,7 +103,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
       const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
       const projectId = optionalContextValue(requestContext, REQUEST_KEYS.projectId);
       const [org, employee, project] = await Promise.all([
-        organisationLayer(deps.db, deps.organisationName),
+        organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
         projectId ? projectLayer(deps.db, deps.workspaceRoot, userId, projectId) : Promise.resolve(null),
       ]);
