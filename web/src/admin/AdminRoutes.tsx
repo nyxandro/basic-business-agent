@@ -9,6 +9,7 @@ import { DraftCheckPage } from './DraftCheckPage.tsx';
 import { JournalSection } from './JournalSection.tsx';
 import { LimitsPage } from './LimitsPage.tsx';
 import { MaskingSection } from './MaskingSection.tsx';
+import { ModelsSection } from './ModelsSection.tsx';
 import { OrgProfileSection } from './OrgProfileSection.tsx';
 import { RolesSection } from './RolesSection.tsx';
 import { UsersSection } from './UsersSection.tsx';
@@ -18,6 +19,7 @@ export default function AdminRoutes() {
     <Routes>
       <Route element={<AdminLayout />}>
         <Route index element={<AdminIndex />} />
+        <Route path="models" element={<RequireSection path="models"><ModelsSection /></RequireSection>} />
         <Route path="users" element={<RequireSection path="users"><UsersSection /></RequireSection>} />
         <Route path="roles" element={<RequireSection path="roles"><RolesSection /></RequireSection>} />
         <Route path="departments" element={<RequireSection path="departments"><DepartmentsSection /></RequireSection>} />

@@ -7,7 +7,7 @@ import { IconTile } from '../ui/Display.tsx';
 import styles from './shell.module.css';
 
 // Where the superadmin sets the models up («Нейросеть» of the admin panel).
-export const MODELS_PATH = '/admin';
+export const MODELS_PATH = '/admin/models';
 
 export function EmptyInstallation() {
   const me = useMe();

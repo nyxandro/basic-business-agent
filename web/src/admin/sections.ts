@@ -13,6 +13,7 @@ export interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  { path: 'models', label: 'Нейросеть', icon: 'cpu', group: 'Нейросеть', rights: ['models'] },
   { path: 'masking', label: 'Маскирование', icon: 'shield', group: 'Нейросеть', rights: ['masking'] },
   { path: 'limits', label: 'Лимиты и расходы', icon: 'wallet', group: 'Нейросеть', rights: ['limits', 'usage'] },
   { path: 'agents', label: 'Агенты и промпты', icon: 'bot', group: 'Агенты', rights: ['agents'] },
