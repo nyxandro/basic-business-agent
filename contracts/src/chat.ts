@@ -49,6 +49,15 @@ export interface ProjectDto {
   createdAt: string;
 }
 
+// GET /app/api/search (spec, section 8.13): the person's own projects and conversations.
+export const SEARCH_SCOPES = ['all', 'threads', 'projects'] as const;
+export type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+export interface SearchResponse {
+  projects: { id: string; name: string; threadCount: number }[];
+  threads: { id: string; agentId: string; title: string; snippet: string; projectId: string | null; updatedAt: string }[];
+}
+
 export interface ProjectFile {
   path: string;
   bytes: number;
