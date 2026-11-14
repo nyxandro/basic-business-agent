@@ -19,12 +19,20 @@ function fromJsonIn(text: string): ApiRequestError | null {
   }
 }
 
-export function chatErrorOf(error: unknown): ApiRequestError {
+// `answerAgain`: the turn failed inside the run — the answer broke (spec, section 9.1). A refusal
+// before the run is not helped by sending again, and after a lost connection to our server the
+// answer may have arrived whole: the person reloads the page.
+export interface ChatFailure {
+  error: ApiRequestError;
+  answerAgain: boolean;
+}
+
+export function chatFailureOf(error: unknown): ChatFailure {
   const e = error as { message?: unknown; code?: unknown } | null;
   const message = typeof e?.message === 'string' ? e.message : '';
-  if (typeof e?.code === 'string' && CODE.test(e.code) && message) return new ApiRequestError({ code: e.code, message, status: 0 });
+  if (typeof e?.code === 'string' && CODE.test(e.code) && message) return { error: new ApiRequestError({ code: e.code, message, status: 0 }), answerAgain: true };
   const fromJson = fromJsonIn(message);
-  if (fromJson) return fromJson;
+  if (fromJson) return { error: fromJson, answerAgain: false };
   console.error('chat turn failed without our error code', error);
-  return new ApiRequestError({ code: 'APP_CHAT_STREAM_INTERRUPTED', message: ru.chat.streamInterrupted, status: 0, cause: error });
+  return { error: new ApiRequestError({ code: 'APP_CHAT_STREAM_INTERRUPTED', message: ru.chat.streamInterrupted, status: 0, cause: error }), answerAgain: false };
 }

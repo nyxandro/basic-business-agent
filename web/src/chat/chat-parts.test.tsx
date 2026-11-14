@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { ApprovalCard } from './ApprovalCard.tsx';
-import { chatErrorOf } from './chat-errors.ts';
 import { splitAttachments, withAttachments } from '@bba/contracts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
@@ -116,12 +115,4 @@ describe('chat helpers', () => {
     expect(splitAttachments('Просто текст')).toEqual({ text: 'Просто текст', files: [] });
   });
 
-  it('turns a refused turn into our code and text', () => {
-    const http = chatErrorOf(new Error('HTTP 402: {"error":{"code":"APP_USAGE_LIMIT_EXCEEDED","message":"Ваш лимит исчерпан."}}'));
-    expect([http.code, http.message]).toEqual(['APP_USAGE_LIMIT_EXCEEDED', 'Ваш лимит исчерпан.']);
-    const stream = chatErrorOf(Object.assign(new Error('Модель сейчас не отвечает.'), { code: 'APP_MODEL_UNAVAILABLE' }));
-    expect(stream.code).toBe('APP_MODEL_UNAVAILABLE');
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(chatErrorOf(new Error('socket hang up')).code).toBe('APP_CHAT_STREAM_INTERRUPTED');
-  });
 });

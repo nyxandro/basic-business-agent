@@ -1,12 +1,15 @@
 // The conversation window, put into CopilotChat's chat view slot: CopilotChat keeps the agent, the
 // thread, sending and stopping; this draws everything the person sees (mockup «Чат с агентом»):
 // the welcome, the feed, «Думает…», the confirmation card, the error and the input.
-// It also keeps the draft in the browser and tells the page when a turn ends.
+// It also keeps the draft in the browser, tells the page when a turn ends and handles answers that
+// broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { answerAgain, failureSubscriber, lastTurnIds } from './answer-failures.ts';
 import { AgentMark, AssistantTurn } from './AssistantMessage.tsx';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
@@ -54,20 +57,39 @@ function rowsOf(messages: Message[]): Row[] {
   return rows;
 }
 
-function Feed({ messages, running }: { messages: Message[]; running: boolean }) {
+interface FeedFailures {
+  // Earlier answers that broke, by message id.
+  interrupted: ReadonlySet<string>;
+  // The last answer broke: it is marked and offers «Ответить заново».
+  lastBroken: boolean;
+  onAnswerAgain: () => void;
+}
+
+function Feed({ messages, running, failures }: { messages: Message[]; running: boolean; failures: FeedFailures }) {
   const last = messages.at(-1);
   // Until the first words of the answer the agent shows it is working.
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
   const rows = rowsOf(messages);
+  const lastBroken = failures.lastBroken && !running;
   return (
     <>
-      {rows.map((row, i) =>
-        row.kind === 'user' ? (
-          <UserMessage key={row.message.id} content={row.message.content} />
-        ) : (
-          <AssistantTurn key={row.key} turn={row.turn} messages={messages} streaming={running && i === rows.length - 1} />
-        ),
-      )}
+      {rows.map((row, i) => {
+        if (row.kind === 'user') return <UserMessage key={row.message.id} content={row.message.content} />;
+        const isLast = i === rows.length - 1;
+        const broken = (isLast && lastBroken) || row.turn.some((m) => failures.interrupted.has(m.id));
+        return (
+          <AssistantTurn
+            key={row.key}
+            turn={row.turn}
+            messages={messages}
+            streaming={running && isLast}
+            interrupted={broken}
+            {...(isLast && lastBroken ? { onAnswerAgain: failures.onAnswerAgain } : {})}
+          />
+        );
+      })}
+      {/* The answer broke before its first words: its row is only the mark and «Ответить заново». */}
+      {lastBroken && rows.at(-1)?.kind !== 'agent' ? <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted onAnswerAgain={failures.onAnswerAgain} /> : null}
       {waiting ? <Thinking /> : null}
     </>
   );
@@ -95,6 +117,13 @@ export function ChatView(props: CopilotChatViewProps) {
     wasRunning.current = isRunning;
   }, [isRunning, extras]);
 
+  // Before the conversation is connected: its broken answers come in the events of the connection.
+  const { onTurnsFailed } = extras;
+  useEffect(() => {
+    const subscription = agent.subscribe(failureSubscriber(onTurnsFailed));
+    return () => subscription.unsubscribe();
+  }, [agent, onTurnsFailed]);
+
   const lastContent = messages.at(-1)?.content;
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -105,16 +134,28 @@ export function ChatView(props: CopilotChatViewProps) {
     writeDraft(extras.agentId, extras.threadId, value);
     onInputChange?.(value);
   };
-  const send = (value: string) => {
-    if (!onSubmitMessage || !value.trim()) return;
+  const submit = (text: string) => {
+    if (!onSubmitMessage) return;
     releaseWaitingQuestions(agent);
-    const text = withAttachments(value.trim(), extras.attachments);
-    writeDraft(extras.agentId, extras.threadId, '');
-    extras.clearAttachments();
     extras.onSubmitted();
     stick.current = true;
     onSubmitMessage(text);
+  };
+  const send = (value: string) => {
+    if (!onSubmitMessage || !value.trim()) return;
+    // Moving on from a broken answer keeps its mark; «Ответить заново» is only for the last one.
+    if (extras.failure?.answerAgain) extras.keepInterrupted(lastTurnIds(messages));
+    writeDraft(extras.agentId, extras.threadId, '');
+    extras.clearAttachments();
+    submit(withAttachments(value.trim(), extras.attachments));
     onInputChange?.('');
+  };
+  const failures: FeedFailures = {
+    interrupted: new Set(extras.interruptedIds),
+    lastBroken: extras.failure?.answerAgain === true,
+    onAnswerAgain: () => {
+      answerAgain(extras.threadId, agent, submit).catch((raw: unknown) => extras.onFailure({ error: asApiError(raw), answerAgain: false }));
+    },
   };
 
   const empty = messages.length === 0;
@@ -136,7 +177,7 @@ export function ChatView(props: CopilotChatViewProps) {
             </div>
           ) : null}
           {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
-          <Feed messages={messages} running={isRunning} />
+          <Feed messages={messages} running={isRunning} failures={failures} />
           {extras.interrupt ? (
             <div className={styles.assistant}>
               <AgentMark />
@@ -147,7 +188,7 @@ export function ChatView(props: CopilotChatViewProps) {
       </div>
       <div className={styles.dock}>
         <div className={styles.dockInner}>
-          {extras.error ? <ErrorBanner error={extras.error} /> : null}
+          {extras.failure ? <ErrorBanner error={extras.failure.error} /> : null}
           <Composer value={inputValue} onChange={change} onSend={() => send(inputValue)} {...(onStop ? { onStop } : {})} running={isRunning} extra={extras.composerExtra} />
         </div>
       </div>

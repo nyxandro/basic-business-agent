@@ -190,6 +190,8 @@ export const ru = {
     removeAttachment: 'Убрать',
     tooLarge: 'Файл больше 20 МБ. Сожмите его или разделите на части.',
     streamInterrupted: 'Связь прервалась, ответ мог прийти не полностью. Обновите страницу и повторите вопрос.',
+    answerInterrupted: 'Ответ прервался',
+    answerAgain: 'Ответить заново',
   },
   approvals: {
     title: 'Ждёт подтверждения',
