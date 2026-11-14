@@ -1,0 +1,169 @@
+/* Voice input (mockup: the recording bar takes the place of the input while recording). */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 18px;
+  border-radius: 26px;
+  border: 1px solid var(--acc);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px var(--ring), 0 8px 28px var(--shadow);
+  animation: bba-pop 0.4s var(--ease-out) both;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--acc);
+  animation: bba-ring 1.6s infinite;
+}
+
+.time {
+  width: 40px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wave {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.waveBar {
+  width: 3px;
+  flex: none;
+  border-radius: 3px;
+  background: var(--acc);
+  transform-origin: center;
+  animation: bba-wave 1s infinite ease-in-out;
+}
+
+.done {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 50%;
+  border: 0;
+  background: var(--acc);
+  color: var(--on-acc);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.15s ease;
+}
+
+.done:hover {
+  filter: brightness(1.1);
+}
+
+.done:active {
+  transform: scale(0.94);
+}
+
+.hint {
+  margin: 0;
+  padding: 0 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  max-width: 100%;
+  padding: 0 6px 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 13px;
+}
+
+.failed {
+  border-color: var(--bad);
+  color: var(--bad);
+  background: transparent;
+  padding: 4px 6px 4px 10px;
+}
+
+.statusText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.retry {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: var(--hover);
+}
+
+.spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--ring);
+  border-top-color: var(--acc);
+  animation: bba-spin 0.8s linear infinite;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: bba-shimmer 2.2s linear infinite;
+  font-weight: 500;
+}
+
+/* A phone (mockup «Чат на телефоне»): larger buttons, a plain «Отменить запись». */
+@media (max-width: 859px) {
+  .bar {
+    gap: 10px;
+    padding: 8px 8px 8px 16px;
+    box-shadow: 0 0 0 4px var(--ring);
+  }
+  .wave {
+    height: 32px;
+  }
+  .done,
+  .cancel {
+    width: 44px;
+    height: 44px;
+  }
+  .cancel {
+    border-color: transparent;
+  }
+  .hint {
+    padding: 0 10px;
+  }
+}
