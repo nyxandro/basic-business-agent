@@ -13,7 +13,7 @@ import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeTurn, type GatewayStreamError } from '../models/fake-openai.ts';
-import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from './agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
 import { REQUEST_KEYS } from './request-keys.ts';
 
 const ANSWER = 'Привет! Чем помочь?';
@@ -24,7 +24,7 @@ const TOO_LONG: GatewayStreamError = { message: 'litellm.BadRequestError: Please
 let database: TestDatabase;
 let memory: Memory;
 
-function buildAgent(models: Record<string, string>): Agent {
+function buildAgent(models: Record<string, string>, stepMs = MODEL_CALL_MAX_MS): Agent {
   const rt: AgentRuntime = {
     passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [], starters: [] },
     dir: '/x',
@@ -38,6 +38,7 @@ function buildAgent(models: Record<string, string>): Agent {
   return createMastraAgent(rt, {
     gateway: { modelConfig: (modelId) => Promise.resolve({ providerId: 'fake', modelId, url: models[modelId]!, apiKey: 'x', headers: {} }) },
     firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
+    stepMs,
     memory,
     processorsFor: () => ({ input: [], output: [] }),
   });
@@ -150,5 +151,17 @@ describe('an answer that broke after it started', () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe('a primary model that went silent mid-answer, with a fallback set', () => {
+  it('gives way to the fallback after the limit of one call; the shown words are dropped', async () => {
+    await withModels({ main: [{ text: 'Пр', cut: 'hang' }], spare: [{ text: 'Ответ запасной.' }] }, async (models) => {
+      const outcome = await answer(buildAgent(urls(models), 1500), 't-silent-primary', { fallback: true });
+      expect(models.spare!.requests).toHaveLength(1);
+      expect(outcome.text).toBe('Ответ запасной.');
+      expect(outcome.discarded).toEqual([outcome.stepMessageIds[0]]);
+      expect(await shownAfterReload('t-silent-primary')).toBe('Ответ запасной.');
+    });
   });
 });

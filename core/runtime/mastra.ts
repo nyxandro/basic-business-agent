@@ -15,7 +15,7 @@ import { createApprovalRecorder } from '../approvals/requests.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
-import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from './agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -28,6 +28,8 @@ export interface MastraRuntimeDeps {
   workspaceRoot: string;
   // FALLBACK_FIRST_CHUNK_MS unless a test shortens it.
   firstChunkMs?: number;
+  // MODEL_CALL_MAX_MS unless a test shortens it.
+  stepMs?: number;
   connections?: Pick<ConnectionManager, 'toolsFor' | 'actionsSeen'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
@@ -48,6 +50,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
     agents[rt.passport.id] = createMastraAgent(rt, {
       gateway: deps.gateway,
       firstChunkMs: deps.firstChunkMs ?? FALLBACK_FIRST_CHUNK_MS,
+      stepMs: deps.stepMs ?? MODEL_CALL_MAX_MS,
       memory,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),

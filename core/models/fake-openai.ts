@@ -36,8 +36,9 @@ export interface GatewayStreamError {
 
 export type FakeTurn =
   // `cut` breaks the stream after the text: 'drop' closes the connection as a provider that went
-  // away (what LiteLLM sees), an error frame is what LiteLLM then sends on.
-  | { text: string; chunkSize?: number; delayMs?: number; cut?: 'drop' | GatewayStreamError }
+  // away (what LiteLLM sees), an error frame is what LiteLLM then sends on, 'hang' goes silent with
+  // the connection open.
+  | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut }
   | { toolCalls: { name: string; args: Record<string, unknown> }[] }
   | { status: number; error: string };
 
@@ -63,7 +64,9 @@ export interface FakeModel {
 const USAGE = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
 export const FAKE_TRANSCRIPT = 'Тестовая речь';
 
-function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string, cut?: 'drop' | GatewayStreamError): void {
+type StreamCut = 'drop' | 'hang' | GatewayStreamError;
+
+function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string, cut?: StreamCut): void {
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const base = { id: 'fake', object: 'chat.completion.chunk', created: 1, model: 'fake' };
   for (const delta of chunks) res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
@@ -73,6 +76,7 @@ function sse(res: import('node:http').ServerResponse, chunks: object[], finish: 
     setTimeout(() => res.socket?.destroy(), 50);
     return;
   }
+  if (cut === 'hang') return;
   if (cut) res.write(`data: ${JSON.stringify({ error: cut })}\n\n`);
   else res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: USAGE })}\n\n`);
   res.write('data: [DONE]\n\n');
@@ -142,6 +146,11 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
     dockerUrl: `http://host.docker.internal:${port}/v1`,
     requests,
     script: (...turns) => void queue.push(...turns),
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        // A silent stream keeps its connection until the reader gives up.
+        server.closeAllConnections();
+      }),
   };
 }

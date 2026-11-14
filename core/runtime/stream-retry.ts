@@ -27,6 +27,16 @@ function messageOf(error: unknown): string {
   return typeof message === 'string' ? message : String(error);
 }
 
+// Words of a failed attempt may already be on the screen when the model is asked again or the
+// fallback answers instead: the new answer gets its own message so they are not glued to it, and
+// the chat is told to drop them.
+export function dropShownWords(args: Pick<ProcessAPIErrorArgs, 'messageId' | 'rotateResponseMessageId' | 'requestContext'>): void {
+  const shown = args.messageId;
+  args.rotateResponseMessageId?.();
+  const discard = args.requestContext?.get(REQUEST_KEYS.messageDiscarded);
+  if (shown && typeof discard === 'function') (discard as (messageId: string) => void)(shown);
+}
+
 // Takes the place of Mastra's default retry processor (the same id). `otherRetries` is how many
 // times other transient failures — before the first words — are repeated on the same model: once
 // without a fallback, never with one (the fallback answers instead).
@@ -37,12 +47,7 @@ export function createStreamRetry(otherRetries: number): ErrorProcessor {
     async processAPIError(args: ProcessAPIErrorArgs) {
       const result = await retry.processAPIError(args);
       if (!result?.retry) return result;
-      // Words of the failed attempt may already be on the screen: the repeated answer gets its own
-      // message so they are not glued to it, and the chat drops them.
-      const shown = args.messageId;
-      args.rotateResponseMessageId?.();
-      const discard = args.requestContext?.get(REQUEST_KEYS.messageDiscarded);
-      if (shown && typeof discard === 'function') (discard as (messageId: string) => void)(shown);
+      dropShownWords(args);
       logEvent('warn', 'model_stream_retried', {
         agentId: optionalContextValue(args.requestContext, REQUEST_KEYS.agentId),
         modelId: optionalContextValue(args.requestContext, REQUEST_KEYS.modelId),

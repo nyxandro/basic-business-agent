@@ -160,6 +160,8 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
           userMessage: `Лимит расходов организации на этот месяц исчерпан. Новый лимит начнётся ${date}. Обратитесь к администратору.`,
         });
       }
+      // Mastra's MastraTimeoutError: «Model call timed out after …ms (modelSettings.timeout.stepMs)».
+      if (lower.includes('(modelsettings.timeout.')) return appError('APP_MODEL_TIMEOUT', text.slice(0, 300), { cause: error });
       if (status === null && /econnrefused|fetch failed|cannot connect|socket hang up|enotfound/.test(lower)) {
         return appError('APP_MODEL_GATEWAY_UNAVAILABLE', `LiteLLM unreachable: ${text.slice(0, 300)}`, { cause: error });
       }

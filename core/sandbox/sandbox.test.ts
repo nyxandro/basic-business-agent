@@ -10,7 +10,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
-import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createLimiter } from './limiter.ts';
 import { contextRoot } from '../workspace/layout.ts';
@@ -114,6 +114,7 @@ beforeAll(async () => {
   agent = createMastraAgent(rt, {
     gateway,
     firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
+    stepMs: MODEL_CALL_MAX_MS,
     sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
     processorsFor: () => ({ input: [createImageViewProcessor(workspaceRoot)], output: [] }),
   });

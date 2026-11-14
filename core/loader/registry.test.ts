@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { loadInstallation } from '../config/load.ts';
 import type { Db } from '../db/pool.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
-import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { buildRegistry } from './registry.ts';
 
@@ -119,7 +119,7 @@ describe('buildRegistry', () => {
     const dir = installation();
     const reg = await registryOf(dir);
     const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
-    const agent = createMastraAgent(reg.get('sales')!, { gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, processorsFor: () => ({ input: [], output: [] }) });
+    const agent = createMastraAgent(reg.get('sales')!, { gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, stepMs: MODEL_CALL_MAX_MS, processorsFor: () => ({ input: [], output: [] }) });
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'u1');
     rc.set(REQUEST_KEYS.modelId, 'test-paid');

@@ -8,6 +8,8 @@ import { createTestApp, type TestApp } from '../server/test-app.ts';
 // What LiteLLM sends inside the stream when the provider goes away mid-answer (gateway.test.ts).
 const BREAK: GatewayStreamError = { message: 'litellm.APIConnectionError: APIConnectionError: GroqException - Connection closed.', type: 'internal_server_error', param: null, code: '500' };
 const ANSWER = 'Привет! Чем помочь?';
+// The limit of one model call, short for the test (5 minutes in an installation).
+const STEP_MS = 2000;
 
 let t: TestApp;
 let olga: string;
@@ -41,7 +43,7 @@ async function historyTexts(threadId: string): Promise<string[]> {
 }
 
 beforeAll(async () => {
-  t = await createTestApp();
+  t = await createTestApp({ stepMs: STEP_MS });
   const olgaId = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
   const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
   await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [dep, olgaId]);
@@ -79,5 +81,18 @@ describe('an answer that broke mid-way and was asked again', () => {
     expect(discard?.value).toEqual({ messageId: partialId });
     expect(call?.parentMessageId).toBeDefined();
     expect(call?.parentMessageId).not.toBe(partialId);
+  });
+});
+
+describe('a model that went silent', () => {
+  it('is stopped after the limit of one call, with a code and words for the person', async () => {
+    const threadId = randomUUID();
+    t.model.script({ text: 'Пр', cut: 'hang' });
+    const started = Date.now();
+    const events = await run(threadId, 'привет');
+    const failed = events.find((e) => e.type === 'RUN_ERROR');
+    expect(failed?.code).toBe('APP_MODEL_TIMEOUT');
+    expect(failed?.message).toBe('Модель слишком долго не отвечала, и ответ остановлен. Попробуйте ещё раз; если повторяется — сообщите администратору код ошибки.');
+    expect(Date.now() - started).toBeLessThan(STEP_MS * 3);
   });
 });

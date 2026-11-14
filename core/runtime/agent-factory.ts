@@ -12,11 +12,15 @@ import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE
 import type { ModelGateway } from '../models/gateway.ts';
 import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
-import { createStreamRetry, isGatewayStreamBreak } from './stream-retry.ts';
+import { createStreamRetry, dropShownWords, isGatewayStreamBreak } from './stream-retry.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
 // Only the first chunk is timed: a total deadline would end the run instead of switching.
 export const FALLBACK_FIRST_CHUNK_MS = 60_000;
+
+// One call of the model, its answer read to the end, takes no longer (decision of the owner, 15.11):
+// a model that went silent without closing the connection would otherwise hold the answer forever.
+export const MODEL_CALL_MAX_MS = 5 * 60_000;
 
 // Mastra repeats a call that failed with a transient error once before it tries the fallback.
 // LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
@@ -27,12 +31,15 @@ const SWITCH_AT_ONCE = createStreamRetry(0);
 
 // Mastra has no event of the switch itself; the failure of the primary that causes it reaches the
 // error processors first. Only the first failure of a request is the primary's; a broken stream is
-// asked again on the primary, not switched.
-const FALLBACK_LOG: ErrorProcessor = {
-  id: 'bba-model-fallback-log',
-  processAPIError({ error, requestContext, state }) {
+// asked again on the primary, not switched. Words the primary already showed are dropped: the
+// fallback answers in a message of its own.
+const FALLBACK_SWITCH: ErrorProcessor = {
+  id: 'bba-model-fallback-switch',
+  processAPIError(args) {
+    const { error, requestContext, state } = args;
     if (state.logged || isGatewayStreamBreak(error)) return;
     state.logged = true;
+    dropShownWords(args);
     logEvent('warn', 'model_fallback_used', {
       agentId: optionalContextValue(requestContext, REQUEST_KEYS.agentId),
       primary: optionalContextValue(requestContext, REQUEST_KEYS.modelId),
@@ -46,6 +53,8 @@ export interface AgentFactoryDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
   // FALLBACK_FIRST_CHUNK_MS in an installation; tests shorten it.
   firstChunkMs: number;
+  // MODEL_CALL_MAX_MS in an installation; tests shorten it.
+  stepMs: number;
   memory?: Memory;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
   // Files and commands of the employee's own folder; without it the agent only reads skills.
@@ -96,10 +105,13 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
           })
         : staticTools,
     ...(deps.memory ? { memory: deps.memory } : {}),
+    // Every entry point (chat, background tasks, sub-agents) gets the limit; with a fallback model a
+    // primary over it gives way to the fallback (Mastra).
+    defaultOptions: { modelSettings: { timeout: { stepMs: deps.stepMs } } },
     workspace,
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,
-    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_LOG, SWITCH_AT_ONCE] : [RETRY_ONCE]),
+    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_SWITCH, SWITCH_AT_ONCE] : [RETRY_ONCE]),
   });
 }

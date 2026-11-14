@@ -116,6 +116,8 @@ export async function createTestApp(
     noModels?: boolean;
     // Shortens the wait for the primary model's first chunk before the fallback answers.
     firstChunkMs?: number;
+    // Shortens the limit of one model call (5 minutes in an installation).
+    stepMs?: number;
     // The models behind the test agents (default: every model answers from `model`).
     modelConfig?: (modelId: string) => { url: string; apiKey: string };
     // OpenAI's login service for ChatGPT accounts (a fake, fake-chatgpt.ts). `gateway: true` writes
@@ -194,6 +196,7 @@ export async function createTestApp(
     app: { timezone: 'Europe/Moscow' },
     workspaceRoot,
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
+    ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
     workflows: { [workflow.id]: workflow },
   });

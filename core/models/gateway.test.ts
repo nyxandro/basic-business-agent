@@ -5,7 +5,7 @@ import { serve, type ServerType } from '@hono/node-server';
 import { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
 import type { AgentRuntime } from '../loader/registry.ts';
-import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
@@ -136,7 +136,7 @@ describe('model gateway', () => {
         connectorIds: [],
         toolSystems: {},
       };
-      const agent = createMastraAgent(rt, { gateway: t.gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, processorsFor: () => ({ input: [], output: [] }) });
+      const agent = createMastraAgent(rt, { gateway: t.gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, stepMs: MODEL_CALL_MAX_MS, processorsFor: () => ({ input: [], output: [] }) });
       const rc = new RequestContext();
       rc.set(REQUEST_KEYS.userId, userId);
       rc.set(REQUEST_KEYS.modelId, model.id);
