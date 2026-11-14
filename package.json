@@ -18,6 +18,7 @@
     "db:migrate": "node --env-file=.env core/cli/migrate.ts",
     "dev": "pnpm dev:stack && pnpm run --parallel \"/^dev:(app|web)$/\"",
     "dev:app": "node --watch --env-file=.env core/server/main.ts",
+    "dev:people": "node --env-file=.env tooling/dev-people.ts",
     "dev:db": "mkdir -p .data/chatgpt-auth-test && docker compose --env-file .env -f deploy/compose.dev.yaml up -d --wait",
     "dev:stack": "node --env-file=.env core/cli/gateway-config.ts --mkdir-auth && docker compose --env-file .env -f deploy/compose.dev.yaml -f deploy/compose.app.yaml up -d --wait",
     "dev:web": "pnpm -C web dev",
