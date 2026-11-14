@@ -11,7 +11,7 @@ import { ChatHeader } from '../layout/ChatHeader.tsx';
 import { EmptyInstallation } from '../layout/EmptyInstallation.tsx';
 import { rememberAgent, useShell } from '../layout/AppShell.tsx';
 import { IconButton } from '../ui/Button.tsx';
-import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
+import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -83,6 +83,7 @@ export function ChatPage() {
   if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace state={location.state as unknown} />;
   if (!agents) return <Skeleton rows={4} />;
   const agent = agents.find((a) => a.id === agentId);
-  if (!agent) return <Notice>{ru.chat.noAgent}</Notice>;
+  // A link to an agent the person does not have opens an available one, with a line why.
+  if (!agent) return <Navigate to="/" replace state={{ agentUnavailable: true }} />;
   return <Conversation agent={agent} agents={agents} threadId={threadId} />;
 }

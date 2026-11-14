@@ -40,6 +40,33 @@ describe('the frame of the application', () => {
     expect(screen.getByRole('link', { name: /Общий помощник/ })).toHaveAttribute('aria-current', 'page');
   });
 
+  // The browser remembers an agent of another installation at the same address (the test stand),
+  // or the admin took the agent from the person's department.
+  it('never opens a remembered agent the person does not have: «/» and «Новый разговор» go to an available one', async () => {
+    localStorage.setItem(LAST_AGENT_KEY, 'gone');
+    const s = server(ME, { agents: [AGENTS[1]] });
+    s.set('GET /app/api/approvals', { body: { pending: [], failed: [] } });
+    renderApp('/');
+    expect(await screen.findByRole('button', { name: /Общий помощник\. Выбрать агента/ })).toBeInTheDocument();
+    // From another page «Новый разговор» has no open agent to go on with.
+    localStorage.setItem(LAST_AGENT_KEY, 'gone');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('link', { name: /^Ждёт подтверждения/ }));
+    await screen.findByText('Решений не ждёт ни одно действие.');
+    await user.click(screen.getByRole('button', { name: 'Новый разговор' }));
+    expect(await screen.findByRole('button', { name: /Общий помощник\. Выбрать агента/ })).toBeInTheDocument();
+    expect(screen.queryByText(/У вас нет доступа к этому агенту/)).not.toBeInTheDocument();
+  });
+
+  it('opens an available agent with a line why, when a link leads to an agent the person does not have', async () => {
+    localStorage.setItem(LAST_AGENT_KEY, 'sales');
+    server(ME, { agents: [AGENTS[1]] });
+    renderApp('/agents/sales?thread=t1');
+    expect(await screen.findByText('У вас нет доступа к этому агенту. Если он нужен для работы, обратитесь к администратору.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Общий помощник\. Выбрать агента/ })).toBeInTheDocument();
+    expect(localStorage.getItem(LAST_AGENT_KEY)).toBe('assistant');
+  });
+
   it('shows the agents, recent conversations with «новое», the limit and the person', async () => {
     server();
     renderApp('/');

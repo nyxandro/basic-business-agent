@@ -52,16 +52,24 @@ function lastAgent(): string | null {
   }
 }
 
-// A section of the admin panel opened without its right lands here (spec, section 7).
+// A section of the admin panel opened without its right, or an agent the person does not have,
+// lands on an open page with a line why (spec, section 7).
 function ForbiddenNotice() {
-  const state = useLocation().state as { adminForbidden?: boolean } | null;
-  if (!state?.adminForbidden) return null;
+  const state = useLocation().state as { adminForbidden?: boolean; agentUnavailable?: boolean } | null;
+  const notice = state?.adminForbidden
+    ? { text: ru.admin.forbidden, code: 'APP_ADMIN_FORBIDDEN' }
+    : state?.agentUnavailable
+      ? { text: ru.chat.noAgent, code: 'APP_AGENT_ACCESS_DENIED' }
+      : null;
+  if (!notice) return null;
   return (
     <div className={styles.banner}>
       <Notice>
-        <span>{ru.admin.forbidden}</span>
+        <span>{notice.text}</span>
         <br />
-        <span>{ru.common.errorCode}: APP_ADMIN_FORBIDDEN</span>
+        <span>
+          {ru.common.errorCode}: {notice.code}
+        </span>
       </Notice>
     </div>
   );
@@ -108,7 +116,10 @@ export function AppShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [openSearch]);
   const newThread = () => {
-    const target = agentId ?? lastAgent() ?? (agents.status === 'ready' ? agents.agents[0]?.id : undefined);
+    // Only an agent the person has: the remembered one may be of another installation at the same
+    // address, or the admin may have taken it away.
+    const available = agents.status === 'ready' ? agents.agents : [];
+    const target = [agentId, lastAgent()].find((id) => id && available.some((a) => a.id === id)) ?? available[0]?.id;
     closeMenu();
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}`);
   };
