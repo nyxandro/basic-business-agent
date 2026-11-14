@@ -20,6 +20,8 @@ import type {
 import { api } from '../api/client.ts';
 
 const enc = encodeURIComponent;
+// Spend of one calendar day in the installation's time zone; days without calls are 0.
+export type DailySpend = { day: string; costRub: number };
 type OrgProfile = { name: string; tone: string; requisites: string; industry: string };
 
 const A = '/app/api/admin';
@@ -55,6 +57,7 @@ export const adminApi = {
     api<Ok>('PUT', `${A}/users/${enc(userId)}/limits`, { monthlyRub, dailySubscriptionTokens }),
 
   usage: (from: string, to: string, groupBy: UsageGroup) => api<UsageReport>('GET', `${A}/usage?from=${from}&to=${to}&groupBy=${groupBy}`),
+  usageDaily: (from: string, to: string) => api<{ days: DailySpend[] }>('GET', `${A}/usage/daily?from=${from}&to=${to}`),
 
   agents: () => api<AdminAgentsResponse>('GET', `${A}/agents`),
   prompt: (agentId: string) => api<PromptState>('GET', `${A}/agents/${enc(agentId)}/prompt`),

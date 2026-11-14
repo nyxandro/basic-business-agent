@@ -1,118 +1,100 @@
-// «Лимиты» (spec, scenario 5, F5): the organisation ceiling, the default per employee, the daily
-// token cap of subscription models, and personal limits on top of the defaults.
+// «Настройки лимитов» (spec, scenario 5, F5; mockup): the organisation ceiling, the default per
+// employee, the daily token cap of subscription models, and one person's own limit on top of the
+// defaults. An empty field means «без лимита» (or «по умолчанию» for a person).
 import type { AdminUser, LimitSettingsBody, PersonalLimit } from '@bba/contracts';
-import { useCallback, useState } from 'react';
-import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
-import { useLoad } from '../ui/use-load.ts';
+import { useState } from 'react';
+import { Button } from '../ui/Button.tsx';
+import { Card } from '../ui/Display.tsx';
+import { Field, Input, Select } from '../ui/Field.tsx';
+import { rub } from '../ui/format.ts';
 import { adminApi } from './api.ts';
 import { fromField, toField } from './numbers.ts';
 import { Feedback, useAction } from './parts.tsx';
+import styles from './limits.module.css';
 
 const INVALID = 'Нужно число не меньше нуля; для токенов — целое.';
 
-function OrgLimits({ initial, onSaved }: { initial: LimitSettingsBody; onSaved: () => void }) {
-  const [org, setOrg] = useState(toField(initial.orgMonthlyRub));
-  const [user, setUser] = useState(toField(initial.defaultUserMonthlyRub));
-  const [daily, setDaily] = useState(toField(initial.defaultDailySubscriptionTokens));
+export interface LimitsData {
+  limits: LimitSettingsBody;
+  personal: PersonalLimit[];
+  users: AdminUser[];
+}
+
+export function LimitsSection({ data, onSaved }: { data: LimitsData; onSaved: () => void }) {
+  const [org, setOrg] = useState(toField(data.limits.orgMonthlyRub));
+  const [user, setUser] = useState(toField(data.limits.defaultUserMonthlyRub));
+  const [daily, setDaily] = useState(toField(data.limits.defaultDailySubscriptionTokens));
+  const own = new Map(data.personal.map((p) => [p.userId, p]));
+  const [personId, setPersonId] = useState('');
+  const [monthly, setMonthly] = useState('');
+  const [tokens, setTokens] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const { busy, error, run } = useAction();
-  const save = async () => {
+
+  const choose = (id: string) => {
+    setPersonId(id);
+    setMonthly(toField(own.get(id)?.monthlyRub ?? null));
+    setTokens(toField(own.get(id)?.dailySubscriptionTokens ?? null));
+  };
+  const ownText = (u: AdminUser) => {
+    const value = own.get(u.id)?.monthlyRub;
+    return `${u.name}: ${value === undefined || value === null ? 'без личного лимита' : rub(value)}`;
+  };
+
+  async function save() {
     const values = [fromField(org, 'rub'), fromField(user, 'rub'), fromField(daily, 'tokens')];
-    if (values.includes('invalid')) return setProblem(INVALID);
+    const person = personId ? [fromField(monthly, 'rub'), fromField(tokens, 'tokens')] : [];
+    if ([...values, ...person].includes('invalid')) return setProblem(INVALID);
     setProblem(null);
     const [orgMonthlyRub, defaultUserMonthlyRub, defaultDailySubscriptionTokens] = values as (number | null)[];
-    if (await run(() => adminApi.saveLimits({ orgMonthlyRub: orgMonthlyRub!, defaultUserMonthlyRub: defaultUserMonthlyRub!, defaultDailySubscriptionTokens: defaultDailySubscriptionTokens! }))) onSaved();
-  };
+    const ok = await run(async () => {
+      await adminApi.saveLimits({ orgMonthlyRub: orgMonthlyRub!, defaultUserMonthlyRub: defaultUserMonthlyRub!, defaultDailySubscriptionTokens: defaultDailySubscriptionTokens! });
+      if (personId) await adminApi.savePersonalLimit(personId, person[0] as number | null, person[1] as number | null);
+    });
+    if (ok) onSaved();
+  }
+
   return (
-    <div className="admin-form">
+    <Card className={`${styles.card} rise`}>
+      <h2 className={styles.cardTitle}>Настройки лимитов</h2>
       <Feedback error={error} />
-      <label>
-        Общий потолок организации в месяц, ₽ (пусто — без потолка)
-        <input inputMode="decimal" value={org} onChange={(e) => setOrg(e.target.value)} />
-      </label>
-      <label>
-        Лимит сотрудника по умолчанию в месяц, ₽ (пусто — без лимита)
-        <input inputMode="decimal" value={user} onChange={(e) => setUser(e.target.value)} />
-      </label>
-      <label>
-        Дневной потолок подписочных моделей, токенов (пусто — без потолка)
-        <input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} />
-      </label>
-      {problem ? <p className="field-error">{problem}</p> : null}
-      <button type="button" disabled={busy} onClick={() => void save()}>
+      <Field label="Общий потолок организации, ₽ в месяц" hint="Пусто — без потолка.">
+        <Input inputMode="decimal" value={org} onChange={(e) => setOrg(e.target.value)} />
+      </Field>
+      <Field label="Лимит сотрудника по умолчанию, ₽ в месяц" hint="Пусто — без лимита.">
+        <Input inputMode="decimal" value={user} onChange={(e) => setUser(e.target.value)} />
+      </Field>
+      <Field label="Подписка ChatGPT: токенов в день на сотрудника" hint="Пусто — без потолка.">
+        <Input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} />
+      </Field>
+      <Field label="Личный лимит">
+        <Select value={personId} onChange={(e) => choose(e.target.value)}>
+          <option value="">Выберите сотрудника</option>
+          {data.users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {ownText(u)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {personId ? (
+        <div className={styles.personal}>
+          <Field label="₽ в месяц" hint="Пусто — по умолчанию.">
+            <Input inputMode="decimal" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+          </Field>
+          <Field label="Токенов в день" hint="Пусто — по умолчанию.">
+            <Input inputMode="numeric" value={tokens} onChange={(e) => setTokens(e.target.value)} />
+          </Field>
+        </div>
+      ) : null}
+      {problem ? (
+        <p className={styles.problem} role="alert">
+          {problem}
+        </p>
+      ) : null}
+      <Button variant="primary" className={styles.save} disabled={busy} onClick={() => void save()}>
         Сохранить
-      </button>
-    </div>
-  );
-}
-
-function PersonalRow({ user, limit }: { user: AdminUser; limit: PersonalLimit | undefined }) {
-  const [monthly, setMonthly] = useState(toField(limit?.monthlyRub ?? null));
-  const [daily, setDaily] = useState(toField(limit?.dailySubscriptionTokens ?? null));
-  const [problem, setProblem] = useState<string | null>(null);
-  const { busy, error, run } = useAction();
-  const save = () => {
-    const m = fromField(monthly, 'rub');
-    const d = fromField(daily, 'tokens');
-    if (m === 'invalid' || d === 'invalid') return setProblem(INVALID);
-    setProblem(null);
-    void run(() => adminApi.savePersonalLimit(user.id, m, d));
-  };
-  return (
-    <tr>
-      <td>
-        {user.name}
-        <Feedback error={error} />
-        {problem ? <p className="field-error">{problem}</p> : null}
-      </td>
-      <td>
-        <input aria-label={`Лимит в месяц, ₽: ${user.name}`} inputMode="decimal" placeholder="по умолчанию" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
-      </td>
-      <td>
-        <input aria-label={`Токенов в день: ${user.name}`} inputMode="numeric" placeholder="по умолчанию" value={daily} onChange={(e) => setDaily(e.target.value)} />
-      </td>
-      <td>
-        <button type="button" disabled={busy} onClick={save}>
-          Сохранить
-        </button>
-      </td>
-    </tr>
-  );
-}
-
-export function LimitsSection() {
-  const load = useCallback(async () => {
-    const [limits, personal, users] = await Promise.all([adminApi.limits(), adminApi.personalLimits(), adminApi.users()]);
-    return { limits, personal: personal.users, users: users.users };
-  }, []);
-  const { state, reload } = useLoad(load);
-  if (state.status === 'loading') return <Skeleton rows={3} />;
-  if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
-  const personal = new Map(state.data.personal.map((p) => [p.userId, p]));
-  return (
-    <div>
-      <h1>Лимиты</h1>
-      <OrgLimits initial={state.data.limits} onSaved={reload} />
-      <h2>Личные лимиты</h2>
-      <p className="muted">Пустое поле — действует лимит по умолчанию.</p>
-      <div className="table-scroll">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Сотрудник</th>
-              <th scope="col">В месяц, ₽</th>
-              <th scope="col">Токенов в день</th>
-              <th scope="col" />
-            </tr>
-          </thead>
-          <tbody>
-            {state.data.users.map((u) => (
-              <PersonalRow key={u.id} user={u} limit={personal.get(u.id)} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      </Button>
+    </Card>
   );
 }

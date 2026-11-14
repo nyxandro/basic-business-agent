@@ -1,0 +1,229 @@
+/* «Лимиты и расходы» (mockup). */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.stat {
+  padding: 16px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.statLabel {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.statValue {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.statSub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.statBar {
+  margin-top: 12px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cardSub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.total {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.personal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.problem {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+.save {
+  align-self: flex-end;
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--hover);
+}
+
+.chipOn,
+.chipOn:hover {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--on-acc);
+}
+
+.tableBox {
+  margin: 0 -18px -16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* The chart of spend by day. */
+.chart {
+  margin: 0;
+}
+
+.plot {
+  position: relative;
+  height: 180px;
+}
+
+.grid {
+  position: absolute;
+  inset: 0 0 auto;
+  border-top: 1px dashed var(--border);
+}
+
+.gridLabel {
+  position: absolute;
+  top: -9px;
+  right: 0;
+  padding-left: 6px;
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.slot {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--bar-past);
+  transform-origin: bottom;
+  animation: bba-grow-y 0.7s var(--ease-out) both;
+  transition: filter 0.15s ease;
+}
+
+.barNow {
+  background: var(--bar-now);
+}
+
+.barHover {
+  filter: brightness(1.12);
+}
+
+.tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px var(--shadow);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.tipDay {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tipValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
