@@ -5,6 +5,26 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+// Seconds of silence as a real WAV file: LiteLLM measures the length of what it sends.
+export function silentWav(seconds: number): Uint8Array {
+  const rate = 16_000;
+  const data = Buffer.alloc(rate * seconds * 2);
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0);
+  head.writeUInt32LE(36 + data.length, 4);
+  head.write('WAVEfmt ', 8);
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(rate, 24);
+  head.writeUInt32LE(rate * 2, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write('data', 36);
+  head.writeUInt32LE(data.length, 40);
+  return new Uint8Array(Buffer.concat([head, data]));
+}
+
 export type FakeTurn =
   | { text: string; chunkSize?: number; delayMs?: number }
   | { toolCalls: { name: string; args: Record<string, unknown> }[] }
@@ -20,6 +40,8 @@ export interface FakeRequest {
 
 export interface FakeModel {
   url: string;
+  // Headers of the speech recognition requests it got.
+  transcriptions: Record<string, string | string[] | undefined>[];
   // The same server as LiteLLM in Docker sees it (host.docker.internal).
   dockerUrl: string;
   requests: FakeRequest[];
@@ -65,6 +87,7 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
 // the model says «Готово.».
 export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => FakeTurn; host?: '127.0.0.1' | '0.0.0.0'; acceptKey?: string } = {}): Promise<FakeModel> {
   const requests: FakeRequest[] = [];
+  const transcriptions: FakeModel['transcriptions'] = [];
   const queue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
   const server: Server = createServer((req, res) => {
     let body = '';
@@ -75,8 +98,13 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
         return;
       }
       if (req.url?.endsWith('/audio/transcriptions')) {
+        transcriptions.push(req.headers);
         res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({ text: FAKE_TRANSCRIPT }));
+        // As the providers answer: gpt-4o-*-transcribe counts tokens, whisper-like ones do not
+        // (LiteLLM measures the length of the audio itself for them).
+        const providerModel = /name="model"\r\n\r\n([^\r]+)/.exec(body)?.[1] ?? '';
+        const usage = providerModel.includes('whisper') ? {} : { usage: { type: 'tokens', input_tokens: 50, output_tokens: 10, total_tokens: 60, input_token_details: { text_tokens: 0, audio_tokens: 50 } } };
+        res.end(JSON.stringify({ text: FAKE_TRANSCRIPT, ...usage }));
         return;
       }
       const parsed = JSON.parse(Buffer.from(body, 'latin1').toString('utf8')) as Omit<FakeRequest, 'headers'>;
@@ -92,6 +120,7 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}/v1`,
+    transcriptions,
     dockerUrl: `http://host.docker.internal:${port}/v1`,
     requests,
     script: (...turns) => void queue.push(...turns),

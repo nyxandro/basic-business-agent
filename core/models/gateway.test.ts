@@ -2,8 +2,9 @@
 // This is the only test file that listens on TEST_CALLBACK_PORT for LiteLLM's usage callback.
 import { serve, type ServerType } from '@hono/node-server';
 import { Agent } from '@mastra/core/agent';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestApp, type TestApp } from '../server/test-app.ts';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
+import { silentWav, startFakeModel } from './fake-openai.ts';
 import { createLiteLLMClient } from './litellm-client.ts';
 import { createModelGateway } from './gateway.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -141,6 +142,47 @@ describe('model gateway', () => {
       if (Math.abs(theirs - ours) > 1e-9) await new Promise((r) => setTimeout(r, 500));
     }
     expect(theirs).toBeCloseTo(ours, 8);
+  });
+
+  // V16: recognition is counted in roubles whether priced per token (gpt-4o-*-transcribe reports
+  // tokens) or per minute (LiteLLM measures the audio itself); a paid call at zero is reported.
+  it('records speech recognition in our ledger for both price forms (V16)', async () => {
+    const key = 'sk-voice-ledger-key-5e10';
+    const provider = await startFakeModel({ host: '0.0.0.0', acceptKey: key });
+    const userId = await t.createUser({ email: 'voice@example.com', roleIds: [await t.roleId('superadmin')] });
+    const cookie = await t.signIn('voice@example.com');
+    const PRICES = { input: 1000, output: 2000, cacheRead: 0, cacheWrite: 0, reasoning: 0, image: 0 };
+    const add = (providerModel: string, pricing: { prices: typeof PRICES | null; pricePerMinute: number | null }) =>
+      t.models.create(userId, { kind: 'transcription', label: providerModel, connection: 'api_key', providerModel, apiBase: provider.dockerUrl, vision: false, ...pricing, key });
+    const speak = async (modelId: string) => {
+      await t.db.query('UPDATE app.model_settings SET transcription_model_id = $1', [modelId]);
+      const form = new FormData();
+      form.append('agentId', 'sales');
+      form.append('file', new File([silentWav(3)], 'запись', { type: 'audio/wav' }));
+      const res = await t.app.request('/app/api/voice/transcribe', { method: 'POST', body: form, headers: { cookie, origin: TEST_PUBLIC_URL } });
+      expect(res.status).toBe(200);
+    };
+    const log = vi.spyOn(console, 'log');
+    try {
+      const tokens = await add('openai/gpt-4o-mini-transcribe', { prices: PRICES, pricePerMinute: null });
+      const minutes = await add('openai/whisper-1', { prices: null, pricePerMinute: 0.6 });
+      // Priced per token, but the provider reports no tokens: LiteLLM counts nothing.
+      const uncounted = await add('openai/whisper-large', { prices: PRICES, pricePerMinute: null });
+      await speak(tokens.id);
+      await speak(minutes.id);
+      await speak(uncounted.id);
+      const rows = await waitForUsage(userId, 3);
+      const cost = (id: string) => Number(rows.find((r) => r.model === id)?.cost_rub);
+      expect(cost(tokens.id)).toBeCloseTo(0.07, 6); // 50 × 1000/1e6 + 10 × 2000/1e6
+      expect(cost(minutes.id)).toBeCloseTo(0.03, 6); // 3 s × 0.6/60
+      expect(rows.find((r) => r.model === tokens.id)?.agent_id).toBe('sales');
+      expect(cost(uncounted.id)).toBe(0);
+      expect(log.mock.calls.some(([line]) => String(line).includes('"usage_cost_missing"') && String(line).includes(uncounted.id))).toBe(true);
+    } finally {
+      log.mockRestore();
+      await t.db.query('UPDATE app.model_settings SET transcription_model_id = NULL');
+      await provider.close();
+    }
   });
 
   it('accepts usage records only with the shared secret', async () => {

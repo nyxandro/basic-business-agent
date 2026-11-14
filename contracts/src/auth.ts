@@ -50,4 +50,6 @@ export interface MeResponse {
   permissions: Permission[];
   isSuperadmin: boolean;
   departmentIds: string[];
+  // A recognition model is chosen and enabled in «Нейросеть»: the chat shows the microphone.
+  voiceAvailable: boolean;
 }

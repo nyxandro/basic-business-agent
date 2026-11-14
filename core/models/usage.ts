@@ -2,6 +2,7 @@
 // to POST /app/api/internal/usage; reports read app.usage_events, not LiteLLM's own tables.
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
+import { logEvent } from '../server/log.ts';
 
 export const AGENT_HEADER = 'x-bba-agent-id';
 
@@ -73,6 +74,12 @@ export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
       ],
     );
     inserted += rowCount ?? 0;
+    // A model on a key always costs something: zero means LiteLLM could not price the call (e.g.
+    // recognition priced per token whose provider reports no tokens) and the ledger undercounts.
+    if (rowCount && !r.response_cost) {
+      const paid = await db.query("SELECT 1 FROM app.models WHERE id = $1 AND connection = 'api_key'", [r.model_group ?? '']);
+      if (paid.rowCount) logEvent('warn', 'usage_cost_missing', { model: r.model_group, deployment: r.model_id, litellmCallId: r.litellm_call_id });
+    }
   }
   return inserted;
 }

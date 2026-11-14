@@ -22,6 +22,7 @@ import type { ModelGateway } from '../models/gateway.ts';
 import { registerUsageRoutes } from '../models/routes.ts';
 import { registerProjectRoutes } from '../projects/routes.ts';
 import { registerSearchRoutes } from '../search/routes.ts';
+import { registerVoiceRoutes } from '../voice/routes.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
 
@@ -66,6 +67,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot };
   registerProjectRoutes(app, projects);
   registerSearchRoutes(app, projects);
+  registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
