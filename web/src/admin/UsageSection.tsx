@@ -25,7 +25,12 @@ export function UsageSection() {
     <Card className={`${styles.card} rise`}>
       <div className={styles.cardHead}>
         <h2 className={styles.cardTitle}>Расходы за период</h2>
-        {state.status === 'ready' ? <span className={styles.total}>Всего: {rub(state.data.totalRub)}</span> : null}
+        {state.status === 'ready' ? (
+          <span className={styles.total}>
+            Всего: {rub(state.data.totalRub)}
+            {state.data.orgLimitRub !== null ? ` из ${rub(state.data.orgLimitRub)} в месяц` : ''}
+          </span>
+        ) : null}
       </div>
       <div className={styles.filters}>
         <Field label="С">

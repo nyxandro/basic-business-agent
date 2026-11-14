@@ -34,6 +34,7 @@ function state(c: AdminConnection): { text: string; tone: 'ok' | 'bad' | 'neutra
 function SystemCard({ c, total }: { c: AdminConnection; total: number }) {
   const shown = state(c);
   const connected = c.employees.connected ?? 0;
+  const unverified = c.employees.unverified ?? 0;
   return (
     <Card className={`${styles.card} rise`}>
       <div className={styles.head}>
@@ -53,6 +54,7 @@ function SystemCard({ c, total }: { c: AdminConnection; total: number }) {
           <span className={styles.count}>{c.mode === 'shared' ? 'для всех' : `${connected} из ${total}`}</span>
         </div>
         <Progress value={c.mode === 'shared' ? 1 : total > 0 ? connected / total : 0} label={`${c.title}: подключили сотрудники`} height={5} />
+        {unverified > 0 ? <div className={section.sub}>Сохранили ключ, но система его ещё не проверила: {unverified}</div> : null}
       </div>
     </Card>
   );
