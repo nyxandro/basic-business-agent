@@ -8,7 +8,7 @@ import type { Db } from '../db/pool.ts';
 import { inTransaction } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import type { ModelGateway } from '../models/gateway.ts';
-import { deleteUserWorkspace } from '../sandbox/uploads.ts';
+import { deleteUserWorkspace } from '../workspace/layout.ts';
 import { logEvent } from '../server/log.ts';
 
 const SUPERADMIN_LOCK_KEY = 74_010_002;

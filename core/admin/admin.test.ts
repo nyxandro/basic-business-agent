@@ -104,7 +104,7 @@ describe('removing an employee', () => {
     await t.gateway.modelConfig('test-paid', petr, 'sales');
     await t.background.createTask({ id: 'petr-task', title: 'Задача Петра', agentId: 'sales', ownerUserId: petr, cron: '0 9 * * *', prompt: 'x' });
     const workspace = join(t.workspaceRoot, petr);
-    mkdirSync(join(workspace, 'uploads'), { recursive: true });
+    mkdirSync(join(workspace, 'files'), { recursive: true });
 
     // The first attempt fails at the LiteLLM step (gateway down); the person is already blocked.
     const forget = t.gateway.forgetUser.bind(t.gateway);

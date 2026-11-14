@@ -9,5 +9,5 @@ export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/
 export function uploadFile(threadId: string, file: File): Promise<UploadedFile> {
   const form = new FormData();
   form.append('file', file);
-  return apiForm<UploadedFile>(`/app/api/threads/${enc(threadId)}/uploads`, form);
+  return apiForm<UploadedFile>(`/app/api/threads/${enc(threadId)}/files`, form);
 }

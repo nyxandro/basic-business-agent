@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
@@ -243,7 +245,7 @@ describe('history of a conversation for the chat window', () => {
     // An attachment of the draft check goes into the same conversation.
     const form = new FormData();
     form.append('file', new File([new Uint8Array([1])], 'Прайс.csv', { type: 'text/csv' }));
-    const upload = await t.app.request(`/app/api/threads/${threadId}/uploads`, { method: 'POST', body: form, headers: { cookie: igor, origin: 'http://localhost:8080' } });
+    const upload = await t.app.request(`/app/api/threads/${threadId}/files`, { method: 'POST', body: form, headers: { cookie: igor, origin: 'http://localhost:8080' } });
     expect(upload.status).toBe(201);
   });
 
@@ -303,11 +305,13 @@ describe('memory and attachments', () => {
     expect(forgotten.empty).toBe(true);
   });
 
-  it('stores an attachment of a conversation', async () => {
+  it('stores an attachment of a conversation in the person’s files folder, and deleting the conversation keeps it', async () => {
+    const threadId = randomUUID();
     const form = new FormData();
     form.append('file', new File([new Uint8Array([1, 2, 3])], 'Счёт.pdf', { type: 'application/pdf' }));
-    const res = await t.app.request(`/app/api/threads/${randomUUID()}/uploads`, { method: 'POST', body: form, headers: { cookie: olga, origin: 'http://localhost:8080' } });
+    const res = await t.app.request(`/app/api/threads/${threadId}/files`, { method: 'POST', body: form, headers: { cookie: olga, origin: 'http://localhost:8080' } });
     expect(res.status).toBe(201);
-    expect(((await res.json()) as { path: string }).path).toMatch(/^uploads\/.+\/Счёт\.pdf$/);
+    expect(await res.json()).toEqual({ name: 'Счёт.pdf', path: 'Счёт.pdf', bytes: 3 });
+    expect(existsSync(join(t.workspaceRoot, olgaId, 'files', 'Счёт.pdf'))).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-"""Render one PDF page to PNG in renders/ and print its path: render_pdf_page.py <file> <page>."""
+"""Render one PDF page to PNG in .renders/ (hidden from file lists) and print its path: render_pdf_page.py <file> <page>."""
 import os
 import sys
 
@@ -6,7 +6,7 @@ import pypdfium2 as pdfium
 
 # 150 dpi keeps small print readable for the model while the image stays a few hundred KB.
 SCALE = 150 / 72
-OUTPUT_DIR = "renders"
+OUTPUT_DIR = ".renders"
 
 
 def main() -> int:

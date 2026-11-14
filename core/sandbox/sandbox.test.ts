@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +11,8 @@ import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake
 import { createMastraAgent } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createLimiter } from './limiter.ts';
-import { saveUpload } from './uploads.ts';
-import { assertIsolationAvailable, createImageViewProcessor, userDir } from './workspace.ts';
+import { contextRoot } from '../workspace/layout.ts';
+import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const SKILLS = join(ROOT, 'core/skills');
@@ -56,10 +56,13 @@ function lastToolOutput(): string {
   return JSON.stringify(tools.at(-1)?.content ?? '');
 }
 
-async function runAs(userId: string): Promise<void> {
+const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
+
+async function runAs(userId: string, projectId?: string): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
+  if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
   await agent.generate('Прочитай файл', { requestContext: rc, maxSteps: 3 });
 }
 
@@ -92,17 +95,16 @@ afterAll(async () => {
 
 describe('sandbox', () => {
   it('reads PDF, Word and Excel with the skill scripts inside the employee’s folder', async () => {
-    const dir = userDir(workspaceRoot, 'olga');
-    mkdirSync(join(dir, 'uploads/t1'), { recursive: true });
-    writeFileSync(join(dir, 'uploads/t1/invoice.pdf'), pdfWithText('Invoice total 98765'));
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(dir, 'invoice.pdf'), pdfWithText('Invoice total 98765'));
     execFileSync(join(VENV, 'bin/python'), ['-c', `
-from docx import Document; d=Document(); d.add_paragraph('Договор поставки №17'); t=d.add_table(rows=2, cols=2); t.cell(0,0).text='Позиция'; t.cell(0,1).text='Цена'; t.cell(1,0).text='Бетон'; t.cell(1,1).text='4500'; d.save('${dir}/uploads/t1/contract.docx')
-from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.append(['Поставщик','Сумма']); s.append(['Альфа-Строй', 120000]); w.save('${dir}/uploads/t1/prices.xlsx')
+from docx import Document; d=Document(); d.add_paragraph('Договор поставки №17'); t=d.add_table(rows=2, cols=2); t.cell(0,0).text='Позиция'; t.cell(0,1).text='Цена'; t.cell(1,0).text='Бетон'; t.cell(1,1).text='4500'; d.save('${dir}/contract.docx')
+from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.append(['Поставщик','Сумма']); s.append(['Альфа-Строй', 120000]); w.save('${dir}/prices.xlsx')
 `]);
     const cases: [string, string[]][] = [
-      [`python3 "${SCRIPTS}"/read_pdf.py uploads/t1/invoice.pdf`, ['Страница 1', 'Invoice total 98765']],
-      [`python3 "${SCRIPTS}"/read_docx.py uploads/t1/contract.docx`, ['Договор поставки №17', '| Бетон | 4500 |']],
-      [`python3 "${SCRIPTS}"/read_xlsx.py uploads/t1/prices.xlsx`, ['Лист «Цены»', '| Альфа-Строй | 120000 |']],
+      [`python3 "${SCRIPTS}"/read_pdf.py invoice.pdf`, ['Страница 1', 'Invoice total 98765']],
+      [`python3 "${SCRIPTS}"/read_docx.py contract.docx`, ['Договор поставки №17', '| Бетон | 4500 |']],
+      [`python3 "${SCRIPTS}"/read_xlsx.py prices.xlsx`, ['Лист «Цены»', '| Альфа-Строй | 120000 |']],
     ];
     for (const [cmd, expected] of cases) {
       model.script(command(cmd), { text: 'Готово.' });
@@ -113,7 +115,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
   });
 
   it('keeps other employees’ folders, the app’s secrets, the network and the code out of reach', async () => {
-    const other = userDir(workspaceRoot, 'igor');
+    const other = contextRoot(workspaceRoot, 'igor', null);
     writeFileSync(join(other, 'secret.txt'), 'IGOR-ONLY');
     const probes: [string, string][] = [
       [`cat ${other}/secret.txt`, 'No such file'],
@@ -129,13 +131,13 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
   });
 
   it('shows the model a scanned page: render it, then view_image puts the picture into the next request', async () => {
-    const dir = userDir(workspaceRoot, 'olga');
-    writeFileSync(join(dir, 'uploads/t1/scan.pdf'), pdfWithText(null));
-    model.script(command(`python3 "${SCRIPTS}"/read_pdf.py uploads/t1/scan.pdf`), { text: 'Похоже на скан.' });
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(dir, 'scan.pdf'), pdfWithText(null));
+    model.script(command(`python3 "${SCRIPTS}"/read_pdf.py scan.pdf`), { text: 'Похоже на скан.' });
     await runAs('olga');
     expect(lastToolOutput()).toContain('похожа на скан');
 
-    model.script(command(`python3 "${SCRIPTS}"/render_pdf_page.py uploads/t1/scan.pdf 1`), { toolCalls: [{ name: 'view_image', args: { path: 'renders/scan-p1.png' } }] }, { text: 'Вижу пустую страницу.' });
+    model.script(command(`python3 "${SCRIPTS}"/render_pdf_page.py scan.pdf 1`), { toolCalls: [{ name: 'view_image', args: { path: '.renders/scan-p1.png' } }] }, { text: 'Вижу пустую страницу.' });
     await runAs('olga');
     const last = JSON.stringify(model.requests.at(-1)!.messages);
     expect(last).toContain('data:image/png;base64,');
@@ -156,16 +158,25 @@ describe('concurrency limit', () => {
   });
 });
 
-describe('uploads', () => {
-  it('stores an attachment in the conversation folder and refuses big or unknown files', () => {
-    const root = mkdtempSync(join(tmpdir(), 'bba-up-'));
-    try {
-      const saved = saveUpload(root, { userId: 'olga', threadId: 'thread-1', fileName: '../../Договор №5.pdf', data: new Uint8Array(10) });
-      expect(saved.path).toBe('uploads/thread-1/Договор _5.pdf');
-      expect(() => saveUpload(root, { userId: 'olga', threadId: 'thread-1', fileName: 'big.pdf', data: new Uint8Array(21 * 1024 * 1024) })).toThrow(expect.objectContaining({ code: 'APP_UPLOAD_TOO_LARGE' }));
-      expect(() => saveUpload(root, { userId: 'olga', threadId: 'thread-1', fileName: 'run.exe', data: new Uint8Array(1) })).toThrow(expect.objectContaining({ code: 'APP_UPLOAD_TYPE_UNSUPPORTED' }));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+describe('project folder (V21)', () => {
+  it('lets the agent of a project conversation work only inside the project files and never remove the folder itself', async () => {
+    const general = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(general, 'personal.txt'), 'PERSONAL');
+    const root = contextRoot(workspaceRoot, 'olga', PROJECT);
+    writeFileSync(join(root, 'смета.txt'), 'SMETA');
+
+    model.script(command('cat смета.txt && echo new > итог.txt && cat итог.txt'), { text: 'Ок.' });
+    await runAs('olga', PROJECT);
+    expect(lastToolOutput()).toContain('SMETA');
+    expect(existsSync(join(root, 'итог.txt'))).toBe(true);
+
+    model.script(command(`cat ${general}/personal.txt`), { text: 'Ок.' });
+    await runAs('olga', PROJECT);
+    expect(lastToolOutput()).toContain('No such file');
+
+    model.script(command('rm -rf "$(pwd)"; ls -a "$(pwd)"'), { text: 'Ок.' });
+    await runAs('olga', PROJECT);
+    expect(existsSync(root)).toBe(true);
+    expect(existsSync(join(root, 'смета.txt'))).toBe(false);
   });
 });

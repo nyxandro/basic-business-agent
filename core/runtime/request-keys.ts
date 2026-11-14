@@ -7,12 +7,19 @@ export const REQUEST_KEYS = {
   modelId: 'bba.modelId',
   runKind: 'bba.runKind',
   taskId: 'bba.taskId',
+  // Project of the conversation, when it is in one: the sandbox then works in the project's files.
+  projectId: 'bba.projectId',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';
 
 interface ContextReader {
   get(key: string): unknown;
+}
+
+export function optionalContextValue(ctx: ContextReader | undefined, key: string): string | null {
+  const value = ctx?.get(key);
+  return typeof value === 'string' && value !== '' ? value : null;
 }
 
 export function requireContextValue(ctx: ContextReader | undefined, key: string): string {

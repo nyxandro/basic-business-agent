@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
-import { deleteThreadUploads, MAX_UPLOAD_BYTES, saveUpload } from '../sandbox/uploads.ts';
+import { MAX_UPLOAD_BYTES } from '@bba/contracts';
+import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
@@ -119,8 +120,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
 
   app.delete('/app/api/threads/:threadId', async (c) => {
     const userId = access(c).userId;
+    // Files stay: they belong to the files folder, not to the conversation (spec, section 8.9).
     await deleteThread(deps.memory, deps.db, userId, c.req.param('threadId'));
-    deleteThreadUploads(deps.workspaceRoot, userId, c.req.param('threadId'));
     return c.json({ ok: true });
   });
 
@@ -139,7 +140,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json({ ok: true });
   });
 
-  app.post('/app/api/threads/:threadId/uploads', async (c) => {
+  app.post('/app/api/threads/:threadId/files', async (c) => {
     const userId = access(c).userId;
     const threadId = c.req.param('threadId');
     if (Number(c.req.header('content-length') ?? 0) > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES) {
@@ -153,6 +154,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const form = await c.req.parseBody();
     const file = form.file;
     if (!(file instanceof File)) throw new AppError({ code: 'APP_VALIDATION_FAILED', message: 'no file field', userMessage: 'Файл не получен. Попробуйте прикрепить его ещё раз.', status: 400 });
-    return c.json(saveUpload(deps.workspaceRoot, { userId, threadId, fileName: file.name, data: new Uint8Array(await file.arrayBuffer()) }), 201);
+    const root = contextRoot(deps.workspaceRoot, userId, null);
+    return c.json(saveFile(root, file.name, new Uint8Array(await file.arrayBuffer())), 201);
   });
 }
