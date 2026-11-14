@@ -13,6 +13,7 @@ import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { numCell, Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { adminApi } from './api.ts';
 import { KeysList } from './KeysList.tsx';
 import { ModelForm } from './ModelForm.tsx';
@@ -113,6 +114,7 @@ function RowMenu({ model, onEdit, onKeys, onChanged }: { model: ModelDto; onEdit
 }
 
 function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => void }) {
+  const wide = useMedia(WIDE_QUERY);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<ModelDto | null>(null);
   const [keysOf, setKeysOf] = useState<string | null>(null);
@@ -134,6 +136,23 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
       </div>
       {data.models.length === 0 ? (
         <EmptyState title="Моделей пока нет" text="Добавьте первую: без модели агенты не отвечают." />
+      ) : !wide ? (
+        <ul className={styles.phoneList} aria-label="Каталог моделей">
+          {data.models.map((m) => {
+            const r = role(m, data.settings);
+            return (
+              <li key={m.id} className={styles.phoneRow}>
+                <div className={styles.phoneMain}>
+                  <div className={styles.modelName}>{m.label}</div>
+                  <div className={section.sub}>{connection(m)}</div>
+                </div>
+                {r ? <Pill tone={r.tone}>{r.text}</Pill> : null}
+                <Switch size="lg" checked={m.enabled} label={m.label} onChange={(on) => void toggle(m, on)} />
+                <RowMenu model={m} onEdit={() => setEditing(m)} onKeys={() => setKeysOf(m.id)} onChanged={onChanged} />
+              </li>
+            );
+          })}
+        </ul>
       ) : (
         <Table minWidth={760} label="Каталог моделей">
           <thead>

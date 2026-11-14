@@ -223,3 +223,23 @@ td.mono {
 .pickList {
   margin-top: 12px;
 }
+
+/* A phone: the catalog as a list (mockup «Админка на телефоне»). */
+.phoneList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phoneRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.phoneMain {
+  flex: 1;
+  min-width: 0;
+}

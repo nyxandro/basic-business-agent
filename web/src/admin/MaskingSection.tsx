@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { adminApi } from './api.ts';
 import styles from './masking.module.css';
 import { Feedback, useAction } from './parts.tsx';
@@ -55,6 +56,7 @@ function Example({ kinds }: { kinds: Kind[] }) {
 function Switches({ initial }: { initial: Kind[] }) {
   const [kinds, setKinds] = useState(initial);
   const { busy, error, run } = useAction();
+  const wide = useMedia(WIDE_QUERY);
   async function toggle(kind: Kind, on: boolean) {
     const before = kinds;
     const next = on ? MASKING_KIND_IDS.filter((k) => k === kind || kinds.includes(k)) : kinds.filter((k) => k !== kind);
@@ -71,7 +73,7 @@ function Switches({ initial }: { initial: Kind[] }) {
               <div className={styles.rowName}>{KINDS[k].label}</div>
               <div className={styles.mono}>{KINDS[k].placeholder}</div>
             </div>
-            <Switch checked={kinds.includes(k)} disabled={busy} label={KINDS[k].label} onChange={(on) => void toggle(k, on)} />
+            <Switch size={wide ? 'md' : 'lg'} checked={kinds.includes(k)} disabled={busy} label={KINDS[k].label} onChange={(on) => void toggle(k, on)} />
           </div>
         ))}
         <div className={`${styles.row} ${styles.locked}`}>

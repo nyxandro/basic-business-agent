@@ -13,6 +13,7 @@ import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { accessText } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
 import { Feedback, useAction } from './parts.tsx';
@@ -97,6 +98,7 @@ export function ModesSection() {
     return { tasks: tasks.tasks, agents: agents.agents, departments: departments.departments, users: users.users };
   }, []);
   const { state, reload } = useLoad(load);
+  const wide = useMedia(WIDE_QUERY);
   const [editing, setEditing] = useState<AdminTask | 'new' | null>(null);
   const [runsOf, setRunsOf] = useState<AdminTask | null>(null);
   const { error, run } = useAction();
@@ -125,6 +127,28 @@ export function ModesSection() {
         </div>
         {tasks.length === 0 ? (
           <EmptyState title="Фоновых задач пока нет" text="Создайте первую." />
+        ) : !wide ? (
+          <ul className={styles.phoneList} aria-label="Фоновые задачи">
+            {tasks.map((t) => {
+              const paused = pausedText(t.pausedReason);
+              return (
+                <li key={t.id} className={styles.phoneTask}>
+                  <div className={styles.phoneMain}>
+                    <div className={styles.taskName}>{t.title}</div>
+                    <div className={section.sub}>
+                      {scheduleText(t.schedule, t.cron)} · {accessText(t.access, departments, users)}
+                    </div>
+                    <button type="button" className={styles.last} onClick={() => setRunsOf(t)}>
+                      {lastFireText(t.lastFire)}
+                    </button>
+                    {paused ? <Pill tone="warn">{paused}</Pill> : null}
+                  </div>
+                  <Switch size="lg" checked={t.status === 'active'} label={t.title} onChange={(on) => void toggle(t, on)} />
+                  <TaskMenu task={t} onEdit={() => setEditing(t)} onRuns={() => setRunsOf(t)} onChanged={reload} />
+                </li>
+              );
+            })}
+          </ul>
         ) : (
           <Table minWidth={820} label="Фоновые задачи">
             <thead>
