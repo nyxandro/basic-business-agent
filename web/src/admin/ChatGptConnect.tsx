@@ -2,7 +2,7 @@
 // the person enters it on OpenAI's page and logs in there; this window asks the server every
 // `intervalSeconds` whether the login is done. «Войти заново» is the same with the account named.
 import type { ChatGptAccountDto, ChatGptLoginDto } from '@bba/contracts';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { Button } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
@@ -62,6 +62,11 @@ function Waiting({ login }: { login: ChatGptLoginDto }) {
 export function ChatGptConnect({ account, onClose, onConnected }: { account: ChatGptAccountDto | null; onClose: () => void; onConnected: (account: ChatGptAccountDto) => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
   const [attempt, setAttempt] = useState(0);
+  // The page may draw again while the person logs in; the asking goes on with the latest callback.
+  const connected = useRef(onConnected);
+  useEffect(() => {
+    connected.current = onConnected;
+  });
   const title = account ? `Войти заново: ${account.email}` : 'Подключить аккаунт ChatGPT';
 
   useEffect(() => {
@@ -84,7 +89,7 @@ export function ChatGptConnect({ account, onClose, onConnected }: { account: Cha
       try {
         const status = await adminApi.pollChatGptLogin(login.id);
         if (gone) return;
-        if (status.status === 'connected') onConnected(status.account);
+        if (status.status === 'connected') connected.current(status.account);
         else timer = setTimeout(() => void ask(), login.intervalSeconds * 1000 + POLL_MARGIN_MS);
       } catch (raw) {
         if (!gone) setPhase({ kind: 'failed', error: asApiError(raw), login });
@@ -95,7 +100,7 @@ export function ChatGptConnect({ account, onClose, onConnected }: { account: Cha
       gone = true;
       clearTimeout(timer);
     };
-  }, [login, onConnected]);
+  }, [login]);
 
   const restart = () => {
     setPhase({ kind: 'starting' });

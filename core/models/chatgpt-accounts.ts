@@ -191,26 +191,37 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
         accountId = newId('a');
       }
       await writeAuthFile(accountId, file);
-      const state = await writer.state();
-      await writer.apply({ ...state, accounts: state.accounts.some((a) => a.id === accountId) ? state.accounts : [...state.accounts, { id: accountId }] });
-      const sealed = box.seal(JSON.stringify(file));
-      await inTransaction(db, async (c) => {
-        if (login.account_id) {
-          await c.query("UPDATE app.chatgpt_accounts SET auth_ciphertext = $2, auth_iv = $3, auth_key_version = $4, auth_updated_at = now(), status = 'active' WHERE id = $1", [
-            accountId,
-            sealed.ciphertext,
-            sealed.iv,
-            sealed.keyVersion,
-          ]);
-        } else {
-          await c.query(
-            'INSERT INTO app.chatgpt_accounts (id, email, chatgpt_account_id, auth_ciphertext, auth_iv, auth_key_version, connected_by) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [accountId, who.email, who.chatgptAccountId, sealed.ciphertext, sealed.iv, sealed.keyVersion, actorUserId],
-          );
-        }
-        await writeAudit(c, { actorUserId, action: login.account_id ? 'chatgpt.relogin' : 'chatgpt.connect', target: accountId, details: { email: who.email } });
-      });
+      try {
+        await save();
+      } catch (error) {
+        // A new account that was not saved leaves no tokens in the volume; a new login of an
+        // existing one keeps the fresher file, which the next start takes into the database.
+        if (!login.account_id) await rm(fileOf(accountId), { force: true });
+        throw error;
+      }
       return dtoOf(accountId);
+
+      async function save(): Promise<void> {
+        const state = await writer.state();
+        await writer.apply({ ...state, accounts: state.accounts.some((a) => a.id === accountId) ? state.accounts : [...state.accounts, { id: accountId }] });
+        const sealed = box.seal(JSON.stringify(file));
+        await inTransaction(db, async (c) => {
+          if (login.account_id) {
+            await c.query("UPDATE app.chatgpt_accounts SET auth_ciphertext = $2, auth_iv = $3, auth_key_version = $4, auth_updated_at = now(), status = 'active' WHERE id = $1", [
+              accountId,
+              sealed.ciphertext,
+              sealed.iv,
+              sealed.keyVersion,
+            ]);
+          } else {
+            await c.query(
+              'INSERT INTO app.chatgpt_accounts (id, email, chatgpt_account_id, auth_ciphertext, auth_iv, auth_key_version, connected_by) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+              [accountId, who.email, who.chatgptAccountId, sealed.ciphertext, sealed.iv, sealed.keyVersion, actorUserId],
+            );
+          }
+          await writeAudit(c, { actorUserId, action: login.account_id ? 'chatgpt.relogin' : 'chatgpt.connect', target: accountId, details: { email: who.email } });
+        });
+      }
     });
   }
 
@@ -296,28 +307,44 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
       const { rows } = await db.query<AccountRow>('SELECT * FROM app.chatgpt_accounts ORDER BY connected_at, id');
       // Tokens of no account do not stay in the volume (an account removed while a write failed).
       const known = new Set(rows.map((r) => r.id));
-      for (const name of await readdir(deps.authDir)) {
+      let names: string[];
+      try {
+        names = await readdir(deps.authDir);
+      } catch (error) {
+        throw new Error(`APP_CONFIG_INVALID: .env: APP_CHATGPT_AUTH_DIR: cannot read ${deps.authDir}`, { cause: error });
+      }
+      for (const name of names) {
         const owner = AUTH_FILE_NAME.exec(name);
         if (owner && (!known.has(owner[1]!) || owner[2])) await rm(join(deps.authDir, name), { force: true });
       }
       for (const r of rows) {
-        const saved = openAuth(r);
-        const inVolume = await readAuthFile(r.id);
-        // LiteLLM refreshed the token in the file: keep the fresher one, or the next restart would
-        // bring back a refresh token OpenAI has already replaced (V19).
-        if (inVolume && inVolume.expires_at > saved.expires_at) {
-          const sealed = box.seal(JSON.stringify(inVolume));
-          await db.query('UPDATE app.chatgpt_accounts SET auth_ciphertext = $2, auth_iv = $3, auth_key_version = $4, auth_updated_at = now() WHERE id = $1', [
-            r.id,
-            sealed.ciphertext,
-            sealed.iv,
-            sealed.keyVersion,
-          ]);
-          logEvent('info', 'chatgpt_token_taken_from_gateway', { accountId: r.id });
-        } else if (!inVolume || inVolume.expires_at < saved.expires_at) {
-          await writeAuthFile(r.id, saved);
+        // One broken account does not stop the server: without its file LiteLLM answers 401 for
+        // it, and the admin sees «Ошибка доступа — войдите заново».
+        try {
+          await prepareOne(r);
+        } catch (error) {
+          logEvent('error', 'chatgpt_auth_prepare_failed', { accountId: r.id, error });
         }
       }
     },
   };
+
+  async function prepareOne(r: AccountRow): Promise<void> {
+    const saved = openAuth(r);
+    const inVolume = await readAuthFile(r.id);
+    // LiteLLM refreshed the token in the file: keep the fresher one, or the next restart would
+    // bring back a refresh token OpenAI has already replaced (V19).
+    if (inVolume && inVolume.expires_at > saved.expires_at) {
+      const sealed = box.seal(JSON.stringify(inVolume));
+      await db.query('UPDATE app.chatgpt_accounts SET auth_ciphertext = $2, auth_iv = $3, auth_key_version = $4, auth_updated_at = now() WHERE id = $1', [
+        r.id,
+        sealed.ciphertext,
+        sealed.iv,
+        sealed.keyVersion,
+      ]);
+      logEvent('info', 'chatgpt_token_taken_from_gateway', { accountId: r.id });
+    } else if (!inVolume || inVolume.expires_at < saved.expires_at) {
+      await writeAuthFile(r.id, saved);
+    }
+  }
 }

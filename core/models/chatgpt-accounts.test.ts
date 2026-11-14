@@ -231,4 +231,14 @@ describe('the start of the server', () => {
     await t.accounts.prepare();
     expect(JSON.parse(readFileSync(refreshedFile, 'utf8'))).toMatchObject({ refresh_token: 'refresh-rotated' });
   });
+
+  it('does not stop on an account whose saved login cannot be read', async () => {
+    const healthy = await connect('healthy@example.com');
+    await t.db.query(`INSERT INTO app.chatgpt_accounts (id, email, auth_ciphertext, auth_iv, auth_key_version) VALUES ('a-0bad0bad', 'broken@example.com', '\\x00', '\\x00', 1)`);
+    const file = join(t.chatgptAuthDir, `${healthy.id}.json`);
+    writeFileSync(file, '');
+    await expect(t.accounts.prepare()).resolves.toBeUndefined();
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ refresh_token: 'refresh-healthy@example.com' });
+    await t.db.query("DELETE FROM app.chatgpt_accounts WHERE id = 'a-0bad0bad'");
+  });
 });
