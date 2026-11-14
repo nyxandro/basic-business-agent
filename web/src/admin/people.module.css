@@ -1,0 +1,158 @@
+/* «Отделы» and «Роли» (mockup). */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.dept {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.dept:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px var(--shadow);
+  border-color: var(--acc);
+}
+
+.deptHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.deptName {
+  display: block;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.deptSub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.faces {
+  display: flex;
+}
+
+.face {
+  width: 30px;
+  height: 30px;
+  margin-right: -8px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--surface2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.none {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pushLeft {
+  margin-right: auto;
+}
+
+/* The table of rights. */
+.roleCol {
+  text-align: center;
+}
+
+.roleHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.roleName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roleCount {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.markCell {
+  text-align: center;
+}
+
+.mark {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: transparent;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.mark:active {
+  transform: scale(0.9);
+}
+
+.markOn {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: #fff;
+}
+
+.markLocked {
+  cursor: not-allowed;
+}
+
+.markLocked.markOn {
+  background: var(--off);
+  border-color: var(--off);
+}
