@@ -196,17 +196,15 @@
   animation: bba-rise 0.3s var(--ease-rise) both;
 }
 
+/* A phone: a dialog stays a card with narrow margins; the sheet and the full screen keep theirs. */
 @media (max-width: 600px) {
   .layer {
-    padding: 0;
-    align-items: stretch;
+    padding: 64px 12px 12px;
   }
 
-  .modal {
-    max-width: none;
-    max-height: none;
-    border-radius: 0;
-    border: 0;
+  .sheetLayer,
+  .fullLayer {
+    padding: 0;
   }
 
   .toast {

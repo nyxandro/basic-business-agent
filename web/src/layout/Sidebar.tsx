@@ -37,14 +37,17 @@ export interface SidebarProps {
   onSearch: () => void;
   // A phone closes the drawer after a choice.
   onNavigate: () => void;
-  // The phone's drawer adds its «Закрыть меню» here.
+  // The phone's drawer adds its «Закрыть меню» here and opens «Ждёт подтверждения» as a sheet.
   topRight?: ReactNode;
+  approvalsAsSheet?: boolean;
 }
 
-function ApprovalsLink({ onNavigate }: { onNavigate: () => void }) {
-  const waiting = useNotifications().counts?.pendingApprovals ?? 0;
-  return (
-    <NavLink to="/approvals" onClick={onNavigate} className={cx(styles.approvals, waiting > 0 && styles.approvalsWaiting)}>
+// On a computer a link to the page; in the phone's drawer it opens the sheet (mockup).
+function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asSheet: boolean }) {
+  const { counts, openApprovals } = useNotifications();
+  const waiting = counts?.pendingApprovals ?? 0;
+  const body = (
+    <>
       <Icon name="inbox" />
       <span className={styles.approvalsText}>
         <span>{ru.shell.approvals}</span>
@@ -55,6 +58,26 @@ function ApprovalsLink({ onNavigate }: { onNavigate: () => void }) {
           {waiting}
         </span>
       ) : null}
+    </>
+  );
+  const className = cx(styles.approvals, waiting > 0 && styles.approvalsWaiting);
+  if (asSheet) {
+    return (
+      <button
+        type="button"
+        className={className}
+        onClick={() => {
+          onNavigate();
+          openApprovals();
+        }}
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <NavLink to="/approvals" onClick={onNavigate} className={className}>
+      {body}
     </NavLink>
   );
 }
@@ -102,7 +125,7 @@ export function Sidebar(props: SidebarProps) {
       <RecentThreads key={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} />
 
       <div className={styles.spacer} />
-      <ApprovalsLink onNavigate={props.onNavigate} />
+      <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />
       {hasAdmin ? (
         <Link to="/admin" onClick={props.onNavigate} className={styles.footLink}>
           <Icon name="shield" />

@@ -30,6 +30,9 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   return day.toLocaleDateString('ru-RU', day.getFullYear() === now.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+// «сегодня в 9:00», «вчера в 18:40», «2 ноября в 10:14».
+export const whenLabel = (iso: string, now: Date = new Date()): string => `${dayLabel(iso, now)} в ${new Date(iso).toLocaleTimeString('ru-RU', { hour: 'numeric', minute: '2-digit' })}`;
+
 // «3 ч 5 мин» until a moment; «меньше минуты» when it is close or past.
 export function timeLeft(iso: string, now: number = Date.now()): string {
   const minutes = Math.floor((new Date(iso).getTime() - now) / MS_PER_MINUTE);
