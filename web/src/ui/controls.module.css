@@ -1,0 +1,123 @@
+/* Switch */
+.switch {
+  display: inline-flex;
+  flex: none;
+  width: 42px;
+  height: 26px;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--off);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.switch[aria-checked='true'] {
+  background: var(--acc);
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.switch[aria-checked='true'] .knob {
+  transform: translateX(16px);
+}
+
+/* Segmented */
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface2);
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segment[aria-checked='true'] {
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
+}
+
+/* Field */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.error {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--bad);
+}
+
+.input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.input:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+
+.textarea {
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}

@@ -25,10 +25,14 @@ import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { SettingsLayout } from '../settings/SettingsLayout.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
+import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
+import { ToastProvider } from '../ui/Toast.tsx';
 
 
 export function App() {
   return (
+    <ThemeProvider>
+      <ToastProvider>
     <SessionProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -70,5 +74,7 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </SessionProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

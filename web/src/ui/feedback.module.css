@@ -1,0 +1,115 @@
+/* Table */
+.tableBox {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  padding: 10px 12px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 11px 12px;
+  border-top: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+
+.table th:first-child,
+.table td:first-child {
+  padding-left: 18px;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 18px;
+}
+
+.table tbody tr:hover {
+  background: var(--hover);
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Loading */
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ring);
+  border-top-color: var(--acc);
+  animation: bba-spin 0.8s linear infinite;
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeletonRow {
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface2), var(--hover), var(--surface2));
+  background-size: 200% 100%;
+  animation: bba-shimmer 1.6s linear infinite;
+}
+
+.skeletonRow:nth-child(2n) {
+  width: 80%;
+}
+
+.skeletonRow:nth-child(3n) {
+  width: 60%;
+}
+
+/* Banners */
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.error {
+  background: var(--bad-soft);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+}
+
+.notice {
+  background: var(--ok-soft);
+}
+
+.bannerTitle {
+  font-weight: 600;
+}
+
+.code {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bannerActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}

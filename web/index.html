@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Агенты</title>
+    <title>Бизнес-агент</title>
+    <script>
+      // The theme before the first paint (same rule as web/src/ui/theme/theme.ts): the choice kept
+      // in this browser, otherwise the system's; storage may be blocked.
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem('bba-theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

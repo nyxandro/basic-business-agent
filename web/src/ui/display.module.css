@@ -1,0 +1,189 @@
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.padded {
+  padding: 16px 18px;
+}
+
+.lift {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px var(--shadow);
+  border-color: var(--acc);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.cardSub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.cardFoot {
+  padding: 10px 18px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Pill */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.neutral {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.accent {
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+/* Avatar */
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-weight: 600;
+}
+
+/* Badge — a tile with an icon */
+.badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.badgeSolid {
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+/* Progress */
+.track {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--acc);
+  animation: bba-grow 1s var(--ease-out) both;
+}
+
+.barWarn {
+  background: var(--warn);
+}
+
+.barBad {
+  background: var(--bad);
+}
+
+/* Empty state */
+.empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.emptyTitle {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.emptyText {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.emptyAction {
+  margin-top: 16px;
+}
+
+/* Section heading of a page */
+.pageHead {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pageTitle {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pageLead {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.pageText {
+  flex: 1;
+  min-width: 260px;
+}
+
+.groupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
