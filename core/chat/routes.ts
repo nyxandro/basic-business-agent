@@ -1,6 +1,6 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
-import type { AgentListResponse, MemoryResponse } from '@bba/contracts';
+import type { AgentListResponse, MemoryResponse, RetryTurnResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -16,6 +16,7 @@ import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory, toolCallArgsOf } from './history.ts';
+import { takeBackBrokenTurn } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 
@@ -28,11 +29,14 @@ const notFound = (message: string) => new AppError({ code: 'APP_NOT_FOUND', mess
 const memoryBody = z.object({ text: z.string().max(20_000) });
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
-  async function translate(userId: string, raw: string): Promise<TranslatedError> {
+  // A failure of a run in our code and words: the text of RUN_ERROR, or the failure Mastra kept in
+  // a broken answer (spec, section 9.1).
+  async function translate(userId: string, failure: unknown): Promise<TranslatedError> {
+    const raw = typeof failure === 'string' ? failure : String((failure as { message?: unknown } | null)?.message ?? failure);
     const code = /^(APP_[A-Z0-9_]+):/.exec(raw)?.[1];
     const known = code ? (ERROR_CATALOG as Record<string, { userMessage: string }>)[code] : undefined;
     if (code && known) return { code, message: known.userMessage };
-    const error = await deps.gateway.translateError(new Error(raw), userId);
+    const error = await deps.gateway.translateError(typeof failure === 'string' ? new Error(failure) : failure, userId);
     return { code: error.code, message: error.userMessage };
   }
 
@@ -98,7 +102,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     if (action === 'connect') {
       const { threadId } = (await c.req.raw.clone().json()) as { threadId?: string };
       if (!threadId || !SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
-      return connectResponse(deps, { userId: a.userId, resourceId, agentId, threadId });
+      return connectResponse({ db: deps.db, memory: deps.memory, translate: (failure) => translate(a.userId, failure) }, { userId: a.userId, resourceId, agentId, threadId });
     }
     const input = (await c.req.raw.clone().json()) as RunInput;
     const run = await prepareRun(deps, a, agentId, mode, input);
@@ -130,6 +134,15 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const { messages } = await deps.memory.recall({ threadId: thread.id, resourceId: thread.resourceId, perPage: false });
     if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
     return c.json({ thread: { id: thread.id, title: thread.title, agentId: thread.metadata?.agentId }, messages: toHistory(messages as never) });
+  });
+
+  // «Ответить заново» of the person's own conversation or their draft check of an agent's prompt.
+  app.post('/app/api/threads/:threadId/retry', async (c) => {
+    const userId = access(c).userId;
+    const thread = await deps.memory.getThreadById({ threadId: c.req.param('threadId') });
+    if (!thread || (thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId))) throw notFound('answer again in a foreign or unknown thread');
+    const body: RetryTurnResponse = { text: await takeBackBrokenTurn(deps.memory, thread.id, thread.resourceId) };
+    return c.json(body);
   });
 
   app.delete('/app/api/threads/:threadId', async (c) => {

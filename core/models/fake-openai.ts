@@ -58,6 +58,8 @@ export interface FakeModel {
   dockerUrl: string;
   requests: FakeRequest[];
   script(...turns: (FakeTurn | ((req: FakeRequest) => FakeTurn))[]): void;
+  // Forgets the scripted turns nobody asked for, so they do not answer the next test.
+  clear(): void;
   close(): Promise<void>;
 }
 
@@ -146,6 +148,7 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
     dockerUrl: `http://host.docker.internal:${port}/v1`,
     requests,
     script: (...turns) => void queue.push(...turns),
+    clear: () => void queue.splice(0),
     close: () =>
       new Promise((resolve) => {
         server.close(() => resolve());

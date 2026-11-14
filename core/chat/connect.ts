@@ -1,14 +1,16 @@
 // History of a conversation for the chat window (POST /app/api/copilotkit/agent/:id/connect):
-// a snapshot of the messages from Mastra memory and the question still waiting for "Да"/"Нет".
+// a snapshot of the messages from Mastra memory, the question still waiting for "Да"/"Нет" and the
+// answers that broke and stayed broken (spec, section 9.1).
 // CopilotKit's own runner replays only events it saw in this process, so after a restart — or for
 // the conversation of a background task, which never ran through it — the chat would open empty.
 import { randomUUID } from 'node:crypto';
 import type { Memory } from '@mastra/memory';
-import type { DeclinedToolResult } from '@bba/contracts';
+import { CHAT_EVENTS, type DeclinedToolResult, type FailedTurns } from '@bba/contracts';
 import { pendingForThread, supersededCallsOfThread } from '../approvals/requests.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
-import { toHistory, type HistoryMessage } from './history.ts';
+import { readHistory, type BrokenAnswer, type HistoryMessage } from './history.ts';
+import type { TranslatedError } from './stream.ts';
 
 const APPROVAL_PREFIX = 'mastra-approval::';
 // Conversations of background tasks are "bg:<taskId>" (core/background/service.ts).
@@ -63,7 +65,21 @@ function sse(events: object[]): Response {
   return new Response(body, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } });
 }
 
-export async function connectResponse(deps: { db: Db; memory: Memory }, input: { userId: string; resourceId: string; agentId: string; threadId: string }): Promise<Response> {
+// Broken answers as the chat shows them: marked where they are on the screen, the last one with what
+// happened in our code and words (the kept failure is technical and never goes to the browser).
+async function failedTurns(broken: BrokenAnswer[], shown: ReadonlySet<string>, translate: (error: unknown) => Promise<TranslatedError>): Promise<FailedTurns | null> {
+  if (broken.length === 0) return null;
+  const last = broken.find((b) => b.last);
+  return {
+    interruptedMessageIds: broken.flatMap((b) => (b.messageId && shown.has(b.messageId) ? [b.messageId] : [])),
+    last: last ? await translate(last.error) : null,
+  };
+}
+
+export async function connectResponse(
+  deps: { db: Db; memory: Memory; translate: (error: unknown) => Promise<TranslatedError> },
+  input: { userId: string; resourceId: string; agentId: string; threadId: string },
+): Promise<Response> {
   const runId = randomUUID();
   const { threadId } = input;
   const thread = await deps.memory.getThreadById({ threadId });
@@ -74,7 +90,7 @@ export async function connectResponse(deps: { db: Db; memory: Memory }, input: {
   // arrives after the person's first message would wipe it from the screen.
   if (!thread) return sse([]);
   const recalled = await deps.memory.recall({ threadId, resourceId: thread.resourceId, perPage: false });
-  const history = toHistory(recalled.messages);
+  const { history, broken } = readHistory(recalled.messages);
   // Arguments of calls waiting for "Да", as the model sent them (the database keeps a summary).
   const waitingArgs = new Map(history.flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
   const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
@@ -93,9 +109,11 @@ export async function connectResponse(deps: { db: Db; memory: Memory }, input: {
     expiresAt: p.expiresAt.toISOString(),
     metadata: { mastra: { type: 'mastra_tool_approval', toolName: p.tool, args: waitingArgs.get(p.toolCallId) ?? p.args, runId: p.runId } },
   }));
+  const failed = await failedTurns(broken, new Set(messages.map((m) => m.id)), deps.translate);
   return sse([
     { type: 'RUN_STARTED', threadId, runId },
     { type: 'MESSAGES_SNAPSHOT', messages },
+    ...(failed ? [{ type: 'CUSTOM', name: CHAT_EVENTS.turnsFailed, value: failed }] : []),
     { type: 'RUN_FINISHED', threadId, runId, ...(interrupts.length ? { outcome: { type: 'interrupt', interrupts } } : {}) },
   ]);
 }
