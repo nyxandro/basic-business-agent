@@ -7,7 +7,7 @@ import { ChatPage } from '../chat/ChatPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { AppLayout } from '../layout/AppLayout.tsx';
-import { COPILOT_PRIVACY, COPILOT_RUNTIME_URL } from './copilot.ts';
+import { COPILOT_OPTIONS } from './copilot.ts';
 import { AdminIndex, AdminLayout, RequireSection } from '../admin/AdminLayout.tsx';
 import { AgentsSection } from '../admin/AgentsSection.tsx';
 import { ConnectionsSection } from '../admin/ConnectionsSection.tsx';
@@ -37,7 +37,7 @@ export function App() {
         <Route
           element={
             <RequireAuth>
-              <CopilotKit runtimeUrl={COPILOT_RUNTIME_URL} credentials="same-origin" {...COPILOT_PRIVACY}>
+              <CopilotKit {...COPILOT_OPTIONS}>
                 <AppLayout />
               </CopilotKit>
             </RequireAuth>

@@ -65,6 +65,7 @@ docker compose -f deploy/compose.yaml exec app node core/cli/admin.ts create adm
 pnpm smoke                               # проверка сборки и изоляции на копии установки
 ```
 
+- Сменили модели в `config/models.ts` — снова `docker compose -f deploy/compose.yaml up -d --build --wait`: конфигурация LiteLLM пересоберётся, LiteLLM перезапустится сам.
 - Адрес сайта: `SITE_ADDRESS` — доменное имя (Caddy сам получит сертификат HTTPS) или `:80` за локальным портом. `APP_PUBLIC_URL` должен с ним совпадать.
 - Наружу открыт только Caddy: интерфейс и `/app/api`. Адрес учёта расходов LiteLLM (`/app/api/internal`) снаружи недоступен.
 - Песочница скриптов скиллов работает внутри контейнера приложения на bubblewrap; контейнеру подключён профиль `deploy/seccomp-bwrap.json` (стандартный профиль Docker плюс 7 системных вызовов изоляции). Если на сервере bubblewrap запрещает AppArmor (так бывает на Ubuntu 24.04) — запасной путь описан в спецификации, раздел 8.9.

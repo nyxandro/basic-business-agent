@@ -147,10 +147,14 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     if (call) {
       const pending = await findByCall(deps.db, run.userId, call.runId, call.toolCallId);
       if (!pending || pending.threadId !== threadId) throw appError('APP_NOT_FOUND', 'unknown approval request', { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
+      if (pending.taskId) {
+        throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} belongs to background task ${pending.taskId}`, { userMessage: 'На вопросы фоновых задач отвечают на экране «Ждёт подтверждения».' });
+      }
       if (pending.status !== 'pending') throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} is ${pending.status}`, { userMessage: 'По этому действию решение уже принято.' });
+      if (pending.expiresAt.getTime() < Date.now()) throw appError('APP_NOT_FOUND', `approval ${pending.id} expired`, { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
       const approved = resume?.status === 'resolved' && (resume.payload === true || (resume.payload as { approved?: unknown } | undefined)?.approved === true);
       if (!approved) {
-        await decide(deps.db, pending.id, 'declined');
+        if (!(await decide(deps.db, pending.id, 'declined'))) throw appError('APP_APPROVAL_DECIDED', `approval ${pending.id} was decided meanwhile`);
         await journalDecline(deps, run, pending.tool, null);
         declinedCalls.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: false });
       } else {
@@ -162,7 +166,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
           await decide(deps.db, pending.id, 'failed', error instanceof AppError ? error.code : 'APP_INTERNAL');
           throw error;
         }
-        await decide(deps.db, pending.id, 'approved');
+        if (!(await decide(deps.db, pending.id, 'approved'))) throw appError('APP_APPROVAL_DECIDED', `approval ${pending.id} was decided meanwhile`);
       }
     } else {
       await deps.gateway.assertWithinBudget(run.userId);

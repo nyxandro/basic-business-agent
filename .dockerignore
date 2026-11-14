@@ -1,8 +1,9 @@
 # Only what the images need. Customer materials, secrets and local data never enter an image.
 inbox/
-.env
-.env.*
-!.env.example
+# Secrets in any folder (deploy/.env of an installation included); the examples stay.
+**/.env
+**/.env.*
+!**/.env.example
 .public-check/
 spikes/
 .data/

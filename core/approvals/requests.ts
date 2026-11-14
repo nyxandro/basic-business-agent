@@ -97,8 +97,13 @@ export function createApprovalRecorder(db: Db) {
   } satisfies Processor;
 }
 
+// Questions the chat answers: a background task's questions are answered on «Ждёт подтверждения»
+// (they resume the task's run and expire there), even when its conversation is open in the chat.
 export async function pendingForThread(db: Db, userId: string, threadId: string): Promise<ApprovalRequest[]> {
-  const { rows } = await db.query<Row>("SELECT * FROM app.approval_requests WHERE user_id = $1 AND thread_id = $2 AND status = 'pending' ORDER BY created_at", [userId, threadId]);
+  const { rows } = await db.query<Row>(
+    "SELECT * FROM app.approval_requests WHERE user_id = $1 AND thread_id = $2 AND status = 'pending' AND task_id IS NULL ORDER BY created_at",
+    [userId, threadId],
+  );
   return rows.map(toRequest);
 }
 

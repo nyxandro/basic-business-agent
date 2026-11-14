@@ -70,22 +70,21 @@ export async function connectResponse(deps: { db: Db; memory: Memory }, input: {
   if (thread && (thread.resourceId !== input.resourceId || thread.metadata?.agentId !== input.agentId)) {
     throw new AppError({ code: 'APP_NOT_FOUND', message: 'connect to a foreign or other-agent thread', userMessage: 'Разговор не найден.', status: 404 });
   }
-  let messages: AguiMessage[] = [];
+  // A conversation that does not exist yet has no history. Nothing is sent: an empty snapshot that
+  // arrives after the person's first message would wipe it from the screen.
+  if (!thread) return sse([]);
+  const recalled = await deps.memory.recall({ threadId, resourceId: thread.resourceId, perPage: false });
+  const history = toHistory(recalled.messages);
   // Arguments of calls waiting for "Да", as the model sent them (the database keeps a summary).
-  const waitingArgs = new Map<string, unknown>();
-  if (thread) {
-    const recalled = await deps.memory.recall({ threadId, resourceId: thread.resourceId, perPage: false });
-    const history = toHistory(recalled.messages);
-    for (const call of history.flatMap((m) => m.toolCalls)) waitingArgs.set(call.id, call.args);
-    messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
-    // Opening the conversation shows the result of a background task: it is no longer «новое».
-    if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
-    // The menu counter of fresh task results reads the task's own flag.
-    if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
-      await deps.db.query('UPDATE app.background_tasks SET unread_result = false WHERE id = $1 AND owner_user_id = $2', [threadId.slice(BACKGROUND_THREAD_PREFIX.length), input.userId]);
-    }
+  const waitingArgs = new Map(history.flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
+  const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
+  // Opening the conversation shows the result of a background task: it is no longer «новое».
+  if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
+  // The menu counter of fresh task results reads the task's own flag.
+  if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
+    await deps.db.query('UPDATE app.background_tasks SET unread_result = false WHERE id = $1 AND owner_user_id = $2', [threadId.slice(BACKGROUND_THREAD_PREFIX.length), input.userId]);
   }
-  const pending = thread ? await pendingForThread(deps.db, input.userId, threadId) : [];
+  const pending = await pendingForThread(deps.db, input.userId, threadId);
   const interrupts = pending.map((p) => ({
     id: `${APPROVAL_PREFIX}${p.runId}::${p.toolCallId}`,
     reason: 'mastra:tool_approval',

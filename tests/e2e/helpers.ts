@@ -32,12 +32,21 @@ export async function openAgent(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
 }
 
+// The chat window is recreated for the new conversation: wait for it before typing.
 export async function newConversation(page: Page): Promise<void> {
+  const before = page.url();
   await page.getByRole('button', { name: 'Новый разговор' }).click();
+  await expect(page).not.toHaveURL(before);
+  await expect(page.getByText(/^Здравствуйте! Я — агент/)).toBeVisible();
 }
 
+// Sends like a person: the chat window accepts a message once it knows the agent (until then the
+// send button is inactive and the text just waits in the field).
 export async function say(page: Page, text: string): Promise<void> {
   const box = page.getByRole('textbox', { name: 'Напишите сообщение…' });
   await box.fill(text);
-  await box.press('Enter');
+  const send = page.getByRole('button', { name: 'Отправить', exact: true }).last();
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(box).toHaveValue('');
 }

@@ -239,11 +239,19 @@ describe('history of a conversation for the chat window', () => {
     await res.text();
     const thread = await t.mastra.getAgentById('sales').getMemory().then((m) => m!.getThreadById({ threadId }));
     expect(thread?.resourceId).toBe(`draft:${igorId}`);
+
+    // An attachment of the draft check goes into the same conversation.
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([1])], 'Прайс.csv', { type: 'text/csv' }));
+    const upload = await t.app.request(`/app/api/threads/${threadId}/uploads`, { method: 'POST', body: form, headers: { cookie: igor, origin: 'http://localhost:8080' } });
+    expect(upload.status).toBe(201);
   });
 
   it('opens a new conversation empty and refuses someone else’s', async () => {
+    // A new conversation gets no events at all: an empty snapshot could wipe the first message.
     const empty = await connect(olga, randomUUID());
-    expect(empty.events.find((e) => e.type === 'MESSAGES_SNAPSHOT')?.messages).toEqual([]);
+    expect(empty.status).toBe(200);
+    expect(empty.events).toEqual([]);
 
     const threadId = randomUUID();
     t.model.script({ text: 'Ок.' });
@@ -253,6 +261,33 @@ describe('history of a conversation for the chat window', () => {
     const dep = (await t.db.query<{ id: string }>('SELECT id FROM app.departments LIMIT 1')).rows[0]!.id;
     await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [dep, igorId]);
     expect((await connect(igor, threadId)).status).toBe(404);
+  });
+});
+
+describe('addresses of the CopilotKit runtime', () => {
+  const runBody = (threadId: string) => ({ threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: 'Чужое' }], tools: [], context: [], state: {}, forwardedProps: {} });
+
+  it('answers only the addresses the chat window uses and keeps conversations to their owner', async () => {
+    const threadId = randomUUID();
+    t.model.script({ text: 'Секрет Ольги.' });
+    await run(olga, 'sales', threadId, 'Мой личный разговор');
+    await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) SELECT id, 'sales' FROM app.departments ON CONFLICT DO NOTHING`);
+    const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+    const dep = (await t.db.query<{ id: string }>('SELECT id FROM app.departments LIMIT 1')).rows[0]!.id;
+    await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [dep, igorId]);
+
+    expect((await t.call('GET', '/app/api/copilotkit/info', { cookie: igor })).status).toBe(200);
+    for (const path of [`/app/api/copilotkit/threads/${threadId}/messages`, `/app/api/copilotkit/threads/${threadId}/events`, `/app/api/copilotkit/threads/${threadId}/state`]) {
+      const res = await t.call('GET', path, { cookie: igor });
+      expect(res.status, path).toBe(404);
+      expect(await res.text()).not.toContain('Секрет Ольги');
+    }
+    // A prefix in front of a known address must not slip past the checks of the server.
+    expect((await t.call('POST', '/app/api/copilotkit/x/agent/sales/connect', { cookie: igor, body: runBody(threadId) })).status).toBe(404);
+    expect((await t.call('POST', '/app/api/copilotkit/x/agent/sales/run', { cookie: igor, body: runBody(threadId) })).status).toBe(404);
+    expect((await t.call('POST', '/app/api/copilotkit', { cookie: igor, body: { method: 'agent/connect', params: { agentId: 'sales' }, body: runBody(threadId) } })).status).toBe(404);
+    expect((await t.call('POST', `/app/api/copilotkit/agent/sales/stop/${threadId}`, { cookie: igor, body: {} })).status).toBe(404);
+    expect((await t.call('POST', `/app/api/copilotkit/agent/sales/stop/${threadId}`, { cookie: olga, body: {} })).status).toBe(200);
   });
 });
 

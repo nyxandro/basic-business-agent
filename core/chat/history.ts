@@ -60,7 +60,10 @@ export function toHistory(messages: StoredMessage[]): HistoryMessage[] {
 
 // Arguments of the tool calls of a conversation as the model sent them. The approval table keeps
 // only a summary (no addresses, no secrets); the person deciding «Да» needs the real values.
+// A deleted conversation gives no arguments: the caller shows the summary then.
 export async function toolCallArgsOf(memory: Memory, threadId: string, resourceId: string): Promise<Map<string, unknown>> {
+  const thread = await memory.getThreadById({ threadId });
+  if (!thread || thread.resourceId !== resourceId) return new Map();
   const { messages } = await memory.recall({ threadId, resourceId, perPage: false });
   return new Map(toHistory(messages).flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
 }

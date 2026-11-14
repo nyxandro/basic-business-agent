@@ -3,7 +3,7 @@
 import { CopilotKit } from '@copilotkit/react-core';
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { COPILOT_PRIVACY, COPILOT_RUNTIME_URL } from '../app/copilot.ts';
+import { COPILOT_OPTIONS } from '../app/copilot.ts';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
@@ -31,7 +31,7 @@ export function DraftCheckPage() {
       <p className="muted">
         Отвечает сохранённый черновик промпта. <Link to="/admin/agents">Вернуться к агентам</Link>
       </p>
-      <CopilotKit runtimeUrl={COPILOT_RUNTIME_URL} credentials="same-origin" headers={DRAFT_HEADERS} {...COPILOT_PRIVACY}>
+      <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
         <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: [], systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
       </CopilotKit>
     </div>

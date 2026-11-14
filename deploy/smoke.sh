@@ -33,9 +33,17 @@ OPENAI_API_KEY=smoke-check-never-calls-a-model
 ENV
 
 compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$HERE/compose.yaml" "$@"; }
+# An installation keeps its secrets in deploy/.env; the image must not take it. When there is none,
+# a stand-in is put there for the build and removed afterwards.
+PROBE_ENV=""
+if [[ ! -e "$HERE/.env" ]]; then
+  PROBE_ENV="$HERE/.env"
+  echo "SMOKE_PROBE=must-not-reach-the-image" > "$PROBE_ENV"
+fi
 cleanup() {
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -f "$ENV_FILE"
+  if [[ -n "$PROBE_ENV" ]]; then rm -f "$PROBE_ENV"; fi
 }
 trap cleanup EXIT
 
@@ -63,6 +71,7 @@ check "seccomp profile is attached" yes "$(docker inspect "$app_id" --format '{{
 check "bubblewrap isolation starts" ok "$(compose exec -T app node -e "import('@mastra/core/workspace').then((m) => console.log(m.LocalSandbox.detectIsolation().available ? 'ok' : 'unavailable'))")"
 check "inside the isolation there is no network" blocked "$(compose exec -T app bwrap --unshare-all --die-with-parent --ro-bind / / --dev /dev --proc /proc python3 -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)" >/dev/null 2>&1 && echo open || echo blocked)"
 check "document skills' Python libraries are in the image" ok "$(compose exec -T app /app/.venv-skills/bin/python -c "import pypdf, pypdfium2, docx, openpyxl, PIL; print('ok')")"
+check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
 
 echo "== data survives an update of the app image (migrations run again)"

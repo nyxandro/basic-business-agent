@@ -19,7 +19,6 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
   // CopilotKit asks its runtime which agents exist when the provider mounts.
   const table = new Map<string, Route>([
     ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unreadResults: 0 } }],
-    ['POST /app/api/copilotkit', { body: { agents: {} } }],
     ['GET /app/api/copilotkit/info', { body: { agents: {} } }],
     ...Object.entries(routes),
   ]);

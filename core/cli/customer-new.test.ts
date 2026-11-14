@@ -32,6 +32,9 @@ function openRepo(): string {
   git(root, 'add', '.');
   git(root, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'open core');
   git(root, 'remote', 'add', 'origin', 'https://example.com/open/basic-business-agent.git');
+  // A side branch and a tag of the open repository that a customer copy does not need.
+  git(root, 'tag', 'v0.1');
+  git(root, 'branch', 'experiment');
   // Materials of another customer and secrets sit in the working copy, never in git.
   mkdirSync(join(root, 'inbox'), { recursive: true });
   writeFileSync(join(root, 'inbox', 'brief.pdf'), 'материалы заказчика');
@@ -55,6 +58,9 @@ describe('customer copy', () => {
     // Improvements come from the open repository as "upstream"; the customer's own remote comes later.
     expect(git(target, 'remote')).toBe('upstream');
     expect(git(target, 'remote', 'get-url', 'upstream')).toBe('https://example.com/open/basic-business-agent.git');
+    // Only the main branch travels: no other branches, no tags.
+    expect(git(target, 'branch', '--list', '--all', '--format=%(refname:short)')).toBe('main');
+    expect(git(target, 'tag')).toBe('');
   });
 
   it('carries no files of other customers and no secrets', () => {

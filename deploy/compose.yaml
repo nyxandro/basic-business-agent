@@ -51,6 +51,8 @@ services:
         condition: service_healthy
       litellm-config:
         condition: service_completed_successfully
+        # A rebuilt config (models changed in config/models.ts) restarts LiteLLM with it.
+        restart: true
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]
       interval: 5s

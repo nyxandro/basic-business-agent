@@ -44,7 +44,8 @@ describe('sign-in', () => {
 
   it('goes back only to a path inside the site', () => {
     expect(safeNextPath('/agents/sales?x=1')).toBe('/agents/sales?x=1');
-    for (const bad of [null, '', 'https://evil.example', '//evil.example', '/\\evil.example']) expect(safeNextPath(bad)).toBe('/');
+    // Browsers drop tabs and newlines from addresses: "/\t/evil" would become "//evil", another site.
+    for (const bad of [null, '', 'https://evil.example', '//evil.example', '/\\evil.example', '/\t/evil.example', '/\n/evil.example', ' //evil.example']) expect(safeNextPath(bad)).toBe('/');
   });
 });
 

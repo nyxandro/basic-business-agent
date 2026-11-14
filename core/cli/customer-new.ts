@@ -10,6 +10,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
+const OPEN_BRANCH = 'main';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 export interface CopyInput {
@@ -46,8 +47,9 @@ export function createCustomerCopy(input: CopyInput): CopyResult {
   if (unknown.length > 0) fail(`plugins ${unknown.join(', ')}: there are no such plugins in plugins/ (there are: ${plugins.join(', ') || 'none'})`);
   const upstream = git(source, 'remote', 'get-url', 'origin');
 
-  // git creates missing parent folders of the target itself.
-  git(source, 'clone', '--quiet', '--no-hardlinks', source, target);
+  // Only the main branch of the open repository, without its tags and without objects of other
+  // branches (--no-local copies through git transport); git creates missing parent folders itself.
+  git(source, 'clone', '--quiet', '--no-local', '--single-branch', '--branch', OPEN_BRANCH, '--no-tags', source, target);
   git(target, 'remote', 'remove', 'origin');
   git(target, 'remote', 'add', 'upstream', upstream);
   const removed = plugins.filter((p) => !input.keepPlugins.includes(p));
@@ -94,7 +96,7 @@ async function main(): Promise<void> {
       '  git remote add origin <адрес закрытого репозитория заказчика>',
       '  создайте агентов в agents/, заполните config/ и .env (cp .env.example .env);',
       '  уберите удалённые плагины из config/plugins.ts и agents/*/agent.ts — иначе запуск остановится с APP_CONFIG_INVALID и назовёт файл и поле;',
-      '  улучшения открытого ядра: git fetch upstream && git merge upstream/main',
+      `  улучшения открытого ядра: git fetch upstream && git merge upstream/${OPEN_BRANCH}`,
     ].join('\n'),
   );
 }

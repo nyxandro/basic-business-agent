@@ -12,11 +12,15 @@ import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDe
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
-import { toHistory } from './history.ts';
+import { toHistory, toolCallArgsOf } from './history.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 
 export const DRAFT_HEADER = 'x-bba-draft';
-const RUN_PATH = /^\/agent\/([^/]+)\/(run|connect|stop)/;
+const INFO_PATH = '/info';
+const AGENT_PATH = /^\/agent\/([^/]+)\/(run|connect)$/;
+const STOP_PATH = /^\/agent\/([^/]+)\/stop\/([^/]+)$/;
+
+const notFound = (message: string) => new AppError({ code: 'APP_NOT_FOUND', message, userMessage: 'Разговор не найден.', status: 404 });
 const memoryBody = z.object({ text: z.string().max(20_000) });
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 
@@ -49,31 +53,48 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json(body);
   });
 
+  // Only the addresses the chat window calls in CopilotKit's REST transport (web: useSingleEndpoint
+  // false). Everything else of the runtime — its thread listing, events, state, the single endpoint,
+  // any prefixed path its router would still resolve — stays closed: those know no owner.
   app.all(`${COPILOT_BASE_PATH}/*`, async (c) => {
     const a = access(c);
     // The admin's draft check: CopilotKit adds headers to its requests but not query parameters.
     const mode = c.req.query('draft') === '1' || c.req.header(DRAFT_HEADER) === '1' ? 'draft' : 'published';
-    const match = RUN_PATH.exec(c.req.path.slice(COPILOT_BASE_PATH.length));
-    if (!match) {
+    const resourceId = mode === 'draft' ? draftResourceId(a.userId) : a.userId;
+    const path = c.req.path.slice(COPILOT_BASE_PATH.length);
+    const method = c.req.method;
+
+    if (method === 'GET' && path === INFO_PATH) {
       const agentIds = deps.registry.agents.map((rt) => rt.passport.id).filter((id) => a.isSuperadmin || a.agentIds.has(id));
       if (agentIds.length === 0) return c.json({ agents: {} });
       return deps.copilot.handle(c.req.raw, { kind: 'listing', userId: a.userId, agentIds, mode });
     }
-    const [, agentId, action] = match as unknown as [string, string, string];
+
+    const stop = method === 'POST' ? STOP_PATH.exec(path) : null;
+    if (stop) {
+      const [, agentId, threadId] = stop as unknown as [string, string, string];
+      assertAgentOpen(deps, a, agentId, mode);
+      const thread = await deps.memory.getThreadById({ threadId: decodeURIComponent(threadId) });
+      if (!thread || thread.resourceId !== resourceId) throw notFound('stop of a foreign or unknown thread');
+      return deps.copilot.handle(c.req.raw, { kind: 'listing', userId: a.userId, agentIds: [agentId], mode });
+    }
+
+    const match = method === 'POST' ? AGENT_PATH.exec(path) : null;
+    if (!match) throw notFound(`CopilotKit address ${method} ${path} is not served`);
+    const [, agentId, action] = match as unknown as [string, string, 'run' | 'connect'];
     assertAgentOpen(deps, a, agentId, mode);
     if (action === 'connect') {
       const { threadId } = (await c.req.raw.clone().json()) as { threadId?: string };
       if (!threadId || !SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
-      return connectResponse(deps, { userId: a.userId, resourceId: mode === 'draft' ? draftResourceId(a.userId) : a.userId, agentId, threadId });
-    }
-    if (action !== 'run') {
-      return deps.copilot.handle(c.req.raw, { kind: 'listing', userId: a.userId, agentIds: [agentId], mode });
+      return connectResponse(deps, { userId: a.userId, resourceId, agentId, threadId });
     }
     const input = (await c.req.raw.clone().json()) as RunInput;
     const run = await prepareRun(deps, a, agentId, mode, input);
     try {
       const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run });
-      const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents(d));
+      // The cancelled call shows the arguments as the model sent them (the database keeps a summary).
+      const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
+      const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));
       return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw), afterStart });
     } catch (error) {
       releaseThread(run.threadId);
@@ -125,7 +146,10 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       throw new AppError({ code: 'APP_UPLOAD_TOO_LARGE', message: 'request body over the upload limit', userMessage: ERROR_CATALOG.APP_UPLOAD_TOO_LARGE.userMessage, status: 413 });
     }
     const thread = await deps.memory.getThreadById({ threadId });
-    if (thread && thread.resourceId !== userId) throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
+    // The person's own conversation, or their draft check of an agent's prompt.
+    if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
+      throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
+    }
     const form = await c.req.parseBody();
     const file = form.file;
     if (!(file instanceof File)) throw new AppError({ code: 'APP_VALIDATION_FAILED', message: 'no file field', userMessage: 'Файл не получен. Попробуйте прикрепить его ещё раз.', status: 400 });

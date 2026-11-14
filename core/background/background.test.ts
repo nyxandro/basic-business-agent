@@ -68,6 +68,35 @@ describe('background tasks', () => {
     expect(((await again.json()) as { error: { code: string } }).error.code).toBe('APP_APPROVAL_DECIDED');
   });
 
+  it('keeps the approvals screen working after the task’s conversation was deleted', async () => {
+    await newTask('deleted-thread');
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'gone@example.com', text: 'x' } }] });
+    expect(await t.background.runTask('deleted-thread', 'manual')).toBe('awaiting-approval');
+    expect((await t.call('DELETE', '/app/api/threads/bg:deleted-thread', { cookie: olga })).status).toBe(200);
+    const res = await t.call('GET', '/app/api/approvals', { cookie: olga });
+    expect(res.status).toBe(200);
+    const { pending } = (await res.json()) as { pending: { task: string; args: unknown }[] };
+    // Without the conversation only the summary kept in the database is left to show.
+    expect(pending.find((p) => p.task === 'Сводка deleted-thread')?.args).toEqual({ to: '<почта>', text: 'x' });
+  });
+
+  it('answers a task’s question only on the approvals screen, not from the chat', async () => {
+    await newTask('chat-answer');
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'chat@example.com', text: 'x' } }] });
+    expect(await t.background.runTask('chat-answer', 'manual')).toBe('awaiting-approval');
+    const body = { threadId: 'bg:chat-answer', runId: 'r', messages: [], tools: [], context: [], state: {}, forwardedProps: {} };
+    const connected = await (await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie: olga, body })).text();
+    expect(connected).not.toContain('"interrupt"');
+
+    const row = (await t.db.query<{ run_id: string; tool_call_id: string }>(`SELECT run_id, tool_call_id FROM app.approval_requests WHERE task_id = 'chat-answer'`)).rows[0]!;
+    const resume = [{ interruptId: `mastra-approval::${row.run_id}::${row.tool_call_id}`, status: 'resolved', payload: { approved: true } }];
+    const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', { cookie: olga, body: { ...body, resume } });
+    expect(res.status).toBe(400);
+    expect(t.sentMail).toEqual([]);
+    const status = await t.db.query<{ status: string }>(`SELECT status FROM app.approval_requests WHERE task_id = 'chat-answer'`);
+    expect(status.rows[0]!.status).toBe('pending');
+  });
+
   it('lets an unanswered question expire after 72 hours without running the action, and the next run is not stuck', async () => {
     await newTask('expiring');
     t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'late@example.com', text: 'x' } }] }, { text: 'Хорошо.' });
