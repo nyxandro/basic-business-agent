@@ -3,9 +3,12 @@ import { useState, type SubmitEvent } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
+import { Button } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Spinner } from '../ui/Loading.tsx';
+import { Field, Input } from '../ui/Field.tsx';
 import { signIn } from './api.ts';
+import { AuthFrame } from './AuthFrame.tsx';
+import styles from './auth.module.css';
 import { safeNextPath } from './next-path.ts';
 import { useSession } from './session.tsx';
 
@@ -37,28 +40,19 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-page">
-      <form className="auth-form" onSubmit={(e) => void submit(e)}>
-        <h1>{ru.login.title}</h1>
+    <AuthFrame title={ru.login.title} lead={ru.login.lead}>
+      <form className={styles.form} onSubmit={(e) => void submit(e)}>
         {error ? <ErrorBanner error={error} /> : null}
-        <label>
-          {ru.login.email}
-          <input type="email" name="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label>
-          {ru.login.password}
-          <input type="password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        <button type="submit" disabled={busy}>
-          {busy ? (
-            <>
-              <Spinner /> {ru.login.submitting}
-            </>
-          ) : (
-            ru.login.submit
-          )}
-        </button>
+        <Field label={ru.login.email}>
+          <Input type="email" name="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label={ru.login.password}>
+          <Input type="password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <Button type="submit" variant="primary" size="lg" block disabled={busy}>
+          {busy ? ru.login.submitting : ru.login.submit}
+        </Button>
       </form>
-    </main>
+    </AuthFrame>
   );
 }

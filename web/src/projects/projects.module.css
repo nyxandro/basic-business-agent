@@ -102,6 +102,8 @@
 
 /* The project page. */
 .page {
+  width: 100%;
+  box-sizing: border-box;
   max-width: 880px;
   margin: 0 auto;
   padding: 32px 24px 48px;

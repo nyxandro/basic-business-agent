@@ -1,0 +1,31 @@
+/* The column of a person's page (mockup «Ждёт подтверждения»); the area under the header scrolls. */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page {
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 36px 24px 48px;
+}
+
+.body {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 859px) {
+  .page {
+    padding: 20px 16px 32px;
+  }
+
+  .body {
+    margin-top: 18px;
+  }
+}

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
@@ -11,16 +11,18 @@ describe('my memory', () => {
       server.set('GET /app/api/me/memory', { body: { text: '', empty: true } });
       return { body: { ok: true } };
     });
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     renderApp('/settings');
     const user = userEvent.setup();
     expect(await screen.findByText(/ведёт юрлиц/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Забыть всё' }));
-    expect(confirm).toHaveBeenCalledWith('Агенты забудут всё, что запомнили о вас. Разговоры останутся — их можно удалить в списке разговоров. Забыть?');
+    const question = screen.getByRole('alertdialog', { name: 'Забыть всё?' });
+    expect(within(question).getByText('Агенты забудут всё, что запомнили о вас. Разговоры останутся — их можно удалить в списке разговоров.')).toBeInTheDocument();
+    await user.click(within(question).getByRole('button', { name: 'Отмена' }));
     expect(server.calls.some((c) => c.method === 'DELETE')).toBe(false);
 
     await user.click(screen.getByRole('button', { name: 'Забыть всё' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Забыть всё' }));
     expect(await screen.findByText('Память очищена')).toBeInTheDocument();
     expect(await screen.findByText('Агенты пока ничего о вас не запомнили')).toBeInTheDocument();
   });

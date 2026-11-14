@@ -5,10 +5,14 @@ import { useCallback, useState, type SubmitEvent } from 'react';
 import { Navigate, useParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
+import { Button } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton, Spinner } from '../ui/Loading.tsx';
+import { Field, Input } from '../ui/Field.tsx';
+import { Skeleton } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { acceptPasswordLink, readPasswordLink, signIn, type PasswordLinkKind } from './api.ts';
+import { AuthFrame } from './AuthFrame.tsx';
+import styles from './auth.module.css';
 import { useSession } from './session.tsx';
 
 const TEXTS = {
@@ -54,40 +58,32 @@ export function PasswordLinkPage({ kind }: { kind: PasswordLinkKind }) {
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-form">
-        <h1>{texts.title}</h1>
-        {state.status === 'loading' ? <Skeleton rows={2} /> : null}
-        {state.status === 'error' ? <ErrorBanner error={state.error} /> : null}
-        {state.status === 'ready' ? (
-          <form onSubmit={(e) => void submit(e)}>
-            <p>{texts.lead(state.data)}</p>
-            {error ? <ErrorBanner error={error} /> : null}
-            <label>
-              {ru.password.password}
-              <input type="password" name="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-            </label>
-            <label>
-              {ru.password.repeat}
-              <input type="password" name="repeat" autoComplete="new-password" required value={repeat} onChange={(e) => setRepeat(e.target.value)} />
-            </label>
-            {problem ? (
-              <p className="field-error" role="alert">
-                {problem}
-              </p>
-            ) : null}
-            <button type="submit" disabled={busy}>
-              {busy ? (
-                <>
-                  <Spinner /> {ru.saving}
-                </>
-              ) : (
-                texts.submit
-              )}
-            </button>
-          </form>
-        ) : null}
-      </div>
-    </main>
+    <AuthFrame title={texts.title} lead={state.status === 'ready' ? texts.lead(state.data) : undefined}>
+      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'error' ? (
+        <div className={styles.form}>
+          <ErrorBanner error={state.error} />
+        </div>
+      ) : null}
+      {state.status === 'ready' ? (
+        <form className={styles.form} onSubmit={(e) => void submit(e)}>
+          {error ? <ErrorBanner error={error} /> : null}
+          <Field label={ru.password.password} hint={ru.password.hint(MIN_PASSWORD_LENGTH)}>
+            <Input type="password" name="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          <Field label={ru.password.repeat}>
+            <Input type="password" name="repeat" autoComplete="new-password" required value={repeat} onChange={(e) => setRepeat(e.target.value)} />
+          </Field>
+          {problem ? (
+            <p className={styles.problem} role="alert">
+              {problem}
+            </p>
+          ) : null}
+          <Button type="submit" variant="primary" size="lg" block disabled={busy}>
+            {busy ? ru.saving : texts.submit}
+          </Button>
+        </form>
+      ) : null}
+    </AuthFrame>
   );
 }
