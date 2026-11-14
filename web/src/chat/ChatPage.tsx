@@ -80,7 +80,7 @@ export function ChatPage() {
   const threadId = params.get('thread');
 
   if (!agentId) throw new Error('ChatPage needs the :agentId route parameter');
-  if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace state={location.state} />;
+  if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace state={location.state as unknown} />;
   if (!agents) return <Skeleton rows={4} />;
   const agent = agents.find((a) => a.id === agentId);
   if (!agent) return <Notice>{ru.chat.noAgent}</Notice>;
