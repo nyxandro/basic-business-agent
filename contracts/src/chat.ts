@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 // Agents open to the person (GET /app/api/agents): what the chat list shows on its cards.
 // What the confirmation card shows: the name of the action and the labels of its fields, taken
 // from the tool's own description (spec, section 8.4).
@@ -54,6 +56,30 @@ export function splitAttachments(text: string): { text: string; files: Pick<Uplo
   const lines = text.slice(at + ATTACHMENTS_MARKER.length).split('\n');
   const files = lines.map((l) => ATTACHMENT_LINE.exec(l)).filter((m): m is RegExpExecArray => m !== null).map((m) => ({ name: m[1]!, path: m[2]! }));
   return files.length === lines.length ? { text: text.slice(0, at), files } : { text, files: [] };
+}
+
+// Events our server adds to the AG-UI stream of the chat as CUSTOM events (spec, section 9.1).
+export const CHAT_EVENTS = {
+  // The person saw words of a model call that broke and was asked again: the message goes off the screen.
+  messageDiscarded: 'bba.message_discarded',
+  // On opening a conversation: its answers that broke and stayed broken.
+  turnsFailed: 'bba.turns_failed',
+} as const;
+
+export const messageDiscardedSchema = z.object({ messageId: z.string().min(1) });
+
+export const failedTurnsSchema = z.object({
+  // Answers that broke, as they are on the screen («Ответ прервался» under them).
+  interruptedMessageIds: z.array(z.string()),
+  // The last answer of the conversation broke: what happened, in our code and words; it can be answered again.
+  last: z.object({ code: z.string(), message: z.string() }).nullable(),
+});
+export type FailedTurns = z.infer<typeof failedTurnsSchema>;
+
+// POST /app/api/threads/:threadId/retry: the person's question of the broken last answer, taken out
+// of the conversation together with the answer, to be sent again as it was (attachments included).
+export interface RetryTurnResponse {
+  text: string;
 }
 
 export interface ThreadSummaryDto {

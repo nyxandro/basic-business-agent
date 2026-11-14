@@ -3,6 +3,10 @@
 // TEST_CHATGPT_PORT as the ChatGPT of the subscription accounts.
 import { serve, type ServerType } from '@hono/node-server';
 import { Agent } from '@mastra/core/agent';
+import { RequestContext } from '@mastra/core/request-context';
+import type { AgentRuntime } from '../loader/registry.ts';
+import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS } from '../runtime/agent-factory.ts';
+import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
 import { silentWav, startFakeModel } from './fake-openai.ts';
@@ -109,6 +113,40 @@ describe('model gateway', () => {
     const userId = await t.createUser({ email: 'errors@example.com' });
     expect((await askError(userId, 'test-ratelimited')).code).toBe('APP_MODEL_RATE_LIMITED');
     expect((await askError(userId, 'test-down')).code).toBe('APP_MODEL_UNAVAILABLE');
+  });
+
+  it('asks the model again when the provider cut its answer off mid-way, and the answer arrives whole (spec, 9.1)', async () => {
+    // As Groq on 15.11: a few words, then the connection closes. LiteLLM cannot repeat a stream that
+    // has already sent words and reports the break with its own frame inside the stream.
+    const key = 'sk-break-mid-answer-7d21';
+    const provider = await startFakeModel({ host: '0.0.0.0', acceptKey: key });
+    const userId = await t.createUser({ email: 'break@example.com', roleIds: [await t.roleId('superadmin')] });
+    const PRICES = { input: 1000, output: 2000, cacheRead: 0, cacheWrite: 0, reasoning: 0, image: 0 };
+    try {
+      const model = await t.models.create(userId, { kind: 'chat', label: 'Обрыв', connection: 'api_key', providerModel: 'openai/break-test', apiBase: provider.dockerUrl, vision: false, prices: PRICES, pricePerMinute: null, key });
+      const before = provider.requests.length;
+      provider.script({ text: 'Пр', cut: 'drop' }, { text: 'Привет! Чем помочь?' });
+      const rt: AgentRuntime = {
+        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [], starters: [] },
+        dir: '/x',
+        instructions: 'Ты помощник.',
+        tools: {},
+        readOnly: new Set(),
+        subagents: [],
+        connectorIds: [],
+        toolSystems: {},
+      };
+      const agent = createMastraAgent(rt, { gateway: t.gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, processorsFor: () => ({ input: [], output: [] }) });
+      const rc = new RequestContext();
+      rc.set(REQUEST_KEYS.userId, userId);
+      rc.set(REQUEST_KEYS.modelId, model.id);
+      rc.set(REQUEST_KEYS.skillPaths, '[]');
+      const out = await agent.stream('привет', { requestContext: rc });
+      expect(await out.text).toBe('Привет! Чем помочь?');
+      expect(provider.requests.length - before).toBe(2);
+    } finally {
+      await provider.close();
+    }
   });
 
   it('recognises a refused provider key in the text of a chat stream error, which has no status', async () => {

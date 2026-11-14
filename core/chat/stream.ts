@@ -1,6 +1,8 @@
 // Wraps the AG-UI event stream of a chat run: releases the conversation when the stream ends
-// (normally or because the browser left) and turns raw run errors into our codes and texts.
+// (normally or because the browser left), turns raw run errors into our codes and texts and tells
+// the chat which shown messages a repeated model call dropped.
 import { logEvent } from '../server/log.ts';
+import { createDiscardTracker } from './discards.ts';
 
 export interface TranslatedError {
   code: string;
@@ -12,6 +14,8 @@ export interface RunStreamHooks {
   translate(rawMessage: string): Promise<TranslatedError>;
   // Events to put right after RUN_STARTED (e.g. results of calls cancelled before the turn).
   afterStart: object[];
+  // Ids of Mastra responses whose model call broke and was asked again, since the last call (spec, 9.1).
+  takeDiscarded(): string[];
 }
 
 async function rewriteEvent(line: string, hooks: RunStreamHooks): Promise<string> {
@@ -41,6 +45,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
   let buffer = '';
   let ended = false;
   let started = false;
+  const discards = createDiscardTracker(() => hooks.takeDiscarded());
   const withPrelude = (line: string): string => {
     if (started || hooks.afterStart.length === 0 || !line.includes('"RUN_STARTED"')) return line;
     started = true;
@@ -57,7 +62,9 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
       try {
         const { done, value } = await reader.read();
         if (done) {
-          if (buffer) controller.enqueue(encoder.encode(await rewriteEvent(buffer, hooks)));
+          if (buffer) controller.enqueue(encoder.encode(discards.pass(await rewriteEvent(buffer, hooks))));
+          const rest = discards.rest();
+          if (rest) controller.enqueue(encoder.encode(rest));
           controller.close();
           end();
           return;
@@ -66,7 +73,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         const out: string[] = [];
-        for (const line of lines) out.push(withPrelude(await rewriteEvent(line, hooks)));
+        for (const line of lines) out.push(withPrelude(discards.pass(await rewriteEvent(line, hooks))));
         controller.enqueue(encoder.encode(out.map((l) => `${l}\n`).join('')));
       } catch (error) {
         end();

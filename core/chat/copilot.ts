@@ -6,12 +6,14 @@ import { MastraAgent } from '@ag-ui/mastra';
 import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime';
 import type { AbstractAgent } from '@ag-ui/client';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
+import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
 
 export const COPILOT_BASE_PATH = '/app/api/copilotkit';
 
 export type CopilotRequestContext =
-  | { kind: 'run'; run: PreparedRun }
+  // `onMessageDiscarded` learns the messages whose words a repeated model call dropped (spec, 9.1).
+  | { kind: 'run'; run: PreparedRun; onMessageDiscarded: (messageId: string) => void }
   // /info and connect: the agents open to the employee, without a conversation-bound context.
   | { kind: 'listing'; userId: string; agentIds: string[]; mode: 'published' | 'draft' };
 
@@ -30,16 +32,19 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
   disableCopilotTelemetry();
   const contexts = new WeakMap<Request, CopilotRequestContext>();
 
-  async function agentFor(agentId: string, run: PreparedRun): Promise<AbstractAgent> {
+  // A listing never calls a model, so only a run is told about dropped messages.
+  async function agentFor(agentId: string, run: PreparedRun, onMessageDiscarded?: (messageId: string) => void): Promise<AbstractAgent> {
     const agent = await resolveAgent(deps.editor, agentId, run.mode);
-    return new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext: requestContextFor(run) });
+    const requestContext = requestContextFor(run);
+    if (onMessageDiscarded) requestContext.set(REQUEST_KEYS.messageDiscarded, onMessageDiscarded);
+    return new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext });
   }
 
   const runtime = new CopilotRuntime({
     agents: async ({ request }) => {
       const ctx = contexts.get(request);
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
-      if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run) };
+      if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run, ctx.onMessageDiscarded) };
       const entries = await Promise.all(
         ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, models: null, skillPaths: [] })] as const),
       );

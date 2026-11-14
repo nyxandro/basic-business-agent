@@ -103,11 +103,13 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const input = (await c.req.raw.clone().json()) as RunInput;
     const run = await prepareRun(deps, a, agentId, mode, input);
     try {
-      const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run });
+      // Messages whose shown words a repeated model call dropped, for the chat (spec, 9.1).
+      const discarded: string[] = [];
+      const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId) });
       // The cancelled call shows the arguments as the model sent them (the database keeps a summary).
       const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
       const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));
-      return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw), afterStart });
+      return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw), afterStart, takeDiscarded: () => discarded.splice(0) });
     } catch (error) {
       releaseThread(run.threadId);
       throw error;

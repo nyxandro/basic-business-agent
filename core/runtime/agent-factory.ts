@@ -1,7 +1,7 @@
 // Builds the Mastra agent of an agent runtime: model on the employee's key, tools of plugins and
 // connected systems, interface blocks, memory, the sandbox and sub-agents.
 import { Agent, type ModelWithRetries } from '@mastra/core/agent';
-import { StreamErrorRetryProcessor, type ErrorProcessor, type InputProcessorOrWorkflow, type OutputProcessorOrWorkflow } from '@mastra/core/processors';
+import type { ErrorProcessor, InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -12,6 +12,7 @@ import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE
 import type { ModelGateway } from '../models/gateway.ts';
 import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
+import { createStreamRetry, isGatewayStreamBreak } from './stream-retry.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
 // Only the first chunk is timed: a total deadline would end the run instead of switching.
@@ -19,15 +20,18 @@ export const FALLBACK_FIRST_CHUNK_MS = 60_000;
 
 // Mastra repeats a call that failed with a transient error once before it tries the fallback.
 // LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
-// repeat only delays the switch; without one Mastra keeps its own repeat.
-const SWITCH_AT_ONCE = new StreamErrorRetryProcessor({ maxRetries: 0 });
+// repeat only delays the switch; without one the repeat stays. A stream that broke after the first
+// words is repeated once in both cases (core/runtime/stream-retry.ts).
+const RETRY_ONCE = createStreamRetry(1);
+const SWITCH_AT_ONCE = createStreamRetry(0);
 
 // Mastra has no event of the switch itself; the failure of the primary that causes it reaches the
-// error processors first. Only the first failure of a request is the primary's.
+// error processors first. Only the first failure of a request is the primary's; a broken stream is
+// asked again on the primary, not switched.
 const FALLBACK_LOG: ErrorProcessor = {
   id: 'bba-model-fallback-log',
   processAPIError({ error, requestContext, state }) {
-    if (state.logged) return;
+    if (state.logged || isGatewayStreamBreak(error)) return;
     state.logged = true;
     logEvent('warn', 'model_fallback_used', {
       agentId: optionalContextValue(requestContext, REQUEST_KEYS.agentId),
@@ -96,6 +100,6 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,
-    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_LOG, SWITCH_AT_ONCE] : []),
+    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_LOG, SWITCH_AT_ONCE] : [RETRY_ONCE]),
   });
 }

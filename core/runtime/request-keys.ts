@@ -15,6 +15,9 @@ export const REQUEST_KEYS = {
   // Folders of the skills the employee gets (core/skills-admin/runtime.ts), JSON: fixed for the run,
   // so a skill replaced meanwhile does not change under a running answer.
   skillPaths: 'bba.skillPaths',
+  // Chat runs only: a function told the id of a message whose words the person already saw when the
+  // model call broke and was asked again, so the chat takes them off the screen (spec, 9.1).
+  messageDiscarded: 'bba.messageDiscarded',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';

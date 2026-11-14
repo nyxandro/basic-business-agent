@@ -25,8 +25,19 @@ export function silentWav(seconds: number): Uint8Array {
   return new Uint8Array(Buffer.concat([head, data]));
 }
 
+// The error frame LiteLLM's proxy sends inside a stream that broke after it started
+// (proxy_server.async_data_generator: `data: {"error": ProxyException.to_dict()}`).
+export interface GatewayStreamError {
+  message: string;
+  type: string | null;
+  param: string | null;
+  code: string;
+}
+
 export type FakeTurn =
-  | { text: string; chunkSize?: number; delayMs?: number }
+  // `cut` breaks the stream after the text: 'drop' closes the connection as a provider that went
+  // away (what LiteLLM sees), an error frame is what LiteLLM then sends on.
+  | { text: string; chunkSize?: number; delayMs?: number; cut?: 'drop' | GatewayStreamError }
   | { toolCalls: { name: string; args: Record<string, unknown> }[] }
   | { status: number; error: string };
 
@@ -52,11 +63,18 @@ export interface FakeModel {
 const USAGE = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
 export const FAKE_TRANSCRIPT = 'Тестовая речь';
 
-function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string): void {
+function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string, cut?: 'drop' | GatewayStreamError): void {
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const base = { id: 'fake', object: 'chat.completion.chunk', created: 1, model: 'fake' };
   for (const delta of chunks) res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
-  res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: USAGE })}\n\n`);
+  if (cut === 'drop') {
+    // Let the text reach the reader before the connection goes, as a provider that sent a few
+    // words and went away.
+    setTimeout(() => res.socket?.destroy(), 50);
+    return;
+  }
+  if (cut) res.write(`data: ${JSON.stringify({ error: cut })}\n\n`);
+  else res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: USAGE })}\n\n`);
   res.write('data: [DONE]\n\n');
   res.end();
 }
@@ -77,7 +95,7 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
     const size = turn.chunkSize ?? 8;
     const parts: object[] = [];
     for (let i = 0; i < turn.text.length; i += size) parts.push(i === 0 ? { role: 'assistant', content: turn.text.slice(i, i + size) } : { content: turn.text.slice(i, i + size) });
-    return sse(res, parts.length ? parts : [{ role: 'assistant', content: '' }], 'stop');
+    return sse(res, parts.length ? parts : [{ role: 'assistant', content: '' }], 'stop', turn.cut);
   }
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: USAGE }));
