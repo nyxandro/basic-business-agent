@@ -1,0 +1,95 @@
+/* «Маскирование» (mockup). */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.list {
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  font-weight: 500;
+}
+
+.locked {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.example {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.said {
+  padding: 16px 18px;
+}
+
+.seen {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.seen .mono {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.exampleLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.mark {
+  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.ph {
+  white-space: nowrap;
+  color: var(--acc-text);
+  font-weight: 500;
+}
+
+.guard {
+  margin: 0;
+  padding: 0 4px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--muted);
+}

@@ -1,43 +1,65 @@
-// «Журнал действий» (spec, section 8.4): what agents did in external systems, who answered «Да».
+// «Журнал действий» (spec, section 8.4; mockup): what agents did in external systems, in the chat or
+// in the background, and who answered «Да». Records are never deleted.
 import type { JournalEntry } from '@bba/contracts';
 import { useCallback, useState } from 'react';
+import { Button } from '../ui/Button.tsx';
+import { Card, EmptyState, PageHead, Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { Field, Input } from '../ui/Field.tsx';
 import { dateTime } from '../ui/format.ts';
 import { Skeleton } from '../ui/Loading.tsx';
+import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
 import { monthStart, today } from './dates.ts';
+import styles from './journal.module.css';
+import section from './section.module.css';
 
 const EVENTS: Record<string, string> = {
-  tool_call: 'действие',
-  tool_declined: 'отказ',
-  approval_expired: 'вопрос истёк',
-  background_started: 'запуск задачи',
-  background_finished: 'задача завершена',
-  background_skipped: 'запуск пропущен',
+  tool_call: 'Действие',
+  tool_declined: 'Отказ',
+  approval_expired: 'Вопрос истёк',
+  background_started: 'Запуск задачи',
+  background_finished: 'Задача завершена',
+  background_skipped: 'Запуск пропущен',
 };
-const RESULTS: Record<string, string> = { ok: 'выполнено', error: 'ошибка', declined: 'отменено', expired: 'истекло', skipped: 'пропущено', started: 'начато' };
+const RESULTS: Record<string, { text: string; tone: Tone }> = {
+  ok: { text: 'Выполнено', tone: 'ok' },
+  error: { text: 'Ошибка', tone: 'bad' },
+  declined: { text: 'Отклонено', tone: 'neutral' },
+  expired: { text: 'Истекло', tone: 'warn' },
+  skipped: { text: 'Пропущено', tone: 'warn' },
+  started: { text: 'Начато', tone: 'accent' },
+};
+const MAX_ARGS = 160;
 
-const argsText = (args: unknown) => (args === null || args === undefined ? '' : JSON.stringify(args));
+function argsText(args: unknown): string {
+  if (args === null || args === undefined) return '';
+  const text = JSON.stringify(args);
+  return text.length > MAX_ARGS ? `${text.slice(0, MAX_ARGS)}…` : text;
+}
 
 function Row({ e }: { e: JournalEntry }) {
+  const result = RESULTS[e.result] ?? { text: e.result, tone: 'neutral' as Tone };
   return (
     <tr>
-      <td>{dateTime(e.at)}</td>
+      <td className={styles.when}>{dateTime(e.at)}</td>
       <td>{e.user ?? '—'}</td>
       <td>{e.agent ?? '—'}</td>
       <td>
-        {EVENTS[e.event] ?? e.event}
-        {e.runKind === 'background' ? ' (фоновая)' : ''}
+        <Pill>{e.runKind === 'background' ? 'фон' : 'чат'}</Pill>
       </td>
       <td>
-        {e.tool ?? ''}
-        {e.args ? <div className="muted journal-args">{argsText(e.args)}</div> : null}
+        <div>
+          {EVENTS[e.event] ?? e.event}
+          {e.tool ? <span className={styles.tool}> {e.tool}</span> : null}
+        </div>
+        {e.args ? <div className={styles.args}>{argsText(e.args)}</div> : null}
       </td>
-      <td>{e.approvedBy ? 'подтвердил сотрудник' : '—'}</td>
       <td>
-        {RESULTS[e.result] ?? e.result}
-        {e.errorCode ? <span className="banner-code"> {e.errorCode}</span> : null}
+        <Pill tone={result.tone}>{result.text}</Pill>
+        {e.errorCode ? <div className={styles.code}>{e.errorCode}</div> : null}
+        {e.approvedBy ? <div className={section.sub}>«Да» — {e.approvedBy}</div> : null}
       </td>
     </tr>
   );
@@ -50,40 +72,51 @@ export function JournalSection() {
   const load = useCallback(() => adminApi.journal({ from, to, page }), [from, to, page]);
   const { state, reload } = useLoad(load);
   return (
-    <div>
-      <h1>Журнал действий</h1>
-      <div className="filters">
-        <label>
-          С
-          <input type="date" value={from} max={to} onChange={(e) => {
+    <div className={section.stack}>
+      <PageHead title="Журнал действий" lead="Что агенты сделали во внешних системах и кто подтвердил. Записи не удаляются." />
+      <div className={`${styles.filters} rise`}>
+        <Field label="С">
+          <Input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => {
               setFrom(e.target.value);
               setPage(1);
-            }} />
-        </label>
-        <label>
-          По
-          <input type="date" value={to} min={from} onChange={(e) => {
+            }}
+          />
+        </Field>
+        <Field label="По">
+          <Input
+            type="date"
+            value={to}
+            min={from}
+            onChange={(e) => {
               setTo(e.target.value);
               setPage(1);
-            }} />
-        </label>
+            }}
+          />
+        </Field>
       </div>
       {state.status === 'loading' ? <Skeleton rows={4} /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
-      {state.status === 'ready' && state.data.entries.length === 0 ? <p className="empty">За этот период записей нет.</p> : null}
+      {state.status === 'ready' && state.data.entries.length === 0 ? (
+        <Card>
+          <EmptyState title="За этот период записей нет" />
+        </Card>
+      ) : null}
       {state.status === 'ready' && state.data.entries.length > 0 ? (
         <>
-          <div className="table-scroll">
-            <table className="admin-table">
+          <Card className={`${section.tableCard} rise`}>
+            <Table minWidth={860} label="Журнал действий">
               <thead>
                 <tr>
                   <th scope="col">Когда</th>
                   <th scope="col">Сотрудник</th>
                   <th scope="col">Агент</th>
-                  <th scope="col">Событие</th>
+                  <th scope="col">Режим</th>
                   <th scope="col">Действие</th>
-                  <th scope="col">«Да»</th>
-                  <th scope="col">Итог</th>
+                  <th scope="col">Результат</th>
                 </tr>
               </thead>
               <tbody>
@@ -91,16 +124,16 @@ export function JournalSection() {
                   <Row key={e.id} e={e} />
                 ))}
               </tbody>
-            </table>
-          </div>
-          <div className="row-buttons">
-            <button type="button" className="secondary" disabled={page === 1} onClick={() => setPage(page - 1)}>
+            </Table>
+          </Card>
+          <div className={styles.pages}>
+            <Button disabled={page === 1} onClick={() => setPage(page - 1)}>
               Назад
-            </button>
-            <span className="muted">Страница {page}</span>
-            <button type="button" className="secondary" disabled={state.data.entries.length < state.data.pageSize} onClick={() => setPage(page + 1)}>
+            </Button>
+            <span className={section.sub}>Страница {page}</span>
+            <Button disabled={state.data.entries.length < state.data.pageSize} onClick={() => setPage(page + 1)}>
               Дальше
-            </button>
+            </Button>
           </div>
         </>
       ) : null}

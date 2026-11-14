@@ -1,0 +1,59 @@
+/* «Профиль организации» (mockup). */
+.page {
+  max-width: 720px;
+}
+
+.card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.segment {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.option {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.optionOn {
+  background: var(--surface);
+  box-shadow: 0 1px 4px var(--shadow);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.foot > :first-child {
+  flex: 1;
+}

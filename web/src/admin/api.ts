@@ -1,7 +1,7 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
   AdminAgentsResponse,
-  AdminConnection,
+  AdminConnectionsResponse,
   AdminDepartment,
   AdminInvite,
   AdminRole,
@@ -116,7 +116,7 @@ export const adminApi = {
   masking: () => api<{ kinds: string[] }>('GET', `${A}/masking`),
   saveMasking: (kinds: string[]) => api<Ok>('PUT', `${A}/masking`, { kinds }),
 
-  connections: () => api<{ connections: AdminConnection[] }>('GET', `${A}/connections`),
+  connections: () => api<AdminConnectionsResponse>('GET', `${A}/connections`),
 
   journal: (q: { from: string; to: string; page: number; userId?: string; agentId?: string }) => {
     const params = new URLSearchParams({ from: q.from, to: q.to, page: String(q.page) });
