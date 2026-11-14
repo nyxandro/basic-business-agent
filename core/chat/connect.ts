@@ -80,9 +80,10 @@ export async function connectResponse(deps: { db: Db; memory: Memory }, input: {
   const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
   // Opening the conversation shows the result of a background task: it is no longer «новое».
   if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
-  // The menu counter of fresh task results reads the task's own flag.
+  // The menu counter of fresh task results reads the flags of the employee's runs of the task.
   if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
-    await deps.db.query('UPDATE app.background_tasks SET unread_result = false WHERE id = $1 AND owner_user_id = $2', [threadId.slice(BACKGROUND_THREAD_PREFIX.length), input.userId]);
+    const taskId = threadId.slice(BACKGROUND_THREAD_PREFIX.length).split(':')[0];
+    await deps.db.query('UPDATE app.background_task_runs SET unread = false WHERE task_id = $1 AND user_id = $2 AND unread', [taskId, input.userId]);
   }
   const pending = await pendingForThread(deps.db, input.userId, threadId);
   const interrupts = pending.map((p) => ({

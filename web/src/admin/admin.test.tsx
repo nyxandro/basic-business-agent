@@ -47,7 +47,7 @@ describe('agent prompt', () => {
     mockServer({
       'GET /app/api/me': { body: ADMIN },
       'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null }], missingAgents: [] } },
-      'GET /app/api/admin/tasks': { body: { tasks: [], withoutOwner: [] } },
+      'GET /app/api/admin/tasks': { body: { tasks: [] } },
       'GET /app/api/admin/agents/sales/prompt': { body: PROMPT },
       'PUT /app/api/admin/agents/sales/prompt/draft': apiError('APP_AGENT_DRAFT_CONFLICT', 'Пока вы редактировали, промпт изменил(а) Ольга. Скопируйте свой текст, обновите страницу и внесите правку в свежую версию.', 409),
     });
@@ -65,7 +65,7 @@ describe('agent prompt', () => {
     mockServer({
       'GET /app/api/me': { body: ADMIN },
       'GET /app/api/admin/agents': { body: { agents: [{ id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null }], missingAgents: ['old-agent'] } },
-      'GET /app/api/admin/tasks': { body: { tasks: [], withoutOwner: [] } },
+      'GET /app/api/admin/tasks': { body: { tasks: [] } },
       'GET /app/api/admin/agents/sales/prompt': { body: { ...PROMPT, publishedInstructions: 'Правка', publishedAt: '2026-11-14T08:00:00.000Z', fileChangedSincePublish: true } },
     });
     renderApp('/admin/agents');

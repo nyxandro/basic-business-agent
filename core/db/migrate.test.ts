@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getMigrations } from 'better-auth/db/migration';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { migrate } from './migrate.ts';
+import { migrate, MIGRATIONS_DIR } from './migrate.ts';
 import { createTestDatabase, type TestDatabase } from './test-database.ts';
 
 const EXPECTED_TABLES = [
@@ -13,7 +13,7 @@ const EXPECTED_TABLES = [
   'org_profile', 'user_profiles', 'invites', 'password_resets', 'limit_settings', 'user_limits',
   'model_keys', 'connector_credentials', 'usage_events', 'background_tasks', 'approval_requests',
   'action_journal', 'agent_overrides', 'admin_audit', 'masking_settings', 'masking_map', 'schema_migrations', 'oauth_states',
-  'projects', 'thread_projects', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope',
+  'projects', 'thread_projects', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs',
 ];
 
 async function query<T extends pg.QueryResultRow>(url: string, sql: string, params: unknown[] = []): Promise<T[]> {
@@ -36,7 +36,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
@@ -52,6 +52,32 @@ describe('migrate', () => {
       expect(plan.toBeAdded.map((t) => `${t.table}: ${Object.keys(t.fields).join(',')}`)).toEqual([]);
     } finally {
       await pool.end();
+    }
+  });
+
+  // 0009: a stage 1 task belonged to its owner; its owner becomes its one employee.
+  it('moves the tasks of stage 1 to their owners, and stops a task without one', async () => {
+    const stage = await createTestDatabase();
+    const before = mkdtempSync(join(tmpdir(), 'bba-migrations-'));
+    try {
+      for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f < '0009')) copyFileSync(join(MIGRATIONS_DIR, f), join(before, f));
+      await migrate(stage.url, before);
+      await query(stage.url, `INSERT INTO app."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") VALUES ('u1', 'Ольга', 'olga@example.com', true, now(), now())`);
+      await query(
+        stage.url,
+        `INSERT INTO app.background_tasks (id, title, agent_id, owner_user_id, cron, prompt, status, thread_id) VALUES
+           ('morning', 'Сводка', 'sales', 'u1', '0 9 * * *', 'x', 'active', 'bg:morning'),
+           ('orphan', 'Ничья', 'sales', NULL, '0 9 * * *', 'x', 'active', 'bg:orphan')`,
+      );
+      expect(await migrate(stage.url)).toContain('0009_task_scope.sql');
+      expect(await query(stage.url, 'SELECT id, scope, created_by, status, paused_reason FROM app.background_tasks ORDER BY id')).toEqual([
+        { id: 'morning', scope: 'users', created_by: 'u1', status: 'active', paused_reason: null },
+        { id: 'orphan', scope: 'users', created_by: null, status: 'paused', paused_reason: 'scope_empty' },
+      ]);
+      expect(await query(stage.url, 'SELECT task_id, user_id, department_id FROM app.task_scope')).toEqual([{ task_id: 'morning', user_id: 'u1', department_id: null }]);
+    } finally {
+      rmSync(before, { recursive: true, force: true });
+      await stage.drop();
     }
   });
 

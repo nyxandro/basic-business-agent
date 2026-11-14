@@ -2,6 +2,7 @@
 // registered (no MastraServer.init()), and everything that matches nothing answers 404 (spec, 17.6).
 import { Hono } from 'hono';
 import { registerModelRoutes } from '../admin/routes/models.ts';
+import { registerTaskRoutes } from '../admin/routes/tasks.ts';
 import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
 import { registerUsageReportRoutes } from '../admin/routes/usage.ts';
@@ -76,5 +77,6 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
   registerModelRoutes(app, deps.models);
   registerSkillRoutes(app, deps.skills);
+  registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;
 }

@@ -112,17 +112,6 @@ export interface PromptState {
   allowedModels: string[];
 }
 
-export interface AdminTask {
-  id: string;
-  title: string;
-  agentId: string;
-  cron: string;
-  status: string;
-  pausedReason: string | null;
-  owner: string | null;
-  lastRunAt: string | null;
-}
-
 export const USAGE_GROUPS = ['user', 'agent', 'model', 'deployment'] as const;
 export type UsageGroup = (typeof USAGE_GROUPS)[number];
 

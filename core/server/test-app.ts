@@ -53,6 +53,7 @@ export interface TestApp {
   // The model behind the test agents: script its answers, read what it received.
   model: FakeModel;
   mastra: Mastra;
+  registry: Registry;
   background: BackgroundService;
   workspaceRoot: string;
   // Mastra memory of the conversations: tests create threads directly.
@@ -221,6 +222,7 @@ export async function createTestApp(
     connections,
     model,
     mastra,
+    registry,
     background,
     workspaceRoot,
     memory,

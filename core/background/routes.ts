@@ -23,7 +23,9 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
     const { pending } = await listForUser(db, userId);
     const argsByThread = new Map<string, Map<string, unknown>>();
     for (const threadId of new Set(pending.map((p) => p.threadId))) argsByThread.set(threadId, await toolCallArgsOf(deps.memory, threadId, userId));
-    const titles = new Map((await db.query<{ id: string; title: string }>('SELECT id, title FROM app.background_tasks WHERE owner_user_id = $1', [userId])).rows.map((r) => [r.id, r.title]));
+    const titles = new Map(
+      (await db.query<{ id: string; title: string }>('SELECT DISTINCT t.id, t.title FROM app.background_tasks t JOIN app.approval_requests a ON a.task_id = t.id WHERE a.user_id = $1', [userId])).rows.map((r) => [r.id, r.title]),
+    );
     const failures = await db.query<{ at: Date; agent_id: string; task_id: string | null; event: string; tool: string | null; error_code: string | null }>(
       `SELECT at, agent_id, task_id, event, tool, error_code FROM app.action_journal
         WHERE user_id = $1 AND run_kind = 'background' AND at > now() - ${FAILURE_WINDOW}
@@ -63,7 +65,7 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
     const userId = access(c).userId;
     const { rows } = await db.query<{ approvals: number; unread: number }>(
       `SELECT (SELECT count(*)::int FROM app.approval_requests WHERE user_id = $1 AND task_id IS NOT NULL AND status = 'pending' AND expires_at > now()) AS approvals,
-              (SELECT count(*)::int FROM app.background_tasks WHERE owner_user_id = $1 AND unread_result) AS unread`,
+              (SELECT count(DISTINCT task_id)::int FROM app.background_task_runs WHERE user_id = $1 AND unread) AS unread`,
       [userId],
     );
     const body: NotificationsResponse = { pendingApprovals: rows[0]?.approvals ?? 0, unreadResults: rows[0]?.unread ?? 0 };
@@ -71,7 +73,7 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
   });
 
   app.post('/app/api/tasks/:id/read', async (c) => {
-    await db.query('UPDATE app.background_tasks SET unread_result = false WHERE id = $1 AND owner_user_id = $2', [c.req.param('id'), access(c).userId]);
+    await db.query('UPDATE app.background_task_runs SET unread = false WHERE task_id = $1 AND user_id = $2 AND unread', [c.req.param('id'), access(c).userId]);
     return c.json({ ok: true });
   });
 }

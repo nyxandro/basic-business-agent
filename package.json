@@ -29,7 +29,6 @@
     "smoke": "bash deploy/smoke.sh",
     "stand": "node --env-file=.env tests/e2e/stand.ts",
     "start": "node core/server/main.ts",
-    "tasks": "node --env-file=.env core/cli/tasks.ts",
     "test": "vitest run && pnpm -C web test",
     "test:e2e": "playwright test",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json"

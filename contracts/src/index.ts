@@ -6,3 +6,4 @@ export * from './chat.ts';
 export * from './settings.ts';
 export * from './models.ts';
 export * from './skills.ts';
+export * from './tasks.ts';

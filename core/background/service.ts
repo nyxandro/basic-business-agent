@@ -1,13 +1,14 @@
-// Background tasks (spec, scenario 4, section 8.6; verified at step 0, V5). Each task is a row of
-// app.background_tasks (the source of truth) and a Mastra schedule of the one-step workflow
-// "background-run". A run works on behalf of the owner — their access, limits, conversation
-// "bg:<taskId>" — and its questions wait on the approvals screen for up to 72 hours.
-import { RequestContext } from '@mastra/core/request-context';
+// Background tasks (spec, scenario 4, section 8.6; mechanism verified at step 0, V5). A task is a
+// row of app.background_tasks with its scope, and a Mastra schedule of the one-step workflow
+// "background-run". A fire puts one run per employee of the scope into the queue (queue.ts);
+// each run works on behalf of that employee — their access, limits and skills — in the
+// conversation "bg:<taskId>:<userId>", and its questions wait on their approvals screen 72 hours.
+import { randomUUID } from 'node:crypto';
 import type { Mastra } from '@mastra/core';
+import { RequestContext } from '@mastra/core/request-context';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
 import type { Memory } from '@mastra/memory';
 import { Cron } from 'croner';
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { decide as decideRow, getApproval, type ApprovalRequest } from '../approvals/requests.ts';
 import { loadAccess } from '../auth/access.ts';
@@ -18,39 +19,36 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import type { Registry } from '../loader/registry.ts';
 import { ensureThread } from '../memory/memory.ts';
-import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
-import { chooseModels, type ModelChoice } from '../models/resolve.ts';
+import { chooseModels } from '../models/resolve.ts';
+import { projectOfThread } from '../projects/projects.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
-import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { logEvent } from '../server/log.ts';
+import type { SkillsRuntime } from '../skills-admin/runtime.ts';
+import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
+import { fireTimeOf } from './schedule.ts';
+import { membersOf } from './scope.ts';
 
 export const BACKGROUND_WORKFLOW_ID = 'background-run';
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 60 * 1000;
 const EXPIRY_SWEEP_MS = 5 * 60 * 1000;
 const EXPIRED_REASON = 'Истекло: сотрудник не ответил за 72 часа.';
+const DELETED_REASON = 'Задачу удалил администратор.';
 
-export type RunOutcome = 'done' | 'awaiting-approval' | 'skipped' | 'failed' | 'paused';
+export type RunOutcome = 'done' | 'awaiting-approval' | 'failed';
+export type FireResult = { status: 'fired'; fireAt: Date; queued: number; skipped: number } | { status: 'not-active' } | { status: 'paused'; reason: string };
 
-export interface TaskInput {
-  id: string;
-  title: string;
-  agentId: string;
-  ownerUserId: string;
-  cron: string;
-  prompt: string;
-}
-
-interface TaskRow {
+export interface TaskRow {
   id: string;
   title: string;
   agent_id: string;
-  owner_user_id: string | null;
+  scope: 'org' | 'departments' | 'users';
   cron: string;
   prompt: string;
   status: 'active' | 'paused';
-  thread_id: string;
+  paused_reason: string | null;
+  created_by: string | null;
   last_run_at: Date | null;
   created_at: Date;
 }
@@ -66,18 +64,24 @@ export interface BackgroundDeps {
 }
 
 export interface BackgroundService {
-  runTask(taskId: string, reason: 'schedule' | 'catch-up' | 'manual'): Promise<RunOutcome>;
+  // A fire of the task: one run per employee of the scope goes into the queue.
+  fire(taskId: string, now?: Date): Promise<FireResult>;
+  // Runs left by a stopped server go on (only those without a result).
+  recover(): Promise<void>;
+  // Resolves when the queue is empty (tests, shutdown).
+  idle(): Promise<void>;
   startAgentRun(input: { agentId: string; userId: string; prompt: string; title: string }): Promise<{ threadId: string; outcome: RunOutcome }>;
   decide(userId: string, approvalId: string, approved: boolean): Promise<void>;
   expireOverdue(): Promise<number>;
+  // Declines the task's waiting questions, then removes it; the conversations stay.
+  deleteTask(taskId: string): Promise<void>;
   syncSchedules(): Promise<void>;
   catchUp(now?: Date): Promise<string[]>;
-  createTask(input: TaskInput): Promise<void>;
   start(): void;
   stop(): void;
 }
 
-const TASK_ID = /^[a-z0-9][a-z0-9-]{1,60}$/;
+export const taskThreadId = (taskId: string, userId: string) => `bg:${taskId}:${userId}`;
 
 export function createBackgroundWorkflow(service: () => BackgroundService) {
   const input = z.object({ taskId: z.string() });
@@ -86,7 +90,7 @@ export function createBackgroundWorkflow(service: () => BackgroundService) {
     id: 'run-background-task',
     inputSchema: input,
     outputSchema: output,
-    execute: async ({ inputData }) => ({ outcome: await service().runTask(inputData.taskId, 'schedule') }),
+    execute: async ({ inputData }) => ({ outcome: (await service().fire(inputData.taskId)).status }),
   });
   return createWorkflow({ id: BACKGROUND_WORKFLOW_ID, inputSchema: input, outputSchema: output }).then(step).commit();
 }
@@ -103,105 +107,166 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
   async function pause(row: TaskRow, reason: string): Promise<void> {
     await db.query("UPDATE app.background_tasks SET status = 'paused', paused_reason = $2, updated_at = now() WHERE id = $1", [row.id, reason]);
-    await writeJournal(db, { userId: row.owner_user_id, agentId: row.agent_id, runKind: 'background', taskId: row.id, event: 'background_skipped', result: 'skipped', errorCode: `APP_TASK_PAUSED_${reason.toUpperCase()}` });
+    await writeJournal(db, { userId: null, agentId: row.agent_id, runKind: 'background', taskId: row.id, event: 'background_skipped', result: 'skipped', errorCode: `APP_TASK_PAUSED_${reason.toUpperCase()}` });
     logEvent('warn', 'background_task_paused', { taskId: row.id, reason });
   }
 
-  async function contextFor(row: { id: string | null; agent_id: string; thread_id: string }, userId: string, models: ModelChoice): Promise<RequestContext> {
-    const projectId = await projectOfThread(db, userId, row.thread_id);
+  async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string): Promise<RequestContext> {
+    const [projectId, models, skillPaths] = await Promise.all([projectOfThread(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId)]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
-    rc.set(REQUEST_KEYS.threadId, row.thread_id);
+    rc.set(REQUEST_KEYS.threadId, threadId);
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, 'background');
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
     if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
-    rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(await deps.skills.skillsFor(userId)));
+    rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skillPaths));
     return rc;
   }
 
-  async function markUnread(threadId: string, taskId: string | null): Promise<void> {
-    if (taskId) await db.query('UPDATE app.background_tasks SET unread_result = true WHERE id = $1', [taskId]);
+  async function markUnread(threadId: string): Promise<void> {
     const thread = await memory.getThreadById({ threadId });
     if (thread) await memory.updateThread({ id: threadId, title: thread.title ?? '', metadata: { ...(thread.metadata ?? {}), unread: true } });
   }
 
-  // Runs the agent on behalf of the owner and reads the stream to its end.
-  async function execute(row: { id: string | null; agent_id: string; thread_id: string; prompt: string; title: string }, userId: string): Promise<RunOutcome> {
+  // The first line of the employee's conversation of a task: who set it up and who may stop it.
+  async function openTaskThread(row: TaskRow, userId: string, threadId: string): Promise<void> {
+    if (await memory.getThreadById({ threadId })) return;
+    await ensureThread(memory, { threadId, resourceId: userId, agentId: row.agent_id, kind: 'background', title: `Задача: ${row.title}` });
+    const { rows } = await db.query<{ name: string }>('SELECT "name" FROM app."user" WHERE "id" = $1', [row.created_by]);
+    const author = rows[0] ? `администратор ${rows[0].name}` : 'администратор';
+    await memory.saveMessages({
+      messages: [
+        {
+          id: randomUUID(),
+          threadId,
+          resourceId: userId,
+          role: 'assistant',
+          createdAt: new Date(),
+          content: { format: 2, parts: [{ type: 'text', text: `Задачу «${row.title}» завёл ${author}. Поставить на паузу или удалить её может администратор.` }] },
+        },
+      ],
+    });
+  }
+
+  // Runs the agent on behalf of the employee and reads the stream to its end.
+  async function execute(row: { id: string | null; agent_id: string; prompt: string }, userId: string, threadId: string): Promise<{ outcome: RunOutcome; code: string | null }> {
     const journalBase = { userId, agentId: row.agent_id, runKind: 'background' as const, taskId: row.id };
     try {
       await deps.gateway.assertWithinBudget(userId);
       const agent = await resolveAgent(deps.editor, row.agent_id, 'published');
-      const models = await chooseModels(db, deps.timezone, userId, row.agent_id);
-      await ensureThread(memory, { threadId: row.thread_id, resourceId: userId, agentId: row.agent_id, kind: 'background', title: `Задача: ${row.title}` });
+      const requestContext = await contextFor(row, threadId, userId);
       await writeJournal(db, { ...journalBase, event: 'background_started', result: 'started' });
-      const stream = await agent.stream(row.prompt, { memory: { thread: row.thread_id, resource: userId }, requestContext: await contextFor(row, userId, models) });
+      const stream = await agent.stream(row.prompt, { memory: { thread: threadId, resource: userId }, requestContext });
       let awaiting = false;
       for await (const part of stream.fullStream) {
         if (part.type === 'tool-call-approval') awaiting = true;
         if (part.type === 'error') throw (part.payload as { error: unknown }).error;
       }
-      await markUnread(row.thread_id, row.id);
+      await markUnread(threadId);
       await writeJournal(db, { ...journalBase, event: 'background_finished', result: 'ok' });
-      return awaiting ? 'awaiting-approval' : 'done';
+      return { outcome: awaiting ? 'awaiting-approval' : 'done', code: null };
     } catch (error) {
       const translated = isAppError(error) ? error : await deps.gateway.translateError(error, userId);
       await writeJournal(db, { ...journalBase, event: 'background_finished', result: 'error', errorCode: translated.code });
-      logEvent('error', 'background_run_failed', { taskId: row.id, code: translated.code, error });
-      return 'failed';
+      logEvent('error', 'background_run_failed', { taskId: row.id, userId, code: translated.code, error });
+      return { outcome: 'failed', code: translated.code };
     }
   }
 
-  async function ownerCanRun(row: TaskRow): Promise<string | null> {
-    if (!row.owner_user_id) return 'owner_missing';
-    if (!deps.registry.get(row.agent_id)) return 'agent_missing';
-    const access = await loadAccess(db, row.owner_user_id);
-    if (!access || access.blocked) return 'owner_blocked';
-    if (!access.isSuperadmin && !access.agentIds.has(row.agent_id)) return 'owner_lost_access';
-    return null;
+  // A run taken from the queue: the employee may have lost access or been blocked since the fire.
+  async function runQueued(run: QueuedRun): Promise<void> {
+    const row = await task(run.taskId);
+    if (!row) return;
+    const access = await loadAccess(db, run.userId);
+    if (!access || access.blocked || (!access.isSuperadmin && !access.agentIds.has(row.agent_id))) {
+      await db.query("UPDATE app.background_task_runs SET outcome = 'skipped', reason_code = $2, finished_at = now() WHERE id = $1", [run.id, access?.blocked ? 'blocked' : 'no_access']);
+      return;
+    }
+    const threadId = taskThreadId(row.id, run.userId);
+    await openTaskThread(row, run.userId, threadId);
+    const result = await execute(row, run.userId, threadId);
+    await finishRun(db, run.id, result.outcome, result.code);
+  }
+
+  const queue: RunQueue = createRunQueue(db, runQueued);
+
+  // The run of a task waiting for this approval gets its result once the employee decided.
+  async function closeRun(approval: ApprovalRequest, outcome: 'done' | 'failed', code: string | null): Promise<void> {
+    if (!approval.taskId) return;
+    await db.query(
+      `UPDATE app.background_task_runs SET outcome = $3, reason_code = $4, finished_at = now(), unread = $5
+        WHERE task_id = $1 AND user_id = $2 AND outcome = 'awaiting-approval'`,
+      [approval.taskId, approval.userId, outcome, code, outcome === 'done'],
+    );
   }
 
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
-    const row = { id: approval.taskId, agent_id: approval.agentId, thread_id: approval.threadId };
+    const row = { id: approval.taskId, agent_id: approval.agentId };
     const agent = await resolveAgent(deps.editor, approval.agentId, 'published');
-    const models = await chooseModels(db, deps.timezone, approval.userId, approval.agentId);
-    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.userId, models) };
-    const stream = approved
-      ? await agent.approveToolCall(options)
-      : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
+    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.threadId, approval.userId) };
+    const stream = approved ? await agent.approveToolCall(options) : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
     for await (const part of stream.fullStream) {
       if (part.type === 'error') throw (part.payload as { error: unknown }).error;
     }
-    await markUnread(approval.threadId, approval.taskId);
+    await markUnread(approval.threadId);
+  }
+
+  async function declinePending(where: string, params: unknown[], status: 'expired' | 'declined', reason: string, code: string): Promise<number> {
+    const { rows } = await db.query<{ id: string; user_id: string }>(
+      `UPDATE app.approval_requests SET status = $1, decided_at = now(), error_code = $2 WHERE status = 'pending' AND task_id IS NOT NULL AND ${where} RETURNING id, user_id`,
+      [status, code, ...params],
+    );
+    for (const { id, user_id } of rows) {
+      const approval = await getApproval(db, user_id, id);
+      if (!approval) continue;
+      await writeJournal(db, { userId: approval.userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: status === 'expired' ? 'approval_expired' : 'tool_declined', tool: approval.tool, result: status, errorCode: code });
+      await closeRun(approval, 'failed', code);
+      // Close the suspended run, so the conversation has no tool call left without a result.
+      await finishApproval(approval, false, reason).catch((error: unknown) => logEvent('warn', 'approval_close_failed', { approvalId: id, error }));
+    }
+    return rows.length;
   }
 
   const service: BackgroundService = {
-    async runTask(taskId) {
+    async fire(taskId, now = new Date()) {
       const row = await task(taskId);
-      if (!row || row.status !== 'active') return 'skipped';
-      await db.query('UPDATE app.background_tasks SET last_run_at = now() WHERE id = $1', [taskId]);
-      const blocker = await ownerCanRun(row);
-      if (blocker) {
-        await pause(row, blocker);
-        return 'paused';
+      if (!row || row.status !== 'active') return { status: 'not-active' };
+      if (!deps.registry.get(row.agent_id)) {
+        await pause(row, 'agent_missing');
+        return { status: 'paused', reason: 'agent_missing' };
       }
-      const { rowCount } = await db.query("SELECT 1 FROM app.approval_requests WHERE task_id = $1 AND status = 'pending'", [taskId]);
-      if (rowCount) {
-        // Runs do not pile up behind an unanswered question (spec, section 8.6).
-        await writeJournal(db, { userId: row.owner_user_id, agentId: row.agent_id, runKind: 'background', taskId, event: 'background_skipped', result: 'skipped', errorCode: 'APP_BACKGROUND_RUN_SKIPPED' });
-        return 'skipped';
+      const fireAt = fireTimeOf(row.cron, deps.timezone, now);
+      const members = await membersOf(db, row.id, row.scope, row.agent_id);
+      // A previous run of the employee still waits for a decision: this one is skipped.
+      const { rows: waiting } = await db.query<{ user_id: string }>("SELECT DISTINCT user_id FROM app.approval_requests WHERE task_id = $1 AND status = 'pending'", [row.id]);
+      const awaiting = new Set(waiting.map((w) => w.user_id));
+      const result = await enqueueFire(db, row.id, fireAt, members.map((m) => ({ ...m, awaiting: m.skip === null && awaiting.has(m.userId) })));
+      for (const m of members.filter((x) => x.skip === null && awaiting.has(x.userId))) {
+        await writeJournal(db, { userId: m.userId, agentId: row.agent_id, runKind: 'background', taskId: row.id, event: 'background_skipped', result: 'skipped', errorCode: 'APP_BACKGROUND_RUN_SKIPPED' });
       }
-      return execute(row, row.owner_user_id!);
+      await db.query('UPDATE app.background_tasks SET last_run_at = $2 WHERE id = $1', [row.id, fireAt]);
+      queue.drain();
+      return { status: 'fired', fireAt, ...result };
     },
+
+    async recover() {
+      const result = await recoverRuns(db);
+      if (result.requeued || result.late) logEvent('info', 'background_runs_recovered', result);
+      queue.drain();
+    },
+
+    idle: () => queue.idle(),
 
     async startAgentRun(input) {
       if (!deps.registry.get(input.agentId)) throw appError('APP_NOT_FOUND', `agent ${input.agentId} is not loaded`);
       const access = await loadAccess(db, input.userId);
       if (!access || access.blocked) throw appError('APP_AUTH_BANNED', `user ${input.userId} cannot run agents`);
       const threadId = `ev:${randomUUID()}`;
-      const outcome = await execute({ id: null, agent_id: input.agentId, thread_id: threadId, prompt: input.prompt, title: input.title }, input.userId);
+      await ensureThread(memory, { threadId, resourceId: input.userId, agentId: input.agentId, kind: 'background', title: `Задача: ${input.title}` });
+      const { outcome } = await execute({ id: null, agent_id: input.agentId, prompt: input.prompt }, input.userId, threadId);
       return { threadId, outcome };
     },
 
@@ -231,27 +296,27 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
         }
         if (failure) {
           await decideRow(db, approval.id, 'failed', failure.code);
+          await closeRun(approval, 'failed', failure.code);
           throw failure;
         }
       }
       if (!(await decideRow(db, approval.id, approved ? 'approved' : 'declined'))) throw appError('APP_APPROVAL_DECIDED', `approval ${approvalId} was decided meanwhile`);
       if (!approved) await writeJournal(db, { userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: 'tool_declined', tool: approval.tool, approvedBy: userId, result: 'declined' });
-      await finishApproval(approval, approved);
+      try {
+        await finishApproval(approval, approved);
+        await closeRun(approval, 'done', null);
+      } catch (error) {
+        await closeRun(approval, 'failed', isAppError(error) ? error.code : 'APP_INTERNAL');
+        throw error;
+      }
     },
 
-    async expireOverdue() {
-      const { rows } = await db.query<{ id: string }>(
-        "UPDATE app.approval_requests SET status = 'expired', decided_at = now() WHERE status = 'pending' AND task_id IS NOT NULL AND expires_at < now() RETURNING id",
-      );
-      for (const { id } of rows) {
-        const { rows: found } = await db.query<{ user_id: string }>('SELECT user_id FROM app.approval_requests WHERE id = $1', [id]);
-        const approval = await getApproval(db, found[0]!.user_id, id);
-        if (!approval) continue;
-        await writeJournal(db, { userId: approval.userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: 'approval_expired', tool: approval.tool, result: 'expired', errorCode: 'APP_APPROVAL_EXPIRED' });
-        // Close the suspended run, so the conversation has no tool call left without a result.
-        await finishApproval(approval, false, EXPIRED_REASON).catch((error: unknown) => logEvent('warn', 'expired_approval_close_failed', { approvalId: id, error }));
-      }
-      return rows.length;
+    expireOverdue: () => declinePending('expires_at < now()', [], 'expired', EXPIRED_REASON, 'APP_APPROVAL_EXPIRED'),
+
+    async deleteTask(taskId) {
+      await declinePending('task_id = $3', [taskId], 'declined', DELETED_REASON, 'APP_TASK_DELETED');
+      await db.query('DELETE FROM app.background_tasks WHERE id = $1', [taskId]);
+      await service.syncSchedules();
     },
 
     async syncSchedules() {
@@ -275,32 +340,23 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       for (const orphan of byTask.values()) await schedules.delete(orphan.id);
     },
 
+    // A fire missed while the server was down: one catch-up when it was less than a day ago.
     async catchUp(now = new Date()) {
       const { rows } = await db.query<TaskRow>("SELECT * FROM app.background_tasks WHERE status = 'active'");
-      const ran: string[] = [];
+      const fired: string[] = [];
       for (const row of rows) {
         const previous = new Cron(row.cron, { timezone: deps.timezone }).previousRuns(1, now)[0];
         const since = Math.max(row.last_run_at?.getTime() ?? 0, row.created_at.getTime());
         if (!previous || previous.getTime() <= since) continue;
         if (now.getTime() - previous.getTime() < CATCH_UP_WINDOW_MS) {
-          await service.runTask(row.id, 'catch-up');
-          ran.push(row.id);
+          await service.fire(row.id, previous);
+          fired.push(row.id);
         } else {
-          await db.query('UPDATE app.background_tasks SET last_run_at = now() WHERE id = $1', [row.id]);
-          await writeJournal(db, { userId: row.owner_user_id, agentId: row.agent_id, runKind: 'background', taskId: row.id, event: 'background_skipped', result: 'skipped', errorCode: 'APP_BACKGROUND_RUN_SKIPPED' });
+          await db.query('UPDATE app.background_tasks SET last_run_at = $2 WHERE id = $1', [row.id, previous]);
+          await writeJournal(db, { userId: null, agentId: row.agent_id, runKind: 'background', taskId: row.id, event: 'background_skipped', result: 'skipped', errorCode: 'APP_BACKGROUND_RUN_SKIPPED' });
         }
       }
-      return ran;
-    },
-
-    async createTask(input) {
-      if (!TASK_ID.test(input.id)) throw appError('APP_VALIDATION_FAILED', `task id "${input.id}" must be 2–61 lowercase letters, digits and dashes`);
-      if (!deps.registry.get(input.agentId)) throw appError('APP_VALIDATION_FAILED', `agent ${input.agentId} is not loaded`);
-      new Cron(input.cron, { timezone: deps.timezone, paused: true }); // throws on a malformed expression
-      await db.query(
-        `INSERT INTO app.background_tasks (id, title, agent_id, owner_user_id, cron, prompt, status, thread_id) VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)`,
-        [input.id, input.title, input.agentId, input.ownerUserId, input.cron, input.prompt, `bg:${input.id}`],
-      );
+      return fired;
     },
 
     start() {

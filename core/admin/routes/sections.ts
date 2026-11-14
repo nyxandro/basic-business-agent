@@ -85,15 +85,6 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     await setAgentModel(deps.editor, access(c).userId, c.req.param('id'), modelId);
     return c.json({ ok: true });
   });
-  app.get('/app/api/admin/tasks', agents, async (c) => {
-    const { rows } = await db.query<{ id: string; title: string; agent_id: string; cron: string; status: string; paused_reason: string | null; owner: string | null; last_run_at: Date | null }>(
-      `SELECT t.id, t.title, t.agent_id, t.cron, t.status, t.paused_reason, u."name" AS owner, t.last_run_at
-         FROM app.background_tasks t LEFT JOIN app."user" u ON u."id" = t.owner_user_id ORDER BY t.title`,
-    );
-    const tasks = rows.map((r) => ({ id: r.id, title: r.title, agentId: r.agent_id, cron: r.cron, status: r.status, pausedReason: r.paused_reason, owner: r.owner, lastRunAt: r.last_run_at?.toISOString() ?? null }));
-    return c.json({ tasks, withoutOwner: tasks.filter((t) => !t.owner || t.pausedReason?.startsWith('owner')) });
-  });
-
   const org = requirePermission('org_profile');
   app.get('/app/api/admin/org-profile', org, async (c) => {
     const { rows } = await db.query<{ tone: string; requisites: string; industry: string }>('SELECT tone, requisites, industry FROM app.org_profile');

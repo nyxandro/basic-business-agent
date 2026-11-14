@@ -32,7 +32,7 @@ describe('admin sections', () => {
     expect((await t.litellm.keyBalance(key)).maxBudget).toBe(1000);
   });
 
-  it('edits the agent prompt over the file and lists tasks without an owner', async () => {
+  it('edits the agent prompt over the file and lists the background tasks', async () => {
     const before = await json<{ fileInstructions: string; draftVersionId: string | null }>(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }));
     const saved = await json<{ draftVersionId: string }>(await t.call('PUT', '/app/api/admin/agents/sales/prompt/draft', { cookie: admin, body: { text: 'Отвечай кратко.', baseDraftVersionId: before.draftVersionId } }));
     expect(saved.draftVersionId).toBeTruthy();
@@ -40,10 +40,10 @@ describe('admin sections', () => {
     expect(await json(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }))).toMatchObject({ publishedInstructions: 'Отвечай кратко.' });
     expect((await t.call('POST', '/app/api/admin/agents/sales/prompt/revert', { cookie: admin })).status).toBe(200);
 
-    await t.background.createTask({ id: 'orphan-task', title: 'Сводка', agentId: 'sales', ownerUserId: adminId, cron: '0 9 * * *', prompt: 'x' });
-    await t.db.query(`UPDATE app.background_tasks SET owner_user_id = NULL, status = 'paused', paused_reason = 'owner_missing' WHERE id = 'orphan-task'`);
-    const tasks = await json<{ withoutOwner: { id: string }[] }>(await t.call('GET', '/app/api/admin/tasks', { cookie: admin }));
-    expect(tasks.withoutOwner.map((x) => x.id)).toEqual(['orphan-task']);
+    const body = { title: 'Сводка', agentId: 'sales', access: { scope: 'users', departmentIds: [], userIds: [adminId] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
+    expect((await t.call('POST', '/app/api/admin/tasks', { cookie: admin, body })).status).toBe(201);
+    const tasks = await json<{ tasks: { title: string; cron: string }[] }>(await t.call('GET', '/app/api/admin/tasks', { cookie: admin }));
+    expect(tasks.tasks.map((x) => [x.title, x.cron])).toEqual([['Сводка', '0 9 * * *']]);
   });
 
   it('keeps the organisation profile, masking switches and shows connections and the journal', async () => {
@@ -102,7 +102,8 @@ describe('removing an employee', () => {
     const petr = await t.createUser({ email: 'petr@example.com', name: 'Пётр' });
     const session = await t.signIn('petr@example.com');
     await t.gateway.modelConfig('test-paid', petr, 'sales');
-    await t.background.createTask({ id: 'petr-task', title: 'Задача Петра', agentId: 'sales', ownerUserId: petr, cron: '0 9 * * *', prompt: 'x' });
+    const task = { title: 'Задача Петра', agentId: 'sales', access: { scope: 'users', departmentIds: [], userIds: [petr] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
+    expect((await t.call('POST', '/app/api/admin/tasks', { cookie: admin, body: task })).status).toBe(201);
     const workspace = join(t.workspaceRoot, petr);
     mkdirSync(join(workspace, 'files'), { recursive: true });
 
@@ -118,8 +119,9 @@ describe('removing an employee', () => {
     expect((await t.call('DELETE', `/app/api/admin/users/${petr}`, { cookie: admin })).status).toBe(200);
     expect((await t.db.query('SELECT 1 FROM app."user" WHERE "id" = $1', [petr])).rowCount).toBe(0);
     expect((await t.db.query('SELECT 1 FROM app.model_keys WHERE user_id = $1', [petr])).rowCount).toBe(0);
-    const task = await t.db.query<{ owner_user_id: string | null }>(`SELECT owner_user_id FROM app.background_tasks WHERE id = 'petr-task'`);
-    expect(task.rows[0]!.owner_user_id).toBeNull();
+    // The task stays; Пётр leaves its scope.
+    expect((await t.db.query('SELECT 1 FROM app.task_scope WHERE user_id = $1', [petr])).rowCount).toBe(0);
+    expect((await t.db.query("SELECT 1 FROM app.background_tasks WHERE title = 'Задача Петра'")).rowCount).toBe(1);
     expect(existsSync(workspace)).toBe(false);
     const audit = await t.db.query<{ action: string }>('SELECT action FROM app.admin_audit WHERE target = $1 ORDER BY id', [petr]);
     expect(audit.rows.map((r) => r.action)).toEqual(['user.delete.start', 'user.delete.start', 'user.delete.finish']);

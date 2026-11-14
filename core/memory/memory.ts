@@ -1,6 +1,6 @@
 // Personal memory only (spec, section 6 «Память»): Mastra working memory scoped to the employee
 // (resource = userId), so all their agents know it; nobody else reads it. Conversations are Mastra
-// threads of that employee; a background task has its own thread "bg:<taskId>".
+// threads of that employee; a background task has a thread "bg:<taskId>:<userId>" per employee.
 import type { ThreadSummaryDto } from '@bba/contracts';
 import { Memory } from '@mastra/memory';
 import type { PostgresStore } from '@mastra/pg';

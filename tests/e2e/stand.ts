@@ -5,6 +5,7 @@
 // Sign in: olga@example.com (employee, «Продажи»: both agents), petr@example.com (employee,
 // «Бухгалтерия»: «Помощник» only) or igor@example.com (superadmin); password from TEST_PASSWORD.
 import { serve } from '@hono/node-server';
+import { createTask } from '../../core/background/tasks.ts';
 import { createTestApp, TEST_PASSWORD } from '../../core/server/test-app.ts';
 import { standModel } from './stand-model.ts';
 
@@ -23,8 +24,16 @@ await t.db.query('INSERT INTO app.department_members (department_id, user_id) VA
 await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'assistant')`, [accounting]);
 
 // A background task that has already asked Ольга a question («Ждёт подтверждения»).
-await t.background.createTask({ id: 'morning', title: 'Утренняя сводка', agentId: 'sales', ownerUserId: olga, cron: '0 9 * * *', prompt: 'Напиши письмо клиенту со сводкой по сделкам' });
-await t.background.runTask('morning', 'manual');
+const igor = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+const morning = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, igor, {
+  title: 'Утренняя сводка',
+  agentId: 'sales',
+  access: { scope: 'users', departmentIds: [], userIds: [olga] },
+  schedule: { kind: 'weekdays', time: '09:00' },
+  prompt: 'Напиши письмо клиенту со сводкой по сделкам',
+});
+await t.background.fire(morning.id);
+await t.background.idle();
 
 const server = serve({ fetch: t.app.fetch, port: PORT }, () => {
   console.log(`stand: server on :${PORT}; sign in as olga@, petr@ or igor@example.com, password ${TEST_PASSWORD}`);

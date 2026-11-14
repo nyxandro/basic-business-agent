@@ -34,7 +34,7 @@ function AgentPrompt({ agentId }: { agentId: string }) {
 export function AgentsSection() {
   const load = useCallback(async () => {
     const [agents, tasks] = await Promise.all([adminApi.agents(), adminApi.tasks()]);
-    return { ...agents, withoutOwner: tasks.withoutOwner };
+    return { ...agents, stopped: tasks.tasks.filter((t) => t.pausedReason === 'agent_missing') };
   }, []);
   const { state, reload } = useLoad(load);
   const [open, setOpen] = useState<string | null>(null);
@@ -66,16 +66,16 @@ export function AgentsSection() {
           <p>Отделы ссылаются на агентов, которых нет в установке: {state.data.missingAgents.join(', ')}. Уберите их из отделов.</p>
         </div>
       ) : null}
-      {state.data.withoutOwner.length > 0 ? (
+      {state.data.stopped.length > 0 ? (
         <>
-          <h2>Задачи без владельца</h2>
-          <p className="muted">Владелец задачи удалён или потерял доступ — задача приостановлена.</p>
+          <h2>Задачи остановлены</h2>
+          <p className="muted">Агента больше нет в установке — задача приостановлена.</p>
           <ul className="plain-list">
-            {state.data.withoutOwner.map((t) => (
+            {state.data.stopped.map((t) => (
               <li key={t.id} className="row-line">
                 <strong>{t.title}</strong>
                 <span className="muted">
-                  агент {t.agentId} · расписание {t.cron} · последний запуск {t.lastRunAt ? dateTime(t.lastRunAt) : '—'}
+                  агент {t.agentId} · расписание {t.cron} · последний запуск {t.lastFire ? dateTime(t.lastFire.fireAt) : '—'}
                 </span>
               </li>
             ))}

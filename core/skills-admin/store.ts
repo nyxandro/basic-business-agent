@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { SkillAccess, SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
 import type pg from 'pg';
 import { writeAudit } from '../audit/audit.ts';
+import { checkScope, writeScopeTargets } from '../auth/scope.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { invalidSkill, readSkillArchive, writeSkillFiles, type SkillPackage } from './archive.ts';
@@ -101,27 +102,15 @@ export async function previewSkill(db: Db, archive: Uint8Array): Promise<SkillPr
   return { name: pkg.name, title: pkg.title, description: pkg.description, sizeBytes: pkg.sizeBytes, files: filesOf(pkg), hasScripts: pkg.hasScripts, exists: (rowCount ?? 0) > 0 };
 }
 
-// Departments or employees of the scope must exist; "everyone in the organisation" takes no list.
-async function checkAccess(db: Pick<pg.PoolClient, 'query'>, access: SkillAccess): Promise<SkillAccess> {
-  if (access.scope === 'org') return { scope: 'org', departmentIds: [], userIds: [] };
-  const ids = access.scope === 'departments' ? [...new Set(access.departmentIds)] : [...new Set(access.userIds)];
-  if (ids.length === 0) throw appError('APP_VALIDATION_FAILED', `scope ${access.scope} without targets`, { userMessage: access.scope === 'departments' ? 'Выберите хотя бы один отдел.' : 'Выберите хотя бы одного сотрудника.' });
-  const { rowCount } = await db.query(access.scope === 'departments' ? 'SELECT 1 FROM app.departments WHERE id = ANY($1::uuid[])' : 'SELECT 1 FROM app."user" WHERE "id" = ANY($1)', [ids]);
-  if (rowCount !== ids.length) throw appError('APP_VALIDATION_FAILED', `unknown ${access.scope} in skill scope`, { userMessage: 'Некоторых отделов или сотрудников уже нет. Обновите страницу.' });
-  return access.scope === 'departments' ? { scope: 'departments', departmentIds: ids, userIds: [] } : { scope: 'users', departmentIds: [], userIds: ids };
-}
-
 async function writeScope(c: pg.PoolClient, name: string, access: SkillAccess): Promise<void> {
   await c.query('UPDATE app.skills SET scope = $2 WHERE name = $1', [name, access.scope]);
-  await c.query('DELETE FROM app.skill_scope WHERE skill_name = $1', [name]);
-  for (const id of access.departmentIds) await c.query('INSERT INTO app.skill_scope (skill_name, department_id) VALUES ($1, $2)', [name, id]);
-  for (const id of access.userIds) await c.query('INSERT INTO app.skill_scope (skill_name, user_id) VALUES ($1, $2)', [name, id]);
+  await writeScopeTargets(c, 'skill', name, access);
 }
 
 export async function createSkill(deps: SkillsDeps, actorUserId: string, archive: Uint8Array, rawAccess: SkillAccess): Promise<SkillDto> {
   const pkg = readSkillArchive(archive);
   await inTransaction(deps.db, async (c) => {
-    const access = await checkAccess(c, rawAccess);
+    const access = await checkScope(c, rawAccess);
     try {
       await c.query(
         `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope, uploaded_by)
@@ -161,7 +150,7 @@ export async function updateSkill(deps: SkillsDeps, actorUserId: string, name: s
   await dtoOf(deps.db, name);
   await inTransaction(deps.db, async (c) => {
     if (change.enabled !== undefined) await c.query('UPDATE app.skills SET enabled = $2 WHERE name = $1', [name, change.enabled]);
-    const access = change.access ? await checkAccess(c, change.access) : undefined;
+    const access = change.access ? await checkScope(c, change.access) : undefined;
     if (access) await writeScope(c, name, access);
     await writeAudit(c, { actorUserId, action: 'skill.update', target: name, details: { enabled: change.enabled, access } });
   });
