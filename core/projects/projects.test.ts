@@ -63,6 +63,8 @@ describe('projects', () => {
     const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ключевые клиенты' } }));
     const futureThread = randomUUID();
     expect((await t.call('PUT', `/app/api/threads/${futureThread}/project`, { cookie: olga, body: { projectId: project.id } })).status).toBe(200);
+    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: olga }))).toEqual({ projectId: project.id });
+    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: petr }))).toEqual({ projectId: null });
     let list = await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: olga }));
     expect(list.projects.find((p) => p.id === project.id)?.threadCount).toBe(0);
 

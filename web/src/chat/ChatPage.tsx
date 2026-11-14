@@ -14,7 +14,10 @@ import { IconButton } from '../ui/Button.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
+import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
+import { ProjectChip } from '../projects/ProjectChip.tsx';
+import { useThreadProject } from '../projects/use-thread-project.ts';
 import { deleteThread } from './api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
 
@@ -22,9 +25,10 @@ function ThreadActions({ threadId, onDeleted }: { threadId: string; onDeleted: (
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
   async function remove() {
     setOpen(false);
-    if (!window.confirm(ru.chat.deleteConfirm)) return;
+    if (!(await confirm({ title: ru.chat.deleteConfirm, confirmLabel: ru.chat.deleteThread, danger: true }))) return;
     try {
       await deleteThread(threadId);
       toast(ru.chat.threadDeleted);
@@ -50,6 +54,7 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
   const me = useMe();
   const { wide, openMenu, refreshThreads } = useShell();
   const navigate = useNavigate();
+  const project = useThreadProject(threadId);
   useEffect(() => rememberAgent(agent.id), [agent.id]);
   const startNew = () => {
     refreshThreads();
@@ -58,7 +63,11 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
   return (
     <>
       <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} />} />
-      {me.modelsConfigured ? <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} /> : <EmptyInstallation />}
+      {me.modelsConfigured ? (
+        <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} composerExtra={<ProjectChip threadId={threadId} {...project} />} />
+      ) : (
+        <EmptyInstallation />
+      )}
     </>
   );
 }

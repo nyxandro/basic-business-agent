@@ -2,7 +2,7 @@
 // blocks, the confirmation card for AG-UI interrupts and readable errors.
 import type { AgentSummary, UploadedFile } from '@bba/contracts';
 import { CopilotChat, useInterrupt } from '@copilotkit/react-core';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { useGenuiRenderers } from '../genui/renderers.tsx';
 import { copilotLabels } from '../i18n/copilot-labels.ts';
@@ -13,7 +13,7 @@ import { ChatView } from './ChatView.tsx';
 
 const APPROVAL_REASON = 'mastra:tool_approval';
 
-export function ChatPanel({ agent, threadId, onRunFinished }: { agent: AgentSummary; threadId: string; onRunFinished: () => void }) {
+export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { agent: AgentSummary; threadId: string; onRunFinished: () => void; composerExtra?: ReactNode }) {
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<ApiRequestError | null>(null);
 
@@ -41,8 +41,9 @@ export function ChatPanel({ agent, threadId, onRunFinished }: { agent: AgentSumm
       onUploadError: (raw) => setError(asApiError(raw)),
       interrupt: interrupt ?? null,
       error,
+      composerExtra,
     }),
-    [agent, threadId, attachments, onRunFinished, interrupt, error],
+    [agent, threadId, attachments, onRunFinished, interrupt, error, composerExtra],
   );
 
   return (

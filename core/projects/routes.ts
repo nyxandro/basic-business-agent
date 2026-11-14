@@ -9,7 +9,7 @@ import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { contextRoot, listFiles, resolveInside, saveFile } from '../workspace/layout.ts';
-import { createProject, deleteProject, getProject, listProjects, listThreadPage, projectDto, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
+import { createProject, deleteProject, getProject, listProjects, listThreadPage, projectDto, projectOfThread, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
 export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
@@ -99,6 +99,9 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
     rmSync(full);
     return c.json({ ok: true });
   });
+
+  // The project of a conversation, also of one that has no messages yet (chosen beforehand).
+  app.get('/app/api/threads/:threadId/project', async (c) => c.json({ projectId: await projectOfThread(deps.db, access(c).userId, c.req.param('threadId')) }));
 
   app.put('/app/api/threads/:threadId/project', async (c) => {
     const body = await parseJson(c, linkSchema);

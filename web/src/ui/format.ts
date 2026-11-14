@@ -38,3 +38,11 @@ export function plural(n: number, forms: [one: string, few: string, many: string
 
 // «ноябрь» — the month of a date, as a calendar names it.
 export const monthName = (date: Date): string => new Intl.DateTimeFormat('ru-RU', { month: 'long' }).format(date);
+
+const KB = 1024;
+// «2,4 МБ», «830 КБ», «120 Б».
+export function fileSize(bytes: number): string {
+  if (bytes < KB) return `${bytes} Б`;
+  if (bytes < KB * KB) return `${Math.round(bytes / KB)} КБ`;
+  return `${(bytes / KB / KB).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} МБ`;
+}

@@ -26,6 +26,10 @@ export interface ShellContext {
   openMenu: () => void;
   // After a run the conversation may be new or retitled: «Недавние» loads again.
   refreshThreads: () => void;
+  // A project was created, renamed, removed or got a conversation: «Проекты» load again.
+  refreshProjects: () => void;
+  // The open conversation's project is marked in «Проекты» (mockup); null outside a project.
+  showChatProject: (projectId: string | null) => void;
 }
 
 export const useShell = () => useOutletContext<ShellContext>();
@@ -65,6 +69,8 @@ export function AppShell() {
   const wide = useMedia(WIDE_QUERY);
   const [menuOpen, setMenuOpen] = useState(false);
   const [threadsKey, setThreadsKey] = useState(0);
+  const [projectsKey, setProjectsKey] = useState(0);
+  const [chatProjectId, showChatProject] = useState<string | null>(null);
   const { state: agentsLoad, reload } = useLoad(fetchAgents);
   const { state: usageLoad } = useLoad(fetchMyUsage);
   // The layout sits above the chat route, so the agent comes from the address itself.
@@ -75,7 +81,11 @@ export function AppShell() {
   const agents: AgentsState =
     agentsLoad.status === 'ready' ? { status: 'ready', agents: agentsLoad.data.agents } : agentsLoad.status === 'error' ? { status: 'error', error: agentsLoad.error, retry: reload } : { status: 'loading' };
   const usage: MyUsage | null = usageLoad.status === 'ready' ? usageLoad.data : null;
-  const refreshThreads = useCallback(() => setThreadsKey((n) => n + 1), []);
+  const refreshThreads = useCallback(() => {
+    setThreadsKey((n) => n + 1);
+    setProjectsKey((n) => n + 1);
+  }, []);
+  const refreshProjects = useCallback(() => setProjectsKey((n) => n + 1), []);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const newThread = () => {
@@ -84,8 +94,8 @@ export function AppShell() {
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}`);
   };
 
-  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, onNewThread: newThread };
-  const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads };
+  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread };
+  const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, refreshProjects, showChatProject };
   return (
     <NotificationsProvider>
       <div className={styles.shell}>

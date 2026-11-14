@@ -22,6 +22,18 @@ function Bell() {
   );
 }
 
+// The header of a screen other than the chat on a phone: «Меню», the title and the bell.
+export function ChatHeaderBar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
+  return (
+    <header className={cx(styles.header, styles.headerMobile)}>
+      <IconButton icon="menu" label={ru.shell.menu} onClick={onOpenMenu} />
+      <span className={styles.headerTitle}>{title}</span>
+      <span className={styles.headerFill} />
+      <Bell />
+    </header>
+  );
+}
+
 export function ChatHeader({ agent, agents, wide, onOpenMenu, actions }: { agent: AgentSummary; agents: AgentSummary[]; wide: boolean; onOpenMenu: () => void; actions?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();

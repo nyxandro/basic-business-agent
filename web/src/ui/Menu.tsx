@@ -44,16 +44,17 @@ export function MenuTitle({ children }: { children: ReactNode }) {
   return <div className={styles.menuTitle}>{children}</div>;
 }
 
-export function MenuItem({ icon, meta, onSelect, children, danger, checked }: { icon?: IconName; meta?: ReactNode; onSelect: () => void; children: ReactNode; danger?: boolean; checked?: boolean }) {
+// `accent` is an item that creates something («Новый проект»), set apart in the accent colour.
+export function MenuItem({ icon, meta, onSelect, children, danger, accent, checked }: { icon?: IconName; meta?: ReactNode; onSelect: () => void; children: ReactNode; danger?: boolean; accent?: boolean; checked?: boolean }) {
   return (
     <button
       type="button"
       role={checked === undefined ? 'menuitem' : 'menuitemradio'}
       aria-checked={checked}
-      className={cx(styles.menuItem, danger && styles.danger)}
+      className={cx(styles.menuItem, danger && styles.danger, accent && styles.accent)}
       onClick={onSelect}
     >
-      {icon ? <Icon name={icon} size={15} className={danger ? undefined : styles.menuItemIcon} /> : null}
+      {icon ? <Icon name={icon} size={15} className={danger || accent ? undefined : cx(styles.menuItemIcon, checked && styles.menuItemIconOn)} /> : null}
       <span className={styles.menuItemLabel}>{children}</span>
       {meta ? <span className={styles.menuItemMeta}>{meta}</span> : null}
       {checked ? <Icon name="check" size={15} style={{ color: 'var(--acc-text)' }} /> : null}

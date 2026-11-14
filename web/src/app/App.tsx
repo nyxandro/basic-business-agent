@@ -14,15 +14,18 @@ import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
+import { ConfirmProvider } from '../ui/Confirm.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
 import { COPILOT_OPTIONS } from './copilot.ts';
 
 const AdminRoutes = lazy(() => import('../admin/AdminRoutes.tsx'));
+const ProjectPage = lazy(() => import('../projects/ProjectPage.tsx').then((m) => ({ default: m.ProjectPage })));
 
 export function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
+        <ConfirmProvider>
         <SessionProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -39,6 +42,14 @@ export function App() {
             >
               <Route index element={<Home />} />
               <Route path="agents/:agentId" element={<ChatPage />} />
+              <Route
+                path="projects/:projectId"
+                element={
+                  <Suspense fallback={<Skeleton rows={4} />}>
+                    <ProjectPage />
+                  </Suspense>
+                }
+              />
               <Route path="approvals" element={<ApprovalsPage />} />
               <Route path="settings">
                 <Route index element={<Navigate to="memory" replace />} />
@@ -58,6 +69,7 @@ export function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </SessionProvider>
+        </ConfirmProvider>
       </ToastProvider>
     </ThemeProvider>
   );

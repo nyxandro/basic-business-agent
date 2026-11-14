@@ -15,6 +15,7 @@ import { Skeleton } from '../ui/Loading.tsx';
 import { MenuAnchor } from '../ui/Menu.tsx';
 import { LimitMeter } from './LimitMeter.tsx';
 import { useNotifications } from './notifications.tsx';
+import { ProjectList } from '../projects/ProjectList.tsx';
 import { RecentThreads } from './RecentThreads.tsx';
 import { SettingsMenu } from './SettingsMenu.tsx';
 import styles from './shell.module.css';
@@ -28,6 +29,10 @@ export interface SidebarProps {
   currentThreadId: string | null;
   // Bumped after a run: the recent list loads again.
   threadsKey: number;
+  // Bumped when a project changes: «Проекты» load again.
+  projectsKey: number;
+  chatProjectId: string | null;
+  onProjectsChanged: () => void;
   onNewThread: () => void;
   // A phone closes the drawer after a choice.
   onNavigate: () => void;
@@ -85,6 +90,8 @@ export function Sidebar(props: SidebarProps) {
 
       <div className={styles.sectionLabel}>{ru.shell.agents}</div>
       <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
+
+      <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
       <RecentThreads key={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} />

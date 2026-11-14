@@ -148,7 +148,7 @@ export function ChatView(props: CopilotChatViewProps) {
       <div className={styles.dock}>
         <div className={styles.dockInner}>
           {extras.error ? <ErrorBanner error={extras.error} /> : null}
-          <Composer value={inputValue} onChange={change} onSend={() => send(inputValue)} {...(onStop ? { onStop } : {})} running={isRunning} />
+          <Composer value={inputValue} onChange={change} onSend={() => send(inputValue)} {...(onStop ? { onStop } : {})} running={isRunning} extra={extras.composerExtra} />
         </div>
       </div>
     </div>

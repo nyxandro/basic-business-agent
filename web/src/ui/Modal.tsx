@@ -6,13 +6,14 @@ import { cx } from './Button.tsx';
 import { useDialogFocus } from './dialog-focus.ts';
 import styles from './overlay.module.css';
 
-export function Modal({ open, onClose, label, children, narrow }: { open: boolean; onClose: () => void; label: string; children: ReactNode; narrow?: boolean }) {
+// A question that needs an answer before going on («Удалить …?») is an alertdialog.
+export function Modal({ open, onClose, label, children, narrow, role = 'dialog' }: { open: boolean; onClose: () => void; label: string; children: ReactNode; narrow?: boolean; role?: 'dialog' | 'alertdialog' }) {
   const box = useDialogFocus(open, onClose);
   if (!open) return null;
   return createPortal(
     <div className={styles.layer}>
       <button type="button" tabIndex={-1} aria-hidden="true" className={styles.scrim} onClick={onClose} />
-      <div ref={box} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} className={cx(styles.modal, narrow && styles.narrow)}>
+      <div ref={box} role={role} aria-modal="true" aria-label={label} tabIndex={-1} className={cx(styles.modal, narrow && styles.narrow)}>
         {children}
       </div>
     </div>,
