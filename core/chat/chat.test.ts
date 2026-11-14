@@ -58,9 +58,14 @@ beforeEach(() => {
 });
 
 describe('chat', () => {
+  it('keeps the usage telemetry of CopilotKit switched off', () => {
+    expect(process.env.COPILOTKIT_TELEMETRY_DISABLED).toBe('true');
+  });
+
   it('lists only the agents of the employee’s departments', async () => {
     const res = await t.call('GET', '/app/api/agents', { cookie: olga });
-    expect(((await res.json()) as { agents: { id: string }[] }).agents.map((a) => a.id)).toEqual(['sales']);
+    const { agents } = (await res.json()) as { agents: { id: string }[] };
+    expect(agents).toEqual([{ id: 'sales', name: 'Продажи', description: 'Тестовый агент Продажи', starters: ['Покажи мои сделки'], systems: { tools: {}, prefixes: {} } }]);
   });
 
   it('refuses an agent outside the employee’s departments with 403', async () => {
@@ -131,6 +136,27 @@ describe('confirmation in the chat', () => {
     expect(row.rows[0]).toEqual({ status: 'declined', error_code: 'APP_CHAT_SUPERSEDED' });
   });
 
+  it('tells the chat window that a declined or superseded action was cancelled', async () => {
+    const threadId = randomUUID();
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'z@example.com', text: 'z' } }] });
+    const first = await run(olga, 'sales', threadId, 'Напиши письмо Зое');
+    const interrupt = interruptOf(first.events)!;
+    t.model.script({ text: 'Не отправляю.' });
+    const declined = await run(olga, 'sales', threadId, null, [{ interruptId: interrupt.id, status: 'cancelled' }]);
+    const result = declined.events.find((e) => e.type === 'TOOL_CALL_RESULT') as AguiEvent & { toolCallId?: string; content?: string };
+    expect(declined.events[0]!.type).toBe('RUN_STARTED');
+    expect(result.toolCallId).toBe(interrupt.id.split('::').at(-1));
+    expect(JSON.parse(result.content!)).toEqual({ declined: true, superseded: false });
+
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'z@example.com', text: 'z2' } }] });
+    const again = await run(olga, 'sales', threadId, 'Попробуй ещё раз');
+    t.model.script({ text: 'Хорошо.' }, { text: 'Рассказываю.' });
+    const next = await run(olga, 'sales', threadId, 'Нет, расскажи про сделки');
+    const superseded = next.events.find((e) => e.type === 'TOOL_CALL_RESULT') as AguiEvent & { toolCallId?: string; content?: string };
+    expect(superseded.toolCallId).toBe(interruptOf(again.events)!.id.split('::').at(-1));
+    expect(JSON.parse(superseded.content!)).toEqual({ declined: true, superseded: true });
+  });
+
   it('does not run an approved action when the monthly limit ran out meanwhile', async () => {
     const threadId = randomUUID();
     t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'y@example.com', text: 'y' } }] });
@@ -156,6 +182,61 @@ describe('confirmation in the chat', () => {
     const res = await run(olga, 'sales', randomUUID(), 'Привет');
     const error = res.events.find((e) => e.type === 'RUN_ERROR');
     expect(error).toMatchObject({ code: 'APP_MODEL_RATE_LIMITED', message: 'Слишком много запросов к модели. Подождите минуту и отправьте сообщение снова.' });
+  });
+});
+
+describe('history of a conversation for the chat window', () => {
+  async function connect(cookie: string, threadId: string): Promise<{ status: number; events: (AguiEvent & Record<string, unknown>)[] }> {
+    const res = await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie, body: { threadId, runId: randomUUID(), messages: [], tools: [], context: [], state: {}, forwardedProps: {} } });
+    const body = await res.text();
+    return { status: res.status, events: body.split('\n').filter((l) => l.startsWith('data:')).map((l) => JSON.parse(l.slice(5)) as AguiEvent & Record<string, unknown>) };
+  }
+
+  it('returns the stored messages with tool calls and the question still waiting for an answer', async () => {
+    const threadId = randomUUID();
+    t.model.script({ toolCalls: [{ name: 'crm_search', args: { q: 'сделки' } }] }, { toolCalls: [{ name: 'mail_send', args: { to: 'client@example.com', text: 'Добрый день' } }] });
+    await run(olga, 'sales', threadId, 'Найди сделки и напиши клиенту');
+
+    const { status, events } = await connect(olga, threadId);
+    expect(status).toBe(200);
+    expect(events.map((e) => e.type)).toEqual(['RUN_STARTED', 'MESSAGES_SNAPSHOT', 'RUN_FINISHED']);
+    const messages = events[1]!.messages as { role: string; content?: string; toolCalls?: { function: { name: string } }[]; toolCallId?: string }[];
+    expect(messages[0]).toMatchObject({ role: 'user', content: 'Найди сделки и напиши клиенту' });
+    // The call waiting for "Да" is shown by its card, not as a tool line.
+    const calls = messages.flatMap((m) => m.toolCalls ?? []).map((c) => c.function.name);
+    expect(calls).toEqual(['crm_search']);
+    expect(messages.find((m) => m.role === 'tool')).toMatchObject({ content: JSON.stringify({ deals: 12 }) });
+    const outcome = events[2]!.outcome as { type: string; interrupts: { id: string; reason: string; metadata: { mastra: { toolName: string } } }[] };
+    expect(outcome.type).toBe('interrupt');
+    // The card shows the arguments as the model sent them, not the summary kept in the database.
+    expect(outcome.interrupts[0]).toMatchObject({ reason: 'mastra:tool_approval', metadata: { mastra: { toolName: 'mail_send', args: { to: 'client@example.com', text: 'Добрый день' } } } });
+    expect(outcome.interrupts[0]!.id).toMatch(/^mastra-approval::.+::.+$/);
+  });
+
+  it('shows a declined action as cancelled after a reload', async () => {
+    const threadId = randomUUID();
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'k@example.com', text: 'k' } }] });
+    const first = await run(olga, 'sales', threadId, 'Напиши письмо Ксении');
+    t.model.script({ text: 'Не отправляю.' });
+    await run(olga, 'sales', threadId, null, [{ interruptId: interruptOf(first.events)!.id, status: 'cancelled' }]);
+    const { events } = await connect(olga, threadId);
+    const messages = events[1]!.messages as { role: string; content?: string }[];
+    expect(JSON.parse(messages.find((m) => m.role === 'tool')!.content!)).toEqual({ declined: true, superseded: false });
+    expect(events[2]!.outcome).toBeUndefined();
+  });
+
+  it('opens a new conversation empty and refuses someone else’s', async () => {
+    const empty = await connect(olga, randomUUID());
+    expect(empty.events.find((e) => e.type === 'MESSAGES_SNAPSHOT')?.messages).toEqual([]);
+
+    const threadId = randomUUID();
+    t.model.script({ text: 'Ок.' });
+    await run(olga, 'sales', threadId, 'Личное');
+    await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) SELECT id, 'sales' FROM app.departments ON CONFLICT DO NOTHING`);
+    const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+    const dep = (await t.db.query<{ id: string }>('SELECT id FROM app.departments LIMIT 1')).rows[0]!.id;
+    await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [dep, igorId]);
+    expect((await connect(igor, threadId)).status).toBe(404);
   });
 });
 

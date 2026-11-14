@@ -3,6 +3,7 @@ import { CopilotKit } from '@copilotkit/react-core';
 import { Navigate, Route, Routes } from 'react-router';
 import { AgentsPage } from '../agents/AgentsPage.tsx';
 import { LoginPage } from '../auth/LoginPage.tsx';
+import { ChatPage } from '../chat/ChatPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { AppLayout } from '../layout/AppLayout.tsx';
@@ -32,6 +33,7 @@ export function App() {
           }
         >
           <Route index element={<AgentsPage />} />
+          <Route path="agents/:agentId" element={<ChatPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

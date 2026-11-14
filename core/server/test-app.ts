@@ -14,7 +14,7 @@ import type { Mastra } from '@mastra/core';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
 import { createMemory } from '../memory/memory.ts';
-import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
+import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from '../models/fake-openai.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -78,11 +78,19 @@ function testAgent(id: string, name: string, tools: AgentRuntime['tools']): Agen
     skillDirs: [],
     subagents: [],
     connectorIds: [],
+    toolSystems: {},
   };
 }
 
 export async function createTestApp(
-  opts: { knownAgentIds?: string[]; limits?: Parameters<typeof ensureLimitSettings>[1]; connectors?: ConnectorRuntime[] } = {},
+  opts: {
+    knownAgentIds?: string[];
+    limits?: Parameters<typeof ensureLimitSettings>[1];
+    connectors?: ConnectorRuntime[];
+    modelFallback?: (req: FakeRequest) => FakeTurn;
+    // Gives the test agent "assistant" a sub-agent "mailer" that sends letters (needs "Да").
+    assistantSubagent?: boolean;
+  } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
   await migrate(database.url);
@@ -99,7 +107,7 @@ export async function createTestApp(
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
   const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
   await ensureMaskingSettings(db, []);
-  const model = await startFakeModel();
+  const model = await startFakeModel(opts.modelFallback ? { fallback: opts.modelFallback } : {});
   const sentMail: { to: string; text: string }[] = [];
   const salesTools = {
     crm_search: applyApprovalPolicy(
@@ -116,7 +124,9 @@ export async function createTestApp(
       { readOnly: false, db },
     ),
   };
-  const agents = [testAgent('sales', 'Продажи', salesTools), testAgent('assistant', 'Помощник', {})].filter((a) => known.has(a.passport.id));
+  const assistant = testAgent('assistant', 'Помощник', {});
+  if (opts.assistantSubagent) assistant.subagents = [testAgent('mailer', 'Почтальон', { mail_send: salesTools.mail_send })];
+  const agents = [testAgent('sales', 'Продажи', salesTools), assistant].filter((a) => known.has(a.passport.id));
   const registry: Registry = {
     agents,
     get: (id) => agents.find((a) => a.passport.id === id),

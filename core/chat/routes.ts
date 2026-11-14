@@ -4,11 +4,13 @@ import type { AgentListResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
-import { ERROR_CATALOG } from '../errors/catalog.ts';
-import { deleteThread, forgetAll, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
+import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
+import { deleteThread, draftResourceId, forgetAll, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
 import { deleteThreadUploads, MAX_UPLOAD_BYTES, saveUpload } from '../sandbox/uploads.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { assertAgentOpen, prepareRun, releaseThread, type ChatDeps, type RunInput } from './run.ts';
+import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
+import { connectResponse, declinedCallEvents } from './connect.ts';
+import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory } from './history.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
@@ -30,7 +32,18 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const a = access(c);
     const agents = deps.registry.agents
       .filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id))
-      .map((rt) => ({ id: rt.passport.id, name: rt.passport.name, description: rt.passport.description, starters: rt.passport.starters }));
+      .map((rt) => ({
+        id: rt.passport.id,
+        name: rt.passport.name,
+        description: rt.passport.description,
+        starters: rt.passport.starters,
+        systems: {
+          tools: rt.toolSystems,
+          prefixes: Object.fromEntries(
+            deps.registry.connectors.filter((conn) => rt.connectorIds.includes(conn.id)).map((conn) => [`${serverKey(conn.id)}_`, conn.title]),
+          ),
+        },
+      }));
     const body: AgentListResponse = { agents };
     return c.json(body);
   });
@@ -46,6 +59,11 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     }
     const [, agentId, action] = match as unknown as [string, string, string];
     assertAgentOpen(deps, a, agentId, mode);
+    if (action === 'connect') {
+      const { threadId } = (await c.req.raw.clone().json()) as { threadId?: string };
+      if (!threadId || !SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
+      return connectResponse(deps, { userId: a.userId, resourceId: mode === 'draft' ? draftResourceId(a.userId) : a.userId, agentId, threadId });
+    }
     if (action !== 'run') {
       return deps.copilot.handle(c.req.raw, { kind: 'listing', userId: a.userId, agentIds: [agentId], mode });
     }
@@ -53,7 +71,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const run = await prepareRun(deps, a, agentId, mode, input);
     try {
       const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run });
-      return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw) });
+      const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents(d));
+      return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw), afterStart });
     } catch (error) {
       releaseThread(run.threadId);
       throw error;

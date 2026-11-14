@@ -4,7 +4,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
 import type { Memory } from '@mastra/memory';
-import { decide, findByCall, pendingForThread } from '../approvals/requests.ts';
+import { decide, findByCall, pendingForThread, type ApprovalRequest } from '../approvals/requests.ts';
 import type { AccessContext } from '../auth/access.ts';
 import type { Db } from '../db/pool.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
@@ -39,7 +39,12 @@ export interface PreparedRun {
   mode: 'published' | 'draft';
 }
 
-const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
+// A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
+export interface PreparedTurn extends PreparedRun {
+  declinedCalls: { toolCallId: string; tool: string; args: unknown; superseded: boolean }[];
+}
+
+export const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
 const APPROVAL_PREFIX = 'mastra-approval::';
 const SUPERSEDED = 'Отменено: сотрудник написал новое сообщение.';
 
@@ -97,9 +102,11 @@ async function journalDecline(deps: ChatDeps, run: PreparedRun, tool: string, er
 }
 
 // A new message instead of "Да"/"Нет" cancels the waiting action (spec, scenario 2).
-async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent, modelId: string | null): Promise<void> {
+async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent, modelId: string | null): Promise<ApprovalRequest[]> {
+  const cancelled: ApprovalRequest[] = [];
   for (const pending of await pendingForThread(deps.db, run.userId, run.threadId)) {
     if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
+    cancelled.push(pending);
     const stream = await agent.declineToolCall({
       runId: pending.runId,
       toolCallId: pending.toolCallId,
@@ -110,9 +117,10 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent, mod
     await stream.consumeStream();
     await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
   }
+  return cancelled;
 }
 
-export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId: string, mode: 'published' | 'draft', input: RunInput): Promise<PreparedRun> {
+export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId: string, mode: 'published' | 'draft', input: RunInput): Promise<PreparedTurn> {
   assertAgentOpen(deps, access, agentId, mode);
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
@@ -129,6 +137,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     });
   }
   busyThreads.add(threadId);
+  const declinedCalls: PreparedTurn['declinedCalls'] = [];
   try {
     const resume = input.resume?.[0];
     const call = parseInterrupt(resume?.interruptId);
@@ -143,6 +152,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       if (!approved) {
         await decide(deps.db, pending.id, 'declined');
         await journalDecline(deps, run, pending.tool, null);
+        declinedCalls.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: false });
       } else {
         // The approved action runs only if access and limits still hold now (spec, section 8.4).
         try {
@@ -157,11 +167,11 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     } else {
       await deps.gateway.assertWithinBudget(run.userId);
       await deps.gateway.assertCanCall(run.userId, modelId ?? passportModel);
-      await cancelPending(deps, run, agent, modelId);
+      for (const p of await cancelPending(deps, run, agent, modelId)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
     }
   } catch (error) {
     busyThreads.delete(threadId);
     throw error;
   }
-  return run;
+  return { ...run, declinedCalls };
 }

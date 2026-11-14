@@ -10,6 +10,8 @@ export interface TranslatedError {
 export interface RunStreamHooks {
   onEnd(): void;
   translate(rawMessage: string): Promise<TranslatedError>;
+  // Events to put right after RUN_STARTED (e.g. results of calls cancelled before the turn).
+  afterStart: object[];
 }
 
 async function rewriteEvent(line: string, hooks: RunStreamHooks): Promise<string> {
@@ -38,6 +40,12 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
   const encoder = new TextEncoder();
   let buffer = '';
   let ended = false;
+  let started = false;
+  const withPrelude = (line: string): string => {
+    if (started || hooks.afterStart.length === 0 || !line.includes('"RUN_STARTED"')) return line;
+    started = true;
+    return [line, '', ...hooks.afterStart.flatMap((e) => [`data: ${JSON.stringify(e)}`, ''])].join('\n');
+  };
   const end = () => {
     if (!ended) {
       ended = true;
@@ -58,7 +66,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         const out: string[] = [];
-        for (const line of lines) out.push(await rewriteEvent(line, hooks));
+        for (const line of lines) out.push(withPrelude(await rewriteEvent(line, hooks)));
         controller.enqueue(encoder.encode(out.map((l) => `${l}\n`).join('')));
       } catch (error) {
         end();

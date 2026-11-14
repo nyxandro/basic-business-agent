@@ -56,7 +56,9 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
   res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: USAGE }));
 }
 
-export async function startFakeModel(): Promise<FakeModel> {
+// `fallback` answers when the script is empty (the browser stand answers by keywords); without it
+// the model says «Готово.».
+export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => FakeTurn } = {}): Promise<FakeModel> {
   const requests: FakeRequest[] = [];
   const queue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
   const server: Server = createServer((req, res) => {
@@ -66,7 +68,7 @@ export async function startFakeModel(): Promise<FakeModel> {
       const parsed = JSON.parse(body) as Omit<FakeRequest, 'headers'>;
       const record: FakeRequest = { ...parsed, stream: Boolean(parsed.stream), headers: req.headers };
       requests.push(record);
-      const next = queue.shift() ?? { text: 'Готово.' };
+      const next = queue.shift() ?? opts.fallback ?? { text: 'Готово.' };
       const turn = typeof next === 'function' ? next(record) : next;
       const delay = 'delayMs' in turn ? (turn.delayMs ?? 0) : 0;
       setTimeout(() => respond(res, turn, record.stream), delay);

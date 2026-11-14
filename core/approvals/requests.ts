@@ -102,6 +102,15 @@ export async function pendingForThread(db: Db, userId: string, threadId: string)
   return rows.map(toRequest);
 }
 
+// Calls of a conversation cancelled by a new message instead of an answer (spec, scenario 2).
+export async function supersededCallsOfThread(db: Db, userId: string, threadId: string): Promise<Set<string>> {
+  const { rows } = await db.query<{ tool_call_id: string }>(
+    "SELECT tool_call_id FROM app.approval_requests WHERE user_id = $1 AND thread_id = $2 AND status = 'declined' AND error_code = 'APP_CHAT_SUPERSEDED'",
+    [userId, threadId],
+  );
+  return new Set(rows.map((r) => r.tool_call_id));
+}
+
 export async function findByCall(db: Db, userId: string, runId: string, toolCallId: string): Promise<ApprovalRequest | null> {
   const { rows } = await db.query<Row>('SELECT * FROM app.approval_requests WHERE user_id = $1 AND run_id = $2 AND tool_call_id = $3', [userId, runId, toolCallId]);
   return rows[0] ? toRequest(rows[0]) : null;

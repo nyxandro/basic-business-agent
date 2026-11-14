@@ -30,6 +30,7 @@ function runtime(passport: Partial<AgentPassport> & { id: string }, instructions
     skillDirs: [],
     subagents: [],
     connectorIds: [],
+    toolSystems: {},
   };
 }
 

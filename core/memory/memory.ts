@@ -1,6 +1,7 @@
 // Personal memory only (spec, section 6 «Память»): Mastra working memory scoped to the employee
 // (resource = userId), so all their agents know it; nobody else reads it. Conversations are Mastra
 // threads of that employee; a background task has its own thread "bg:<taskId>".
+import type { ThreadSummaryDto } from '@bba/contracts';
 import { Memory } from '@mastra/memory';
 import type { PostgresStore } from '@mastra/pg';
 import type { Db } from '../db/pool.ts';
@@ -14,15 +15,9 @@ export const WORKING_MEMORY_TEMPLATE = `# О сотруднике
 const LAST_MESSAGES = 30;
 export const THREAD_TITLE_LENGTH = 60;
 
-export type ThreadKind = 'chat' | 'background' | 'draft';
-
-export interface ThreadSummary {
-  id: string;
-  title: string;
-  kind: ThreadKind;
-  unread: boolean;
-  updatedAt: string;
-}
+// The list of conversations is read by the web interface: the shape lives in contracts.
+export type ThreadSummary = ThreadSummaryDto;
+export type ThreadKind = ThreadSummaryDto['kind'];
 
 export function createMemory(storage: PostgresStore): Memory {
   return new Memory({

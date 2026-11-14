@@ -4,6 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { GENUI_TOOL_IDS } from '@bba/contracts';
 import { agentPassportSchema, type AgentPassport, type ModelConfig } from '../config/schemas.ts';
 import { configError, formatPath, type ConfigProblem, type Installation } from '../config/validate.ts';
 import type { MigrationSource } from '../db/migrate.ts';
@@ -22,6 +23,8 @@ export interface AgentRuntime {
   subagents: AgentRuntime[];
   // Plugins of this agent that work through an MCP server: their tools are built per employee.
   connectorIds: string[];
+  // Title of the system each plugin tool works in, for the chat line «Ищу в …».
+  toolSystems: Record<string, string>;
 }
 
 export interface Registry {
@@ -90,6 +93,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   const modelIds = new Set(installation.models.map((m: ModelConfig) => m.id));
 
   const pluginTools = new Map<string, Record<string, AnyTool>>();
+  const pluginTitles = new Map<string, string>();
   const pluginReadOnly = new Map<string, string[]>();
   const pluginSkills = new Map<string, string[]>();
   const pluginMigrations: MigrationSource[] = [];
@@ -126,6 +130,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     }
     for (const trigger of (passport.triggers as ((c: PluginContext<unknown>) => PluginTrigger[]) | undefined)?.(ctx) ?? []) triggers.push({ plugin: passport.name, trigger });
     pluginTools.set(passport.name, tools);
+    pluginTitles.set(passport.name, passport.title);
     pluginReadOnly.set(passport.name, passport.readOnly);
     pluginSkills.set(passport.name, dirIfExists(join(pluginDir, 'skills')));
     if (existsSync(join(pluginDir, 'migrations'))) pluginMigrations.push({ prefix: `plugin:${passport.name}`, dir: join(pluginDir, 'migrations') });
@@ -133,16 +138,21 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
 
   async function buildAgent(passport: AgentPassport, dir: string, file: string, instructions: string): Promise<AgentRuntime> {
     const tools: Record<string, AnyTool> = {};
+    const toolSystems: Record<string, string> = {};
     const readOnly = new Set<string>(passport.readOnly);
     for (const name of passport.plugins) {
       const isConnector = connectors.some((c) => c.id === name);
       for (const [id, tool] of Object.entries(pluginTools.get(name) ?? {})) {
         if (tools[id]) problems.push({ file, field: 'plugins', message: `tool "${id}" comes from two plugins` });
         tools[id] = tool;
+        toolSystems[id] = pluginTitles.get(name)!;
       }
       if (!isConnector) for (const id of pluginReadOnly.get(name) ?? []) readOnly.add(id);
     }
     Object.assign(tools, await loadAgentTools(dir, file, problems));
+    for (const id of Object.keys(tools)) {
+      if (GENUI_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of an interface block of the core` });
+    }
     for (const id of passport.readOnly) {
       if (!tools[id]) problems.push({ file, field: 'readOnly', message: `the agent has no tool "${id}"` });
     }
@@ -153,7 +163,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
       ...dirIfExists(join(dir, 'skills')),
     ];
     const connectorIds = passport.plugins.filter((p) => connectors.some((c) => c.id === p));
-    return { passport, dir, instructions, tools: wrapped, readOnly, skillDirs, subagents: await loadSubagents(dir, file), connectorIds };
+    return { passport, dir, instructions, tools: wrapped, readOnly, skillDirs, subagents: await loadSubagents(dir, file), connectorIds, toolSystems };
   }
 
   async function loadSubagents(agentDir: string, agentFile: string): Promise<AgentRuntime[]> {

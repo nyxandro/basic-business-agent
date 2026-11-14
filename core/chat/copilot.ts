@@ -19,7 +19,15 @@ export interface CopilotHandler {
   handle(request: Request, ctx: CopilotRequestContext): Promise<Response>;
 }
 
+// CopilotKit's runtime sends usage events to its servers on every request unless this switch is
+// set; it reads the switch at each event. Employees' activity of a closed installation stays
+// inside, so the switch is set in code before the runtime exists, not left to deployment settings.
+function disableCopilotTelemetry(): void {
+  process.env.COPILOTKIT_TELEMETRY_DISABLED = 'true';
+}
+
 export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandler {
+  disableCopilotTelemetry();
   const contexts = new WeakMap<Request, CopilotRequestContext>();
 
   async function agentFor(agentId: string, run: PreparedRun): Promise<AbstractAgent> {

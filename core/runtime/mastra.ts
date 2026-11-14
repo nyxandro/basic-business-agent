@@ -41,13 +41,15 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       memory,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
-      processorsFor: (r) => ({
+      processorsFor: (r, level) => ({
         input: [
           createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false }),
           masking,
           ...imageView,
         ],
-        output: [masking, recorder],
+        // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,
+        // under the run id the chat answers to.
+        output: level === 'top' ? [masking, recorder] : [masking],
       }),
     });
   }

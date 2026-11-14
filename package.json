@@ -21,6 +21,7 @@
     "models:config": "node --env-file=.env core/cli/models-config.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
     "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/skills/requirements.txt",
+    "stand": "node --env-file=.env tests/e2e/stand.ts",
     "start": "node core/server/main.ts",
     "tasks": "node --env-file=.env core/cli/tasks.ts",
     "test": "vitest run && pnpm -C web test",

@@ -2,11 +2,12 @@
 // stored in /workspace/<userId>/uploads/<threadId>/ and removed with the conversation or the person.
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
 import { userDir } from './workspace.ts';
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.xlsx', '.csv', '.txt', '.png', '.jpg', '.jpeg']);
+export { MAX_UPLOAD_BYTES };
+export const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(UPLOAD_EXTENSIONS);
 const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
 
 export function safeFileName(name: string): string {

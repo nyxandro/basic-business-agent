@@ -13,12 +13,14 @@ export const tableBlockSchema = z.object({
   rows: z.array(z.record(z.string(), cell)).max(MAX_TABLE_ROWS),
 });
 
-export const chartBlockSchema = z.object({
-  title: z.string().optional(),
-  kind: z.enum(['bar', 'line', 'pie']),
-  labels: z.array(z.string()).min(1).max(100),
-  series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(8),
-});
+export const chartBlockSchema = z
+  .object({
+    title: z.string().optional(),
+    kind: z.enum(['bar', 'line', 'pie']),
+    labels: z.array(z.string()).min(1).max(100),
+    series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(8),
+  })
+  .refine((c) => c.series.every((s) => s.values.length === c.labels.length), { message: 'every series needs one value per label', path: ['series'] });
 
 export const cardBlockSchema = z.object({
   title: z.string(),
@@ -44,7 +46,8 @@ export const formBlockSchema = z.object({
       }),
     )
     .min(2)
-    .max(8),
+    .max(8)
+    .refine((fields) => fields.every((f) => f.kind !== 'select' || (f.options?.length ?? 0) >= 2), { message: 'a select field needs at least two options' }),
   submitLabel: z.string(),
 });
 
@@ -53,3 +56,21 @@ export type ChartBlock = z.infer<typeof chartBlockSchema>;
 export type CardBlock = z.infer<typeof cardBlockSchema>;
 export type ChoiceBlock = z.infer<typeof choiceBlockSchema>;
 export type FormBlock = z.infer<typeof formBlockSchema>;
+
+// What the model may assemble itself: small tables only. Big ones come straight from tool results.
+export const modelTableBlockSchema = tableBlockSchema.extend({
+  rows: z.array(z.record(z.string(), cell)).max(MAX_MODEL_TABLE_ROWS),
+});
+
+// Tools of the core that draw the catalog in the chat (core/genui, web/src/genui).
+export const GENUI_TOOL = {
+  table: 'show_table',
+  chart: 'show_chart',
+  card: 'show_card',
+  choice: 'ask_choice',
+  form: 'ask_form',
+} as const;
+export const GENUI_TOOL_IDS: readonly string[] = Object.values(GENUI_TOOL);
+
+// A plugin tool whose result has this shape gets its table drawn in the chat as is.
+export const toolTableResultSchema = z.object({ table: tableBlockSchema });

@@ -47,6 +47,18 @@ export async function api<T>(method: Method, path: string, body?: unknown): Prom
   return (await res.json()) as T;
 }
 
+// Multipart upload (attachments): the browser sets the boundary header itself.
+export async function apiForm<T>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: form });
+  } catch (error) {
+    throw new ApiRequestError({ code: 'APP_NETWORK_FAILED', message: ru.clientErrors.APP_NETWORK_FAILED, status: 0, cause: error });
+  }
+  if (!res.ok) throw await toError(res);
+  return (await res.json()) as T;
+}
+
 export function asApiError(error: unknown): ApiRequestError {
   if (error instanceof ApiRequestError) return error;
   // Not a server answer but a failure inside the page: keep the details for diagnosis.

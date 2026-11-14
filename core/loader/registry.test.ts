@@ -69,6 +69,16 @@ describe('buildRegistry', () => {
     expect(sales.tools.notes_add!.requireApproval).toBe(true);
     expect(sales.tools.sales_report!.requireApproval).toBe(true);
     expect(Object.keys(reg.get('helper')!.tools)).toEqual([]);
+    // The chat names the system a tool works in: «Ищу в Заметки…».
+    expect(sales.toolSystems).toEqual({ notes_list: 'Заметки', notes_add: 'Заметки' });
+  });
+
+  it('refuses a tool with the name of an interface block of the core', async () => {
+    const dir = installation({ 'agents/sales/tools/report.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default ${TOOL('show_table')};` });
+    await expect(registryOf(dir)).rejects.toMatchObject({
+      code: 'APP_CONFIG_INVALID',
+      details: { problems: [{ file: 'agents/sales/agent.ts', field: 'plugins', message: 'tool "show_table" has the name of an interface block of the core' }] },
+    });
   });
 
   it('lets the agent passport mark its own tool as read-only', async () => {

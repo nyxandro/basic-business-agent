@@ -75,6 +75,7 @@ beforeAll(async () => {
     skillDirs: [SKILLS],
     subagents: [],
     connectorIds: [],
+    toolSystems: {},
   };
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   agent = createMastraAgent(rt, {
