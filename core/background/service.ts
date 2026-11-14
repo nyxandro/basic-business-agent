@@ -22,6 +22,7 @@ import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { logEvent } from '../server/log.ts';
 
 export const BACKGROUND_WORKFLOW_ID = 'background-run';
@@ -61,6 +62,7 @@ export interface BackgroundDeps {
   gateway: Pick<ModelGateway, 'assertWithinBudget' | 'translateError'>;
   editor: EditorDeps;
   timezone: string;
+  skills: Pick<SkillsRuntime, 'skillsFor'>;
 }
 
 export interface BackgroundService {
@@ -116,6 +118,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
     if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
+    rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(await deps.skills.skillsFor(userId)));
     return rc;
   }
 

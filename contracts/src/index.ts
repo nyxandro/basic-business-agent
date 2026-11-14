@@ -5,3 +5,4 @@ export * from './admin.ts';
 export * from './chat.ts';
 export * from './settings.ts';
 export * from './models.ts';
+export * from './skills.ts';

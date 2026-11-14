@@ -17,6 +17,8 @@ export const coreEnvSchema = z.object({
   LITELLM_CALLBACK_SECRET: secret,
   // Folder with the employees' workspaces (/workspace in the container).
   APP_WORKSPACE_DIR: z.string().startsWith('/', 'must be an absolute path'),
+  // Folder for the unpacked copies of uploaded skills; the server refills it from the database.
+  APP_SKILLS_DIR: z.string().startsWith('/', 'must be an absolute path'),
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;
 

@@ -23,13 +23,13 @@ import { ensureMaskingSettings } from '../masking/settings.ts';
 import { createCopilotHandler } from '../chat/copilot.ts';
 import { createBackgroundService, createBackgroundWorkflow, type BackgroundService } from '../background/service.ts';
 import { createMemory } from '../memory/memory.ts';
+import { createSkillsRuntime } from '../skills-admin/runtime.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = 3000;
-const CORE_SKILLS_DIR = fileURLToPath(new URL('../skills', import.meta.url));
 const SKILLS_VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
 
 async function main(): Promise<void> {
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   // The registry and the Mastra workflow need the background service, which itself needs them.
   const backgroundRef: { current?: BackgroundService } = {};
   const runner = { startAgentRun: (input: Parameters<BackgroundService['startAgentRun']>[0]) => backgroundRef.current!.startAgentRun(input) };
-  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, coreSkillsDir: CORE_SKILLS_DIR, runner });
+  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, runner });
   await migrate(env.DATABASE_URL, undefined, registry.pluginMigrations);
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = registry.ids();
@@ -57,6 +57,9 @@ async function main(): Promise<void> {
     (result) => logEvent('info', 'gateway_synced', { ...result }),
     (error: unknown) => logEvent('error', 'gateway_sync_failed', { code: 'APP_GATEWAY_SYNC_FAILED', error }),
   );
+  const skillsDeps = { db, skillsDir: env.APP_SKILLS_DIR };
+  const skills = createSkillsRuntime(skillsDeps);
+  await skills.prepare();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
   const memory = createMemory(storage);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
@@ -67,10 +70,10 @@ async function main(): Promise<void> {
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, copilot: createCopilotHandler({ editor }) };
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.

@@ -35,16 +35,13 @@ function installation(overrides: Record<string, string> = {}): string {
     'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: [] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null } };`,
     'config/plugins.ts': `export default {};`,
     'plugins/notes/plugin.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default { name: 'notes', title: 'Заметки', settings: z.object({}), secrets: [], readOnly: ['notes_list'], tools: () => ({ notes_list: ${TOOL('notes_list')}, notes_add: ${TOOL('notes_add')} }) };`,
-    'plugins/notes/skills/note-taking/SKILL.md': SKILL('note-taking'),
     'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: [], starters: [] };`,
     'agents/sales/instructions.md': 'Ты агент отдела продаж.',
     'agents/sales/tools/report.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default ${TOOL('sales_report')};`,
-    'agents/sales/skills/sales-playbook/SKILL.md': SKILL('sales-playbook'),
     'agents/sales/subagents/researcher/agent.ts': `export default { id: 'researcher', name: 'Исследователь', description: 'Ищет сведения о клиенте', plugins: [], readOnly: [], starters: [] };`,
     'agents/sales/subagents/researcher/instructions.md': 'Ты ищешь сведения о клиенте.',
     'agents/helper/agent.ts': `export default { id: 'helper', name: 'Помощник', description: 'Общий помощник', plugins: [], readOnly: [], starters: [] };`,
     'agents/helper/instructions.md': 'Ты общий помощник.',
-    'core-skills/read-documents/SKILL.md': SKILL('read-documents'),
     ...overrides,
   };
   for (const [path, content] of Object.entries(files)) {
@@ -56,7 +53,7 @@ function installation(overrides: Record<string, string> = {}): string {
 
 async function registryOf(dir: string) {
   const inst = await loadInstallation(dir, {});
-  return buildRegistry({ root: dir, installation: inst, env: {}, db: {} as Db, coreSkillsDir: join(dir, 'core-skills') });
+  return buildRegistry({ root: dir, installation: inst, env: {}, db: {} as Db });
 }
 
 describe('buildRegistry', () => {
@@ -89,11 +86,23 @@ describe('buildRegistry', () => {
     expect(reg.get('sales')!.tools.sales_report!.requireApproval).toBe(false);
   });
 
-  it('collects core, plugin and agent skills, and sub-agents from the agent folder', async () => {
-    const dir = installation();
-    const sales = (await registryOf(dir)).get('sales')!;
-    expect(sales.skillDirs).toEqual([join(dir, 'core-skills'), join(dir, 'plugins/notes/skills'), join(dir, 'agents/sales/skills')]);
+  it('collects sub-agents from the agent folder', async () => {
+    const sales = (await registryOf(installation())).get('sales')!;
     expect(sales.subagents.map((s) => s.passport.id)).toEqual(['researcher']);
+  });
+
+  // Stage 1 read skills from these folders; skills are uploaded in «Скиллы» now (spec, 8.15).
+  it('stops on a skills folder left in a plugin or an agent', async () => {
+    const dir = installation({ 'plugins/notes/skills/note-taking/SKILL.md': SKILL('note-taking'), 'agents/sales/skills/sales-playbook/SKILL.md': SKILL('sales-playbook') });
+    await expect(registryOf(dir)).rejects.toMatchObject({
+      code: 'APP_CONFIG_INVALID',
+      details: {
+        problems: [
+          { file: 'plugins/notes/skills/', field: '(folder)', message: expect.stringContaining('«Скиллы»') },
+          { file: 'agents/sales/skills/', field: '(folder)', message: expect.stringContaining('pnpm skills:pack') },
+        ],
+      },
+    });
   });
 
   it('reports read-only entries that name no tool', async () => {
@@ -106,13 +115,18 @@ describe('buildRegistry', () => {
     });
   });
 
-  it('builds a Mastra agent that offers those tools and skills to the model', async () => {
-    const reg = await registryOf(installation());
+  it('builds a Mastra agent that offers those tools and the skills of the run to the model', async () => {
+    const dir = installation();
+    const reg = await registryOf(dir);
     const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
     const agent = createMastraAgent(reg.get('sales')!, { gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, processorsFor: () => ({ input: [], output: [] }) });
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'u1');
     rc.set(REQUEST_KEYS.modelId, 'test-paid');
+    const skill = join(dir, 'uploaded/note-taking');
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, 'SKILL.md'), SKILL('note-taking'));
+    rc.set(REQUEST_KEYS.skillPaths, JSON.stringify([skill]));
     model.script({ text: 'Привет!' });
     await agent.generate('привет', { requestContext: rc, maxSteps: 1 });
     const req = model.requests.at(-1)!;
@@ -120,7 +134,7 @@ describe('buildRegistry', () => {
     expect(tools).toEqual(expect.arrayContaining(['notes_list', 'notes_add', 'sales_report', 'skill', 'skill_read', 'skill_search']));
     expect(tools.some((t) => t.includes('researcher'))).toBe(true);
     const system = JSON.stringify(req.messages.filter((m) => m.role === 'system'));
-    for (const skill of ['note-taking', 'sales-playbook', 'read-documents']) expect(system).toContain(skill);
+    expect(system).toContain('note-taking');
     expect(system).toContain('Ты агент отдела продаж.');
   });
 });

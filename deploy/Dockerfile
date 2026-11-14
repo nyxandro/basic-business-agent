@@ -33,8 +33,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-# Python libraries of the document skills (pinned in core/skills/requirements.txt).
-COPY core/skills/requirements.txt /tmp/skills-requirements.txt
+# Python libraries of the document skills (pinned in core/sandbox/requirements.txt).
+COPY core/sandbox/requirements.txt /tmp/skills-requirements.txt
 RUN python3 -m venv /app/.venv-skills \
   && /app/.venv-skills/bin/pip install --no-cache-dir -r /tmp/skills-requirements.txt \
   && rm /tmp/skills-requirements.txt
@@ -42,10 +42,10 @@ COPY --from=app-deps /src/node_modules node_modules
 COPY --from=app-deps /src/contracts/node_modules contracts/node_modules
 COPY . .
 # The code belongs to root and cannot be changed by the app; the app writes only the employees'
-# workspaces and the generated LiteLLM config (compose: one-shot service litellm-config).
+# workspaces, the unpacked skills and the generated LiteLLM config (compose: one-shot service litellm-config).
 RUN useradd --system --create-home --uid 10001 app \
-  && mkdir -p /workspace /app/deploy/litellm \
-  && chown app /workspace /app/deploy/litellm
+  && mkdir -p /workspace /app/deploy/litellm /app/skills-unpacked \
+  && chown app /workspace /app/deploy/litellm /app/skills-unpacked
 ENV NODE_ENV=production
 USER app
 EXPOSE 3000

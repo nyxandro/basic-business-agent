@@ -1,5 +1,6 @@
 // Our loader (spec, section 15): turns the validated installation into agent runtimes —
-// tools of the agent's plugins and of the agent itself, skill folders, sub-agents.
+// tools of the agent's plugins and of the agent itself, sub-agents. Skills are not in folders of
+// the installation: the admin uploads them in «Скиллы» (core/skills-admin).
 // Every tool that is not listed as read-only requires the person's confirmation (spec, 8.4).
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,7 +20,6 @@ export interface AgentRuntime {
   instructions: string;
   tools: Record<string, AnyTool>;
   readOnly: ReadonlySet<string>;
-  skillDirs: string[];
   subagents: AgentRuntime[];
   // Plugins of this agent that work through an MCP server: their tools are built per employee.
   connectorIds: string[];
@@ -58,12 +58,14 @@ export interface RegistryDeps {
   installation: Installation;
   env: Record<string, string | undefined>;
   db: Db;
-  coreSkillsDir: string;
   runner?: AgentRunner;
 }
 
-function dirIfExists(path: string): string[] {
-  return existsSync(path) ? [path] : [];
+// Stage 1 read skills from these folders; a copy updated since would silently lose them.
+function leftoverSkills(dir: string, file: string): ConfigProblem[] {
+  return existsSync(join(dir, 'skills'))
+    ? [{ file: `${file.replace(/[^/]+$/, '')}skills/`, field: '(folder)', message: 'is no longer read: pack each skill with `pnpm skills:pack <folder>`, upload it in «Скиллы» of the admin panel and delete the folder' }]
+    : [];
 }
 
 function isTool(value: unknown): value is AnyTool {
@@ -94,7 +96,6 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
   const pluginTools = new Map<string, Record<string, AnyTool>>();
   const pluginTitles = new Map<string, string>();
   const pluginReadOnly = new Map<string, string[]>();
-  const pluginSkills = new Map<string, string[]>();
   const pluginMigrations: MigrationSource[] = [];
   const connectors: ConnectorRuntime[] = [];
   const triggers: Registry['triggers'] = [];
@@ -131,7 +132,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     pluginTools.set(passport.name, tools);
     pluginTitles.set(passport.name, passport.title);
     pluginReadOnly.set(passport.name, passport.readOnly);
-    pluginSkills.set(passport.name, dirIfExists(join(pluginDir, 'skills')));
+    problems.push(...leftoverSkills(pluginDir, `plugins/${plugin.dir}/plugin.ts`));
     if (existsSync(join(pluginDir, 'migrations'))) pluginMigrations.push({ prefix: `plugin:${passport.name}`, dir: join(pluginDir, 'migrations') });
   }
 
@@ -156,13 +157,9 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
       if (!tools[id]) problems.push({ file, field: 'readOnly', message: `the agent has no tool "${id}"` });
     }
     const wrapped = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, applyApprovalPolicy(tool, { readOnly: readOnly.has(id), db })]));
-    const skillDirs = [
-      ...dirIfExists(deps.coreSkillsDir),
-      ...passport.plugins.flatMap((p) => pluginSkills.get(p) ?? []),
-      ...dirIfExists(join(dir, 'skills')),
-    ];
+    problems.push(...leftoverSkills(dir, file));
     const connectorIds = passport.plugins.filter((p) => connectors.some((c) => c.id === p));
-    return { passport, dir, instructions, tools: wrapped, readOnly, skillDirs, subagents: await loadSubagents(dir, file), connectorIds, toolSystems };
+    return { passport, dir, instructions, tools: wrapped, readOnly, subagents: await loadSubagents(dir, file), connectorIds, toolSystems };
   }
 
   async function loadSubagents(agentDir: string, agentFile: string): Promise<AgentRuntime[]> {

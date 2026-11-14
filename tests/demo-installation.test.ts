@@ -9,7 +9,6 @@ import { pluginSchemaName } from '../core/plugins/public/index.ts';
 import { createTestApp, type TestApp } from '../core/server/test-app.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const CORE_SKILLS = fileURLToPath(new URL('../core/skills', import.meta.url));
 
 let t: TestApp;
 let cookie: string;
@@ -30,7 +29,7 @@ async function run(threadId: string, text: string | null, resume?: unknown): Pro
 
 beforeAll(async () => {
   const installation = await loadInstallation(ROOT, process.env);
-  t = await createTestApp({ registry: (db) => buildRegistry({ root: ROOT, installation, env: process.env, db, coreSkillsDir: CORE_SKILLS }) });
+  t = await createTestApp({ registry: (db) => buildRegistry({ root: ROOT, installation, env: process.env, db }) });
   const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
   const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Офис') RETURNING id`)).rows[0]!.id;
   await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [dep, olga]);

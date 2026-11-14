@@ -1,7 +1,8 @@
 // The agent's workspace per employee (spec, section 8.7; verified at step 0, V1 and V6): the
 // conversation's files folder (core/workspace/layout.ts) is the root of both the file tools and the
-// bubblewrap sandbox — no network, no app environment; skill folders and the Python of the skills
-// are visible read-only.
+// bubblewrap sandbox — no network, no app environment; the folders of the skills this employee
+// gets (and only those, V14) and the Python of the skills are visible read-only.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { Processor } from '@mastra/core/processors';
@@ -9,9 +10,8 @@ import { createTool } from '@mastra/core/tools';
 import { LocalFilesystem, LocalSandbox, Workspace } from '@mastra/core/workspace';
 import { z } from 'zod';
 import { appError } from '../errors/catalog.ts';
-import type { AgentRuntime } from '../loader/registry.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
 import { contextRoot, resolveInside } from '../workspace/layout.ts';
 import type { Limiter } from './limiter.ts';
 
@@ -50,13 +50,13 @@ function limitedSandbox(options: ConstructorParameters<typeof LocalSandbox>[0], 
   return sandbox;
 }
 
-export function createAgentWorkspace(rt: AgentRuntime, deps: SandboxDeps, isolation: 'bwrap' | 'seatbelt'): Workspace {
+export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'seatbelt'): Workspace {
   const dirOf = (ctx: Ctx) => runRoot(deps.workspaceRoot, ctx);
-  const readOnlyPaths = [...rt.skillDirs, deps.skillsVenv].filter((p) => existsSync(p));
   return new Workspace({
-    filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: rt.skillDirs }),
+    filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: skillPathsOf(requestContext) }),
     sandbox: ({ requestContext }) => {
       const dir = dirOf(requestContext);
+      const readOnlyPaths = [...skillPathsOf(requestContext), deps.skillsVenv].filter((p) => existsSync(p));
       return limitedSandbox(
         {
           workingDirectory: dir,
@@ -69,8 +69,10 @@ export function createAgentWorkspace(rt: AgentRuntime, deps: SandboxDeps, isolat
         deps.limiter,
       );
     },
-    sandboxCacheKey: ({ requestContext }) => `${requireContextValue(requestContext, REQUEST_KEYS.userId)}:${optionalContextValue(requestContext, REQUEST_KEYS.projectId) ?? ''}`,
-    ...(rt.skillDirs.length > 0 ? { skills: rt.skillDirs } : {}),
+    // A cached sandbox keeps the folders it was made with, so another set of skills is another sandbox.
+    sandboxCacheKey: ({ requestContext }) =>
+      `${requireContextValue(requestContext, REQUEST_KEYS.userId)}:${optionalContextValue(requestContext, REQUEST_KEYS.projectId) ?? ''}:${createHash('sha256').update(requireContextValue(requestContext, REQUEST_KEYS.skillPaths)).digest('hex').slice(0, 16)}`,
+    skills: ({ requestContext }) => skillPathsOf(requestContext),
   });
 }
 

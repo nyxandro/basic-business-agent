@@ -17,6 +17,7 @@ import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
+import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 
 export interface ChatDeps {
   db: Db;
@@ -27,6 +28,7 @@ export interface ChatDeps {
   workspaceRoot: string;
   // Time zone of the installation: the day of the subscription's daily cap.
   timezone: string;
+  skills: Pick<SkillsRuntime, 'skillsFor'>;
 }
 
 export interface RunInput {
@@ -45,6 +47,8 @@ export interface PreparedRun {
   projectId: string | null;
   // The models of the run (core/models/resolve.ts); null where no model is called (agent listing).
   models: ModelChoice | null;
+  // Folders of the skills the employee gets, fixed for the run.
+  skillPaths: string[];
 }
 
 // A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
@@ -100,6 +104,7 @@ export function requestContextFor(run: PreparedRun): RequestContext {
     if (run.models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, run.models.fallback);
   }
   if (run.projectId) rc.set(REQUEST_KEYS.projectId, run.projectId);
+  rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(run.skillPaths));
   return rc;
 }
 
@@ -138,7 +143,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   // A draft check of a prompt never belongs to the admin's projects.
   const projectId = mode === 'draft' ? null : await projectOfThread(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId, models: null };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
 

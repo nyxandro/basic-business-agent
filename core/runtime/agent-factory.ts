@@ -11,7 +11,7 @@ import type { AgentRuntime } from '../loader/registry.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { logEvent } from '../server/log.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue } from './request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
 // Only the first chunk is timed: a total deadline would end the run instead of switching.
@@ -61,11 +61,8 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
   const processors = deps.processorsFor(rt, level);
   const staticTools: Record<string, AnyTool> = { ...rt.tools, ...(level === 'top' ? createGenuiTools() : {}) };
   if (deps.sandbox) staticTools[VIEW_IMAGE_TOOL] = createViewImageTool(deps.sandbox.deps.workspaceRoot);
-  const workspace = deps.sandbox
-    ? createAgentWorkspace(rt, deps.sandbox.deps, deps.sandbox.isolation)
-    : rt.skillDirs.length > 0
-      ? new Workspace({ skills: rt.skillDirs })
-      : undefined;
+  // Skills are the employee's own set for the run (core/skills-admin/runtime.ts).
+  const workspace = deps.sandbox ? createAgentWorkspace(deps.sandbox.deps, deps.sandbox.isolation) : new Workspace({ skills: ({ requestContext }) => skillPathsOf(requestContext) });
   const subagents = Object.fromEntries(rt.subagents.map((s) => [s.passport.id, buildAgent(s, deps, 'sub')]));
   return new Agent({
     id: rt.passport.id,
@@ -95,7 +92,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
           })
         : staticTools,
     ...(deps.memory ? { memory: deps.memory } : {}),
-    ...(workspace ? { workspace } : {}),
+    workspace,
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,

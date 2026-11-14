@@ -77,6 +77,8 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_CALLBACK_SECRET: ${LITELLM_CALLBACK_SECRET}
       APP_WORKSPACE_DIR: /workspace
+      # Unpacked copies of uploaded skills; the archives are in the database, so no volume is needed.
+      APP_SKILLS_DIR: /app/skills-unpacked
     volumes:
       - workspace:/workspace
     # bubblewrap isolates skill scripts with user namespaces: Docker's default seccomp profile plus

@@ -15,9 +15,10 @@ import { contextRoot } from '../workspace/layout.ts';
 import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const SKILLS = join(ROOT, 'core/skills');
+// «Чтение документов» as the run of an employee gets it: the folder of one skill.
+const SKILL = join(ROOT, 'skills/read-documents');
 const VENV = join(ROOT, '.venv-skills');
-const SCRIPTS = join(SKILLS, 'read-documents/scripts');
+const SCRIPTS = join(SKILL, 'scripts');
 let workspaceRoot: string;
 let model: FakeModel;
 let agent: Agent;
@@ -58,11 +59,12 @@ function lastToolOutput(): string {
 
 const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
-async function runAs(userId: string, projectId?: string): Promise<void> {
+async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL]): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
+  rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skills));
   if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
   await agent.generate('Прочитай файл', { requestContext: rc, maxSteps: 3 });
 }
@@ -76,7 +78,6 @@ beforeAll(async () => {
     instructions: 'Ты помощник.',
     tools: {},
     readOnly: new Set(),
-    skillDirs: [SKILLS],
     subagents: [],
     connectorIds: [],
     toolSystems: {},
@@ -114,6 +115,31 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
       const out = lastToolOutput();
       for (const e of expected) expect(out).toContain(e.replace(/\|/g, '\\\\|').replace(/\\\\\|/g, '|'));
     }
+  });
+
+  // V14: the skills of a run are the employee's own set (core/skills-admin/runtime.ts).
+  it('V14: a skill not given to the employee is neither offered, nor read, nor run', async () => {
+    const system = () => JSON.stringify(model.requests.at(-1)!.messages.filter((m) => m.role === 'system'));
+    model.script({ text: 'Ок.' });
+    await runAs('olga');
+    expect(system()).toContain('read-documents');
+
+    model.script({ text: 'Ок.' });
+    await runAs('petr', undefined, []);
+    expect(system()).not.toContain('read-documents');
+    model.script({ toolCalls: [{ name: 'skill', args: { name: 'read-documents' } }] }, { text: 'Ок.' });
+    await runAs('petr', undefined, []);
+    expect(lastToolOutput()).not.toContain('Чтение документов');
+    model.script({ toolCalls: [{ name: 'skill_read', args: { skillName: 'read-documents', path: 'SKILL.md' } }] }, { text: 'Ок.' });
+    await runAs('petr', undefined, []);
+    expect(lastToolOutput()).not.toContain('Чтение документов');
+    model.script(command(`cat "${SKILL}/SKILL.md"`), { text: 'Ок.' });
+    await runAs('petr', undefined, []);
+    expect(lastToolOutput()).toContain('No such file');
+
+    model.script(command(`cat "${SKILL}/SKILL.md"`), { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('Чтение документов');
   });
 
   it('keeps other employees’ folders, the app’s secrets, the network and the code out of reach', async () => {

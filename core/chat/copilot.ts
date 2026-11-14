@@ -41,7 +41,7 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
       if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run) };
       const entries = await Promise.all(
-        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, models: null })] as const),
+        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, models: null, skillPaths: [] })] as const),
       );
       return Object.fromEntries(entries);
     },

@@ -10,6 +10,7 @@ const valid = {
   LITELLM_MASTER_KEY: 'sk-master',
   LITELLM_CALLBACK_SECRET: 'y'.repeat(32),
   APP_WORKSPACE_DIR: '/workspace',
+  APP_SKILLS_DIR: '/app/skills-unpacked',
 };
 
 describe('readCoreEnv', () => {

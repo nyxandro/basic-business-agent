@@ -12,6 +12,9 @@ export const REQUEST_KEYS = {
   taskId: 'bba.taskId',
   // Project of the conversation, when it is in one: the sandbox then works in the project's files.
   projectId: 'bba.projectId',
+  // Folders of the skills the employee gets (core/skills-admin/runtime.ts), JSON: fixed for the run,
+  // so a skill replaced meanwhile does not change under a running answer.
+  skillPaths: 'bba.skillPaths',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';
@@ -23,6 +26,10 @@ interface ContextReader {
 export function optionalContextValue(ctx: ContextReader | undefined, key: string): string | null {
   const value = ctx?.get(key);
   return typeof value === 'string' && value !== '' ? value : null;
+}
+
+export function skillPathsOf(ctx: ContextReader | undefined): string[] {
+  return JSON.parse(requireContextValue(ctx, REQUEST_KEYS.skillPaths)) as string[];
 }
 
 export function requireContextValue(ctx: ContextReader | undefined, key: string): string {

@@ -14,6 +14,7 @@ export const ADMIN_SECTIONS = [
   'connections',
   'journal',
   'models',
+  'skills',
 ] as const;
 export const DOCUMENT_PERMISSIONS = ['documents.org.manage', 'documents.department.manage'] as const;
 export const PERMISSIONS = [...ADMIN_SECTIONS, ...DOCUMENT_PERMISSIONS] as const;

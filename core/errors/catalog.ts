@@ -48,6 +48,8 @@ export const ERROR_CATALOG = {
   APP_MODEL_IN_USE: { status: 409, userMessage: 'Модель нужна агентам. Сначала выберите основную модель организации или другую модель этим агентам.' },
   APP_VOICE_NOT_CONFIGURED: { status: 409, userMessage: 'Голосовой ввод в этой установке не настроен.' },
   APP_VOICE_FAILED: { status: 502, userMessage: 'Не удалось распознать запись. Попробуйте ещё раз или напишите текстом.' },
+  APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },
+  APP_SKILL_EXISTS: { status: 409, userMessage: 'Скилл с таким именем уже загружен. Чтобы обновить его, нажмите «Заменить».' },
   APP_GATEWAY_SYNC_FAILED: { status: 502, userMessage: 'Шлюз не принял изменения. Попробуйте ещё раз; если повторяется — сообщите разработчику код.' },
   APP_USAGE_LIMIT_EXCEEDED: {
     status: 402,

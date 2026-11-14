@@ -17,6 +17,7 @@ import type { Memory } from '@mastra/memory';
 import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from '../models/fake-openai.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
+import { createSkillsRuntime } from '../skills-admin/runtime.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { createModelCatalog, type ModelCatalog } from '../models/catalog.ts';
@@ -56,6 +57,8 @@ export interface TestApp {
   workspaceRoot: string;
   // Mastra memory of the conversations: tests create threads directly.
   memory: Memory;
+  // Unpacked skills of this test installation.
+  skillsDir: string;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
@@ -84,7 +87,6 @@ function testAgent(id: string, name: string, tools: AgentRuntime['tools']): Agen
     instructions: `Ты тестовый агент «${name}».`,
     tools,
     readOnly: new Set(),
-    skillDirs: [],
     subagents: [],
     connectorIds: [],
     toolSystems: {},
@@ -166,6 +168,9 @@ export async function createTestApp(
       Promise.resolve({ providerId: 'fake', modelId, ...(opts.modelConfig?.(modelId) ?? { url: model.url, apiKey: 'x' }), headers: { [AGENT_HEADER]: agentId } }),
   };
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
+  const skillsDir = mkdtempSync(join(tmpdir(), 'bba-test-skills-'));
+  const skillsDeps = { db, skillsDir };
+  const skills = createSkillsRuntime(skillsDeps);
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({
@@ -181,12 +186,12 @@ export async function createTestApp(
     workflows: { [workflow.id]: workflow },
   });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow' });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   const models = createModelCatalog({ db, box, client: litellm, owner: teamId, agentName });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -219,6 +224,7 @@ export async function createTestApp(
     background,
     workspaceRoot,
     memory,
+    skillsDir,
     sentMail,
     call,
     roleId,
@@ -243,6 +249,7 @@ export async function createTestApp(
       await mastra.stopWorkers();
       await model.close();
       rmSync(workspaceRoot, { recursive: true, force: true });
+      rmSync(skillsDir, { recursive: true, force: true });
       await connections.close();
       await db.end();
       await authPool.end();

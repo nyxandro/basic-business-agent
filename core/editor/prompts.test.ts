@@ -33,7 +33,6 @@ function runtime(passport: Partial<AgentPassport> & { id: string }, instructions
     instructions,
     tools: {},
     readOnly: new Set(),
-    skillDirs: [],
     subagents: [],
     connectorIds: [],
     toolSystems: {},
@@ -56,6 +55,7 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, 'olga');
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
+  rc.set(REQUEST_KEYS.skillPaths, '[]');
   const threadId = `t-${Date.now()}`;
   rc.set(REQUEST_KEYS.threadId, threadId);
   if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
@@ -122,6 +122,7 @@ describe('prompt layers', () => {
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, 'olga');
     rc.set(REQUEST_KEYS.modelId, 'test-paid');
+    rc.set(REQUEST_KEYS.skillPaths, '[]');
     rc.set(REQUEST_KEYS.threadId, 'time-check');
     model.script({ text: 'Ок.' });
     await agent.generate('который час?', { requestContext: rc, maxSteps: 1, memory: { thread: 'time-check', resource: 'olga' } });

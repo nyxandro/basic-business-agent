@@ -23,6 +23,8 @@ import { registerUsageRoutes } from '../models/routes.ts';
 import { registerProjectRoutes } from '../projects/routes.ts';
 import { registerSearchRoutes } from '../search/routes.ts';
 import { registerVoiceRoutes } from '../voice/routes.ts';
+import { registerSkillRoutes } from '../skills-admin/routes.ts';
+import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
 
@@ -33,6 +35,7 @@ export interface ServerDeps {
   knownAgentIds: () => ReadonlySet<string>;
   gateway: ModelGateway;
   models: ModelCatalog;
+  skills: SkillsDeps;
   ledgerSecret: string;
   connections: ConnectionManager;
   chat: ChatDeps & { copilot: CopilotHandler };
@@ -72,5 +75,6 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
   registerModelRoutes(app, deps.models);
+  registerSkillRoutes(app, deps.skills);
   return app;
 }

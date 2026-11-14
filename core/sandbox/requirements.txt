@@ -1,4 +1,4 @@
-# Python libraries for the scripts of the document skills (core/skills/read-documents/scripts).
+# Python libraries the scripts of skills may use in the sandbox (e.g. skills/read-documents/scripts).
 # Installed into .venv-skills by `pnpm skills:setup` and into the Docker image.
 pypdf==7.1.0
 pypdfium2==5.15.2
