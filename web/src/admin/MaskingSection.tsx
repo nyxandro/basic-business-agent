@@ -19,10 +19,10 @@ const KINDS = MASKING_KIND_IDS.map((id) => ({ id, label: KIND_LABELS[id] }));
 
 function MaskingForm({ initial }: { initial: string[] }) {
   const [kinds, setKinds] = useState(initial);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   return (
     <div className="admin-form">
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <Checklist legend="Скрывать от модели" items={KINDS} selected={kinds} onChange={setKinds} />
       <p className="muted">Модель видит заглушку вроде [ПОЧТА_1], а письма и таблицы получают настоящие данные. Картинки и сканы уходят в модель как есть.</p>
       <button type="button" disabled={busy} onClick={() => void run(() => adminApi.saveMasking(kinds))}>

@@ -13,7 +13,7 @@ const RIGHTS = PERMISSIONS.map((p) => ({ id: p, label: PERMISSION_LABELS[p] ?? p
 function RoleForm({ role, onSaved }: { role: AdminRole | null; onSaved: () => void }) {
   const [name, setName] = useState(role?.name ?? '');
   const [permissions, setPermissions] = useState<string[]>(role?.permissions ?? []);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const save = async () => {
     const chosen = permissions as Permission[];
     const ok = await run(() => (role ? adminApi.updateRole(role.id, name.trim(), chosen) : adminApi.createRole(name.trim(), chosen)));
@@ -30,7 +30,7 @@ function RoleForm({ role, onSaved }: { role: AdminRole | null; onSaved: () => vo
   };
   return (
     <div className="admin-form">
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <label>
         Название роли
         <input value={name} onChange={(e) => setName(e.target.value)} />

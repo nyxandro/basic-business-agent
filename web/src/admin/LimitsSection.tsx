@@ -16,7 +16,7 @@ function OrgLimits({ initial, onSaved }: { initial: LimitSettingsBody; onSaved: 
   const [user, setUser] = useState(toField(initial.defaultUserMonthlyRub));
   const [daily, setDaily] = useState(toField(initial.defaultDailySubscriptionTokens));
   const [problem, setProblem] = useState<string | null>(null);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const save = async () => {
     const values = [fromField(org, 'rub'), fromField(user, 'rub'), fromField(daily, 'tokens')];
     if (values.includes('invalid')) return setProblem(INVALID);
@@ -26,7 +26,7 @@ function OrgLimits({ initial, onSaved }: { initial: LimitSettingsBody; onSaved: 
   };
   return (
     <div className="admin-form">
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <label>
         Общий потолок организации в месяц, ₽ (пусто — без потолка)
         <input inputMode="decimal" value={org} onChange={(e) => setOrg(e.target.value)} />
@@ -51,7 +51,7 @@ function PersonalRow({ user, limit }: { user: AdminUser; limit: PersonalLimit | 
   const [monthly, setMonthly] = useState(toField(limit?.monthlyRub ?? null));
   const [daily, setDaily] = useState(toField(limit?.dailySubscriptionTokens ?? null));
   const [problem, setProblem] = useState<string | null>(null);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const save = () => {
     const m = fromField(monthly, 'rub');
     const d = fromField(daily, 'tokens');
@@ -63,7 +63,7 @@ function PersonalRow({ user, limit }: { user: AdminUser; limit: PersonalLimit | 
     <tr>
       <td>
         {user.name}
-        <Feedback error={error} notice={notice} />
+        <Feedback error={error} />
         {problem ? <p className="field-error">{problem}</p> : null}
       </td>
       <td>

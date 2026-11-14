@@ -8,12 +8,12 @@ import { Feedback, useAction } from './parts.tsx';
 
 function ProfileForm({ initial }: { initial: { name: string; tone: string; requisites: string; industry: string } }) {
   const [form, setForm] = useState(initial);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
   return (
     <div className="admin-form">
       <p className="muted">Подставляется в промпт всех агентов.</p>
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <label>
         Название организации
         <input value={form.name} onChange={set('name')} />

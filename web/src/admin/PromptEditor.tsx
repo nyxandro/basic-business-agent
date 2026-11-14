@@ -11,7 +11,7 @@ export function PromptEditor({ state, onChanged }: { state: PromptState; onChang
   const [text, setText] = useState(state.draftInstructions ?? state.publishedInstructions ?? state.fileInstructions);
   const [base, setBase] = useState(state.draftVersionId);
   const [model, setModel] = useState(state.modelId ?? '');
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const id = state.agentId;
 
   const saveDraft = () => run(async () => setBase((await adminApi.saveDraft(id, text, base)).draftVersionId), 'Черновик сохранён');
@@ -30,7 +30,7 @@ export function PromptEditor({ state, onChanged }: { state: PromptState; onChang
         {state.fileChangedSincePublish ? <span className="mark mark-warn">Файл изменён после правки в админке</span> : null}
         {state.draftBy ? <span className="muted">Черновик правил(а): {state.draftBy}</span> : null}
       </div>
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <label>
         Промпт агента
         <textarea rows={14} value={text} onChange={(e) => setText(e.target.value)} />

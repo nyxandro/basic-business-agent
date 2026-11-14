@@ -1,0 +1,228 @@
+/* The admin panel (mockup «Админка», «Админка на телефоне»). */
+.shell {
+  display: flex;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.side {
+  width: 248px;
+  flex: none;
+  box-sizing: border-box;
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 12px;
+  background: var(--side);
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 14px;
+}
+
+.brandMark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--acc);
+  color: var(--on-acc);
+  display: grid;
+  place-items: center;
+}
+
+.brandText {
+  min-width: 0;
+}
+
+.brandTitle {
+  font-weight: 600;
+}
+
+.brandOrg {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 12px 12px 4px;
+}
+
+.navItem,
+.back {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.back {
+  height: 38px;
+}
+
+.navItem:hover,
+.back:hover {
+  background: var(--hover);
+}
+
+.navItem:active,
+.back:active {
+  transform: scale(0.98);
+}
+
+.navItemOn,
+.navItemOn:hover {
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-weight: 600;
+}
+
+.fill {
+  flex: 1;
+  min-height: 16px;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 0;
+}
+
+.personText {
+  flex: 1;
+  min-width: 0;
+}
+
+.personName {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.personRole {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
+}
+
+.content {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 36px 48px;
+}
+
+/* A phone: the header, the chips of the sections, the content under them. */
+.phoneHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 56px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.phoneBack {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.phoneBack:hover {
+  background: var(--hover);
+}
+
+.phoneTitle {
+  flex: 1;
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.chips {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chipOn {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--on-acc);
+}
+
+@media (max-width: 859px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  .main {
+    height: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .content {
+    padding: 16px 16px 32px;
+  }
+}

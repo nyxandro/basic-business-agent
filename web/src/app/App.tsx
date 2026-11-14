@@ -2,7 +2,7 @@
 // panel is a separate piece of code, loaded when it is opened.
 import { CopilotKit } from '@copilotkit/react-core';
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Outlet, Route, Routes } from 'react-router';
 import { ApprovalsPage } from '../approvals/ApprovalsPage.tsx';
 import { LoginPage } from '../auth/LoginPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
@@ -35,28 +35,12 @@ export function App() {
               element={
                 <RequireAuth>
                   <CopilotKit {...COPILOT_OPTIONS}>
-                    <AppShell />
+                    <Outlet />
                   </CopilotKit>
                 </RequireAuth>
               }
             >
-              <Route index element={<Home />} />
-              <Route path="agents/:agentId" element={<ChatPage />} />
-              <Route
-                path="projects/:projectId"
-                element={
-                  <Suspense fallback={<Skeleton rows={4} />}>
-                    <ProjectPage />
-                  </Suspense>
-                }
-              />
-              <Route path="approvals" element={<ApprovalsPage />} />
-              <Route path="settings">
-                <Route index element={<Navigate to="memory" replace />} />
-                <Route path="memory" element={<MemoryPage />} />
-                <Route path="usage" element={<UsagePage />} />
-                <Route path="connections" element={<ConnectionsPage />} />
-              </Route>
+              {/* The admin panel has its own frame (mockup «Админка»). */}
               <Route
                 path="admin/*"
                 element={
@@ -65,6 +49,25 @@ export function App() {
                   </Suspense>
                 }
               />
+              <Route element={<AppShell />}>
+                <Route index element={<Home />} />
+                <Route path="agents/:agentId" element={<ChatPage />} />
+                <Route
+                  path="projects/:projectId"
+                  element={
+                    <Suspense fallback={<Skeleton rows={4} />}>
+                      <ProjectPage />
+                    </Suspense>
+                  }
+                />
+                <Route path="approvals" element={<ApprovalsPage />} />
+                <Route path="settings">
+                  <Route index element={<Navigate to="memory" replace />} />
+                  <Route path="memory" element={<MemoryPage />} />
+                  <Route path="usage" element={<UsagePage />} />
+                  <Route path="connections" element={<ConnectionsPage />} />
+                </Route>
+              </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -13,13 +13,13 @@ function DepartmentEditor({ dep, people, agents, onChanged }: { dep: AdminDepart
   const [name, setName] = useState(dep.name);
   const [userIds, setUserIds] = useState(dep.userIds);
   const [agentIds, setAgentIds] = useState(dep.agentIds);
-  const { busy, error, notice, run } = useAction();
+  const { busy, error, run } = useAction();
   const act = async (action: () => Promise<unknown>, done?: string) => {
     if (await run(action, done)) onChanged();
   };
   return (
     <div className="admin-form">
-      <Feedback error={error} notice={notice} />
+      <Feedback error={error} />
       <label>
         Название
         <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -86,7 +86,7 @@ export function DepartmentsSection() {
       </ul>
       <h2>Новый отдел</h2>
       <div className="admin-form">
-        <Feedback error={create.error} notice={create.notice} />
+        <Feedback error={create.error} />
         <label>
           Название
           <input value={name} onChange={(e) => setName(e.target.value)} />

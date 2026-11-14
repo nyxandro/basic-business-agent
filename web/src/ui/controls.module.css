@@ -121,3 +121,18 @@
   font-family: var(--font-mono);
   font-size: 13px;
 }
+
+/* A larger switch for a phone's lists (mockup «Админка на телефоне»). */
+.switchLg {
+  width: 48px;
+  height: 30px;
+}
+
+.switchLg .knob {
+  width: 24px;
+  height: 24px;
+}
+
+.switchLg[aria-checked='true'] .knob {
+  transform: translateX(18px);
+}
