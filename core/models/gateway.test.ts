@@ -118,6 +118,13 @@ describe('model gateway', () => {
     expect((await t.gateway.translateError(new Error(raw), userId)).code).toBe('APP_MODEL_AUTH_FAILED');
   });
 
+  it('says the conversation is too long when the provider asks to shorten the messages', async () => {
+    const userId = await t.createUser({ email: 'long@example.com' });
+    // Groq's words for a request over the model's window, as they come through LiteLLM.
+    const raw = 'AI_APICallError: litellm.BadRequestError: GroqException - {"error":{"message":"Please reduce the length of the messages or completion.","type":"invalid_request_error","param":"messages"}}';
+    expect((await t.gateway.translateError(new Error(raw), userId)).code).toBe('APP_MODEL_CONTEXT_EXCEEDED');
+  });
+
   it('reports an unreachable LiteLLM as the gateway being down', async () => {
     const userId = await t.createUser({ email: 'gateway@example.com' });
     const config = await t.gateway.modelConfig('test-paid', userId, 'sales');

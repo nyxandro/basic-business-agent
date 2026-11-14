@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crc32, deflateSync } from 'node:zlib';
+import { withAttachments } from '@bba/contracts';
 import { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -45,6 +47,32 @@ function pdfWithText(text: string | null): Buffer {
   return Buffer.from(out, 'latin1');
 }
 
+// A red square of `size` pixels as a real PNG file.
+function png(size: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(size, 0);
+  head.writeUInt32BE(size, 4);
+  head.writeUInt8(8, 8);
+  head.writeUInt8(2, 9);
+  const rows = Buffer.concat(Array.from({ length: size }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3, Buffer.from([255, 0, 0]))])));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+function readFile(args: Record<string, unknown>) {
+  return (req: FakeRequest) => {
+    const tool = (req.tools ?? []).map((t) => t.function.name).find((n) => n.endsWith('read_file'));
+    return { toolCalls: [{ name: tool ?? 'missing_read_file', args }] };
+  };
+}
+
 function command(cmd: string) {
   return (req: FakeRequest) => {
     const tool = (req.tools ?? []).map((t) => t.function.name).find((n) => n.endsWith('execute_command'));
@@ -59,14 +87,14 @@ function lastToolOutput(): string {
 
 const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
-async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL]): Promise<void> {
+async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл'): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skills));
   if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
-  await agent.generate('Прочитай файл', { requestContext: rc, maxSteps: 3 });
+  await agent.generate(text, { requestContext: rc, maxSteps: 3 });
 }
 
 beforeAll(async () => {
@@ -169,6 +197,32 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
     await runAs('olga');
     const last = JSON.stringify(model.requests.at(-1)!.messages);
     expect(last).toContain('data:image/png;base64,');
+  });
+
+  it('gives the model the picture attached to the message with the message itself', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    mkdirSync(join(dir, 'files'), { recursive: true });
+    writeFileSync(join(dir, 'files', 'яхта.png'), png(64));
+    model.script({ text: 'Вижу красный квадрат.' });
+    await runAs('olga', undefined, [SKILL], withAttachments('видишь картинку?', [{ name: 'яхта.png', path: 'files/яхта.png' }]));
+    const user = model.requests.at(-1)!.messages.filter((m) => m.role === 'user').at(-1)!;
+    expect(JSON.stringify(user.content)).toContain('видишь картинку?');
+    expect(JSON.stringify(user.content)).toContain('data:image/png;base64,');
+  });
+
+  it('keeps pictures and raw bytes out of read_file: the model is told to use view_image or the skill', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    mkdirSync(join(dir, 'files'), { recursive: true });
+    writeFileSync(join(dir, 'files', 'фото.png'), png(64));
+    writeFileSync(join(dir, 'files', 'счёт.pdf'), pdfWithText('Invoice'));
+    model.script(readFile({ path: 'files/фото.png' }), { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('view_image');
+    expect(lastToolOutput()).not.toContain('iVBORw0KGgo');
+    model.script(readFile({ path: 'files/счёт.pdf', encoding: 'base64' }), { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('Чтение документов');
+    expect(lastToolOutput()).not.toContain('JVBERi0');
   });
 });
 

@@ -12,7 +12,7 @@ import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
-import { withAttachments } from './messages.ts';
+import { withAttachments } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { Welcome } from './Welcome.tsx';
 

@@ -17,6 +17,7 @@ import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory, toolCallArgsOf } from './history.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
+import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 
 export const DRAFT_HEADER = 'x-bba-draft';
 const INFO_PATH = '/info';
@@ -48,6 +49,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         description: rt.passport.description,
         starters: ownStarters.get(rt.passport.id) ?? rt.passport.starters,
         actions: {
+          ...WORKSPACE_ACTIONS,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...agentActions(rt),
           ...subagentCalls(rt),

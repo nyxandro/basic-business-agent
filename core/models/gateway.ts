@@ -163,7 +163,8 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       if (status === null && /econnrefused|fetch failed|cannot connect|socket hang up|enotfound/.test(lower)) {
         return appError('APP_MODEL_GATEWAY_UNAVAILABLE', `LiteLLM unreachable: ${text.slice(0, 300)}`, { cause: error });
       }
-      if (lower.includes('context') && (lower.includes('length') || lower.includes('window'))) {
+      // OpenAI and LiteLLM speak of the context window; Groq asks to «reduce the length of the messages».
+      if ((lower.includes('context') && (lower.includes('length') || lower.includes('window'))) || lower.includes('reduce the length of the messages')) {
         return appError('APP_MODEL_CONTEXT_EXCEEDED', text.slice(0, 300), { cause: error });
       }
       if (status === 429 || /rate.?limit|too many requests|\b429\b/i.test(text)) return appError('APP_MODEL_RATE_LIMITED', text.slice(0, 300), { cause: error });

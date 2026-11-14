@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 let t: TestApp;
@@ -66,7 +67,9 @@ describe('chat', () => {
 
   it('lists only the agents of the employee’s departments', async () => {
     const res = await t.call('GET', '/app/api/agents', { cookie: olga });
-    const { agents } = (await res.json()) as { agents: { id: string }[] };
+    const { agents } = (await res.json()) as { agents: { id: string; actions: Record<string, { title: string }> }[] };
+    expect(agents[0]!.actions['mastra_workspace_read_file']?.title).toBe('Чтение файла');
+    expect(agents[0]!.actions['view_image']?.title).toBe('Просмотр картинки');
     expect(agents).toEqual([
       {
         id: 'sales',
@@ -74,6 +77,8 @@ describe('chat', () => {
         description: 'Тестовый агент Продажи',
         starters: ['Покажи мои сделки'],
         actions: {
+          // The workspace's own tools are named in words too, not mastra_workspace_read_file.
+          ...WORKSPACE_ACTIONS,
           crm_search: { title: 'Найти сделки', fields: {}, readOnly: true },
           mail_send: { title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false },
         },

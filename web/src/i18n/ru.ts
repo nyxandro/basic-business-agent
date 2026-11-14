@@ -188,8 +188,6 @@ export const ru = {
     uploading: 'Загружаю файл…',
     uploadingName: (name: string) => `Загружаю ${name}…`,
     removeAttachment: 'Убрать',
-    attachmentsTitle: 'Вложения',
-    attachmentLine: (name: string, path: string) => `- ${name} (файл в рабочей папке: ${path})`,
     tooLarge: 'Файл больше 20 МБ. Сожмите его или разделите на части.',
     streamInterrupted: 'Связь прервалась, ответ мог прийти не полностью. Обновите страницу и повторите вопрос.',
   },

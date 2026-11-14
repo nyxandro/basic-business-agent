@@ -36,6 +36,26 @@ export interface UploadedFile {
   bytes: number;
 }
 
+// The person's message names its attachments in a block after the text; the feed shows them as
+// chips, and the server gives the model the pictures among them with the message.
+const ATTACHMENTS_MARKER = '\n\nВложения:\n';
+const ATTACHMENT_LINE = /^- (.+) \(файл в рабочей папке: (.+)\)$/;
+
+export function withAttachments(text: string, files: Pick<UploadedFile, 'name' | 'path'>[]): string {
+  if (files.length === 0) return text;
+  return `${text}${ATTACHMENTS_MARKER}${files.map((f) => `- ${f.name} (файл в рабочей папке: ${f.path})`).join('\n')}`;
+}
+
+// The person's own words and the files the message brought; a text that only looks like the block
+// (a line that is not a file) is the person's text as is.
+export function splitAttachments(text: string): { text: string; files: Pick<UploadedFile, 'name' | 'path'>[] } {
+  const at = text.lastIndexOf(ATTACHMENTS_MARKER);
+  if (at < 0) return { text, files: [] };
+  const lines = text.slice(at + ATTACHMENTS_MARKER.length).split('\n');
+  const files = lines.map((l) => ATTACHMENT_LINE.exec(l)).filter((m): m is RegExpExecArray => m !== null).map((m) => ({ name: m[1]!, path: m[2]! }));
+  return files.length === lines.length ? { text: text.slice(0, at), files } : { text, files: [] };
+}
+
 export interface ThreadSummaryDto {
   id: string;
   title: string;

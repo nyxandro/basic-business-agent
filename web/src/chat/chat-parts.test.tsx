@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { chatErrorOf } from './chat-errors.ts';
-import { splitAttachments, withAttachments } from './messages.ts';
+import { splitAttachments, withAttachments } from '@bba/contracts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
 import { ToolRow, type ToolRowProps } from './ToolRow.tsx';
@@ -110,9 +110,9 @@ describe('chat helpers', () => {
 
   it('names attached files in the message and takes them back for the feed', () => {
     expect(withAttachments('Прочитай счёт', [])).toBe('Прочитай счёт');
-    const sent = withAttachments('Прочитай счёт', [{ name: 'Счёт.pdf', path: 'Счёт.pdf', bytes: 10 }]);
+    const sent = withAttachments('Прочитай счёт', [{ name: 'Счёт.pdf', path: 'Счёт.pdf' }]);
     expect(sent).toBe('Прочитай счёт\n\nВложения:\n- Счёт.pdf (файл в рабочей папке: Счёт.pdf)');
-    expect(splitAttachments(sent)).toEqual({ text: 'Прочитай счёт', files: ['Счёт.pdf'] });
+    expect(splitAttachments(sent)).toEqual({ text: 'Прочитай счёт', files: [{ name: 'Счёт.pdf', path: 'Счёт.pdf' }] });
     expect(splitAttachments('Просто текст')).toEqual({ text: 'Просто текст', files: [] });
   });
 
