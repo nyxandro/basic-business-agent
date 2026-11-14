@@ -1,0 +1,119 @@
+# Installation of an organisation on one server (spec, sections 8.10 and 17.1): the database,
+# LiteLLM, the app with the sandboxes, the web server. Memory ceilings keep it within 8 GB.
+#   cp deploy/.env.example deploy/.env   # fill in
+#   docker compose -f deploy/compose.yaml up -d --build --wait
+# Values come from deploy/.env (compose reads .env next to this file).
+name: bba
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in deploy/.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    mem_limit: 1536m
+    restart: unless-stopped
+
+  # Writes LiteLLM's config from config/models.ts of the image; runs once before LiteLLM starts.
+  litellm-config:
+    image: bba-app:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    command: ["node", "core/cli/models-config.ts"]
+    environment:
+      LITELLM_CALLBACK_URL: http://app:3000/app/api/internal/usage
+    volumes:
+      - litellm-config:/app/deploy/litellm
+    restart: "no"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.108.4
+    command: ["--config", "/config/config.json", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in deploy/.env}
+      LITELLM_CALLBACK_AUTHORIZATION: Bearer ${LITELLM_CALLBACK_SECRET:?set LITELLM_CALLBACK_SECRET in deploy/.env}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=litellm
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in deploy/.env — the key of the provider in config/models.ts}
+    volumes:
+      - litellm-config:/config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      litellm-config:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    mem_limit: 1g
+    restart: unless-stopped
+
+  app:
+    image: bba-app:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?set APP_PUBLIC_URL in deploy/.env}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in deploy/.env}
+      APP_ENCRYPTION_KEYS: ${APP_ENCRYPTION_KEYS:?set APP_ENCRYPTION_KEYS in deploy/.env}
+      LITELLM_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_CALLBACK_SECRET: ${LITELLM_CALLBACK_SECRET}
+      APP_WORKSPACE_DIR: /workspace
+    volumes:
+      - workspace:/workspace
+    # bubblewrap isolates skill scripts with user namespaces: Docker's default seccomp profile plus
+    # the 7 calls of the isolation (tooling/seccomp/build-profile.ts). No extra capabilities.
+    security_opt:
+      - seccomp=./seccomp-bwrap.json
+    depends_on:
+      db:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/app/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    mem_limit: 3g
+    restart: unless-stopped
+
+  web:
+    image: bba-web:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/.env}
+    ports:
+      - "${WEB_BIND:?set WEB_BIND in deploy/.env}:80"
+      - "${WEB_BIND_TLS:?set WEB_BIND_TLS in deploy/.env}:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  workspace:
+  litellm-config:
+  caddy-data:

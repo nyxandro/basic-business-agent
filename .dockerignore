@@ -1,0 +1,15 @@
+# Only what the images need. Customer materials, secrets and local data never enter an image.
+inbox/
+.env
+.env.*
+!.env.example
+.public-check/
+spikes/
+.data/
+.git/
+**/node_modules/
+.venv-skills/
+web/dist/
+docs/
+deploy/litellm/config.json
+*.log

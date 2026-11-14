@@ -1,0 +1,32 @@
+# Web server of an installation (spec, section 17.1): the built interface, and /app/api for the app.
+# Nothing else of the app is reachable from outside; LiteLLM's usage records come inside Docker only.
+# SITE_ADDRESS: ":80" behind a local port, or a domain name (Caddy then gets an HTTPS certificate).
+{
+	admin off
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		-Server
+	}
+
+	handle /app/api/internal* {
+		respond 404
+	}
+	handle /app/api/* {
+		reverse_proxy app:3000
+	}
+	# Addresses an engine might serve (Mastra's /api) do not exist in this installation.
+	handle /api* {
+		respond 404
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
