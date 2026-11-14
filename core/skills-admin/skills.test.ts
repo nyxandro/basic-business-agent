@@ -1,9 +1,10 @@
 // «Скиллы» end to end (spec, scenario 10): upload, who gets a skill, switching off, a new version,
 // removal — through the admin routes, the database and the folder of unpacked copies.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SkillDto, SkillPreview, SkillsResponse } from '@bba/contracts';
+import { LocalFilesystem, Workspace } from '@mastra/core/workspace';
 import { zipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
@@ -29,7 +30,8 @@ const send = (method: string, path: string, body: FormData, cookie = igor) => t.
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 const toSales = { scope: 'departments', departmentIds: [] as string[], userIds: [] as string[] };
 const version = (body: string) => zipSync({ [`${NAME}/SKILL.md`]: new TextEncoder().encode(`---\nname: ${NAME}\ndescription: Читает документы\n---\n\n# Чтение документов\n\n${body}\n`) });
-const copies = () => (existsSync(join(t.skillsDir, NAME)) ? readdirSync(join(t.skillsDir, NAME)) : []);
+// Versions of the skill unpacked in <skillsDir>/<sha256>/<name>.
+const copies = () => (existsSync(t.skillsDir) ? readdirSync(t.skillsDir).filter((v) => existsSync(join(t.skillsDir, v, NAME))) : []);
 
 beforeAll(async () => {
   t = await createTestApp();
@@ -62,6 +64,9 @@ describe('skills of the installation', () => {
     const [olgaSkill] = await runtime.skillsFor(olgaId);
     expect(readFileSync(join(olgaSkill!, 'SKILL.md'), 'utf8')).toContain('# Чтение документов');
     expect(await runtime.skillsFor(petrId)).toEqual([]);
+    // Mastra takes a skill only from a folder named as the skill: the agent really gets it.
+    const workspace = new Workspace({ filesystem: new LocalFilesystem({ basePath: t.workspaceRoot, allowedPaths: [olgaSkill!] }), skills: [olgaSkill!] });
+    expect((await workspace.skills!.list()).map((s) => s.name)).toEqual([NAME]);
 
     const personal = await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: igor, body: { access: { scope: 'users', departmentIds: [], userIds: [petrId] } } });
     expect(personal.status).toBe(200);
@@ -96,9 +101,14 @@ describe('skills of the installation', () => {
     const other = zipSync({ 'notes/SKILL.md': new TextEncoder().encode('---\nname: notes\ndescription: Заметки\n---\n# Заметки\n') });
     expect((await json<{ error: { code: string } }>(await send('PUT', `/app/api/admin/skills/${NAME}`, form(other)))).error.code).toBe('APP_SKILL_INVALID');
 
-    // At the next start only the current copy stays, and a lost copy is unpacked again.
+    // At the next start only the current copy stays, and a lost copy is unpacked again; a copy of
+    // the layout before 14.11 (<name>/<sha256>, which Mastra did not load) goes away.
+    const oldLayout = join(t.skillsDir, NAME, 'a'.repeat(64));
+    mkdirSync(oldLayout, { recursive: true });
+    writeFileSync(join(oldLayout, 'SKILL.md'), 'old');
     await runtime.prepare();
-    expect(copies()).toEqual([after!.split('/').at(-1)]);
+    expect(copies()).toEqual([after!.split('/').at(-2)]);
+    expect(existsSync(join(t.skillsDir, NAME))).toBe(false);
   });
 
   it('is open only to roles with the right «Скиллы»', async () => {

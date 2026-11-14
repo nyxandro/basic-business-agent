@@ -2,12 +2,11 @@
 // organisation, a department of the employee or the employee. The entry point of a run asks once
 // and puts the folders into the request context, so a skill replaced during an answer does not
 // change under it; the sandbox and the file tools see these folders only.
-import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { Db } from '../db/pool.ts';
 import { logEvent } from '../server/log.ts';
 import { readSkillArchive, writeSkillFiles } from './archive.ts';
-import { skillDir, type SkillsDeps } from './store.ts';
+import { removeSkillCopies, skillDir, type SkillsDeps } from './store.ts';
 
 export interface SkillsRuntime {
   skillsFor(userId: string): Promise<string[]>;
@@ -47,13 +46,7 @@ export function createSkillsRuntime(deps: SkillsDeps): SkillsRuntime {
       const { rows } = await deps.db.query<{ name: string; sha256: string; enabled: boolean }>('SELECT name, sha256, enabled FROM app.skills');
       const current = new Map(rows.filter((r) => r.enabled).map((r) => [r.name, r.sha256]));
       for (const [name, sha256] of current) await unpack(deps.db, deps.skillsDir, name, sha256);
-      if (!existsSync(deps.skillsDir)) return;
-      for (const name of readdirSync(deps.skillsDir)) {
-        for (const version of existsSync(join(deps.skillsDir, name)) ? readdirSync(join(deps.skillsDir, name)) : []) {
-          if (current.get(name) !== version) rmSync(join(deps.skillsDir, name, version), { recursive: true, force: true });
-        }
-        if (!current.has(name)) rmSync(join(deps.skillsDir, name), { recursive: true, force: true });
-      }
+      removeSkillCopies(deps.skillsDir, (name, sha256) => current.get(name) !== sha256);
       logEvent('info', 'skills_prepared', { skills: [...current.keys()] });
     },
   };

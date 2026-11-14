@@ -1,7 +1,7 @@
 // Skills of the installation (spec, scenario 10, section 8.15): the admin uploads a `.skill` file,
 // chooses who gets it, switches it off, replaces it with a new version or removes it. The archive is
 // kept in the database; its unpacked copy for the agents is in APP_SKILLS_DIR/<name>/<sha256>.
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SkillAccess, SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
 import type pg from 'pg';
@@ -45,8 +45,25 @@ export function sandboxLibraries(): string[] {
     .map((l) => l.split(/[=<>~! ]/)[0]!);
 }
 
+// A copy of a skill: <skillsDir>/<sha256>/<name>/. Mastra takes a skill only from a folder named as
+// the skill (the name in its SKILL.md); the version folder keeps the copy a running answer still reads.
 export function skillDir(skillsDir: string, name: string, sha256: string): string {
-  return join(skillsDir, name, sha256);
+  return join(skillsDir, sha256, name);
+}
+
+// Removes the copies `drop` points at; a version folder left empty goes too. Folders of the old
+// layout <name>/<sha256> look like a version with unknown skills, so they go as well.
+export function removeSkillCopies(skillsDir: string, drop: (name: string, sha256: string) => boolean): void {
+  if (!existsSync(skillsDir)) return;
+  for (const version of readdirSync(skillsDir)) {
+    const dir = join(skillsDir, version);
+    if (!statSync(dir).isDirectory()) {
+      rmSync(dir, { force: true });
+      continue;
+    }
+    for (const name of readdirSync(dir)) if (drop(name, version)) rmSync(join(dir, name), { recursive: true, force: true });
+    if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 const notFound = (name: string) => appError('APP_NOT_FOUND', `skill ${name} not found`, { userMessage: 'Скилл не найден. Обновите страницу.' });
@@ -163,5 +180,5 @@ export async function deleteSkill(deps: SkillsDeps, actorUserId: string, name: s
     await c.query('DELETE FROM app.skills WHERE name = $1', [name]);
     await writeAudit(c, { actorUserId, action: 'skill.delete', target: name });
   });
-  rmSync(join(deps.skillsDir, name), { recursive: true, force: true });
+  removeSkillCopies(deps.skillsDir, (copy) => copy === name);
 }
