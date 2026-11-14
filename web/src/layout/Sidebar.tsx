@@ -42,25 +42,25 @@ export interface SidebarProps {
   approvalsAsSheet?: boolean;
 }
 
-// On a computer a link to the page; in the phone's drawer it opens the sheet (mockup).
+// On a computer a link to the page; in the phone's drawer it opens the sheet (mockup). Shown only
+// while something waits for the person's decision.
 function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asSheet: boolean }) {
   const { counts, openApprovals } = useNotifications();
   const waiting = counts?.pendingApprovals ?? 0;
+  if (waiting === 0) return null;
   const body = (
     <>
       <Icon name="inbox" />
       <span className={styles.approvalsText}>
         <span>{ru.shell.approvals}</span>
-        {waiting > 0 ? <span className={styles.approvalsHint}>{ru.shell.approvalsHint(waiting)}</span> : null}
+        <span className={styles.approvalsHint}>{ru.shell.approvalsHint(waiting)}</span>
       </span>
-      {waiting > 0 ? (
-        <span className={styles.badge} aria-label={ru.shell.approvalsHint(waiting)}>
-          {waiting}
-        </span>
-      ) : null}
+      <span className={styles.badge} aria-label={ru.shell.approvalsHint(waiting)}>
+        {waiting}
+      </span>
     </>
   );
-  const className = cx(styles.approvals, waiting > 0 && styles.approvalsWaiting);
+  const className = cx(styles.approvals, styles.approvalsWaiting);
   if (asSheet) {
     return (
       <button

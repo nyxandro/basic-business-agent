@@ -46,14 +46,14 @@ describe('the frame of the application', () => {
     localStorage.setItem(LAST_AGENT_KEY, 'gone');
     const s = server(ME, { agents: [AGENTS[1]] });
     s.set('GET /app/api/approvals', { body: { pending: [], failed: [] } });
-    renderApp('/');
+    const first = renderApp('/');
     expect(await screen.findByRole('button', { name: /Общий помощник\. Выбрать агента/ })).toBeInTheDocument();
+    first.unmount();
     // From another page «Новый разговор» has no open agent to go on with.
     localStorage.setItem(LAST_AGENT_KEY, 'gone');
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('link', { name: /^Ждёт подтверждения/ }));
+    renderApp('/approvals');
     await screen.findByText('Решений не ждёт ни одно действие.');
-    await user.click(screen.getByRole('button', { name: 'Новый разговор' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Новый разговор' }));
     expect(await screen.findByRole('button', { name: /Общий помощник\. Выбрать агента/ })).toBeInTheDocument();
     expect(screen.queryByText(/У вас нет доступа к этому агенту/)).not.toBeInTheDocument();
   });
@@ -77,7 +77,17 @@ describe('the frame of the application', () => {
     expect(within(fresh).getByText('новое')).toBeInTheDocument();
     expect(within(panel).getByText('58%')).toBeInTheDocument();
     expect(within(panel).getByText('Отдел продаж')).toBeInTheDocument();
-    expect(within(panel).getByRole('link', { name: /Ждёт подтверждения/ })).toHaveAttribute('href', '/approvals');
+    // Nothing waits for a decision: no «Ждёт подтверждения» at all.
+    expect(within(panel).queryByRole('link', { name: /Ждёт подтверждения/ })).not.toBeInTheDocument();
+  });
+
+  it('shows «Ждёт подтверждения» only while something waits, with how many', async () => {
+    const s = server();
+    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 2, unreadResults: 0 } });
+    renderApp('/');
+    const link = await screen.findByRole('link', { name: /^Ждёт подтверждения/ });
+    expect(link).toHaveAttribute('href', '/approvals');
+    expect(link).toHaveTextContent('2');
   });
 
   it('hides «Админка» from a person without rights and shows it with one', async () => {

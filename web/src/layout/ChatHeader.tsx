@@ -11,15 +11,17 @@ import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useNotifications } from './notifications.tsx';
 import styles from './shell.module.css';
 
-// On a phone the bell opens «Ждёт подтверждения» as a sheet over the current screen.
+// On a phone the bell opens «Ждёт подтверждения» as a sheet over the current screen; it is there
+// only while something waits for the person's decision.
 function Bell() {
   const { counts, openApprovals } = useNotifications();
   const waiting = counts?.pendingApprovals ?? 0;
-  const label = waiting > 0 ? `${ru.shell.approvals}: ${waiting}` : ru.shell.approvals;
+  if (waiting === 0) return null;
+  const label = `${ru.shell.approvals}: ${waiting}`;
   return (
-    <button type="button" aria-label={label} title={label} onClick={openApprovals} className={cx(styles.headerTitle, styles.bell, waiting > 0 && styles.bellRinging)}>
+    <button type="button" aria-label={label} title={label} onClick={openApprovals} className={cx(styles.headerTitle, styles.bell, styles.bellRinging)}>
       <Icon name="bell" />
-      {waiting > 0 ? <span className={styles.bellCount}>{waiting}</span> : null}
+      <span className={styles.bellCount}>{waiting}</span>
     </button>
   );
 }

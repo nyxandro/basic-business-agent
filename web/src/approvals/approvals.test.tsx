@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ME, mockServer } from '../test/fetch-mock.ts';
@@ -53,7 +53,8 @@ describe('«Ждёт подтверждения»', () => {
     expect(await within(card).findByText('Выполнено')).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Да, выполнить' })).not.toBeInTheDocument();
     expect(s.calls.find((c) => c.path === '/app/api/approvals/a1/decision')?.body).toEqual({ approved: true });
-    expect(await screen.findByRole('link', { name: /^Ждёт подтверждения/ })).not.toHaveTextContent('1');
+    // Nothing waits any more: the item leaves the side panel.
+    await waitFor(() => expect(screen.queryByRole('link', { name: /^Ждёт подтверждения/ })).not.toBeInTheDocument());
   });
 
   it('shows «Отклонено» after «Нет»', async () => {
