@@ -1,17 +1,19 @@
 // Draws the catalog blocks and every other tool call inside CopilotChat (spec, section 17.8).
 import { cardBlockSchema, chartBlockSchema, choiceBlockSchema, formBlockSchema, GENUI_TOOL, modelTableBlockSchema, type AgentSummary } from '@bba/contracts';
 import { useAgent, useCopilotKit, useRenderTool } from '@copilotkit/react-core';
-import { useCallback } from 'react';
+import { lazy, Suspense, useCallback } from 'react';
 import { z } from 'zod';
 import { ToolRow } from '../chat/ToolRow.tsx';
 import { ru } from '../i18n/ru.ts';
 import { BrokenData } from './BrokenData.tsx';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
-import { ChartBlockView } from './ChartBlock.tsx';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
+
+// A chart is drawn by code most conversations never need: it is loaded with the first chart.
+const ChartBlockView = lazy(() => import('./ChartBlock.tsx').then((m) => ({ default: m.ChartBlockView })));
 
 // CopilotKit only needs the arguments as an object; the real check is the catalog schema below.
 const anyArgs = z.record(z.string(), z.unknown());
@@ -50,7 +52,18 @@ function Form({ call }: { call: CallProps }) {
 
 export function useGenuiRenderers(systems: AgentSummary['systems']): void {
   useRenderTool({ name: GENUI_TOOL.table, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={modelTableBlockSchema} View={TableBlockView} /> }, []);
-  useRenderTool({ name: GENUI_TOOL.chart, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={chartBlockSchema} View={ChartBlockView} /> }, []);
+  useRenderTool(
+    {
+      name: GENUI_TOOL.chart,
+      parameters: anyArgs,
+      render: (call) => (
+        <Suspense fallback={<div className="genui genui-pending">{ru.genui.preparing}</div>}>
+          <CatalogBlock call={call} schema={chartBlockSchema} View={ChartBlockView} />
+        </Suspense>
+      ),
+    },
+    [],
+  );
   useRenderTool({ name: GENUI_TOOL.card, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={cardBlockSchema} View={CardBlockView} /> }, []);
   useRenderTool({ name: GENUI_TOOL.choice, parameters: anyArgs, render: (call) => <Choice call={call} /> }, []);
   useRenderTool({ name: GENUI_TOOL.form, parameters: anyArgs, render: (call) => <Form call={call} /> }, []);

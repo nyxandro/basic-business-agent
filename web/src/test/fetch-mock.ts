@@ -46,4 +46,8 @@ export const ME = {
   permissions: [],
   isSuperadmin: false,
   departmentIds: ['d1'],
+  departmentNames: ['Отдел продаж'],
+  voiceAvailable: false,
+  organisation: { name: 'Альфа-Строй' },
+  modelsConfigured: true,
 };

@@ -38,7 +38,7 @@ describe('sign-in', () => {
     await user.type(screen.getByLabelText('Пароль'), 'верный-пароль-1');
     await user.click(screen.getByRole('button', { name: 'Войти' }));
 
-    expect(await screen.findByText(/Вам пока не открыт ни один агент/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Вам пока не назначены агенты/)).length).toBeGreaterThan(0);
     expect(server.calls.find((c) => c.path === '/app/api/auth/sign-in/email')?.body).toEqual({ email: 'olga@example.com', password: 'верный-пароль-1' });
   });
 
@@ -91,7 +91,7 @@ describe('invite and reset links', () => {
     await user.clear(screen.getByLabelText('Повторите пароль'));
     await user.type(screen.getByLabelText('Повторите пароль'), 'длинный-пароль');
     await user.click(screen.getByRole('button', { name: 'Сохранить пароль и войти' }));
-    expect(await screen.findByText(/Вам пока не открыт ни один агент/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Вам пока не назначены агенты/)).length).toBeGreaterThan(0);
     expect(server.calls.find((c) => c.path.endsWith('/accept'))?.body).toEqual({ password: 'длинный-пароль' });
   });
 

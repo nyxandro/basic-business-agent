@@ -1,39 +1,78 @@
-// /agents/:agentId?thread=… (spec, section 7): the conversations on the left, the chat on the right.
-// Without ?thread a new conversation starts with a fresh id.
-import { useCallback, useState } from 'react';
+// /agents/:agentId?thread=… (spec, section 7): one conversation with the agent under its header.
+// Without ?thread a new conversation starts with a fresh id. Until the admin sets models up the
+// employee sees why instead of the input.
+import type { AgentSummary } from '@bba/contracts';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
-import { fetchAgents } from '../agents/api.ts';
+import { asApiError, type ApiRequestError } from '../api/client.ts';
+import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
-import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { ChatHeader } from '../layout/ChatHeader.tsx';
+import { EmptyInstallation } from '../layout/EmptyInstallation.tsx';
+import { rememberAgent, useShell } from '../layout/AppShell.tsx';
+import { IconButton } from '../ui/Button.tsx';
+import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
-import { useLoad } from '../ui/use-load.ts';
+import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
+import { useToast } from '../ui/Toast.tsx';
+import { deleteThread } from './api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
-import { ThreadList } from './ThreadList.tsx';
+
+function ThreadActions({ threadId, onDeleted }: { threadId: string; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<ApiRequestError | null>(null);
+  const toast = useToast();
+  async function remove() {
+    setOpen(false);
+    if (!window.confirm(ru.chat.deleteConfirm)) return;
+    try {
+      await deleteThread(threadId);
+      toast(ru.chat.threadDeleted);
+      onDeleted();
+    } catch (raw) {
+      setError(asApiError(raw));
+    }
+  }
+  return (
+    <MenuAnchor>
+      <IconButton icon="dots" label={ru.shell.threadMenu} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
+      <Menu open={open} onClose={() => setOpen(false)} label={ru.shell.threadMenu}>
+        <MenuItem icon="trash" danger onSelect={() => void remove()}>
+          {ru.chat.deleteThread}
+        </MenuItem>
+      </Menu>
+      {error ? <ErrorBanner error={error} /> : null}
+    </MenuAnchor>
+  );
+}
+
+function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents: AgentSummary[]; threadId: string }) {
+  const me = useMe();
+  const { wide, openMenu, refreshThreads } = useShell();
+  const navigate = useNavigate();
+  useEffect(() => rememberAgent(agent.id), [agent.id]);
+  const startNew = () => {
+    refreshThreads();
+    void navigate(`/agents/${encodeURIComponent(agent.id)}?thread=${crypto.randomUUID()}`, { replace: true });
+  };
+  return (
+    <>
+      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} />} />
+      {me.modelsConfigured ? <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} /> : <EmptyInstallation />}
+    </>
+  );
+}
 
 export function ChatPage() {
   const { agentId } = useParams();
   const [params] = useSearchParams();
-  const navigate = useNavigate();
+  const { agents } = useShell();
   const threadId = params.get('thread');
-  const { state, reload } = useLoad(fetchAgents);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const onRunFinished = useCallback(() => setRefreshKey((n) => n + 1), []);
 
   if (!agentId) throw new Error('ChatPage needs the :agentId route parameter');
   if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace />;
-  if (state.status === 'loading') return <Skeleton rows={4} />;
-  if (state.status === 'error') return <ErrorBanner title={ru.agents.loadFailed} error={state.error} onRetry={reload} />;
-  const agent = state.data.agents.find((a) => a.id === agentId);
-  if (!agent) return <p className="banner banner-error">{ru.chat.noAgent}</p>;
-
-  const startNew = () => void navigate(`?thread=${crypto.randomUUID()}`);
-  return (
-    <div className="chat-layout">
-      <ThreadList agentId={agent.id} currentThreadId={threadId} refreshKey={refreshKey} onNew={startNew} onDeleted={(id) => id === threadId && startNew()} />
-      <section className="chat-main">
-        <h1>{agent.name}</h1>
-        <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={onRunFinished} />
-      </section>
-    </div>
-  );
+  if (!agents) return <Skeleton rows={4} />;
+  const agent = agents.find((a) => a.id === agentId);
+  if (!agent) return <Notice>{ru.chat.noAgent}</Notice>;
+  return <Conversation agent={agent} agents={agents} threadId={threadId} />;
 }

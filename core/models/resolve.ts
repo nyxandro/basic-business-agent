@@ -29,6 +29,12 @@ interface ChoiceRow {
   fallback_subscription: boolean | null;
 }
 
+// An installation where no agent can answer yet: no enabled primary model (spec, «Пустая установка»).
+export async function modelsConfigured(db: Db): Promise<boolean> {
+  const { rowCount } = await db.query('SELECT 1 FROM app.model_settings s JOIN app.models m ON m.id = s.primary_model_id WHERE m.enabled');
+  return (rowCount ?? 0) > 0;
+}
+
 export async function chooseModels(db: Db, timezone: string, userId: string, agentId: string): Promise<ModelChoice> {
   const { rows } = await db.query<ChoiceRow>(
     `SELECT s.agents_choose_model,

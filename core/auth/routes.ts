@@ -8,6 +8,7 @@ import { AUTH_BASE_PATH, type Auth } from './auth.ts';
 import { acceptInvite, acceptPasswordReset, findInvite, findPasswordReset } from './users.ts';
 import { recognitionModel } from '../voice/transcribe.ts';
 import { orgName } from '../admin/org-profile.ts';
+import { modelsConfigured } from '../models/resolve.ts';
 
 const SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -53,6 +54,8 @@ export function registerAuthRoutes(app: Hono<AppEnv>, deps: { db: Db; auth: Auth
       departmentIds: a.departmentIds,
       voiceAvailable: (await recognitionModel(deps.db)) !== null,
       organisation: { name: await orgName(deps.db) },
+      departmentNames: (await deps.db.query<{ name: string }>('SELECT d.name FROM app.department_members m JOIN app.departments d ON d.id = m.department_id WHERE m.user_id = $1 ORDER BY d.name', [a.userId])).rows.map((r) => r.name),
+      modelsConfigured: await modelsConfigured(deps.db),
     };
     return c.json(body);
   });

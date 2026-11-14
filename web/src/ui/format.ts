@@ -27,3 +27,14 @@ export function timeLeft(iso: string, now: number = Date.now()): string {
   const m = minutes % MINUTES_PER_HOUR;
   return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
 }
+
+const PLURAL = new Intl.PluralRules('ru-RU');
+
+// The form of a word after a number: plural(5, ['действие', 'действия', 'действий']) → «действий».
+export function plural(n: number, forms: [one: string, few: string, many: string]): string {
+  const rule = PLURAL.select(n);
+  return rule === 'one' ? forms[0] : rule === 'few' ? forms[1] : forms[2];
+}
+
+// «ноябрь» — the month of a date, as a calendar names it.
+export const monthName = (date: Date): string => new Intl.DateTimeFormat('ru-RU', { month: 'long' }).format(date);

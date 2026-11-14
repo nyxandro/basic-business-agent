@@ -54,4 +54,9 @@ export interface MeResponse {
   // A recognition model is chosen and enabled in «Нейросеть»: the chat shows the microphone.
   voiceAvailable: boolean;
   organisation: { name: string };
+  // Names of the employee's departments, as the side panel shows them.
+  departmentNames: string[];
+  // The organisation's primary model is chosen and enabled: agents can answer (spec, section 7,
+  // «Пустая установка»).
+  modelsConfigured: boolean;
 }

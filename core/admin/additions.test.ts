@@ -85,6 +85,13 @@ describe('stage 2 additions', () => {
     expect((await t.call('GET', '/app/api/admin/usage/daily?from=2026-11-03&to=2026-11-04', { cookie: olga })).status).toBe(403);
   });
 
+  it('tells the interface the employee’s departments and whether models are set up', async () => {
+    expect(await json<MeResponse>(await t.call('GET', '/app/api/me', { cookie: olga }))).toMatchObject({ departmentNames: ['Продажи'], modelsConfigured: true });
+    await t.db.query("UPDATE app.models SET enabled = false WHERE id = 'test-paid'");
+    expect((await json<MeResponse>(await t.call('GET', '/app/api/me', { cookie: olga }))).modelsConfigured).toBe(false);
+    await t.db.query("UPDATE app.models SET enabled = true WHERE id = 'test-paid'");
+  });
+
   it('tells «Подключения» how many employees there are in total', async () => {
     const res = await json<{ employeesTotal: number }>(await t.call('GET', '/app/api/admin/connections', { cookie: admin }));
     expect(res.employeesTotal).toBe(2);

@@ -17,6 +17,8 @@ export const SECTIONS: { id: AdminSection; path: string; label: string }[] = [
 // Names of rights in the role editor; the document rights are reserved for the knowledge base.
 export const PERMISSION_LABELS: Record<string, string> = {
   ...Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])),
+  models: 'Нейросеть',
+  skills: 'Скиллы',
   'documents.org.manage': 'Документы организации',
   'documents.department.manage': 'Документы отдела',
 };

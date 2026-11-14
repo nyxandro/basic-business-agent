@@ -1,9 +1,13 @@
-import type { ThreadSummaryDto, UploadedFile } from '@bba/contracts';
+import type { ThreadPage, UploadedFile } from '@bba/contracts';
 import { api, apiForm } from '../api/client.ts';
 
 const enc = encodeURIComponent;
 
-export const fetchThreads = (agentId: string) => api<{ threads: ThreadSummaryDto[] }>('GET', `/app/api/agents/${enc(agentId)}/threads`);
+export const THREAD_PAGE = 30;
+
+// Conversations of all the person's agents, newest first; `before` continues after a page.
+export const fetchThreadPage = (before: string | null) =>
+  api<ThreadPage>('GET', `/app/api/threads?limit=${THREAD_PAGE}${before ? `&before=${enc(before)}` : ''}`);
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);
 
 export function uploadFile(threadId: string, file: File): Promise<UploadedFile> {

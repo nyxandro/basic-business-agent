@@ -1,5 +1,7 @@
 // Texts of the interface (spec, sections 7, 9 and 12). Server errors bring their own Russian text;
 // here are only the texts of the screens and of the errors the browser detects itself.
+import { plural } from '../ui/format.ts';
+
 export const ru = {
   app: { title: 'Агенты' },
   menu: {
@@ -39,6 +41,37 @@ export const ru = {
     submit: 'Сменить пароль и войти',
   },
   saving: 'Сохраняем…',
+  shell: {
+    brand: 'Бизнес-агент',
+    newThread: 'Новый разговор',
+    agents: 'Агенты',
+    recent: 'Недавние',
+    recentEmpty: 'Разговоров пока нет',
+    showMore: 'Показать ещё',
+    recentFailed: 'Не удалось загрузить разговоры',
+    approvals: 'Ждёт подтверждения',
+    approvalsHint: (n: number) => `${n} ${plural(n, ['действие ждёт', 'действия ждут', 'действий ждут'])} вашего решения`,
+    admin: 'Админка',
+    limit: (month: string) => `Лимит за ${month}`,
+    limitResets: (date: string) => `Обновится ${date}`,
+    settings: 'Настройки',
+    memory: 'Моя память',
+    usage: 'Мои расходы',
+    connections: 'Подключения',
+    connectionsOf: (connected: number, total: number) => `${connected} из ${total}`,
+    theme: 'Тема',
+    light: 'Светлая',
+    dark: 'Тёмная',
+    signOut: 'Выйти',
+    menu: 'Меню',
+    closeMenu: 'Закрыть меню',
+    switchAgent: 'Выбрать агента',
+    threadMenu: 'Действия с разговором',
+    noAgents: 'Вам пока не назначены агенты. Обратитесь к администратору.',
+    modelsMissing: 'Модели ещё не настроены. Обратитесь к администратору.',
+    modelsMissingAdmin: 'Модели ещё не подключены — агенты не отвечают. Добавьте первую модель.',
+    toModels: 'Перейти в «Нейросеть»',
+  },
   agents: {
     title: 'Агенты',
     empty: 'Вам пока не открыт ни один агент. Администратор назначает агентов через отделы — напишите ему.',
