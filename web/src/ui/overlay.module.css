@@ -30,7 +30,8 @@
   border: 1px solid var(--border);
   border-radius: 18px;
   box-shadow: 0 28px 70px var(--shadow);
-  overflow: hidden;
+  /* A long form scrolls inside the window; parts that scroll themselves (search results) shrink first. */
+  overflow-y: auto;
   animation: bba-modal 0.32s var(--ease-out) both;
 }
 

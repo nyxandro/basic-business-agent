@@ -10,6 +10,7 @@ import { JournalSection } from './JournalSection.tsx';
 import { LimitsPage } from './LimitsPage.tsx';
 import { MaskingSection } from './MaskingSection.tsx';
 import { ModelsSection } from './ModelsSection.tsx';
+import { ModesSection } from './ModesSection.tsx';
 import { OrgProfileSection } from './OrgProfileSection.tsx';
 import { RolesSection } from './RolesSection.tsx';
 import { SkillsSection } from './SkillsSection.tsx';
@@ -21,6 +22,7 @@ export default function AdminRoutes() {
       <Route element={<AdminLayout />}>
         <Route index element={<AdminIndex />} />
         <Route path="models" element={<RequireSection path="models"><ModelsSection /></RequireSection>} />
+        <Route path="modes" element={<RequireSection path="modes"><ModesSection /></RequireSection>} />
         <Route path="users" element={<RequireSection path="users"><UsersSection /></RequireSection>} />
         <Route path="roles" element={<RequireSection path="roles"><RolesSection /></RequireSection>} />
         <Route path="departments" element={<RequireSection path="departments"><DepartmentsSection /></RequireSection>} />

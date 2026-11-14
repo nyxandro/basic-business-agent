@@ -1,0 +1,128 @@
+/* «Режимы работы» (mockup). */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.mode {
+  padding: 16px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mode:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.modeHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modeName {
+  flex: 1;
+  font-weight: 600;
+}
+
+.modeCount {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.modeDesc {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.cardTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.inset:not(:empty) {
+  padding: 0 18px 12px;
+}
+
+.taskName {
+  font-weight: 500;
+}
+
+.when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.who {
+  color: var(--muted);
+  max-width: 220px;
+}
+
+.last {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc-text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.rule {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px dashed var(--border);
+}
+
+.ruleIcon {
+  color: var(--muted);
+  flex: none;
+}
+
+.ruleName {
+  font-weight: 500;
+}
+
+.runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.run {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.runName {
+  flex: 1;
+  min-width: 0;
+}
