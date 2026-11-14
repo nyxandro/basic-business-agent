@@ -18,6 +18,7 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import type { Registry } from '../loader/registry.ts';
 import { ensureThread } from '../memory/memory.ts';
+import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
@@ -103,7 +104,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     logEvent('warn', 'background_task_paused', { taskId: row.id, reason });
   }
 
-  function contextFor(row: { id: string | null; agent_id: string; thread_id: string }, userId: string, modelId: string | null): RequestContext {
+  async function contextFor(row: { id: string | null; agent_id: string; thread_id: string }, userId: string, modelId: string | null): Promise<RequestContext> {
+    const projectId = await projectOfThread(db, userId, row.thread_id);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
     rc.set(REQUEST_KEYS.threadId, row.thread_id);
@@ -111,6 +113,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     rc.set(REQUEST_KEYS.runKind, 'background');
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
     if (modelId) rc.set(REQUEST_KEYS.modelId, modelId);
+    if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
     return rc;
   }
 
@@ -129,7 +132,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       await deps.gateway.assertCanCall(userId, modelId ?? deps.registry.get(row.agent_id)!.passport.model);
       await ensureThread(memory, { threadId: row.thread_id, resourceId: userId, agentId: row.agent_id, kind: 'background', title: `Задача: ${row.title}` });
       await writeJournal(db, { ...journalBase, event: 'background_started', result: 'started' });
-      const stream = await agent.stream(row.prompt, { memory: { thread: row.thread_id, resource: userId }, requestContext: contextFor(row, userId, modelId) });
+      const stream = await agent.stream(row.prompt, { memory: { thread: row.thread_id, resource: userId }, requestContext: await contextFor(row, userId, modelId) });
       let awaiting = false;
       for await (const part of stream.fullStream) {
         if (part.type === 'tool-call-approval') awaiting = true;
@@ -158,7 +161,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
     const row = { id: approval.taskId, agent_id: approval.agentId, thread_id: approval.threadId };
     const { agent, modelId } = await resolveAgent(deps.editor, approval.agentId, 'published');
-    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: contextFor(row, approval.userId, modelId) };
+    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.userId, modelId) };
     const stream = approved
       ? await agent.approveToolCall(options)
       : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });

@@ -7,7 +7,7 @@ import { migrate } from '../db/migrate.ts';
 import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
-import { createMemory, deleteThread, ensureThread, forgetAll, listThreads, readMemory, titleFrom, WORKING_MEMORY_TEMPLATE, writeMemory } from './memory.ts';
+import { createMemory, deleteThread, ensureThread, forgetAll, listOwnThreads, readMemory, titleFrom, WORKING_MEMORY_TEMPLATE, writeMemory } from './memory.ts';
 
 let database: TestDatabase;
 let db: Db;
@@ -57,14 +57,14 @@ describe('conversations', () => {
     expect(titleFrom(long).endsWith('…')).toBe(true);
   });
 
-  it('lists only the employee’s conversations with this agent and deletes only their own', async () => {
+  it('lists only the employee’s own conversations of every agent and deletes only their own', async () => {
     await ensureThread(memory, { threadId: 'c1', resourceId: 'anna', agentId: 'sales', kind: 'chat', title: 'Сделки' });
     await ensureThread(memory, { threadId: 'c2', resourceId: 'anna', agentId: 'assistant', kind: 'chat', title: 'Другое' });
     await ensureThread(memory, { threadId: 'c3', resourceId: 'petr', agentId: 'sales', kind: 'chat', title: 'Чужой' });
-    expect((await listThreads(memory, 'anna', 'sales')).map((t) => t.title)).toEqual(['Сделки']);
+    expect((await listOwnThreads(memory, 'anna')).map((t) => [t.title, t.agentId])).toEqual([['Другое', 'assistant'], ['Сделки', 'sales']]);
     await expect(ensureThread(memory, { threadId: 'c3', resourceId: 'anna', agentId: 'sales', kind: 'chat', title: 'x' })).rejects.toMatchObject({ code: 'APP_NOT_FOUND' });
     await expect(deleteThread(memory, db, 'anna', 'c3')).rejects.toMatchObject({ code: 'APP_NOT_FOUND' });
     await deleteThread(memory, db, 'anna', 'c1');
-    expect(await listThreads(memory, 'anna', 'sales')).toEqual([]);
+    expect((await listOwnThreads(memory, 'anna')).map((t) => t.title)).toEqual(['Другое']);
   });
 });

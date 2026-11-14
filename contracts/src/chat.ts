@@ -29,6 +29,29 @@ export interface ThreadSummaryDto {
   kind: 'chat' | 'background' | 'draft';
   unread: boolean;
   updatedAt: string;
+  agentId: string;
+  projectId: string | null;
+}
+
+// GET /app/api/threads: conversations of all the person's agents, newest first; `next` is the
+// cursor for the following page (null on the last one).
+export interface ThreadPage {
+  threads: ThreadSummaryDto[];
+  next: string | null;
+}
+
+// A person's project (spec, section 8.12): a folder of conversations with instructions and files.
+export interface ProjectDto {
+  id: string;
+  name: string;
+  instructions: string;
+  threadCount: number;
+  createdAt: string;
+}
+
+export interface ProjectFile {
+  path: string;
+  bytes: number;
 }
 
 // Result of a tool call the person declined (or cancelled by writing a new message instead of

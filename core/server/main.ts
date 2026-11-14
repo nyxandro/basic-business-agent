@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     isolation: assertIsolationAvailable(),
   };
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, connections, sandbox, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone });
   backgroundRef.current = background;

@@ -13,6 +13,7 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import type { Registry } from '../loader/registry.ts';
 import { draftResourceId, ensureThread, titleFrom } from '../memory/memory.ts';
+import { projectOfThread } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 
@@ -37,6 +38,8 @@ export interface PreparedRun {
   resourceId: string;
   threadId: string;
   mode: 'published' | 'draft';
+  // Project of the conversation: the sandbox works in its files, the prompt gets its instructions.
+  projectId: string | null;
 }
 
 // A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
@@ -88,6 +91,7 @@ export function requestContextFor(run: PreparedRun, modelId: string | null): Req
   rc.set(REQUEST_KEYS.agentId, run.agentId);
   rc.set(REQUEST_KEYS.runKind, (run.mode === 'draft' ? 'draft' : 'chat') satisfies RunKind);
   if (modelId) rc.set(REQUEST_KEYS.modelId, modelId);
+  if (run.projectId) rc.set(REQUEST_KEYS.projectId, run.projectId);
   return rc;
 }
 
@@ -124,7 +128,9 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   assertAgentOpen(deps, access, agentId, mode);
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode };
+  // A draft check of a prompt never belongs to the admin's projects.
+  const projectId = mode === 'draft' ? null : await projectOfThread(deps.db, access.userId, threadId);
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
 

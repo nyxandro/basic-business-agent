@@ -31,6 +31,8 @@ export const ERROR_CATALOG = {
   },
   APP_ADMIN_BUILTIN_ROLE: { status: 409, userMessage: 'Встроенную роль нельзя удалить или переименовать, а права суперадминистратора — сузить.' },
   APP_ADMIN_NAME_TAKEN: { status: 409, userMessage: 'Такое название уже занято. Выберите другое.' },
+  APP_PROJECT_EXISTS: { status: 409, userMessage: 'Проект с таким названием уже есть.' },
+  APP_PROJECT_SAVE_FAILED: { status: 500, userMessage: 'Не удалось сохранить проект. Попробуйте ещё раз.' },
   APP_ADMIN_DELETE_PARTIAL: {
     status: 500,
     userMessage: 'Удалено не всё. Нажмите «Удалить» ещё раз — повтор безопасен. Пока удаление не завершено, сотрудник заблокирован.',

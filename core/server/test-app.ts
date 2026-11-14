@@ -13,6 +13,7 @@ import { createCopilotHandler } from '../chat/copilot.ts';
 import type { Mastra } from '@mastra/core';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
+import type { Memory } from '@mastra/memory';
 import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from '../models/fake-openai.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
@@ -47,6 +48,8 @@ export interface TestApp {
   mastra: Mastra;
   background: BackgroundService;
   workspaceRoot: string;
+  // Mastra memory of the conversations: tests create threads directly.
+  memory: Memory;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
@@ -144,6 +147,7 @@ export async function createTestApp(
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const memory = createMemory(storage);
   const fakeGateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
+  const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({
@@ -153,13 +157,13 @@ export async function createTestApp(
     gateway: fakeGateway,
     db,
     app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' },
+    workspaceRoot,
     connections,
     workflows: { [workflow.id]: workflow },
   });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow' });
   backgroundRef.current = background;
-  const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
 
@@ -191,6 +195,7 @@ export async function createTestApp(
     mastra,
     background,
     workspaceRoot,
+    memory,
     sentMail,
     call,
     roleId,

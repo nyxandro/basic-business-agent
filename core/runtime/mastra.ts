@@ -23,6 +23,8 @@ export interface MastraRuntimeDeps {
   gateway: Pick<ModelGateway, 'modelConfig'>;
   db: Db;
   app: Pick<AppConfig, 'name' | 'timezone'>;
+  // Root of the employees' workspaces: the project layer of the prompt lists the project's files.
+  workspaceRoot: string;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
@@ -43,7 +45,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       processorsFor: (r, level) => ({
         input: [
-          createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false }),
+          createPromptLayersProcessor({ db: deps.db, organisationName: deps.app.name, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot }),
           masking,
           ...imageView,
         ],

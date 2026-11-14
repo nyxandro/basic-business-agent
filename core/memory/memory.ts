@@ -57,15 +57,27 @@ export async function ensureThread(
   });
 }
 
-export async function listThreads(memory: Memory, userId: string, agentId: string): Promise<ThreadSummary[]> {
-  const { threads } = await memory.listThreads({ filter: { resourceId: userId, metadata: { agentId } }, perPage: false, orderBy: { field: 'updatedAt', direction: 'DESC' } });
-  return threads.map((t) => ({
-    id: t.id,
-    title: t.title ?? 'Без названия',
-    kind: ((t.metadata?.kind as ThreadKind | undefined) ?? 'chat'),
-    unread: t.metadata?.unread === true,
-    updatedAt: new Date(t.updatedAt).toISOString(),
-  }));
+// Every conversation is created by ensureThread with its agent: a thread without one is broken data.
+function agentOf(thread: { id: string; metadata?: Record<string, unknown> | null }): string {
+  const agentId = thread.metadata?.agentId;
+  if (typeof agentId !== 'string' || agentId === '') throw new Error(`thread ${thread.id} has no agentId in its metadata`);
+  return agentId;
+}
+
+// All conversations of the person, of every agent, newest first (ties by id, so pages are stable).
+// The project of each conversation is added by core/projects.
+export async function listOwnThreads(memory: Memory, userId: string): Promise<Omit<ThreadSummary, 'projectId'>[]> {
+  const { threads } = await memory.listThreads({ filter: { resourceId: userId }, perPage: false, orderBy: { field: 'updatedAt', direction: 'DESC' } });
+  return threads
+    .map((t) => ({
+      id: t.id,
+      title: t.title ?? 'Без названия',
+      kind: (t.metadata?.kind as ThreadKind | undefined) ?? 'chat',
+      unread: t.metadata?.unread === true,
+      updatedAt: new Date(t.updatedAt).toISOString(),
+      agentId: agentOf(t),
+    }))
+    .sort((a, b) => (a.updatedAt === b.updatedAt ? b.id.localeCompare(a.id) : b.updatedAt.localeCompare(a.updatedAt)));
 }
 
 export async function deleteThread(memory: Memory, db: Db, userId: string, threadId: string): Promise<void> {
@@ -73,6 +85,7 @@ export async function deleteThread(memory: Memory, db: Db, userId: string, threa
   if (!thread || thread.resourceId !== userId) throw appError('APP_NOT_FOUND', `thread ${threadId} not found for user`, { userMessage: 'Разговор не найден.' });
   await memory.deleteThread(threadId);
   await db.query('DELETE FROM app.masking_map WHERE thread_id = $1', [threadId]);
+  await db.query('DELETE FROM app.thread_projects WHERE thread_id = $1', [threadId]);
 }
 
 // The employee's own memory, shown and edited in «Настройки → Моя память».

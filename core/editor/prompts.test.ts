@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Mastra } from '@mastra/core';
 import { RequestContext } from '@mastra/core/request-context';
 import { PostgresStore } from '@mastra/pg';
@@ -12,6 +15,7 @@ import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
 import { createMemory } from '../memory/memory.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { getPromptState, publishDraft, resolveAgent, revertToFile, saveDraft, type EditorDeps } from './prompts.ts';
 
 let database: TestDatabase;
@@ -19,6 +23,8 @@ let db: Db;
 let model: FakeModel;
 let mastra: Mastra;
 let deps: EditorDeps;
+let workspaceRoot: string;
+const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
 function runtime(passport: Partial<AgentPassport> & { id: string }, instructions: string): AgentRuntime {
   return {
@@ -45,13 +51,15 @@ const registry: Registry = {
   triggers: [],
 };
 
-async function systemPromptOf(agentId: string, mode: 'published' | 'draft'): Promise<string[]> {
+async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string): Promise<string[]> {
   const { agent } = await resolveAgent(deps, agentId, mode);
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, 'olga');
-  rc.set(REQUEST_KEYS.threadId, `t-${Date.now()}`);
+  const threadId = `t-${Date.now()}`;
+  rc.set(REQUEST_KEYS.threadId, threadId);
+  if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
   model.script({ text: 'Ок.' });
-  await agent.generate('привет', { requestContext: rc, maxSteps: 1 });
+  await agent.generate('привет', { requestContext: rc, maxSteps: 1, memory: { thread: threadId, resource: 'olga' } });
   return model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content));
 }
 
@@ -68,10 +76,12 @@ beforeAll(async () => {
   model = await startFakeModel();
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
-  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' } });
+  workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-prompts-'));
+  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { name: 'Альфа-Строй', timezone: 'Europe/Moscow' }, workspaceRoot });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {
+  rmSync(workspaceRoot, { recursive: true, force: true });
   await model.close();
   await db.end();
   await database.drop();
@@ -88,6 +98,35 @@ describe('prompt layers', () => {
     expect(position('# Сотрудник, с которым ты говоришь')).toBeGreaterThan(position('# Профиль организации'));
     const joined = system.join('\n');
     for (const fact of ['Альфа-Строй', 'строительство', 'на «вы», без канцелярита', 'Ольга', 'менеджер по продажам', 'Продажи']) expect(joined).toContain(fact);
+  });
+
+  it('puts the project after the employee and the current time only into the outgoing last message, so the prompt and the history do not change between requests', async () => {
+    await db.query(`INSERT INTO app.projects (id, user_id, name, instructions) VALUES ($1, 'olga', 'Тендер ЖК Северный', 'Заказчик тендера — ООО Стройресурс.')`, [PROJECT]);
+    saveFile(contextRoot(workspaceRoot, 'olga', PROJECT), 'договор.pdf', new Uint8Array(2048));
+    const first = await systemPromptOf('sales', 'published', PROJECT);
+    const all = first.join('\n');
+    expect(all.indexOf('# Проект «Тендер ЖК Северный»')).toBeGreaterThan(all.indexOf('# Сотрудник, с которым ты говоришь'));
+    expect(all).toContain('Заказчик тендера — ООО Стройресурс.');
+    expect(all).toContain('договор.pdf (2 КБ)');
+    expect(all).not.toContain('Сейчас:');
+    const lastUser = model.requests.at(-1)!.messages.filter((m) => m.role === 'user').at(-1)!;
+    expect(JSON.stringify(lastUser.content)).toMatch(/привет.*Сейчас: .+ \(Europe\/Moscow\)/s);
+    const second = await systemPromptOf('sales', 'published', PROJECT);
+    expect(second).toEqual(first);
+    expect((await systemPromptOf('sales', 'published')).join('\n')).not.toContain('# Проект');
+  });
+
+  it('keeps the current time out of the stored conversation', async () => {
+    const { agent } = await resolveAgent(deps, 'sales', 'published');
+    const rc = new RequestContext();
+    rc.set(REQUEST_KEYS.userId, 'olga');
+    rc.set(REQUEST_KEYS.threadId, 'time-check');
+    model.script({ text: 'Ок.' });
+    await agent.generate('который час?', { requestContext: rc, maxSteps: 1, memory: { thread: 'time-check', resource: 'olga' } });
+    const memory = (await agent.getMemory())!;
+    const { messages } = await memory.recall({ threadId: 'time-check', resourceId: 'olga', perPage: false });
+    expect(JSON.stringify(messages)).toContain('который час?');
+    expect(JSON.stringify(messages)).not.toContain('Сейчас:');
   });
 
   it('leaves the core rules out only when the passport says baseRules: false', async () => {

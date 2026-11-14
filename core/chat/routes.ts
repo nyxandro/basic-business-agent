@@ -5,8 +5,9 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
-import { deleteThread, draftResourceId, forgetAll, isBlankMemory, listThreads, readMemory, writeMemory } from '../memory/memory.ts';
-import { MAX_UPLOAD_BYTES } from '@bba/contracts';
+import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
+import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
+import { readUploadedFile } from '../projects/routes.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
@@ -23,7 +24,6 @@ const STOP_PATH = /^\/agent\/([^/]+)\/stop\/([^/]+)$/;
 
 const notFound = (message: string) => new AppError({ code: 'APP_NOT_FOUND', message, userMessage: 'Разговор не найден.', status: 404 });
 const memoryBody = z.object({ text: z.string().max(20_000) });
-const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
   async function translate(userId: string, raw: string): Promise<TranslatedError> {
@@ -105,7 +105,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
 
   app.get('/app/api/agents/:agentId/threads', async (c) => {
     assertAgentOpen(deps, access(c), c.req.param('agentId'), 'published');
-    return c.json({ threads: await listThreads(deps.memory, access(c).userId, c.req.param('agentId')) });
+    const page = await listThreadPage(deps, access(c).userId, { agentId: c.req.param('agentId'), limit: THREAD_PAGE_MAX });
+    return c.json({ threads: page.threads });
   });
 
   app.get('/app/api/threads/:threadId/messages', async (c) => {
@@ -143,18 +144,14 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   app.post('/app/api/threads/:threadId/files', async (c) => {
     const userId = access(c).userId;
     const threadId = c.req.param('threadId');
-    if (Number(c.req.header('content-length') ?? 0) > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES) {
-      throw new AppError({ code: 'APP_UPLOAD_TOO_LARGE', message: 'request body over the upload limit', userMessage: ERROR_CATALOG.APP_UPLOAD_TOO_LARGE.userMessage, status: 413 });
-    }
     const thread = await deps.memory.getThreadById({ threadId });
     // The person's own conversation, or their draft check of an agent's prompt.
     if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
     }
-    const form = await c.req.parseBody();
-    const file = form.file;
-    if (!(file instanceof File)) throw new AppError({ code: 'APP_VALIDATION_FAILED', message: 'no file field', userMessage: 'Файл не получен. Попробуйте прикрепить его ещё раз.', status: 400 });
-    const root = contextRoot(deps.workspaceRoot, userId, null);
+    const file = await readUploadedFile(c);
+    // A file attached in a project conversation becomes a file of the project (spec, section 8.9).
+    const root = contextRoot(deps.workspaceRoot, userId, await projectOfThread(deps.db, userId, threadId));
     return c.json(saveFile(root, file.name, new Uint8Array(await file.arrayBuffer())), 201);
   });
 }
