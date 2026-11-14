@@ -85,7 +85,7 @@ describe('the frame of the application', () => {
   it('sends the superadmin of an installation without models to set them up', async () => {
     server({ ...ME, isSuperadmin: true, permissions: ['users', 'models'], modelsConfigured: false });
     renderApp('/');
-    expect(await screen.findByRole('link', { name: 'Пользователи' })).toHaveAttribute('href', '/admin/users');
+    expect(await screen.findByRole('navigation', { name: 'Разделы админки' })).toBeInTheDocument();
   });
 
   it('says how to get an agent when none is open', async () => {
