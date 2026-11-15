@@ -45,6 +45,7 @@ function extras(interrupt: ReactElement | null): ChatExtras {
     keepInterrupted: vi.fn(),
     onTurnsFailed: vi.fn(),
     composerExtra: null,
+    composerNotice: null,
   };
 }
 

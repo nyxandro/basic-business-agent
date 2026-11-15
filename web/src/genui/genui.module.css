@@ -379,3 +379,32 @@
     transform: none;
   }
 }
+
+/* «Скачать» of a file removed from the folder (spec, section 8.20). */
+.fileNote {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.fileNote p {
+  margin: 0;
+}
+
+.fileNoteActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fileNoteError {
+  margin: 6px 0 0;
+  color: var(--bad);
+  font-size: 13px;
+}

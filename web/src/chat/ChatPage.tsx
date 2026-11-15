@@ -18,6 +18,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { ProjectChip } from '../projects/ProjectChip.tsx';
 import { useThreadProject } from '../projects/use-thread-project.ts';
+import { LostProjectNotice } from '../projects/LostProjectNotice.tsx';
 import { deleteThread } from './api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
 
@@ -64,7 +65,15 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
     <>
       <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} />} />
       {me.modelsConfigured ? (
-        <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} onThreadTitled={refreshThreads} composerExtra={<ProjectChip threadId={threadId} {...project} />} />
+        <ChatPanel
+          key={threadId}
+          agent={agent}
+          threadId={threadId}
+          onRunFinished={refreshThreads}
+          onThreadTitled={refreshThreads}
+          composerExtra={<ProjectChip threadId={threadId} {...project} />}
+          composerNotice={project.lost ? <LostProjectNotice threadId={threadId} lost={project.lost} onDone={() => project.changed(null)} /> : null}
+        />
       ) : (
         <EmptyInstallation />
       )}

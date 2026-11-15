@@ -21,6 +21,7 @@ import { COPILOT_OPTIONS } from './copilot.ts';
 
 const AdminRoutes = lazy(() => import('../admin/AdminRoutes.tsx'));
 const ProjectPage = lazy(() => import('../projects/ProjectPage.tsx').then((m) => ({ default: m.ProjectPage })));
+const ArchivePage = lazy(() => import('../projects/ArchivePage.tsx').then((m) => ({ default: m.ArchivePage })));
 
 export function App() {
   return (
@@ -54,6 +55,14 @@ export function App() {
                 <Route element={<AppShell />}>
                   <Route index element={<Home />} />
                   <Route path="agents/:agentId" element={<ChatPage />} />
+                  <Route
+                    path="projects/archive"
+                    element={
+                      <Suspense fallback={<Skeleton rows={4} />}>
+                        <ArchivePage />
+                      </Suspense>
+                    }
+                  />
                   <Route
                     path="projects/:projectId"
                     element={

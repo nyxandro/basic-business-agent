@@ -1,11 +1,12 @@
-// «Файлы проекта» (spec, scenario 6): upload, download, removal with a question. A failed upload
-// stays as a line with «Повторить». Attachments of the project's conversations land here too.
+// «Файлы проекта» (spec, scenario 6, section 8.20): upload, download, removal into the project's trash
+// — no question, «Вернуть» in the notice — and «Корзина · N». A failed upload stays as a line with
+// «Повторить». Attachments of the project's conversations land here too. In an archived project the
+// files are only read.
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button, IconButton } from '../ui/Button.tsx';
-import { useConfirm } from '../ui/Confirm.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { fileSize } from '../ui/format.ts';
@@ -13,19 +14,25 @@ import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import { deleteProjectFile, fetchProjectFiles, projectFileUrl, uploadProjectFile } from './api.ts';
+import { useToast } from '../ui/Toast.tsx';
+import { deleteProjectFile, fetchProjectFiles, fetchTrash, projectFileUrl, restoreFromTrash, uploadProjectFile } from './api.ts';
+import { TrashDialog } from './TrashDialog.tsx';
 import styles from './projects.module.css';
 
 const TOO_LARGE = 'APP_UPLOAD_TOO_LARGE';
 
-export function ProjectFiles({ projectId }: { projectId: string }) {
+export function ProjectFiles({ projectId, readOnly, shared }: { projectId: string; readOnly: boolean; shared: boolean }) {
   const load = useCallback(() => fetchProjectFiles(projectId), [projectId]);
   const { state, reload } = useLoad(load);
+  const loadTrash = useCallback(() => fetchTrash(projectId), [projectId]);
+  const { state: trash, reload: reloadTrash } = useLoad(loadTrash);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const toast = useToast();
+  const inTrash = trash.status === 'ready' ? trash.data.batches.reduce((n, b) => n + b.items.length, 0) : 0;
   const input = useRef<HTMLInputElement>(null);
   const [failed, setFailed] = useState<{ file: File; error: ApiRequestError } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | null>(null);
-  const confirm = useConfirm();
 
   async function upload(file: File) {
     setFailed(null);
@@ -44,12 +51,23 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
     }
   }
 
+  // Into the trash at once: it can be brought back, so no question first.
   async function remove(path: string) {
-    if (!(await confirm({ title: ru.projects.removeFileTitle(path), text: ru.projects.removeFileText, confirmLabel: ru.projects.remove, danger: true }))) return;
     setError(null);
     try {
-      await deleteProjectFile(projectId, path);
+      const { trashId } = await deleteProjectFile(projectId, path);
       reload();
+      reloadTrash();
+      if (trashId) {
+        toast(ru.projects.fileInTrash(path), {
+          label: ru.projects.undo,
+          run: () =>
+            void restoreFromTrash(projectId, { ids: [trashId] }).then(
+              () => (reload(), reloadTrash()),
+              (raw: unknown) => setError(asApiError(raw)),
+            ),
+        });
+      }
     } catch (raw) {
       setError(asApiError(raw));
     }
@@ -71,10 +89,28 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
             if (file) void upload(file);
           }}
         />
-        <Button icon="clip" onClick={() => input.current?.click()} disabled={busy !== null}>
-          {ru.projects.upload}
-        </Button>
+        {inTrash > 0 ? (
+          <Button variant="ghost" icon="trash" onClick={() => setTrashOpen(true)}>
+            {ru.projects.trashCount(inTrash)}
+          </Button>
+        ) : null}
+        {readOnly ? null : (
+          <Button icon="clip" onClick={() => input.current?.click()} disabled={busy !== null}>
+            {ru.projects.upload}
+          </Button>
+        )}
       </div>
+      {shared ? <p className={styles.empty}>{ru.projects.sharedFilesHint}</p> : null}
+      <TrashDialog
+        projectId={projectId}
+        open={trashOpen}
+        readOnly={readOnly}
+        onClose={() => setTrashOpen(false)}
+        onRestored={() => {
+          reload();
+          reloadTrash();
+        }}
+      />
       {error ? <ErrorBanner error={error} /> : null}
       {state.status === 'loading' ? <Skeleton rows={2} /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
@@ -116,7 +152,7 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
                 <span className={styles.rowMeta}>{fileSize(f.bytes)}</span>
               </span>
               <IconButton icon="download" label={`${ru.projects.download} ${f.path}`} onClick={() => window.open(projectFileUrl(projectId, f.path), '_blank')} />
-              <IconButton icon="trash" label={`${ru.projects.remove} ${f.path}`} onClick={() => void remove(f.path)} />
+              {readOnly ? null : <IconButton icon="trash" label={`${ru.projects.remove} ${f.path}`} onClick={() => void remove(f.path)} />}
             </li>
           ))}
           {state.data.files.length === 0 && !busy && !failed ? <li className={styles.empty}>{ru.projects.noFiles}</li> : null}

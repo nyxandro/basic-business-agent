@@ -111,6 +111,20 @@ const PATHS = {
   ),
   plug: <path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5" />,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  // A project open to colleagues (spec, section 8.20): the folder with a person in it.
+  folderShared: (
+    <>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <circle cx="12" cy="11.6" r="1.9" />
+      <path d="M8.6 17c.5-1.7 1.8-2.7 3.4-2.7s2.9 1 3.4 2.7" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" />
+    </>
+  ),
   db: (
     <>
       <ellipse cx="12" cy="6" rx="7" ry="3" />

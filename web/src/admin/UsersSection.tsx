@@ -10,7 +10,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Avatar, Card, EmptyState, PageHead, Pill, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { SearchInput, Select } from '../ui/Field.tsx';
-import { dateTime, rub } from '../ui/format.ts';
+import { dateTime, plural, rub } from '../ui/format.ts';
 import { Skeleton } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Table } from '../ui/Table.tsx';
@@ -105,7 +105,7 @@ function RowMenu({ row, onEdit, onChanged, onLink }: { row: Row; onEdit: (u: Adm
               danger
               onSelect={() => {
                 setOpen(false);
-                void confirm({ title: `Удалить сотрудника ${row.user.name}?`, text: 'Удалятся его доступы, разговоры, память и рабочая папка. Журнал действий сохранится.', confirmLabel: 'Удалить', danger: true }).then(async (yes) => {
+                void confirm({ title: `Удалить сотрудника ${row.user.name}?`, text: deleteUserText(row.user), confirmLabel: 'Удалить', danger: true }).then(async (yes) => {
                   if (yes) await act(() => adminApi.deleteUser(row.user.id), 'Сотрудник удалён');
                 });
               }}
@@ -126,6 +126,17 @@ interface Data {
   departments: AdminDepartment[];
   invites: AdminInvite[];
   spend: Spend;
+}
+
+// What goes with the employee, and that their projects come to the administrator who removes them
+// (spec, section 8.20; decisions of the owner 16.11).
+function deleteUserText(user: AdminUser): string {
+  const base = 'Удалятся его доступы, разговоры, память и рабочая папка. Журнал действий сохранится.';
+  const { total, shared } = user.projects;
+  if (total === 0) return base;
+  const projects = `${total} ${plural(total, ['проект', 'проекта', 'проектов'])}`;
+  const ofThem = shared > 0 ? `, из них общих — ${shared}` : '';
+  return `${base} Его проекты (${projects}${ofThem}) перейдут вам: вы станете их создателем${shared > 0 ? ', коллеги сохранят доступ к общим' : ''}.`;
 }
 
 export function UsersSection() {

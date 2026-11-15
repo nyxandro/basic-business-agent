@@ -1,5 +1,5 @@
 // Projects of conversations (spec, scenario 6, section 17.5).
-import type { ProjectAccessInput, ProjectDto, ProjectFile, ProjectListResponse, ThreadPage, ThreadProjectResponse } from '@bba/contracts';
+import type { ArchivedProjectDto, ColleagueDto, DepartmentDto, ProjectAccessInput, ProjectDto, ProjectFile, ProjectListResponse, ThreadPage, ThreadProjectResponse, TrashBatchDto, TrashRestore } from '@bba/contracts';
 import { api, apiForm } from '../api/client.ts';
 
 const enc = encodeURIComponent;
@@ -11,9 +11,20 @@ export const fetchProject = (id: string) => api<ProjectDto>('GET', `${P}/${enc(i
 export const updateProject = (id: string, change: { name?: string; instructions?: string; pinned?: boolean }) => api<ProjectDto>('PUT', `${P}/${enc(id)}`, change);
 // All the person's projects in the order of the side panel.
 export const orderProjects = (ids: string[]) => api<{ ok: true }>('PUT', `${P}/order`, { ids });
+// Removed for good: only from the archive, 30 days after archiving (spec, section 8.20).
 export const deleteProject = (id: string) => api<{ ok: true }>('DELETE', `${P}/${enc(id)}`);
+export const setProjectAccess = (id: string, access: ProjectAccessInput) => api<ProjectDto>('PUT', `${P}/${enc(id)}/access`, access);
+export const archiveProject = (id: string) => api<{ ok: true }>('POST', `${P}/${enc(id)}/archive`);
+export const unarchiveProject = (id: string) => api<{ ok: true }>('POST', `${P}/${enc(id)}/unarchive`);
+export const fetchArchive = () => api<{ projects: ArchivedProjectDto[] }>('GET', `${P}/archive`);
+export const fetchTrash = (id: string) => api<{ batches: TrashBatchDto[] }>('GET', `${P}/${enc(id)}/trash`);
+export const restoreFromTrash = (id: string, what: TrashRestore) => api<{ restored: string[] }>('POST', `${P}/${enc(id)}/trash/restore`, what);
+export const trashFileUrl = (id: string, trashId: string) => `${P}/${enc(id)}/trash/${enc(trashId)}/file`;
+export const fetchColleagues = (q: string) => api<{ colleagues: ColleagueDto[] }>('GET', `/app/api/colleagues?q=${enc(q)}`);
+export const fetchDepartments = () => api<{ departments: DepartmentDto[] }>('GET', '/app/api/departments');
 export const fetchProjectFiles = (id: string) => api<{ files: ProjectFile[] }>('GET', `${P}/${enc(id)}/files`);
-export const deleteProjectFile = (id: string, path: string) => api<{ ok: true }>('DELETE', `${P}/${enc(id)}/file?path=${enc(path)}`);
+// Into the project's trash: `trashId` brings it back («Вернуть»); null for a link, which is just removed.
+export const deleteProjectFile = (id: string, path: string) => api<{ ok: true; trashId: string | null }>('DELETE', `${P}/${enc(id)}/file?path=${enc(path)}`);
 export const projectFileUrl = (id: string, path: string) => `${P}/${enc(id)}/file?path=${enc(path)}`;
 export const fetchProjectThreads = (id: string) => api<ThreadPage>('GET', `/app/api/threads?projectId=${enc(id)}&limit=100`);
 export const fetchThreadProject = (threadId: string) => api<ThreadProjectResponse>('GET', `/app/api/threads/${enc(threadId)}/project`);

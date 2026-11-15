@@ -19,12 +19,14 @@ export function ChatPanel({
   onRunFinished,
   onThreadTitled,
   composerExtra,
+  composerNotice,
 }: {
   agent: AgentSummary;
   threadId: string;
   onRunFinished: () => void;
   onThreadTitled: () => void;
   composerExtra?: ReactNode;
+  composerNotice?: ReactNode;
 }) {
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
@@ -66,8 +68,9 @@ export function ChatPanel({
       keepInterrupted: (ids) => setInterruptedIds((prev) => [...prev, ...ids]),
       onTurnsFailed,
       composerExtra,
+      composerNotice,
     }),
-    [agent, threadId, attachments, onRunFinished, onThreadTitled, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra],
+    [agent, threadId, attachments, onRunFinished, onThreadTitled, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra, composerNotice],
   );
 
   return (

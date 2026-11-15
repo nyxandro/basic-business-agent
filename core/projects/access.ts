@@ -74,7 +74,7 @@ export function requireActive(found: VisibleProject): ProjectRow {
 export type ThreadProjectState =
   | { state: 'none' }
   | { state: 'active'; project: ProjectRow; role: ProjectRole }
-  | { state: 'lost'; name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean };
+  | { state: 'lost'; projectId: string | null; name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean };
 
 // What a run of the conversation works in, fixed for the whole run (spec, section 8.20): the files and
 // instructions of a project the person sees, or their own files with a word for the agent why the
@@ -109,12 +109,12 @@ export async function threadProjectState(db: Queryable, userId: string, threadId
   );
   const link = rows[0];
   if (!link) return { state: 'none' };
-  if (!link.project_id) return link.lost_project_name ? { state: 'lost', name: link.lost_project_name, reason: 'deleted', ownerName: null, canUnarchive: false } : { state: 'none' };
+  if (!link.project_id) return link.lost_project_name ? { state: 'lost', projectId: null, name: link.lost_project_name, reason: 'deleted', ownerName: null, canUnarchive: false } : { state: 'none' };
   const seen = await findVisibleProject(db, userId, link.project_id, 'owner');
   if (seen && !seen.project.archived_at) return { state: 'active', project: seen.project, role: seen.role };
   const { rows: existing } = await db.query<ProjectRow>(`SELECT ${PROJECT_COLUMNS} FROM app.projects p JOIN app."user" u ON u."id" = p.user_id WHERE p.id = $1`, [link.project_id]);
   const project = existing[0];
   if (!project) return { state: 'none' };
-  if (project.archived_at) return { state: 'lost', name: project.name, reason: 'archived', ownerName: project.owner_name, canUnarchive: project.user_id === userId };
-  return { state: 'lost', name: project.name, reason: 'access', ownerName: project.owner_name, canUnarchive: false };
+  if (project.archived_at) return { state: 'lost', projectId: project.id, name: project.name, reason: 'archived', ownerName: project.owner_name, canUnarchive: project.user_id === userId };
+  return { state: 'lost', projectId: project.id, name: project.name, reason: 'access', ownerName: project.owner_name, canUnarchive: false };
 }

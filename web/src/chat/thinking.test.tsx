@@ -44,6 +44,7 @@ function extras(): ChatExtras {
     keepInterrupted: vi.fn(),
     onTurnsFailed: vi.fn(),
     composerExtra: null,
+    composerNotice: null,
   };
 }
 

@@ -282,3 +282,173 @@ a.rowName:hover {
     padding: 20px 14px 32px;
   }
 }
+
+/* «Кому открыт проект» (spec, section 8.20). */
+.access {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.accessLegend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.accessPart {
+  display: grid;
+  gap: 8px;
+}
+
+.accessLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.check:hover {
+  background: var(--hover);
+}
+
+.checkOn {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.check input {
+  accent-color: var(--acc);
+  margin: 0;
+}
+
+.checkMeta {
+  color: var(--muted);
+}
+
+.peopleSearch {
+  display: grid;
+  gap: 6px;
+}
+
+.found {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.foundPerson {
+  display: grid;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.foundPerson:hover,
+.foundPerson:focus-visible {
+  background: var(--hover);
+}
+
+/* The creator's line of the access under the project's name; a colleague's «Открыл(а): …». */
+.accessLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.accessLine > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.newPill {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.archiveRow {
+  color: var(--muted);
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.banner p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+.batch {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.batch:first-child {
+  border-top: 0;
+}
+
+.batchHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.instructionsText {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}

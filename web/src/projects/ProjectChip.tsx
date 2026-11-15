@@ -6,52 +6,13 @@ import type { ProjectDto } from '@bba/contracts';
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { Button, cx } from '../ui/Button.tsx';
-import { Field, Input } from '../ui/Field.tsx';
+import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator, MenuTitle } from '../ui/Menu.tsx';
-import { Modal } from '../ui/Modal.tsx';
-import { createProject, fetchProjects, setThreadProject } from './api.ts';
+import { fetchProjects, setThreadProject } from './api.ts';
+import { NewProjectDialog } from './ProjectDialog.tsx';
 import type { ProjectRef, ThreadProjectState } from './use-thread-project.ts';
 import styles from './projects.module.css';
-
-function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (p: ProjectDto) => void }) {
-  const [name, setName] = useState('');
-  const [error, setError] = useState<ApiRequestError | null>(null);
-  async function create() {
-    setError(null);
-    try {
-      onCreated(await createProject(name.trim(), { mode: 'private', departmentIds: [], userIds: [] }));
-      setName('');
-    } catch (raw) {
-      setError(asApiError(raw));
-    }
-  }
-  return (
-    <Modal open={open} onClose={onClose} label={ru.projects.new} narrow>
-      <form
-        className={styles.section}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void create();
-        }}
-      >
-        <h2 className={styles.sectionTitle}>{ru.projects.new}</h2>
-        <Field label={ru.projects.name} error={error?.message ?? null}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <div className={styles.actions}>
-          <Button variant="secondary" onClick={onClose}>
-            {ru.projects.cancel}
-          </Button>
-          <Button type="submit" variant="primary" disabled={!name.trim()}>
-            {ru.projects.create}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
 
 interface ChipProps {
   threadId: string;
@@ -100,7 +61,7 @@ export function ProjectChip({ threadId, state, retry, changed, moveError }: Chip
     <MenuAnchor>
       {project ? (
         <button type="button" className={cx(styles.chip, styles.chipOn)} onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={ru.projects.ofThread}>
-          <Icon name="folder" size={15} className={styles.chipIconOn} />
+          <Icon name={project.shared ? 'folderShared' : 'folder'} size={15} className={styles.chipIconOn} />
           <span className={styles.chipName}>{project.name}</span>
           <Icon name="down" size={15} className={styles.chipIcon} />
         </button>
@@ -123,7 +84,7 @@ export function ProjectChip({ threadId, state, retry, changed, moveError }: Chip
           {ru.projects.none}
         </MenuItem>
         {(projects ?? []).map((p) => (
-          <MenuItem key={p.id} icon="folder" checked={p.id === project?.id} onSelect={() => void move({ id: p.id, name: p.name })}>
+          <MenuItem key={p.id} icon={p.shared ? 'folderShared' : 'folder'} checked={p.id === project?.id} onSelect={() => void move({ id: p.id, name: p.name, shared: p.shared })}>
             {p.name}
           </MenuItem>
         ))}
@@ -144,7 +105,7 @@ export function ProjectChip({ threadId, state, retry, changed, moveError }: Chip
         onClose={() => setCreating(false)}
         onCreated={(p) => {
           setCreating(false);
-          void move({ id: p.id, name: p.name });
+          void move({ id: p.id, name: p.name, shared: p.shared });
         }}
       />
       {(error ?? moveError) ? (

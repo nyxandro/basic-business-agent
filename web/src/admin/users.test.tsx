@@ -14,8 +14,8 @@ const DEPARTMENTS = [
   { id: 'd2', name: 'Бухгалтерия', userIds: ['u2'], agentIds: [] },
 ];
 const USERS = [
-  { id: 'u1', email: 'olga@example.com', name: 'Ольга Смирнова', position: '', blocked: false, roleIds: ['r-emp'], departmentIds: ['d1'], createdAt: '2026-11-01T00:00:00Z' },
-  { id: 'u2', email: 'nina@example.com', name: 'Нина Орлова', position: '', blocked: true, roleIds: ['r-emp'], departmentIds: ['d2'], createdAt: '2026-11-01T00:00:00Z' },
+  { id: 'u1', email: 'olga@example.com', name: 'Ольга Смирнова', position: '', blocked: false, roleIds: ['r-emp'], departmentIds: ['d1'], createdAt: '2026-11-01T00:00:00Z', projects: { total: 0, shared: 0 } },
+  { id: 'u2', email: 'nina@example.com', name: 'Нина Орлова', position: '', blocked: true, roleIds: ['r-emp'], departmentIds: ['d2'], createdAt: '2026-11-01T00:00:00Z', projects: { total: 0, shared: 0 } },
 ];
 const INVITES = [{ id: 'i1', email: 'pavel@example.com', name: 'Павел Сорокин', createdAt: '2026-11-13T00:00:00Z', expiresAt: '2026-11-20T00:00:00Z' }];
 

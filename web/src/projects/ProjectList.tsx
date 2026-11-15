@@ -1,23 +1,26 @@
-// «Проекты» of the side panel (spec, scenario 6 and section 8.12; mockup): «+» opens a field, Enter
-// creates the project and opens its page. The pinned projects come first; the person drags a project
+// «Проекты» of the side panel (spec, scenario 6, sections 8.12 and 8.20): «+» opens the window «Новый
+// проект» — the name and who it is open to (decision of the owner 16.11) — and the project's page
+// opens after it. Under the list, «Архив · N» when the person has archived projects. The pinned projects come first; the person drags a project
 // up and down among its group, and the panel shows the new order at once, before the server keeps
 // it. Saves go one after another, so the server ends with the last order the person made.
 import type { ProjectDto } from '@bba/contracts';
 import { closestCenter, DndContext, KeyboardCode, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type Announcements, type DragEndEvent, type UniqueIdentifier } from '@dnd-kit/core';
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { useMatch, useNavigate } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useMatch, useNavigate } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { IconButton } from '../ui/Button.tsx';
+import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import shell from '../layout/shell.module.css';
-import { createProject, fetchProjects, orderProjects, updateProject } from './api.ts';
+import { useToast } from '../ui/Toast.tsx';
+import { archiveProject, fetchProjects, orderProjects, unarchiveProject, updateProject } from './api.ts';
+import { AccessDialog, NewProjectDialog } from './ProjectDialog.tsx';
 import { moveProject, pinProject } from './order.ts';
-import { projectPath, ProjectRow } from './ProjectRow.tsx';
+import { ARCHIVE_PATH, projectPath, ProjectRow } from './ProjectRow.tsx';
 import styles from './projects.module.css';
 
 // A mouse drag starts after this many pixels: a click stays a click.
@@ -37,38 +40,6 @@ function cancelClick(event: Event) {
   event.preventDefault();
 }
 
-function NewProject({ onDone }: { onDone: (project: ProjectDto | null) => void }) {
-  const [name, setName] = useState('');
-  const [error, setError] = useState<ApiRequestError | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function create() {
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      onDone(await createProject(name.trim(), { mode: 'private', departmentIds: [], userIds: [] }));
-    } catch (raw) {
-      setError(asApiError(raw));
-      setBusy(false);
-    }
-  }
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') void create();
-    if (e.key === 'Escape') onDone(null);
-  };
-  return (
-    <>
-      <div className={styles.newProject}>
-        <Icon name="folder" size={15} />
-        {/* The field opens on the person's «+»: focusing it is what they asked for. */}
-        <input className={styles.newInput} autoFocus value={name} placeholder={ru.projects.namePlaceholder} aria-label={ru.projects.name} onChange={(e) => setName(e.target.value)} onKeyDown={onKey} onBlur={() => !name.trim() && onDone(null)} />
-        <IconButton icon="check" variant="primary" size="sm" label={ru.projects.create} onClick={() => void create()} disabled={!name.trim() || busy} />
-      </div>
-      {error ? <p className={styles.fieldError}>{error.message}</p> : null}
-    </>
-  );
-}
-
 export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }: { refreshKey: number; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void }) {
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   // The list loads after the saves under way, and once more when a save starts while it loads:
@@ -83,6 +54,9 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
   }, []);
   const { state, reload } = useLoad(load);
   const [adding, setAdding] = useState(false);
+  const [accessOf, setAccessOf] = useState<ProjectDto | null>(null);
+  const [actionError, setActionError] = useState<ApiRequestError | null>(null);
+  const toast = useToast();
   // The order, pins and names the person just changed, over the list they were made on: a list
   // loaded again (it has them from the server) takes their place.
   const [changed, setChanged] = useState<{ over: ProjectDto[]; list: ProjectDto[] } | null>(null);
@@ -91,7 +65,9 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
   // takes the keyboard back.
   const focusNext = useRef<string | null>(null);
   const navigate = useNavigate();
-  const page = useMatch('/projects/:projectId')?.params.projectId;
+  const archivePage = useMatch(ARCHIVE_PATH) !== null;
+  const projectPage = useMatch('/projects/:projectId')?.params.projectId;
+  const page = archivePage ? undefined : projectPage;
   const current = page ?? chatProjectId;
   const [seenKey, setSeenKey] = useState(refreshKey);
   if (seenKey !== refreshKey) {
@@ -108,13 +84,29 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
   const loaded = state.status === 'ready' ? state.data.projects : null;
   const projects = changed && changed.over === loaded ? changed.list : loaded;
 
-  const done = (project: ProjectDto | null) => {
+  const created = (project: ProjectDto) => {
     setAdding(false);
-    if (!project) return;
     onChanged();
     onNavigate();
     void navigate(projectPath(project.id));
   };
+
+  // «В архив» from the menu: gone from everyone's «Проекты», «Вернуть» brings it back.
+  async function archive(project: ProjectDto) {
+    setActionError(null);
+    try {
+      await archiveProject(project.id);
+    } catch (raw) {
+      setActionError(asApiError(raw));
+      return;
+    }
+    onChanged();
+    if (page === project.id) void navigate('/', { replace: true });
+    toast(ru.projects.archived(project.name), {
+      label: ru.projects.undo,
+      run: () => void unarchiveProject(project.id).then(onChanged, (raw: unknown) => setActionError(asApiError(raw))),
+    });
+  }
 
   function show(list: ProjectDto[] | null, save?: () => Promise<unknown>) {
     if (!list || !loaded) return;
@@ -157,7 +149,17 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
         <span className={shell.sectionLabel}>{ru.projects.title}</span>
         <IconButton icon="plus" size="sm" label={ru.projects.new} onClick={() => setAdding(true)} />
       </div>
-      {adding ? <NewProject onDone={done} /> : null}
+      <NewProjectDialog open={adding} onClose={() => setAdding(false)} onCreated={created} />
+      <AccessDialog
+        project={accessOf}
+        onClose={() => setAccessOf(null)}
+        onSaved={() => {
+          setAccessOf(null);
+          toast(ru.projects.accessSaved);
+          onChanged();
+        }}
+      />
+      {actionError ? <ErrorBanner error={actionError} /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {saveError ? <ErrorBanner title={ru.projects.orderFailed} error={saveError} /> : null}
       {projects ? (
@@ -189,6 +191,8 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
                         focusNext.current = p.id;
                         show(pinProject(projects, p.id, pinned), () => updateProject(p.id, { pinned }));
                       }}
+                      onAccess={() => setAccessOf(p)}
+                      onArchive={() => void archive(p)}
                       takeFocus={() => {
                         if (focusNext.current !== p.id) return false;
                         focusNext.current = null;
@@ -201,6 +205,14 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
             ) : null,
           )}
         </DndContext>
+      ) : null}
+      {state.status === 'ready' && state.data.archivedCount > 0 ? (
+        <Link to={ARCHIVE_PATH} onClick={onNavigate} className={cx(shell.item, styles.archiveRow)} aria-current={archivePage ? 'page' : undefined}>
+          <Icon name="archive" size={15} />
+          <span className={shell.itemText}>
+            {ru.projects.archiveLink} · {state.data.archivedCount}
+          </span>
+        </Link>
       ) : null}
     </>
   );

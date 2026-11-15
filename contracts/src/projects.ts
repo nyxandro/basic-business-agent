@@ -78,7 +78,8 @@ export type LostProjectReason = (typeof LOST_PROJECT_REASONS)[number];
 
 export interface ThreadProjectResponse {
   projectId: string | null;
-  lost: { name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean } | null;
+  // `projectId`: of a project that still exists (closed or archived) — its creator brings it back.
+  lost: { projectId: string | null; name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean } | null;
 }
 
 // The trash of a project (spec, section 8.20): what one person removed, or one answer of the agent.

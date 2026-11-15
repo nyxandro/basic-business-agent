@@ -102,6 +102,14 @@ export function AppShell() {
     setProjectsKey((n) => n + 1);
   }, []);
   const refreshProjects = useCallback(() => setProjectsKey((n) => n + 1), []);
+  // Back to the tab: a project opened or closed to the person meanwhile shows at once (spec, 8.20).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshProjects();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refreshProjects]);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const openSearch = useCallback((scope: SearchScope) => {

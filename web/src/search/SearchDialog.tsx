@@ -70,11 +70,14 @@ function Results({ state, scope, projectId, wide, projectName, onRetry, onPick }
           {projects.map((p) => (
             <button key={p.id} type="button" className={styles.result} onClick={() => onPick(`/projects/${encodeURIComponent(p.id)}`)}>
               <span className={cx(styles.tile, styles.tileProject)}>
-                <Icon name="folder" size={15} />
+                <Icon name={p.shared ? 'folderShared' : 'folder'} size={15} />
               </span>
               <span className={styles.resultMain}>
                 <span className={styles.resultTitle}>{p.name}</span>
-                <span className={styles.meta}>{ru.search.threadCount(p.threadCount)}</span>
+                <span className={styles.meta}>
+                  {ru.search.threadCount(p.threadCount)}
+                  {p.ownerName ? ` · ${ru.projects.openedBy(p.ownerName)}` : ''}
+                </span>
               </span>
               <Icon name="right" size={15} className={styles.chevron} />
             </button>

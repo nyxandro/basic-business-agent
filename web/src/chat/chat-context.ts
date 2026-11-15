@@ -30,6 +30,8 @@ export interface ChatExtras {
   onTurnsFailed: (value: FailedTurns) => void;
   // What the page adds to the input's toolbar (the chip of the conversation's project).
   composerExtra: ReactNode;
+  // Above the input: why the conversation's project is gone (spec, section 8.20).
+  composerNotice: ReactNode;
 }
 
 export const ChatExtrasContext = createContext<ChatExtras | null>(null);

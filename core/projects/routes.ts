@@ -147,7 +147,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
       state.state === 'active'
         ? { projectId: state.project.id, lost: null }
         : state.state === 'lost'
-          ? { projectId: null, lost: { name: state.name, reason: state.reason, ownerName: state.ownerName, canUnarchive: state.canUnarchive } }
+          ? { projectId: null, lost: { projectId: state.projectId, name: state.name, reason: state.reason, ownerName: state.ownerName, canUnarchive: state.canUnarchive } }
           : { projectId: null, lost: null };
     return c.json(body);
   });

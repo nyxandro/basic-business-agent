@@ -197,6 +197,22 @@
   animation: bba-rise 0.3s var(--ease-rise) both;
 }
 
+.toastAction {
+  margin-left: 6px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toastAction:hover,
+.toastAction:focus-visible {
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+}
+
 /* A phone: a dialog stays a card with narrow margins; the sheet and the full screen keep theirs. */
 @media (max-width: 600px) {
   .layer {

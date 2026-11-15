@@ -172,7 +172,7 @@ describe('a colleague’s work in a shared project', () => {
     expect((await list('olga')).projects.find((x) => x.id === p.id)?.threadCount).toBe(0);
 
     await share('olga', p.id, PRIVATE);
-    expect(await threadProject()).toEqual({ projectId: null, lost: { name: 'Совместный', reason: 'access', ownerName: 'Ольга Смирнова', canUnarchive: false } });
+    expect(await threadProject()).toEqual({ projectId: null, lost: { projectId: p.id, name: 'Совместный', reason: 'access', ownerName: 'Ольга Смирнова', canUnarchive: false } });
     expect((await json<ThreadPage>(await t.call('GET', '/app/api/threads', { cookie: cookie.petr }))).threads.find((x) => x.id === threadId)?.projectId).toBeNull();
     expect((await t.call('GET', `/app/api/projects/${p.id}/files`, { cookie: cookie.petr })).status).toBe(404);
 
@@ -182,7 +182,7 @@ describe('a colleague’s work in a shared project', () => {
     // Removed for good: the colleague's conversation keeps the name; the creator's links go.
     await t.db.query("UPDATE app.projects SET archived_at = now() - interval '31 days' WHERE id = $1", [p.id]);
     expect((await t.call('DELETE', `/app/api/projects/${p.id}`, { cookie: cookie.olga })).status).toBe(200);
-    expect(await threadProject()).toEqual({ projectId: null, lost: { name: 'Совместный', reason: 'deleted', ownerName: null, canUnarchive: false } });
+    expect(await threadProject()).toEqual({ projectId: null, lost: { projectId: null, name: 'Совместный', reason: 'deleted', ownerName: null, canUnarchive: false } });
     expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: cookie.petr, body: { projectId: null } })).status).toBe(200);
     expect(await threadProject()).toEqual({ projectId: null, lost: null });
   });
@@ -201,7 +201,7 @@ describe('a colleague’s work in a shared project', () => {
     expect(await json<ProjectDto>(await page('olga', p.id))).toMatchObject({ name: 'В архив', archivedAt: expect.any(String) });
     const rename = await t.call('PUT', `/app/api/projects/${p.id}`, { cookie: cookie.olga, body: { name: 'Новое имя' } });
     expect((await errorOf(rename)).code).toBe('APP_PROJECT_ARCHIVED');
-    expect(await json<ThreadProjectResponse>(await t.call('GET', `/app/api/threads/${threadId}/project`, { cookie: cookie.olga }))).toEqual({ projectId: null, lost: { name: 'В архив', reason: 'archived', ownerName: 'Ольга Смирнова', canUnarchive: true } });
+    expect(await json<ThreadProjectResponse>(await t.call('GET', `/app/api/threads/${threadId}/project`, { cookie: cookie.olga }))).toEqual({ projectId: null, lost: { projectId: p.id, name: 'В архив', reason: 'archived', ownerName: 'Ольга Смирнова', canUnarchive: true } });
     expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: cookie.olga, body: { projectId: p.id } })).status).toBe(404);
   });
 });

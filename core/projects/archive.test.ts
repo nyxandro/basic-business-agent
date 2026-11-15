@@ -73,7 +73,7 @@ describe('the archive of projects', () => {
     expect((await t.call('DELETE', `/app/api/projects/${p.id}`, { cookie: petr })).status).toBe(404);
     expect((await t.call('DELETE', `/app/api/projects/${p.id}`, { cookie: olga })).status).toBe(200);
     expect(existsSync(join(t.workspaceRoot, olgaId, 'projects', p.id))).toBe(false);
-    expect(await json<ThreadProjectResponse>(await t.call('GET', `/app/api/threads/${petrThread}/project`, { cookie: petr }))).toEqual({ projectId: null, lost: { name: 'Тендер', reason: 'deleted', ownerName: null, canUnarchive: false } });
+    expect(await json<ThreadProjectResponse>(await t.call('GET', `/app/api/threads/${petrThread}/project`, { cookie: petr }))).toEqual({ projectId: null, lost: { projectId: null, name: 'Тендер', reason: 'deleted', ownerName: null, canUnarchive: false } });
     expect((await json<ProjectListResponse>(await t.call('GET', '/app/api/projects', { cookie: olga }))).archivedCount).toBe(0);
   });
 });

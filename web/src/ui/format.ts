@@ -18,6 +18,8 @@ export function dayMonth(isoDate: string): string {
 }
 
 // «14 ноября, 09:00» in the browser's time zone.
+// «16 декабря 2026»: a day that is not near.
+export const fullDate = (iso: string): string => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '');
 export const dateTime = (iso: string): string => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 
 // «сегодня», «вчера» or «2 ноября» (with the year when it is not this one), in the browser's zone.
