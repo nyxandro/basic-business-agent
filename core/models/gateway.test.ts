@@ -123,7 +123,7 @@ describe('model gateway', () => {
     const userId = await t.createUser({ email: 'break@example.com', roleIds: [await t.roleId('superadmin')] });
     const PRICES = { input: 1000, output: 2000, cacheRead: 0, cacheWrite: 0, reasoning: 0, image: 0 };
     try {
-      const model = await t.models.create(userId, { kind: 'chat', label: 'Обрыв', connection: 'api_key', providerModel: 'openai/break-test', apiBase: provider.dockerUrl, vision: false, prices: PRICES, pricePerMinute: null, key });
+      const model = await t.models.create(userId, { kind: 'chat', label: 'Обрыв', connection: 'api_key', providerModel: 'openai/break-test', apiBase: provider.dockerUrl, vision: false, prices: PRICES, pricePerMinute: null, key, maxOutputTokens: 4096 });
       const before = provider.requests.length;
       provider.script({ text: 'Пр', cut: 'drop' }, { text: 'Привет! Чем помочь?' });
       const rt: AgentRuntime = {
@@ -203,7 +203,7 @@ describe('model gateway', () => {
     const cookie = await t.signIn('voice@example.com');
     const PRICES = { input: 1000, output: 2000, cacheRead: 0, cacheWrite: 0, reasoning: 0, image: 0 };
     const add = (providerModel: string, pricing: { prices: typeof PRICES | null; pricePerMinute: number | null }) =>
-      t.models.create(userId, { kind: 'transcription', label: providerModel, connection: 'api_key', providerModel, apiBase: provider.dockerUrl, vision: false, ...pricing, key });
+      t.models.create(userId, { kind: 'transcription', label: providerModel, connection: 'api_key', providerModel, apiBase: provider.dockerUrl, vision: false, ...pricing, key, maxOutputTokens: null });
     const speak = async (modelId: string) => {
       await t.db.query('UPDATE app.model_settings SET transcription_model_id = $1', [modelId]);
       const form = new FormData();

@@ -25,6 +25,10 @@ export const modelCreateSchema = z.discriminatedUnion('connection', [
     // Recognition only: roubles per minute of audio instead of token prices.
     pricePerMinute: price,
     key: z.string(),
+    // The longest answer of a chat model, in tokens (spec, section 8.19): null — the gateway's
+    // model map gives it; the server asks for it (APP_MODEL_OUTPUT_LIMIT_REQUIRED) when the gateway
+    // does not know the model. A recognition model has none.
+    maxOutputTokens: z.number().int().min(1).max(10_000_000).nullable(),
   }),
   // «Подписка ChatGPT»: a chat model served by the accounts of the pool, without a key or prices.
   z.object({
@@ -84,6 +88,9 @@ export interface ModelDto {
   enabled: boolean;
   prices: TokenPrices | null;
   pricePerMinute: number | null;
+  // The longest answer in tokens, sent with every request to the model; null — none (recognition,
+  // subscription) or not known for a model added before 15.11.2026.
+  maxOutputTokens: number | null;
   keys: ModelKeyDto[];
   // Agents whose own model it is (admin's choice in «Агенты и промпты»).
   agentIds: string[];

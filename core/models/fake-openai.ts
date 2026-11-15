@@ -50,6 +50,10 @@ export interface FakeRequest {
   stream: boolean;
   messages: { role: string; content?: unknown; tool_calls?: unknown; tool_call_id?: string }[];
   tools?: { function: { name: string } }[];
+  // What the gateway added from the deployment (spec, section 8.19).
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  reasoning_format?: string;
   headers: Record<string, string | string[] | undefined>;
 }
 
@@ -71,6 +75,8 @@ export interface FakeModel {
 }
 
 const USAGE = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+// As OpenAI and Groq answer: LiteLLM's Groq provider reads it from every whole answer.
+const SERVICE_TIER = 'default';
 export const FAKE_TRANSCRIPT = 'Тестовая речь';
 
 type StreamCut = 'drop' | 'hang' | GatewayStreamError;
@@ -105,7 +111,7 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
     const calls = turn.toolCalls.map((c, i) => ({ id: `call_${Date.now()}_${i}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
     if (stream) return sse(res, [{ role: 'assistant', tool_calls: calls.map((c, index) => ({ index, ...c })) }], 'tool_calls');
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: USAGE }));
+    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: USAGE, service_tier: SERVICE_TIER }));
     return;
   }
   if (stream) {
@@ -115,7 +121,7 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
     return sse(res, parts.length ? parts : [{ role: 'assistant', content: '' }], 'stop', turn.cut);
   }
   res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: USAGE }));
+  res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: USAGE, service_tier: SERVICE_TIER }));
 }
 
 // `fallback` answers when the script is empty (the browser stand answers by keywords); without it

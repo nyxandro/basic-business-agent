@@ -50,6 +50,10 @@ export const ERROR_CATALOG = {
   APP_MODEL_NOT_CONFIGURED: { status: 503, userMessage: 'Модели ещё не настроены. Обратитесь к администратору.' },
   APP_MODEL_CHECK_FAILED: { status: 400, userMessage: 'Провайдер не принял ключ. Проверьте ключ и модель провайдера.' },
   APP_MODEL_IN_USE: { status: 409, userMessage: 'Модель нужна агентам. Сначала выберите основную модель организации или другую модель этим агентам.' },
+  APP_MODEL_OUTPUT_LIMIT_REQUIRED: {
+    status: 400,
+    userMessage: 'Шлюз не знает, какой длины ответ даёт эта модель. Укажите наибольшую длину ответа в токенах — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).',
+  },
   APP_VOICE_NOT_CONFIGURED: { status: 409, userMessage: 'Голосовой ввод в этой установке не настроен.' },
   APP_VOICE_FAILED: { status: 502, userMessage: 'Не удалось распознать запись. Попробуйте ещё раз или напишите текстом.' },
   APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },

@@ -62,7 +62,38 @@ describe('«Нейросеть»', () => {
       prices: { input: 40, output: 160, cacheRead: 10, cacheWrite: 40, reasoning: 160, image: 1 },
       pricePerMinute: null,
       key: 'sk-test-0000000000',
+      maxOutputTokens: null,
     });
+    // The gateway knows the model: the form does not ask for the length of an answer.
+    expect(screen.queryByLabelText('Наибольшая длина ответа, токенов')).not.toBeInTheDocument();
+  });
+
+  it('asks for the length of an answer only when the gateway does not know the model, and sends it', async () => {
+    const s = server();
+    const posted: unknown[] = [];
+    s.set('POST /app/api/admin/models', (call) => {
+      posted.push(call.body);
+      return posted.length === 1
+        ? apiError('APP_MODEL_OUTPUT_LIMIT_REQUIRED', 'Шлюз не знает, какой длины ответ даёт эта модель. Укажите наибольшую длину ответа в токенах — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).', 400)
+        : { status: 201, body: { ...GIGA, id: 'qwen', maxOutputTokens: 16384 } };
+    });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await fillNewModel(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await within(dialog).findByText(/Шлюз не знает, какой длины ответ даёт эта модель/)).toBeInTheDocument();
+    const limit = within(dialog).getByLabelText('Наибольшая длина ответа, токенов');
+
+    await user.type(limit, '0');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await within(dialog).findByText('Длина ответа — целое число токенов больше нуля.')).toBeInTheDocument();
+    expect(posted).toHaveLength(1);
+
+    await user.clear(limit);
+    await user.type(limit, '16 384');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();
+    expect(posted[1]).toMatchObject({ providerModel: 'openai/gpt-4.1-mini', maxOutputTokens: 16384 });
   });
 
   it('keeps the form and says why when the provider refuses the key', async () => {

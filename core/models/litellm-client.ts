@@ -47,6 +47,9 @@ export interface LiteLLMClient {
   deleteDeployment(id: string): Promise<void>;
   // LiteLLM's own probe of a provider with these parameters: nothing is stored.
   checkConnection(params: Record<string, string | number | boolean>, mode: CheckMode): Promise<ConnectionCheck>;
+  // LiteLLM's model map, about 3 MB (output-limit.ts reads it): asked only when a model is added and
+  // at start for models without a limit of an answer.
+  modelMap(): Promise<Record<string, unknown>>;
 }
 
 export function gatewayUnavailable(message: string, cause?: unknown): AppError {
@@ -166,6 +169,11 @@ export function createLiteLLMClient(baseUrl: string, masterKey: string, teamId: 
       const res = await call<{ status: string; result?: { error?: string } }>('POST', '/health/test_connection', { litellm_params: params, mode });
       if (res?.status === 'success') return { ok: true };
       return { ok: false, error: res?.result?.error ?? `LiteLLM answered status ${res?.status ?? 'none'}` };
+    },
+    async modelMap() {
+      const map = await call<Record<string, unknown>>('GET', '/public/litellm_model_cost_map');
+      if (!map) throw gatewayUnavailable('LiteLLM GET /public/litellm_model_cost_map answered nothing');
+      return map;
     },
   };
 }

@@ -18,6 +18,7 @@ export interface ModelRow {
   price_reasoning: string | null;
   price_image: string | null;
   price_per_minute: string | null;
+  max_output_tokens: number | null;
 }
 
 export const num = (v: string | null): number | null => (v === null ? null : Number(v));
@@ -35,5 +36,5 @@ export function pricesOf(r: ModelRow): TokenPrices | null {
 }
 
 export function syncModelOf(r: ModelRow): SyncModel {
-  return { id: r.id, kind: r.kind, connection: r.connection, providerModel: r.provider_model, apiBase: r.api_base, enabled: r.enabled, prices: pricesOf(r), pricePerMinute: num(r.price_per_minute) };
+  return { id: r.id, kind: r.kind, connection: r.connection, providerModel: r.provider_model, apiBase: r.api_base, enabled: r.enabled, prices: pricesOf(r), pricePerMinute: num(r.price_per_minute), maxOutputTokens: r.max_output_tokens };
 }

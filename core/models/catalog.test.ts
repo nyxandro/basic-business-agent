@@ -24,7 +24,7 @@ const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 const errorCode = async (res: Response) => (await json<{ error: { code: string; message: string } }>(res)).error;
 
 function newModel(patch: Record<string, unknown> = {}) {
-  return { kind: 'chat', label: 'GPT 4.1 mini', connection: 'api_key', providerModel: 'openai/gpt-4.1-mini', apiBase: provider.dockerUrl, vision: true, prices: PRICES, pricePerMinute: null, key: GOOD_KEY, ...patch };
+  return { kind: 'chat', label: 'GPT 4.1 mini', connection: 'api_key', providerModel: 'openai/gpt-4.1-mini', apiBase: provider.dockerUrl, vision: true, prices: PRICES, pricePerMinute: null, key: GOOD_KEY, maxOutputTokens: null, ...patch };
 }
 
 async function create(patch: Record<string, unknown> = {}): Promise<ModelDto> {
@@ -200,6 +200,14 @@ describe('models of «Нейросеть»', () => {
     expect((await t.call('POST', '/app/api/admin/models', { cookie: olga, body: newModel() })).status).toBe(403);
   });
 
+  it('the database itself refuses a limit of an answer that is not positive or belongs to a recognition or subscription model', async () => {
+    const chat = await create({ label: 'Для проверки предела' });
+    await expect(t.db.query('UPDATE app.models SET max_output_tokens = 0 WHERE id = $1', [chat.id])).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      t.db.query(`INSERT INTO app.models (id, kind, label, connection, provider_model, vision, max_output_tokens) VALUES ('m-sublimit', 'chat', 'x', 'chatgpt', 'chatgpt/x', true, 1000)`),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
   it('shows the catalog from our database when LiteLLM does not answer', async () => {
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     const client = createLiteLLMClient('http://127.0.0.1:9', 'sk-x');
@@ -208,5 +216,70 @@ describe('models of «Нейросеть»', () => {
     const list = await offline.list();
     expect(list.gateway).toMatchObject({ reachable: false, pendingModelIds: [] });
     expect(list.models.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the length of an answer (spec, section 8.19)', () => {
+  async function lastRequestOf(model: ModelDto) {
+    const agent = new Agent({ id: 'sales', name: 'sales', instructions: 'Ты помощник.', model: await t.gateway.modelConfig(model.id, igorId, 'sales') });
+    provider.script({ text: 'Ответ' });
+    await agent.generate('привет');
+    return provider.requests.at(-1)!;
+  }
+
+  it('takes the limit of a model the gateway knows and sends it to the provider with every request', async () => {
+    const model = await create({ label: 'Предел из шлюза' });
+    expect(model.maxOutputTokens).toBe(32_768);
+    const request = await lastRequestOf(model);
+    expect(request.max_tokens).toBe(32_768);
+    expect(request.reasoning_format).toBeUndefined();
+  });
+
+  it('asks for the limit of a model the gateway does not know before calling the provider, then takes the one given', async () => {
+    const before = { deployments: (await deployments()).size, requests: provider.requests.length };
+    const unknown = newModel({ label: 'Неизвестная шлюзу', providerModel: 'openai/bba-unknown-model' });
+    const refused = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: unknown });
+    expect(refused.status).toBe(400);
+    expect(await errorCode(refused)).toMatchObject({
+      code: 'APP_MODEL_OUTPUT_LIMIT_REQUIRED',
+      message: 'Шлюз не знает, какой длины ответ даёт эта модель. Укажите наибольшую длину ответа в токенах — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).',
+    });
+    expect(provider.requests.length).toBe(before.requests);
+    expect((await deployments()).size).toBe(before.deployments);
+    const list = await json<ModelsResponse>(await t.call('GET', '/app/api/admin/models', { cookie: igor }));
+    expect(list.models.map((m) => m.label)).not.toContain('Неизвестная шлюзу');
+
+    const notWhole = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: { ...unknown, maxOutputTokens: 0 } });
+    expect((await errorCode(notWhole)).code).toBe('APP_VALIDATION_FAILED');
+
+    const model = await create({ label: 'Неизвестная шлюзу', providerModel: 'openai/bba-unknown-model', maxOutputTokens: 16_384 });
+    expect(model.maxOutputTokens).toBe(16_384);
+    expect((await lastRequestOf(model)).max_tokens).toBe(16_384);
+  });
+
+  it('keeps the reasoning of a Groq model out of the text of its answer', async () => {
+    const model = await create({ label: 'Qwen на Groq', providerModel: 'groq/qwen/qwen3.6-27b', maxOutputTokens: 16_384 });
+    const request = await lastRequestOf(model);
+    expect(request.reasoning_format).toBe('parsed');
+    expect(request.max_tokens ?? request.max_completion_tokens).toBe(16_384);
+  });
+
+  it('gives no limit to recognition and subscription models', async () => {
+    const whisper = t.call('POST', '/app/api/admin/models', { cookie: igor, body: newModel({ kind: 'transcription', providerModel: 'openai/whisper-1', prices: null, pricePerMinute: 0.6, maxOutputTokens: 1000 }) });
+    expect((await errorCode(await whisper)).code).toBe('APP_VALIDATION_FAILED');
+    expect((await create({ kind: 'transcription', label: 'Распознавание без предела', providerModel: 'openai/whisper-1', prices: null, pricePerMinute: 0.6 })).maxOutputTokens).toBeNull();
+  });
+
+  it('gives a model added before the limits its limit at start, when the gateway knows it', async () => {
+    const known = await create({ label: 'Заведена до пределов' });
+    const unknown = await create({ label: 'Неизвестная, до пределов', providerModel: 'openai/bba-unknown-old', maxOutputTokens: 1000 });
+    await t.db.query('UPDATE app.models SET max_output_tokens = NULL WHERE id = ANY($1)', [[known.id, unknown.id]]);
+    // Its deployment from before 15.11 had no limit either; the start adds it anew.
+    await t.litellm.deleteDeployment(`${unknown.id}:${unknown.keys[0]!.id}`);
+    await t.models.sync();
+    const limits = await t.db.query<{ id: string; max_output_tokens: number | null }>('SELECT id, max_output_tokens FROM app.models WHERE id = ANY($1)', [[known.id, unknown.id]]);
+    expect(Object.fromEntries(limits.rows.map((r) => [r.id, r.max_output_tokens]))).toEqual({ [known.id]: 32_768, [unknown.id]: null });
+    expect((await lastRequestOf(known)).max_tokens).toBe(32_768);
+    expect((await lastRequestOf(unknown)).max_tokens).toBeUndefined();
   });
 });

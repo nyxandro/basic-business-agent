@@ -22,7 +22,7 @@ async function speak(cookie: string, opts: { agentId?: string; type?: string; by
 }
 
 async function addRecognition(apiBase: string, providerModel = 'openai/whisper-1'): Promise<ModelDto> {
-  return t.models.create(igorId, { kind: 'transcription', label: 'Распознавание', connection: 'api_key', providerModel, apiBase, vision: false, prices: null, pricePerMinute: 0.6, key: KEY });
+  return t.models.create(igorId, { kind: 'transcription', label: 'Распознавание', connection: 'api_key', providerModel, apiBase, vision: false, prices: null, pricePerMinute: 0.6, key: KEY, maxOutputTokens: null });
 }
 
 const setRecognition = (modelId: string | null) => t.db.query('UPDATE app.model_settings SET transcription_model_id = $1', [modelId]);

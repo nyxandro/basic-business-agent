@@ -23,6 +23,8 @@ export interface SyncModel {
   enabled: boolean;
   prices: TokenPrices | null;
   pricePerMinute: number | null;
+  // The longest answer, in tokens (section 8.19): a chat model on a key; null — not known.
+  maxOutputTokens: number | null;
 }
 
 // A provider key with its secret, opened only to be written into LiteLLM.
@@ -54,6 +56,15 @@ function fingerprintOf(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, FINGERPRINT_CHARS);
 }
 
+// LiteLLM puts the parameters of a deployment into every request that does not bring its own, so the
+// limit and the reasoning format hold for every caller of the model (spec, section 8.19). Groq stops
+// an answer at 2 048 tokens without a limit, and some of its models write their reasoning into the
+// text of the answer unless asked to keep it apart.
+function answerParams(m: SyncModel): Record<string, string | number> {
+  if (m.kind !== 'chat') return {};
+  return { ...(m.maxOutputTokens !== null ? { max_tokens: m.maxOutputTokens } : {}), ...(m.providerModel.startsWith('groq/') ? { reasoning_format: 'parsed' } : {}) };
+}
+
 function priceParams(m: SyncModel): Record<string, number> {
   if (m.prices) return pricesToLiteLLM(m.prices);
   if (m.pricePerMinute !== null) return perMinuteToLiteLLM(m.pricePerMinute);
@@ -78,7 +89,7 @@ export function deploymentsOf(state: SyncState, owner: string): DeploymentSpec[]
       continue;
     }
     for (const k of state.keys.filter((key) => key.modelId === m.id)) {
-      const visible = { model: m.providerModel, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...priceParams(m) };
+      const visible = { model: m.providerModel, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...priceParams(m), ...answerParams(m) };
       // Keys never change in place (a new key is a new row), so the key id stands for the secret.
       const fingerprint = fingerprintOf({ visible, key: k.id, kind: m.kind });
       out.push({

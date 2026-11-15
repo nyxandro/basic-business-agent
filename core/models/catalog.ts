@@ -16,6 +16,7 @@ import { pendingModels, type SyncModel, type SyncResult } from './gateway-sync.t
 import type { GatewayWriter } from './gateway-writer.ts';
 import type { LiteLLMClient } from './litellm-client.ts';
 import { num, pricesOf, type ModelRow } from './model-rows.ts';
+import { outputLimitIn } from './output-limit.ts';
 
 export const LABEL_MAX = 80;
 const KEY_MAX = 500;
@@ -47,7 +48,8 @@ export interface ModelCatalog {
   addKey(actorUserId: string, modelId: string, key: string): Promise<ModelKeyDto>;
   removeKey(actorUserId: string, modelId: string, keyId: string): Promise<void>;
   updateSettings(actorUserId: string, input: ModelSettings): Promise<ModelSettings>;
-  // The full copy into LiteLLM, at the start of the server.
+  // The full copy into LiteLLM, at the start of the server; models without a limit of an answer get
+  // it from the gateway's model map first (section 8.19).
   sync(): Promise<SyncResult>;
 }
 
@@ -137,6 +139,34 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     throw appError('APP_MODEL_CHECK_FAILED', `provider check of ${m.providerModel} failed: ${error}`, NO_ANSWER.test(error) ? { userMessage: 'Провайдер не ответил. Попробуйте ещё раз.' } : {});
   }
 
+  // The admin's limit, or the one the gateway knows; none — the admin is asked for it (section 8.19).
+  async function outputLimit(input: Extract<ModelCreate, { connection: 'api_key' }>, providerModel: string): Promise<number | null> {
+    if (input.kind === 'transcription') {
+      if (input.maxOutputTokens !== null) throw invalid('a recognition model with a limit of an answer', 'У модели распознавания речи нет длины ответа — оставьте поле пустым.');
+      return null;
+    }
+    if (input.maxOutputTokens !== null) return input.maxOutputTokens;
+    const known = outputLimitIn(await client.modelMap(), providerModel);
+    if (known === null) throw appError('APP_MODEL_OUTPUT_LIMIT_REQUIRED', `the gateway does not know the limit of an answer of ${providerModel}`);
+    return known;
+  }
+
+  // Models added before 15.11.2026 have no limit: the gateway's model map gives what it knows.
+  async function fillOutputLimits(): Promise<void> {
+    const missing = (await syncState()).models.filter((m) => m.connection === 'api_key' && m.kind === 'chat' && m.maxOutputTokens === null);
+    if (missing.length === 0) return;
+    const map = await client.modelMap();
+    for (const m of missing) {
+      const limit = outputLimitIn(map, m.providerModel);
+      if (limit === null) {
+        logEvent('error', 'model_output_limit_unknown', { modelId: m.id, providerModel: m.providerModel });
+        continue;
+      }
+      await db.query('UPDATE app.models SET max_output_tokens = $2, updated_at = now() WHERE id = $1 AND max_output_tokens IS NULL', [m.id, limit]);
+      logEvent('info', 'model_output_limit_filled', { modelId: m.id, providerModel: m.providerModel, maxOutputTokens: limit });
+    }
+  }
+
   function toDto(r: ModelRow, keys: KeyRow[], agentIds: string[]): ModelDto {
     return {
       id: r.id,
@@ -149,6 +179,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
       enabled: r.enabled,
       prices: pricesOf(r),
       pricePerMinute: num(r.price_per_minute),
+      maxOutputTokens: r.max_output_tokens,
       keys: keys.filter((k) => k.model_id === r.id).map((k) => ({ id: k.id, last4: k.key_last4, createdAt: k.created_at.toISOString() })),
       agentIds,
     };
@@ -167,7 +198,9 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     if (apiBase !== null && !URL.canParse(apiBase)) throw invalid(`api base "${apiBase}"`, 'Адрес провайдера — ссылка вида https://…');
     const { prices, perMinute } = checkPrices(input.kind, input.prices, input.pricePerMinute);
     const key = cleanKey(input.key);
-    const model: SyncModel = { id: newId('m'), kind: input.kind, connection: 'api_key', providerModel, apiBase, enabled: true, prices, pricePerMinute: perMinute };
+    // Before the provider is called: a model without a known limit waits for the admin's number.
+    const maxOutputTokens = await outputLimit(input, providerModel);
+    const model: SyncModel = { id: newId('m'), kind: input.kind, connection: 'api_key', providerModel, apiBase, enabled: true, prices, pricePerMinute: perMinute, maxOutputTokens };
     await checkKey(model, key);
     const keyId = newId('k');
     const state = await syncState();
@@ -177,9 +210,9 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     await inTransaction(db, async (c) => {
       await c.query(
         `INSERT INTO app.models (id, kind, label, connection, provider_model, api_base, vision, price_input, price_output, price_cache_read,
-                                 price_cache_write, price_reasoning, price_image, price_per_minute, created_by)
-         VALUES ($1, $2, $3, 'api_key', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [model.id, model.kind, label, providerModel, apiBase, vision, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, actorUserId],
+                                 price_cache_write, price_reasoning, price_image, price_per_minute, max_output_tokens, created_by)
+         VALUES ($1, $2, $3, 'api_key', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [model.id, model.kind, label, providerModel, apiBase, vision, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, maxOutputTokens, actorUserId],
       );
       await c.query('INSERT INTO app.model_provider_keys (id, model_id, key_ciphertext, key_iv, key_version, key_last4, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
         keyId,
@@ -190,7 +223,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         key.slice(-KEY_TAIL),
         actorUserId,
       ]);
-      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: model.kind, providerModel, keyLast4: key.slice(-KEY_TAIL) } });
+      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: model.kind, providerModel, maxOutputTokens, keyLast4: key.slice(-KEY_TAIL) } });
     });
     return dtoOf(model.id);
   }
@@ -200,7 +233,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     const label = cleanLabel(input.label);
     const providerModel = input.providerModel.trim();
     if (!SUBSCRIPTION_MODEL.test(providerModel)) throw invalid(`subscription model "${providerModel}"`, 'Модель подписки пишется как chatgpt/ и название модели, например chatgpt/gpt-5.4.');
-    const model: SyncModel = { id: newId('m'), kind: 'chat', connection: 'chatgpt', providerModel, apiBase: null, enabled: true, prices: null, pricePerMinute: null };
+    const model: SyncModel = { id: newId('m'), kind: 'chat', connection: 'chatgpt', providerModel, apiBase: null, enabled: true, prices: null, pricePerMinute: null, maxOutputTokens: null };
     const state = await syncState();
     await apply({ ...state, models: [...state.models, model] });
     await inTransaction(db, async (c) => {
@@ -360,6 +393,10 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         return input;
       }),
 
-    sync: () => serial(async () => apply(await syncState())),
+    sync: () =>
+      serial(async () => {
+        await fillOutputLimits();
+        return apply(await syncState());
+      }),
   };
 }
