@@ -9,6 +9,7 @@ import type { ModelCreate, ModelDto, ModelKeyDto, ModelKind, ModelSettings, Mode
 import { writeAudit } from '../audit/audit.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
+import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
 import type { ChatGptAccounts } from './chatgpt-accounts.ts';
@@ -155,7 +156,15 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
   async function fillOutputLimits(): Promise<void> {
     const missing = (await syncState()).models.filter((m) => m.connection === 'api_key' && m.kind === 'chat' && m.maxOutputTokens === null);
     if (missing.length === 0) return;
-    const map = await client.modelMap();
+    let map: Record<string, unknown>;
+    try {
+      map = await client.modelMap();
+    } catch (error) {
+      // These models keep their deployments as they were (section 8.19); the start goes on bringing
+      // the gateway in line, and the next start looks for their limits again.
+      logEvent('error', 'model_output_limits_unavailable', { code: isAppError(error) ? error.code : 'APP_MODEL_GATEWAY_UNAVAILABLE', modelIds: missing.map((m) => m.id), error });
+      return;
+    }
     for (const m of missing) {
       const limit = outputLimitIn(map, m.providerModel);
       if (limit === null) {

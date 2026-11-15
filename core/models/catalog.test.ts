@@ -9,7 +9,7 @@ import { createModelCatalog } from './catalog.ts';
 import { createGatewayWriter } from './gateway-writer.ts';
 import { TEST_MODEL_IDS } from './test-catalog.ts';
 import { startFakeModel, type FakeModel } from './fake-openai.ts';
-import { createLiteLLMClient } from './litellm-client.ts';
+import { createLiteLLMClient, gatewayUnavailable, type LiteLLMClient } from './litellm-client.ts';
 
 const GOOD_KEY = 'sk-test-good-key-7d41';
 const PRICES = { input: 35, output: 140, cacheRead: 9, cacheWrite: 35, reasoning: 140, image: 35 };
@@ -274,12 +274,29 @@ describe('the length of an answer (spec, section 8.19)', () => {
     const known = await create({ label: 'Заведена до пределов' });
     const unknown = await create({ label: 'Неизвестная, до пределов', providerModel: 'openai/bba-unknown-old', maxOutputTokens: 1000 });
     await t.db.query('UPDATE app.models SET max_output_tokens = NULL WHERE id = ANY($1)', [[known.id, unknown.id]]);
-    // Its deployment from before 15.11 had no limit either; the start adds it anew.
-    await t.litellm.deleteDeployment(`${unknown.id}:${unknown.keys[0]!.id}`);
+    // Their deployments from before 15.11 had no limit either; the start adds them anew, and the
+    // known model's comes with the limit only if the limit is found before the gateway is written.
+    for (const m of [known, unknown]) await t.litellm.deleteDeployment(`${m.id}:${m.keys[0]!.id}`);
     await t.models.sync();
     const limits = await t.db.query<{ id: string; max_output_tokens: number | null }>('SELECT id, max_output_tokens FROM app.models WHERE id = ANY($1)', [[known.id, unknown.id]]);
     expect(Object.fromEntries(limits.rows.map((r) => [r.id, r.max_output_tokens]))).toEqual({ [known.id]: 32_768, [unknown.id]: null });
     expect((await lastRequestOf(known)).max_tokens).toBe(32_768);
     expect((await lastRequestOf(unknown)).max_tokens).toBeUndefined();
+  });
+
+  // A model without a limit works as before 15.11, so a silent model map must not stop the start
+  // from bringing the gateway in line with our database.
+  it('still brings the gateway in line at start when the gateway’s model map does not answer', async () => {
+    const old = await create({ label: 'До пределов, справочник молчит' });
+    await t.db.query('UPDATE app.models SET max_output_tokens = NULL WHERE id = $1', [old.id]);
+    await t.litellm.deleteDeployment(`${old.id}:${old.keys[0]!.id}`);
+    const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+    const client: LiteLLMClient = { ...t.litellm, modelMap: () => Promise.reject(gatewayUnavailable('LiteLLM GET /public/litellm_model_cost_map answered nothing')) };
+    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const silentMap = createModelCatalog({ db: t.db, box, client, writer, accounts: t.accounts, agentName: (id) => id });
+    await silentMap.sync();
+    expect((await lastRequestOf(old)).max_tokens).toBeUndefined();
+    const { rows } = await t.db.query<{ max_output_tokens: number | null }>('SELECT max_output_tokens FROM app.models WHERE id = $1', [old.id]);
+    expect(rows[0]!.max_output_tokens).toBeNull();
   });
 });

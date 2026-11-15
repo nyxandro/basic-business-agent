@@ -96,6 +96,32 @@ describe('«Нейросеть»', () => {
     expect(posted[1]).toMatchObject({ providerModel: 'openai/gpt-4.1-mini', maxOutputTokens: 16384 });
   });
 
+  // The limit was asked for that model: another one may be known to the gateway.
+  it('stops asking for the length of an answer when the admin changes the model', async () => {
+    const s = server();
+    const posted: unknown[] = [];
+    s.set('POST /app/api/admin/models', (call) => {
+      posted.push(call.body);
+      return posted.length === 1
+        ? apiError('APP_MODEL_OUTPUT_LIMIT_REQUIRED', 'Шлюз не знает, какой длины ответ даёт эта модель. Укажите наибольшую длину ответа в токенах — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).', 400)
+        : { status: 201, body: { ...GIGA, id: 'gpt-mini' } };
+    });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await fillNewModel(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    await user.type(await within(dialog).findByLabelText('Наибольшая длина ответа, токенов'), '16384');
+
+    const model = within(dialog).getByLabelText('Провайдер и модель');
+    await user.clear(model);
+    await user.type(model, 'openai/gpt-4.1');
+    expect(within(dialog).queryByLabelText('Наибольшая длина ответа, токенов')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Шлюз не знает, какой длины ответ даёт эта модель/)).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();
+    expect(posted[1]).toMatchObject({ providerModel: 'openai/gpt-4.1', maxOutputTokens: null });
+  });
+
   it('keeps the form and says why when the provider refuses the key', async () => {
     const s = server();
     s.set('POST /app/api/admin/models', apiError('APP_MODEL_CHECK_FAILED', 'Провайдер не принял ключ. Проверьте ключ и модель провайдера.', 400));

@@ -77,7 +77,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const [limit, setLimit] = useState('');
   const [limitAsked, setLimitAsked] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const { busy, error, run } = useAction();
+  const { busy, error, run, clearError } = useAction();
   const transcription = kind === 'transcription';
   // Only a chat model comes through the subscription.
   const subscription = conn === 'chatgpt' && !transcription;
@@ -85,6 +85,15 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const effective: Prices = transcription ? { ...prices, image: prices.image || '0' } : prices;
   // Stays once asked: the server's error goes away with the next attempt.
   const askLimit = !editing && !subscription && !transcription && (limitAsked || error?.code === LIMIT_REQUIRED);
+
+  // The limit was asked for that model: the gateway may know another one, so the server decides again.
+  function changeProviderModel(value: string) {
+    setProviderModel(value);
+    if (!askLimit) return;
+    setLimitAsked(false);
+    setLimit('');
+    clearError();
+  }
 
   async function save() {
     setProblem(null);
@@ -146,7 +155,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
           <Input required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="GigaChat 2 Max" />
         </Field>
         <Field label="Провайдер и модель" hint={subscription ? 'chatgpt/ и модель подписки.' : 'Как в LiteLLM: провайдер/модель.'}>
-          <Input mono required disabled={editing} value={providerModel} onChange={(e) => setProviderModel(e.target.value)} placeholder={subscription ? 'chatgpt/gpt-5.4' : 'openai/gpt-4.1-mini'} />
+          <Input mono required disabled={editing} value={providerModel} onChange={(e) => changeProviderModel(e.target.value)} placeholder={subscription ? 'chatgpt/gpt-5.4' : 'openai/gpt-4.1-mini'} />
         </Field>
       </div>
       {editing || subscription ? null : (
