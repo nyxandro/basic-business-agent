@@ -299,6 +299,18 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain('data:image/png;base64,');
   });
 
+  // A document skill renders a page, looks at it, then renders it anew: the first picture is gone.
+  // Groq refuses a user message without content, which broke the whole answer (task #7).
+  it('sends no empty message when a picture the model looked at earlier in the answer is gone', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(dir, 'page-1.png'), png(16));
+    model.script({ toolCalls: [{ name: 'view_image', args: { path: 'page-1.png' } }] }, command('rm page-1.png'), { text: 'Перерисую страницу.' });
+    await runAs('olga');
+    const messages = model.requests.at(-1)!.messages;
+    expect(messages.filter((m) => m.role === 'user' && Array.isArray(m.content) && m.content.length === 0)).toEqual([]);
+    expect(JSON.stringify(messages)).not.toContain('data:image/png;base64,');
+  });
+
   it('gives the model the picture attached to the message with the message itself', async () => {
     const dir = contextRoot(workspaceRoot, 'olga', null);
     mkdirSync(join(dir, 'files'), { recursive: true });

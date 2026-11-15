@@ -216,6 +216,9 @@ export function createImageViewProcessor(workspaceRoot: string) {
         }
         return [{ type: 'text' as const, text: `Картинка ${r.path}:` }, picture];
       });
+      // Every picture gone (a skill rendered the page anew): an empty user message is refused by
+      // providers such as Groq and would end the whole answer.
+      if (parts.length === 0) return withAttached ? { prompt: withAttached as typeof prompt } : undefined;
       return { prompt: [...((withAttached ?? prompt) as typeof prompt), { role: 'user' as const, content: parts }] };
     },
   } satisfies Processor;
