@@ -7,6 +7,7 @@ import { splitAttachments, withAttachments } from '@bba/contracts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
 import { ToolRow, type ToolRowProps } from './ToolRow.tsx';
+import { ToolStack } from './ToolStack.tsx';
 
 const SYSTEMS = { tools: { notes_add: 'Заметки' }, prefixes: { bitrix24_: 'Битрикс24' } };
 const AGENT = {
@@ -90,6 +91,43 @@ describe('tool line', () => {
     expect(line).toHaveTextContent('только чтение');
     expect(line).toHaveTextContent('1 найдено');
     expect(screen.getByRole('cell', { name: 'Поставка' })).toBeInTheDocument();
+  });
+});
+
+describe('stack of status lines', () => {
+  const COMMAND = 'mastra_workspace_execute_command';
+  const STACK_AGENT = { systems: SYSTEMS, actions: { ...AGENT.actions, [COMMAND]: { title: 'Команда в рабочей папке', fields: {}, readOnly: false } } };
+  const calls = ['c1', 'c2', 'c3', 'c4', 'c5'].map((id) => ({ id, type: 'function' as const, function: { name: COMMAND, arguments: `{"command":"ls ${id}"}` } }));
+  const done = (ids: string[]) => ids.map((id) => ({ id: `r-${id}`, role: 'tool' as const, toolCallId: id, content: '{"exitCode":0}' }));
+  const stack = (messages: ReturnType<typeof done>) => (
+    <MemoryRouter>
+      <ToolStack
+        calls={calls}
+        messages={messages}
+        agent={STACK_AGENT}
+        renderCall={(c) => <ToolRow name={c.function.name} status={messages.some((m) => m.toolCallId === c.id) ? 'complete' : 'executing'} parameters={JSON.parse(c.function.arguments)} result='{"exitCode":0}' agent={STACK_AGENT} />}
+      />
+    </MemoryRouter>
+  );
+
+  it('shows the last line and how many there are; unfolds all of them, each on its own', async () => {
+    render(stack(done(['c1', 'c2', 'c3', 'c4', 'c5'])));
+    const user = userEvent.setup();
+    const head = screen.getByRole('button', { name: /Команда в рабочей папке.*5 действий/ });
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+
+    await user.click(head);
+    const rows = screen.getAllByRole('button', { name: /^Команда в рабочей папке$/ });
+    expect(rows).toHaveLength(5);
+    await user.click(rows[2]!);
+    expect(screen.getByText(/ls c3/)).toBeInTheDocument();
+    expect(screen.queryByText(/ls c4/)).not.toBeInTheDocument();
+  });
+
+  it('turns while the last line runs', () => {
+    render(stack(done(['c1', 'c2', 'c3', 'c4'])));
+    expect(screen.getByRole('button', { name: /Выполняю действие….*5 действий/ })).toBeInTheDocument();
   });
 });
 

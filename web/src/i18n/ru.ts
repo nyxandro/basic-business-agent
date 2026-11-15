@@ -178,6 +178,7 @@ export const ru = {
     executingWhat: (what: string) => `Выполняю: ${what}`,
     toolRunning: 'Выполняю действие…',
     toolRunningIn: (system: string) => `Ищу в «${system}»…`,
+    toolActions: (n: number) => `${n} ${plural(n, ['действие', 'действия', 'действий'])}`,
     toolDone: 'Действие выполнено',
     toolDoneIn: (system: string) => `Готово: «${system}»`,
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,
