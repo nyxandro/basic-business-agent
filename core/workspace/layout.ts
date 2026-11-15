@@ -188,7 +188,8 @@ export function removeFileInside(dir: string, path: string): boolean {
     try {
       unlinkSync(entry);
     } catch (error) {
-      if (noFile(error)) return false;
+      // Gone meanwhile, or swapped for a folder (EISDIR; some systems say EPERM): there is no file.
+      if (noFile(error) || ['EISDIR', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) return false;
       throw error;
     }
     return true;
