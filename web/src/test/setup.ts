@@ -14,6 +14,14 @@ class NoResizeObserver {
   disconnect(): void {}
 }
 
+// jsdom does not scroll elements and has no scrollTo on them; the chat feed keeps its bottom with it.
+Object.defineProperty(Element.prototype, 'scrollTo', {
+  configurable: true,
+  value(this: Element, options?: ScrollToOptions) {
+    if (options?.top !== undefined) this.scrollTop = options.top;
+  },
+});
+
 // Every screen renders inside ThemeProvider, which asks the system for its theme.
 beforeEach(() => {
   stubSystemTheme('light');
