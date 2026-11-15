@@ -6,6 +6,7 @@ import { Memory } from '@mastra/memory';
 import type { PostgresStore } from '@mastra/pg';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import { FIRST_MESSAGE } from './titles.ts';
 
 export const WORKING_MEMORY_TEMPLATE = `# О сотруднике
 - Чем занимается:
@@ -52,9 +53,9 @@ export async function ensureThread(
     return;
   }
   const now = new Date();
-  await memory.saveThread({
-    thread: { id: input.threadId, resourceId: input.resourceId, title: input.title, metadata: { agentId: input.agentId, kind: input.kind }, createdAt: now, updatedAt: now },
-  });
+  // A conversation of the chat is named after its first message until the model names it (spec, 8.16).
+  const metadata = { agentId: input.agentId, kind: input.kind, ...(input.kind === 'chat' ? { titleSource: FIRST_MESSAGE } : {}) };
+  await memory.saveThread({ thread: { id: input.threadId, resourceId: input.resourceId, title: input.title, metadata, createdAt: now, updatedAt: now } });
 }
 
 // Every conversation is created by ensureThread with its agent: a thread without one is broken data.

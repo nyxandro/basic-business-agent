@@ -126,9 +126,10 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     return rc;
   }
 
+  // Only the mark: Mastra merges it under a row lock and keeps a name the person gave meanwhile.
   async function markUnread(threadId: string): Promise<void> {
     const thread = await memory.getThreadById({ threadId });
-    if (thread) await memory.updateThread({ id: threadId, title: thread.title ?? '', metadata: { ...(thread.metadata ?? {}), unread: true } });
+    if (thread) await memory.updateThread({ id: threadId, metadata: { unread: true } });
   }
 
   // The first line of the employee's conversation of a task: who set it up and who may stop it.

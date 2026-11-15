@@ -4,6 +4,7 @@
 // `acceptKey` it refuses other keys like OpenAI does. It also recognises speech: any audio → «Тестовая речь».
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { CALL_HEADER, NAMING_CALL } from './usage.ts';
 
 // Seconds of silence as a real WAV file: LiteLLM measures the length of what it sends.
 export function silentWav(seconds: number): Uint8Array {
@@ -60,6 +61,10 @@ export interface FakeModel {
   dockerUrl: string;
   requests: FakeRequest[];
   script(...turns: (FakeTurn | ((req: FakeRequest) => FakeTurn))[]): void;
+  // The service call that names a conversation (core/chat/naming.ts) has its own record and script:
+  // it runs beside the agent's turn and must never take a turn scripted for the agent.
+  namingRequests: FakeRequest[];
+  scriptNaming(...turns: (FakeTurn | ((req: FakeRequest) => FakeTurn))[]): void;
   // Forgets the scripted turns nobody asked for, so they do not answer the next test.
   clear(): void;
   close(): Promise<void>;
@@ -114,11 +119,16 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
 }
 
 // `fallback` answers when the script is empty (the browser stand answers by keywords); without it
-// the model says «Готово.».
-export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => FakeTurn; host?: '127.0.0.1' | '0.0.0.0'; acceptKey?: string } = {}): Promise<FakeModel> {
+// the model says «Готово.». `naming` answers the naming call when its script is empty; without it
+// the model says «-» (the task is not clear yet), so the name stays as it was.
+export async function startFakeModel(
+  opts: { fallback?: (req: FakeRequest) => FakeTurn; naming?: (req: FakeRequest) => FakeTurn; host?: '127.0.0.1' | '0.0.0.0'; acceptKey?: string } = {},
+): Promise<FakeModel> {
   const requests: FakeRequest[] = [];
+  const namingRequests: FakeRequest[] = [];
   const transcriptions: FakeModel['transcriptions'] = [];
   const queue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
+  const namingQueue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
   const server: Server = createServer((req, res) => {
     let body = '';
     req.on('data', (c: Buffer) => (body += c.toString('latin1')));
@@ -139,8 +149,9 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
       }
       const parsed = JSON.parse(Buffer.from(body, 'latin1').toString('utf8')) as Omit<FakeRequest, 'headers'>;
       const record: FakeRequest = { ...parsed, stream: Boolean(parsed.stream), headers: req.headers };
-      requests.push(record);
-      const next = queue.shift() ?? opts.fallback ?? { text: 'Готово.' };
+      const naming = req.headers[CALL_HEADER] === NAMING_CALL;
+      (naming ? namingRequests : requests).push(record);
+      const next = naming ? (namingQueue.shift() ?? opts.naming ?? { text: '-' }) : (queue.shift() ?? opts.fallback ?? { text: 'Готово.' });
       const turn = typeof next === 'function' ? next(record) : next;
       const delay = 'delayMs' in turn ? (turn.delayMs ?? 0) : 0;
       setTimeout(() => respond(res, turn, record.stream), delay);
@@ -154,7 +165,12 @@ export async function startFakeModel(opts: { fallback?: (req: FakeRequest) => Fa
     dockerUrl: `http://host.docker.internal:${port}/v1`,
     requests,
     script: (...turns) => void queue.push(...turns),
-    clear: () => void queue.splice(0),
+    namingRequests,
+    scriptNaming: (...turns) => void namingQueue.push(...turns),
+    clear: () => {
+      queue.splice(0);
+      namingQueue.splice(0);
+    },
     close: () =>
       new Promise((resolve) => {
         server.close(() => resolve());

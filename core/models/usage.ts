@@ -5,6 +5,9 @@ import type { Db } from '../db/pool.ts';
 import { logEvent } from '../server/log.ts';
 
 export const AGENT_HEADER = 'x-bba-agent-id';
+// A service call of the core, not a step of the agent: its value names the call (spec, section 8.16).
+export const CALL_HEADER = 'x-bba-call';
+export const NAMING_CALL = 'thread-title';
 
 const tokenCount = z.number().int().nonnegative().nullish();
 

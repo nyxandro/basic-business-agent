@@ -1,6 +1,7 @@
 // Wraps the AG-UI event stream of a chat run: releases the conversation when the stream ends
-// (normally or because the browser left), turns raw run errors into our codes and texts and tells
-// the chat which shown messages a repeated model call dropped.
+// (normally or because the browser left), turns raw run errors into our codes and texts, tells
+// the chat which shown messages a repeated model call dropped and the name the conversation got.
+import { CHAT_EVENTS } from '@bba/contracts';
 import { logEvent } from '../server/log.ts';
 import { createDiscardTracker } from './discards.ts';
 
@@ -16,6 +17,44 @@ export interface RunStreamHooks {
   afterStart: object[];
   // Ids of Mastra responses whose model call broke and was asked again, since the last call (spec, 9.1).
   takeDiscarded(): string[];
+  // The naming call that runs beside the answer (spec, section 8.16); null when there is none.
+  title: { threadId: string; result: Promise<string | null>; waitAtEndMs: number } | null;
+}
+
+const isEvent = (line: string, type: string) => line.startsWith('data:') && line.includes(`"${type}"`);
+
+// The name goes to the chat as soon as it is known, between events of the run; the end of the run
+// waits for a call still under way, but only so long — the name shows at the next refresh then.
+function createTitleAnnouncer(title: RunStreamHooks['title']) {
+  let name: string | null = null;
+  let settled = title === null;
+  let sent = false;
+  let started = false;
+  // The naming call never fails (core/chat/naming.ts): its failure is logged there and gives null.
+  void title?.result.then((value) => {
+    name = value;
+    settled = true;
+  });
+  const due = (line: string): string => {
+    if (sent || name === null) return line;
+    sent = true;
+    return [`data: ${JSON.stringify({ type: 'CUSTOM', name: CHAT_EVENTS.threadTitled, value: { threadId: title!.threadId, title: name } })}`, '', line].join('\n');
+  };
+  return {
+    async pass(line: string): Promise<string> {
+      if (!started) {
+        started = isEvent(line, 'RUN_STARTED');
+        return line;
+      }
+      if (!line.startsWith('data:')) return line;
+      if (isEvent(line, 'RUN_FINISHED') && !settled && title) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([title.result, new Promise((resolve) => (timer = setTimeout(resolve, title.waitAtEndMs)))]);
+        clearTimeout(timer);
+      }
+      return due(line);
+    },
+  };
 }
 
 async function rewriteEvent(line: string, hooks: RunStreamHooks): Promise<string> {
@@ -46,6 +85,9 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
   let ended = false;
   let started = false;
   const discards = createDiscardTracker(() => hooks.takeDiscarded());
+  const titles = createTitleAnnouncer(hooks.title);
+  // A line of the run with whatever is due before it: dropped messages, then the name.
+  const rewrite = async (line: string) => titles.pass(discards.pass(await rewriteEvent(line, hooks)));
   const withPrelude = (line: string): string => {
     if (started || hooks.afterStart.length === 0 || !line.includes('"RUN_STARTED"')) return line;
     started = true;
@@ -62,7 +104,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
       try {
         const { done, value } = await reader.read();
         if (done) {
-          if (buffer) controller.enqueue(encoder.encode(discards.pass(await rewriteEvent(buffer, hooks))));
+          if (buffer) controller.enqueue(encoder.encode(await rewrite(buffer)));
           const rest = discards.rest();
           if (rest) controller.enqueue(encoder.encode(rest));
           controller.close();
@@ -73,7 +115,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         const out: string[] = [];
-        for (const line of lines) out.push(withPrelude(discards.pass(await rewriteEvent(line, hooks))));
+        for (const line of lines) out.push(withPrelude(await rewrite(line)));
         controller.enqueue(encoder.encode(out.map((l) => `${l}\n`).join('')));
       } catch (error) {
         end();

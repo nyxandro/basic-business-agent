@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import { createBackgroundService, createBackgroundWorkflow, type BackgroundService } from '../background/service.ts';
 import { createCopilotHandler } from '../chat/copilot.ts';
+import { TITLE_WAIT_AT_END_MS } from '../chat/naming.ts';
 import type { Mastra } from '@mastra/core';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
@@ -107,6 +108,10 @@ export async function createTestApp(
     limits?: Parameters<typeof ensureLimitSettings>[1];
     connectors?: ConnectorRuntime[];
     modelFallback?: (req: FakeRequest) => FakeTurn;
+    // The answer to the naming call of a conversation when no test scripted one (default «-»).
+    namingFallback?: (req: FakeRequest) => FakeTurn;
+    // Shortens how long the end of an answer waits for the naming call (3 s in an installation).
+    titleWaitMs?: number;
     // Gives the test agent "assistant" a sub-agent "mailer" that sends letters (needs "Да").
     assistantSubagent?: boolean;
     // A real installation instead of the test agents (e.g. the demo of the repository); its plugin
@@ -143,7 +148,7 @@ export async function createTestApp(
   const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
   await ensureMaskingSettings(db, []);
   await ensureOrgName(db, 'Альфа-Строй');
-  const model = await startFakeModel(opts.modelFallback ? { fallback: opts.modelFallback } : {});
+  const model = await startFakeModel({ ...(opts.modelFallback ? { fallback: opts.modelFallback } : {}), ...(opts.namingFallback ? { naming: opts.namingFallback } : {}) });
   const sentMail: { to: string; text: string }[] = [];
   const salesTools = {
     crm_search: applyApprovalPolicy(
@@ -203,7 +208,9 @@ export async function createTestApp(
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
   backgroundRef.current = background;
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, copilot: createCopilotHandler({ editor }) };
+  // The naming call goes to the same model as the test agents.
+  const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS });

@@ -19,6 +19,7 @@ import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
+import type { NamingDeps } from './naming.ts';
 
 export interface ChatDeps {
   db: Db;
@@ -32,6 +33,8 @@ export interface ChatDeps {
   skills: Pick<SkillsRuntime, 'skillsFor'>;
   // Names of the actions of connected systems, for the confirmation card.
   connections: Pick<ConnectionManager, 'actionsSeen'>;
+  // The service call that names a conversation beside the answer (spec, section 8.16).
+  naming: NamingDeps;
 }
 
 export interface RunInput {
@@ -112,6 +115,13 @@ function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) return content.map((p: { text?: unknown }) => (typeof p?.text === 'string' ? p.text : '')).join(' ');
   return '';
+}
+
+// The message the person sent with this turn; empty for an answer to a question («Да» or «Нет»),
+// which comes with the conversation as it was.
+export function newMessageOf(input: RunInput): string {
+  if ((input.resume ?? []).length > 0) return '';
+  return textOf((input.messages ?? []).findLast((m) => m.role === 'user')?.content);
 }
 
 export function requestContextFor(run: PreparedRun): RequestContext {

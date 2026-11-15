@@ -1,17 +1,19 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
-import { retryTurnSchema, type AgentListResponse, type MemoryResponse, type RetryTurnResponse } from '@bba/contracts';
+import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { agentActions, subagentCalls } from '../approvals/describe.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
+import { renameThread } from '../memory/titles.ts';
 import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { assertAgentOpen, assertNewTurnAllowed, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
+import { startNaming } from './naming.ts';
+import { assertAgentOpen, assertNewTurnAllowed, newMessageOf, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
@@ -107,13 +109,22 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const input = (await c.req.raw.clone().json()) as RunInput;
     const run = await prepareRun(deps, a, agentId, mode, input);
     try {
+      // The name of the conversation is looked for beside the answer (spec, 8.16): started before
+      // the turn, so the history it reads does not hold the new message yet.
+      const naming = await startNaming(deps.naming, run, newMessageOf(input));
       // Messages whose shown words a repeated model call dropped, for the chat (spec, 9.1).
       const discarded: string[] = [];
       const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId) });
       // The cancelled call shows the arguments as the model sent them (the database keeps a summary).
       const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
       const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));
-      return wrapRunResponse(res, { onEnd: () => releaseThread(run.threadId), translate: (raw) => translate(a.userId, raw), afterStart, takeDiscarded: () => discarded.splice(0) });
+      return wrapRunResponse(res, {
+        onEnd: () => releaseThread(run.threadId),
+        translate: (raw) => translate(a.userId, raw),
+        afterStart,
+        takeDiscarded: () => discarded.splice(0),
+        title: naming ? { threadId: run.threadId, result: naming.result, waitAtEndMs: deps.naming.waitAtEndMs } : null,
+      });
     } catch (error) {
       releaseThread(run.threadId);
       throw error;
@@ -132,8 +143,19 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign or unknown thread', userMessage: 'Разговор не найден.', status: 404 });
     }
     const { messages } = await deps.memory.recall({ threadId: thread.id, resourceId: thread.resourceId, perPage: false });
-    if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
+    // Only the mark: Mastra merges it under a row lock and keeps the name (spec, 8.16).
+    if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, metadata: { unread: false } });
     return c.json({ thread: { id: thread.id, title: thread.title, agentId: thread.metadata?.agentId }, messages: toHistory(messages as never) });
+  });
+
+  // The person names their own conversation; the model never names it after that (spec, 8.16).
+  app.patch('/app/api/threads/:threadId', async (c) => {
+    const threadId = c.req.param('threadId');
+    const { title } = await parseJson(c, renameThreadSchema);
+    const clean = title.replace(/\s+/g, ' ');
+    await renameThread(deps.db, access(c).userId, threadId, clean);
+    const body: RenameThreadResponse = { thread: { id: threadId, title: clean } };
+    return c.json(body);
   });
 
   // «Ответить заново» of the person's own conversation or their draft check of an agent's prompt.

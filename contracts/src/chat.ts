@@ -58,13 +58,25 @@ export function splitAttachments(text: string): { text: string; files: Pick<Uplo
   return files.length === lines.length ? { text: text.slice(0, at), files } : { text, files: [] };
 }
 
-// Events our server adds to the AG-UI stream of the chat as CUSTOM events (spec, section 9.1).
+// Events our server adds to the AG-UI stream of the chat as CUSTOM events (spec, sections 8.16 and 9.1).
 export const CHAT_EVENTS = {
   // The person saw words of a model call that broke and was asked again: the message goes off the screen.
   messageDiscarded: 'bba.message_discarded',
   // On opening a conversation: its answers that broke and stayed broken.
   turnsFailed: 'bba.turns_failed',
+  // The conversation got its name while the agent answered: «Недавние» load again.
+  threadTitled: 'bba.thread_titled',
 } as const;
+
+export const threadTitledSchema = z.object({ threadId: z.string().min(1), title: z.string().min(1) });
+
+// PATCH /app/api/threads/:threadId: the person names their conversation themselves (spec, section 8.16).
+export const THREAD_TITLE_MAX = 100;
+export const renameThreadSchema = z.object({ title: z.string().trim().min(1).max(THREAD_TITLE_MAX) });
+
+export interface RenameThreadResponse {
+  thread: { id: string; title: string };
+}
 
 // Without `toolCallIds` the message goes; with them only those calls go (a broken step whose first
 // call hangs on the message of an earlier step) and the message stays.

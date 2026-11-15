@@ -114,7 +114,8 @@ export async function connectResponse(
   const waitingArgs = new Map(history.flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
   const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
   // Opening the conversation shows the result of a background task: it is no longer «новое».
-  if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, title: thread.title ?? '', metadata: { ...thread.metadata, unread: false } });
+  // Only the mark: Mastra merges it under a row lock and keeps the name (spec, 8.16).
+  if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, metadata: { unread: false } });
   // The menu counter of fresh task results reads the flags of the employee's runs of the task.
   if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
     const taskId = threadId.slice(BACKGROUND_THREAD_PREFIX.length).split(':')[0];
