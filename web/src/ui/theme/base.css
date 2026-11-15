@@ -104,6 +104,21 @@ p {
   }
 }
 
+/* A message the person sent: it comes up from the input, growing out of its bottom right corner. */
+@keyframes bba-send {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.94);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes bba-fade {
   from {
     opacity: 0;

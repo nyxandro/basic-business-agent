@@ -99,7 +99,8 @@
   border-radius: 20px 20px 6px 20px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  animation: bba-rise 0.45s var(--ease-rise) both;
+  transform-origin: bottom right;
+  animation: bba-send 0.45s var(--ease-send) both;
 }
 
 .userFiles {

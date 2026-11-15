@@ -128,10 +128,14 @@ export function ChatView(props: CopilotChatViewProps) {
   }, [agent, onTurnsFailed]);
 
   const lastContent = messages.at(-1)?.content;
+  const lastRole = messages.at(-1)?.role;
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages.length, lastContent, isRunning, extras.interrupt]);
+    if (!el || !stick.current) return;
+    // The person's own message glides into view; the words of an answer keep the bottom at once.
+    const glide = lastRole === 'user' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: glide ? 'smooth' : 'auto' });
+  }, [messages.length, lastContent, lastRole, isRunning, extras.interrupt]);
 
   const change = (value: string) => {
     writeDraft(extras.agentId, extras.threadId, value);
