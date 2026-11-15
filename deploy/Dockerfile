@@ -29,15 +29,22 @@ FROM pnpm AS app-deps
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter "basic-business-agent..."
 
 FROM ${NODE_IMAGE} AS app
+# bubblewrap isolates skill scripts; the programs they run (LibreOffice, pandoc, poppler, qpdf,
+# tesseract, fonts) are listed in core/sandbox/apt-packages.txt (spec, section 8.18).
+COPY core/sandbox/apt-packages.txt /tmp/apt-packages.txt
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bubblewrap python3 python3-venv ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && grep -v '^#' /tmp/apt-packages.txt | xargs apt-get install -y --no-install-recommends bubblewrap python3 python3-venv ca-certificates \
+  && rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
 WORKDIR /app
-# Python libraries of the document skills (pinned in core/sandbox/requirements.txt).
+# Python libraries and Node packages of the skills (pinned in core/sandbox/requirements.txt and
+# core/sandbox/node); the sandbox mounts .venv-skills read-only, NODE_PATH points at its node_modules.
 COPY core/sandbox/requirements.txt /tmp/skills-requirements.txt
 RUN python3 -m venv /app/.venv-skills \
   && /app/.venv-skills/bin/pip install --no-cache-dir -r /tmp/skills-requirements.txt \
   && rm /tmp/skills-requirements.txt
+COPY core/sandbox/node/package.json core/sandbox/node/package-lock.json /app/.venv-skills/node/
+RUN npm ci --prefix /app/.venv-skills/node --omit=dev --no-audit --no-fund \
+  && npm cache clean --force
 COPY --from=app-deps /src/node_modules node_modules
 COPY --from=app-deps /src/contracts/node_modules contracts/node_modules
 COPY . .

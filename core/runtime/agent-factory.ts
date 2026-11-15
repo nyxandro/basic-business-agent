@@ -1,5 +1,6 @@
 // Builds the Mastra agent of an agent runtime: model on the employee's key, tools of plugins and
 // connected systems, interface blocks, memory, the sandbox and sub-agents.
+import { GENUI_TOOL } from '@bba/contracts';
 import { Agent, type ModelWithRetries } from '@mastra/core/agent';
 import type { ErrorProcessor, InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
@@ -8,6 +9,7 @@ import type { ConnectionManager } from '../connections/manager.ts';
 import { createGenuiTools } from '../genui/tools.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
+import { createShowFileTool } from '../sandbox/show-file.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { logEvent } from '../server/log.ts';
@@ -81,6 +83,8 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
   const processors = deps.processorsFor(rt, level);
   const staticTools: Record<string, AnyTool> = { ...rt.tools, ...(level === 'top' ? createGenuiTools() : {}) };
   if (deps.sandbox) staticTools[VIEW_IMAGE_TOOL] = createViewImageTool(deps.sandbox.deps.workspaceRoot);
+  // The file block, like the other blocks, only for the agent the person talks to (spec, section 8.18).
+  if (deps.sandbox && level === 'top') staticTools[GENUI_TOOL.file] = createShowFileTool(deps.sandbox.deps.workspaceRoot);
   // Skills are the employee's own set for the run (core/skills-admin/runtime.ts).
   const workspace = deps.sandbox ? createAgentWorkspace(deps.sandbox.deps, deps.sandbox.isolation) : new Workspace({ skills: ({ requestContext }) => skillPathsOf(requestContext) });
   const subagents = Object.fromEntries(rt.subagents.map((s) => [s.passport.id, buildAgent(s, deps, 'sub')]));

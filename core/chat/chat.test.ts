@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
+import { contextRoot } from '../workspace/layout.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 let t: TestApp;
@@ -330,6 +331,49 @@ describe('memory and attachments', () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ name: 'Счёт.pdf', path: 'Счёт.pdf', bytes: 3 });
     expect(existsSync(join(t.workspaceRoot, olgaId, 'files', 'Счёт.pdf'))).toBe(true);
+  });
+
+  it('takes presentations and old Word, Excel and PowerPoint files as attachments (spec, section 8.18)', async () => {
+    for (const name of ['Отчёт.pptx', 'Старый договор.doc', 'Цены 2009.xls', 'Итоги.ppt']) {
+      const form = new FormData();
+      form.append('file', new File([new Uint8Array([1])], name));
+      const res = await t.app.request(`/app/api/threads/${randomUUID()}/files`, { method: 'POST', body: form, headers: { cookie: olga, origin: 'http://localhost:8080' } });
+      expect(res.status, name).toBe(201);
+    }
+  });
+
+  // The block of a file the agent made (spec, section 8.18): «Скачать» takes it from the folder of
+  // the conversation — the person's own, or the project's.
+  it('gives the person a file of the conversation folder to download, and nobody else', async () => {
+    const threadId = randomUUID();
+    const now = new Date();
+    await t.memory.saveThread({ thread: { id: threadId, resourceId: olgaId, title: 'КП', metadata: { agentId: 'sales', kind: 'chat' }, createdAt: now, updatedAt: now } });
+    const folder = join(t.workspaceRoot, olgaId, 'files');
+    mkdirSync(join(folder, 'итоги'), { recursive: true });
+    writeFileSync(join(folder, 'итоги', 'КП «Ёлка».docx'), 'DOCX-BYTES');
+    const url = (path: string) => `/app/api/threads/${threadId}/file?path=${encodeURIComponent(path)}`;
+
+    const res = await t.call('GET', url('итоги/КП «Ёлка».docx'), { cookie: olga });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('DOCX-BYTES');
+    expect(res.headers.get('content-type')).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    expect(res.headers.get('content-disposition')).toBe(`attachment; filename*=UTF-8''${encodeURIComponent('КП «Ёлка».docx')}`);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect((await t.call('GET', url(join(folder, 'итоги', 'КП «Ёлка».docx')), { cookie: olga })).status).toBe(200);
+
+    const foreign = await t.call('GET', url('итоги/КП «Ёлка».docx'), { cookie: igor });
+    expect(foreign.status).toBe(404);
+    expect((await t.call('GET', url('../../x'), { cookie: olga })).status).toBe(400);
+    const missing = await t.call('GET', url('нет.docx'), { cookie: olga });
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toContain('Файл не найден');
+
+    const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ёлка' } })).json()) as { id: string };
+    expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } })).status).toBe(200);
+    writeFileSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), 'смета.xlsx'), 'XLSX');
+    const fromProject = await t.call('GET', url('смета.xlsx'), { cookie: olga });
+    expect(await fromProject.text()).toBe('XLSX');
+    expect((await t.call('GET', url('итоги/КП «Ёлка».docx'), { cookie: olga })).status).toBe(404);
   });
 });
 

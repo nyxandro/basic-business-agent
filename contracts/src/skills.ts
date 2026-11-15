@@ -35,12 +35,22 @@ export interface SkillPreview {
 export interface SkillDto extends Omit<SkillPreview, 'exists'> {
   enabled: boolean;
   access: SkillAccess;
-  uploadedAt: string;
+  // A system skill of the core (spec, section 8.18): always on for the whole organisation, cannot be
+  // switched off, replaced or removed; it was never uploaded (uploadedAt is null).
+  system: boolean;
+  uploadedAt: string | null;
   uploadedBy: string | null;
 }
 
+// What the scripts of skills may use in the sandbox (no network there to install anything).
+export interface SkillsSandbox {
+  programs: string[];
+  python: string[];
+  node: string[];
+}
+
 export interface SkillsResponse {
+  // System skills of the core first (section 8.18), then the uploaded ones.
   skills: SkillDto[];
-  // Python libraries the scripts of skills may use in the sandbox (no network there).
-  libraries: string[];
+  sandbox: SkillsSandbox;
 }

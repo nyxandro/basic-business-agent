@@ -11,6 +11,7 @@ import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager } from '../connections/manager.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../sandbox/workspace.ts';
+import { assertSandboxEnvironment } from '../sandbox/environment.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -29,6 +30,7 @@ import { NAMING_MAX_MS, TITLE_WAIT_AT_END_MS } from '../chat/naming.ts';
 import { createBackgroundService, createBackgroundWorkflow, type BackgroundService } from '../background/service.ts';
 import { createMemory } from '../memory/memory.ts';
 import { createSkillsRuntime } from '../skills-admin/runtime.ts';
+import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
@@ -67,7 +69,7 @@ async function main(): Promise<void> {
     (result) => logEvent('info', 'gateway_synced', { ...result }),
     (error: unknown) => logEvent('error', 'gateway_sync_failed', { code: 'APP_GATEWAY_SYNC_FAILED', error }),
   );
-  const skillsDeps = { db, skillsDir: env.APP_SKILLS_DIR };
+  const skillsDeps = { db, skillsDir: env.APP_SKILLS_DIR, systemSkills: loadSystemSkills(SYSTEM_SKILLS_DIR) };
   const skills = createSkillsRuntime(skillsDeps);
   await skills.prepare();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
@@ -77,6 +79,7 @@ async function main(): Promise<void> {
     deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) },
     isolation: assertIsolationAvailable(),
   };
+  assertSandboxEnvironment(SKILLS_VENV);
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };

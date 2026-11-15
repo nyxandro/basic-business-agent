@@ -1,0 +1,17 @@
+basic business agent
+Licensed under the Apache License, Version 2.0 (LICENSE).
+
+This product includes software developed by Anthropic, PBC:
+  core/system-skills/docx, core/system-skills/pptx, core/system-skills/xlsx, core/system-skills/pdf
+  are copies of skills/<name> of https://github.com/anthropics/skills at commit
+  1780c5e5a552fd4d1c9d6a7b0cab26b0c2bef064 (2026-11-14), not modified, licensed under the
+  Apache License, Version 2.0; the full text is LICENSE.txt in each of these folders.
+
+The Docker image of an installation (deploy/Dockerfile) installs, as separate programs from the
+Debian archive, the programs the scripts of skills run (core/sandbox/apt-packages.txt), each under
+its own license: LibreOffice (MPL-2.0), pandoc (GPL-2.0-or-later), poppler-utils (GPL-2.0 or
+GPL-3.0), qpdf (Apache-2.0), tesseract-ocr (Apache-2.0), fonts Liberation and Carlito (SIL OFL
+1.1), Caladea (SIL OFL 1.1), URW base35 (AGPL-3.0 with the font exception). The Python libraries
+(core/sandbox/requirements.txt) and Node packages (core/sandbox/node/package.json) of the sandbox
+are installed from PyPI and npm under their own licenses. The source of the Debian programs is
+available from the Debian archive.

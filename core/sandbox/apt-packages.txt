@@ -1,0 +1,18 @@
+# Programs the scripts of skills may run in the sandbox (spec, section 8.18), Debian/Ubuntu packages.
+# deploy/Dockerfile installs exactly this list; a development machine installs it once with
+#   sudo apt install -y --no-install-recommends $(grep -v '^#' core/sandbox/apt-packages.txt)
+# core/sandbox/environment.ts checks the commands at the start of the server.
+libreoffice-writer-nogui
+libreoffice-calc-nogui
+libreoffice-impress-nogui
+pandoc
+poppler-utils
+qpdf
+tesseract-ocr
+tesseract-ocr-rus
+# Metric-compatible with the fonts the presentation skill calls safe: Arial, Times New Roman,
+# Courier New (Liberation), Calibri (Carlito), Cambria (Caladea), Bookman, Century Schoolbook (URW).
+fonts-liberation2
+fonts-crosextra-carlito
+fonts-crosextra-caladea
+fonts-urw-base35

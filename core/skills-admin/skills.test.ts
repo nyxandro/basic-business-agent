@@ -2,16 +2,18 @@
 // removal — through the admin routes, the database and the folder of unpacked copies.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { SkillDto, SkillPreview, SkillsResponse } from '@bba/contracts';
 import { LocalFilesystem, Workspace } from '@mastra/core/workspace';
 import { zipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
 import { createSkillsRuntime, type SkillsRuntime } from './runtime.ts';
+import { SYSTEM_SKILLS_DIR } from './system.ts';
 
-const PACKED = readFileSync(fileURLToPath(new URL('../../skills/read-documents.skill', import.meta.url)));
-const NAME = 'read-documents';
+// A skill of the company with a script, as an admin uploads it.
+const NAME = 'contract-check';
+const skillMd = (body: string) => new TextEncoder().encode(`---\nname: ${NAME}\ndescription: Проверяет договор\n---\n\n# Проверка договора\n\n${body}\n`);
+const PACKED = zipSync({ [`${NAME}/SKILL.md`]: skillMd('Сроки, штрафы, приёмка.'), [`${NAME}/scripts/check.py`]: new TextEncoder().encode('print("ok")\n') });
 
 let t: TestApp;
 let runtime: SkillsRuntime;
@@ -29,13 +31,16 @@ function form(archive: Uint8Array, access?: unknown): FormData {
 const send = (method: string, path: string, body: FormData, cookie = igor) => t.app.request(path, { method, body, headers: { cookie, origin: TEST_PUBLIC_URL } });
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 const toSales = { scope: 'departments', departmentIds: [] as string[], userIds: [] as string[] };
-const version = (body: string) => zipSync({ [`${NAME}/SKILL.md`]: new TextEncoder().encode(`---\nname: ${NAME}\ndescription: Читает документы\n---\n\n# Чтение документов\n\n${body}\n`) });
+const version = (body: string) => zipSync({ [`${NAME}/SKILL.md`]: skillMd(body) });
+// The folders of the system skills of the core every employee gets first (spec, section 8.18).
+const SYSTEM = ['docx', 'pptx', 'xlsx', 'pdf'].map((n) => join(SYSTEM_SKILLS_DIR, n)).sort();
+const uploaded = (dirs: string[]) => dirs.filter((d) => !d.startsWith(SYSTEM_SKILLS_DIR));
 // Versions of the skill unpacked in <skillsDir>/<sha256>/<name>.
 const copies = () => (existsSync(t.skillsDir) ? readdirSync(t.skillsDir).filter((v) => existsSync(join(t.skillsDir, v, NAME))) : []);
 
 beforeAll(async () => {
   t = await createTestApp();
-  runtime = createSkillsRuntime({ db: t.db, skillsDir: t.skillsDir });
+  runtime = createSkillsRuntime(t.skillsDeps);
   sales = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Отдел продаж') RETURNING id`)).rows[0]!.id;
   toSales.departmentIds = [sales];
   await t.createUser({ email: 'igor@example.com', roleIds: [await t.roleId('superadmin')] });
@@ -51,9 +56,12 @@ describe('skills of the installation', () => {
   it('shows what is in the file before saving, with the libraries the scripts may use', async () => {
     const res = await send('POST', '/app/api/admin/skills?check=1', form(PACKED));
     const preview = await json<SkillPreview>(res);
-    expect(preview).toMatchObject({ name: NAME, title: 'Чтение документов', hasScripts: true, exists: false, sizeBytes: PACKED.length });
-    expect(preview.files.map((f) => f.path)).toContain('scripts/read_pdf.py');
-    expect((await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }))).libraries).toEqual(expect.arrayContaining(['pypdf', 'openpyxl']));
+    expect(preview).toMatchObject({ name: NAME, title: 'Проверка договора', hasScripts: true, exists: false, sizeBytes: PACKED.length });
+    expect(preview.files.map((f) => f.path)).toContain('scripts/check.py');
+    const { sandbox } = await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }));
+    expect(sandbox.python).toEqual(expect.arrayContaining(['pypdf', 'openpyxl', 'python-pptx']));
+    expect(sandbox.programs).toContain('LibreOffice');
+    expect(sandbox.node).toContain('pptxgenjs');
     expect(copies()).toEqual([]);
   });
 
@@ -61,17 +69,17 @@ describe('skills of the installation', () => {
     const res = await send('POST', '/app/api/admin/skills', form(PACKED, toSales));
     expect(res.status).toBe(201);
     expect(await json<SkillDto>(res)).toMatchObject({ name: NAME, enabled: true, access: { scope: 'departments', departmentIds: [sales], userIds: [] } });
-    const [olgaSkill] = await runtime.skillsFor(olgaId);
-    expect(readFileSync(join(olgaSkill!, 'SKILL.md'), 'utf8')).toContain('# Чтение документов');
-    expect(await runtime.skillsFor(petrId)).toEqual([]);
+    const [olgaSkill] = uploaded(await runtime.skillsFor(olgaId));
+    expect(readFileSync(join(olgaSkill!, 'SKILL.md'), 'utf8')).toContain('# Проверка договора');
+    expect(await runtime.skillsFor(petrId)).toEqual(SYSTEM);
     // Mastra takes a skill only from a folder named as the skill: the agent really gets it.
     const workspace = new Workspace({ filesystem: new LocalFilesystem({ basePath: t.workspaceRoot, allowedPaths: [olgaSkill!] }), skills: [olgaSkill!] });
     expect((await workspace.skills!.list()).map((s) => s.name)).toEqual([NAME]);
 
     const personal = await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: igor, body: { access: { scope: 'users', departmentIds: [], userIds: [petrId] } } });
     expect(personal.status).toBe(200);
-    expect(await runtime.skillsFor(olgaId)).toEqual([]);
-    expect(await runtime.skillsFor(petrId)).toHaveLength(1);
+    expect(uploaded(await runtime.skillsFor(olgaId))).toEqual([]);
+    expect(uploaded(await runtime.skillsFor(petrId))).toHaveLength(1);
     await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: igor, body: { access: toSales } });
   });
 
@@ -84,16 +92,16 @@ describe('skills of the installation', () => {
 
   it('hides a switched off skill from everyone', async () => {
     await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: igor, body: { enabled: false } });
-    expect(await runtime.skillsFor(olgaId)).toEqual([]);
+    expect(await runtime.skillsFor(olgaId)).toEqual(SYSTEM);
     await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: igor, body: { enabled: true } });
-    expect(await runtime.skillsFor(olgaId)).toHaveLength(1);
+    expect(uploaded(await runtime.skillsFor(olgaId))).toHaveLength(1);
   });
 
   it('replaces the version without taking the old copy from an answer that is running', async () => {
-    const [before] = await runtime.skillsFor(olgaId);
+    const [before] = uploaded(await runtime.skillsFor(olgaId));
     const res = await send('PUT', `/app/api/admin/skills/${NAME}`, form(version('Новая версия.')));
     expect(res.status).toBe(200);
-    const [after] = await runtime.skillsFor(olgaId);
+    const [after] = uploaded(await runtime.skillsFor(olgaId));
     expect(after).not.toBe(before);
     expect(readFileSync(join(after!, 'SKILL.md'), 'utf8')).toContain('Новая версия.');
     expect(existsSync(before!)).toBe(true);
@@ -120,7 +128,54 @@ describe('skills of the installation', () => {
   it('removes the skill with its copy', async () => {
     expect((await t.call('DELETE', `/app/api/admin/skills/${NAME}`, { cookie: igor })).status).toBe(200);
     expect(copies()).toEqual([]);
-    expect(await runtime.skillsFor(olgaId)).toEqual([]);
-    expect((await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }))).skills).toEqual([]);
+    expect(await runtime.skillsFor(olgaId)).toEqual(SYSTEM);
+    expect((await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }))).skills.filter((s) => !s.system)).toEqual([]);
+  });
+});
+
+describe('system skills (spec, section 8.18)', () => {
+  const error = async (res: Response) => ({ status: res.status, ...(await json<{ error: { code: string; message: string } }>(res)).error });
+  const docx = (description = 'Свой Word') => zipSync({ 'docx/SKILL.md': new TextEncoder().encode(`---\nname: docx\ndescription: ${description}\n---\n# Свой Word\n`) });
+
+  it('are listed first, always on, for the whole organisation, built into the core', async () => {
+    const { skills } = await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }));
+    expect(skills.slice(0, 4).map((s) => [s.name, s.title, s.system, s.enabled, s.access.scope, s.uploadedAt])).toEqual([
+      ['docx', 'Документы Word', true, true, 'org', null],
+      ['pdf', 'PDF', true, true, 'org', null],
+      ['pptx', 'Презентации PowerPoint', true, true, 'org', null],
+      ['xlsx', 'Таблицы Excel', true, true, 'org', null],
+    ]);
+    expect(skills.slice(4).every((s) => !s.system)).toBe(true);
+  });
+
+  it('cannot be switched off, given to someone else, replaced or removed — not even past the admin panel', async () => {
+    const attempts = [
+      await t.call('PUT', '/app/api/admin/skills/docx', { cookie: igor, body: { enabled: false } }),
+      await t.call('PUT', '/app/api/admin/skills/pdf', { cookie: igor, body: { access: toSales } }),
+      await send('PUT', '/app/api/admin/skills/docx', form(docx())),
+      await t.call('DELETE', '/app/api/admin/skills/xlsx', { cookie: igor }),
+    ];
+    for (const res of attempts) expect(await error(res)).toMatchObject({ status: 409, code: 'APP_SKILL_SYSTEM', message: expect.stringContaining('системный скилл') });
+    expect(await runtime.skillsFor(petrId)).toEqual(expect.arrayContaining(SYSTEM));
+  });
+
+  it('keep their names: a skill of the same name is refused at the check and at the upload', async () => {
+    for (const path of ['/app/api/admin/skills?check=1', '/app/api/admin/skills']) {
+      expect(await error(await send('POST', path, form(docx(), toSales)))).toMatchObject({ status: 409, code: 'APP_SKILL_SYSTEM', message: expect.stringContaining('Имя «docx» занято системным скиллом') });
+    }
+  });
+
+  it('remove at the start a skill of the same name uploaded before the core got it, with a record in the audit', async () => {
+    const before = docx('Загружен до обновления ядра');
+    await t.db.query(
+      `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope) VALUES ('docx', 'Свой Word', 'x', $1, $2, $3, '[]', false, 'org')`,
+      [Buffer.from(before), 'b'.repeat(64), before.length],
+    );
+    // Until the start removes it, the agents still get the system skill only.
+    expect((await runtime.skillsFor(olgaId)).filter((d) => d.endsWith('/docx'))).toEqual([join(SYSTEM_SKILLS_DIR, 'docx')]);
+    await runtime.prepare();
+    expect((await t.db.query(`SELECT 1 FROM app.skills WHERE name = 'docx'`)).rowCount).toBe(0);
+    const audit = await t.db.query<{ action: string; actor_user_id: string | null }>(`SELECT action, actor_user_id FROM app.admin_audit WHERE target = 'docx' ORDER BY id DESC LIMIT 1`);
+    expect(audit.rows[0]).toEqual({ action: 'skill.superseded', actor_user_id: null });
   });
 });

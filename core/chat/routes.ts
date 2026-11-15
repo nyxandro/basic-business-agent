@@ -10,6 +10,7 @@ import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, wr
 import { renameThread } from '../memory/titles.ts';
 import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
+import { fileDownload } from '../workspace/download.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
@@ -198,17 +199,27 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json({ ok: true });
   });
 
-  app.post('/app/api/threads/:threadId/files', async (c) => {
-    const userId = access(c).userId;
-    const threadId = c.req.param('threadId');
+  // The files folder of a conversation: the project's when it is in one, otherwise the person's
+  // (spec, section 8.9). Only the person's own conversation or their draft check of a prompt; a
+  // conversation not saved yet (a file attached before the first message) is their own.
+  async function threadFolder(userId: string, threadId: string): Promise<string> {
     const thread = await deps.memory.getThreadById({ threadId });
-    // The person's own conversation, or their draft check of an agent's prompt.
     if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
     }
+    return contextRoot(deps.workspaceRoot, userId, await projectOfThread(deps.db, userId, threadId));
+  }
+
+  app.post('/app/api/threads/:threadId/files', async (c) => {
+    const userId = access(c).userId;
+    const root = await threadFolder(userId, c.req.param('threadId'));
     const file = await readUploadedFile(c);
-    // A file attached in a project conversation becomes a file of the project (spec, section 8.9).
-    const root = contextRoot(deps.workspaceRoot, userId, await projectOfThread(deps.db, userId, threadId));
     return c.json(saveFile(root, file.name, new Uint8Array(await file.arrayBuffer())), 201);
+  });
+
+  // «Скачать» of the file block a file the agent made (spec, section 8.18).
+  app.get('/app/api/threads/:threadId/file', async (c) => {
+    const root = await threadFolder(access(c).userId, c.req.param('threadId'));
+    return fileDownload(root, c.req.query('path') ?? '', 'Файл не найден. Возможно, его удалили или разговор перенесли в другой проект.');
   });
 }

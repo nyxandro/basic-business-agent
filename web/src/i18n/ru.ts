@@ -275,6 +275,17 @@ export const ru = {
   },
   admin: {
     forbidden: 'Этот раздел вам недоступен. Если он нужен для работы, обратитесь к администратору.',
+    // «Скиллы»: system skills of the core and what the sandbox has (spec, section 8.18).
+    skills: {
+      system: 'Системный',
+      builtIn: 'Встроен в ядро, всегда включён',
+      noOwnTitle: 'Своих скиллов пока нет',
+      noOwnText: 'Добавьте файл .skill — папку с SKILL.md и, если нужно, скриптами.',
+      sandboxPrograms: (list: string) => `Программы: ${list}.`,
+      sandboxPython: (list: string) => `Библиотеки Python: ${list}.`,
+      sandboxNode: (list: string) => `Пакеты Node: ${list}.`,
+      sandboxLead: 'Что есть в песочнице для скриптов скиллов (сети там нет, доустановить нельзя):',
+    },
     // «Интерфейс» (spec, section 8.17).
     interface: {
       title: 'Интерфейс',
@@ -313,6 +324,8 @@ export const ru = {
     fold: 'Свернуть',
     chart: 'График',
     other: 'Другое',
+    download: 'Скачать',
+    downloadFile: (name: string) => `Скачать ${name}`,
   },
   // Errors the browser detects itself: the server did not answer or answered not in our format.
   clientErrors: {

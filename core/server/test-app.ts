@@ -3,6 +3,7 @@ import { randomInt } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTool } from '@mastra/core/tools';
 import { PostgresStore } from '@mastra/pg';
 import type { Hono } from 'hono';
@@ -19,6 +20,10 @@ import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from '../models/fake-openai.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createSkillsRuntime } from '../skills-admin/runtime.ts';
+import type { SkillsDeps } from '../skills-admin/store.ts';
+import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
+import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
+import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
@@ -68,6 +73,8 @@ export interface TestApp {
   memory: Memory;
   // Unpacked skills of this test installation.
   skillsDir: string;
+  // What the skills routes and runtime of this installation work with (system skills included).
+  skillsDeps: SkillsDeps;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
@@ -82,6 +89,10 @@ function requireEnv(name: string): string {
   if (!value) throw new Error(`${name} is not set: start the dev stand (pnpm dev:db) and copy .env.example to .env`);
   return value;
 }
+
+const SKILLS_VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
+// The system skills of the core, read once per test process (spec, section 8.18).
+const SYSTEM_SKILLS = loadSystemSkills(SYSTEM_SKILLS_DIR);
 
 export const TEST_ENCRYPTION_KEYS = `1:${Buffer.alloc(32, 7).toString('base64')}`;
 
@@ -130,6 +141,9 @@ export async function createTestApp(
     // OpenAI's login service for ChatGPT accounts (a fake, fake-chatgpt.ts). `gateway: true` writes
     // the login files into the folder the test LiteLLM reads; otherwise into a folder of this test.
     chatgpt?: { authBase: string; gateway?: boolean };
+    // The agents get the employee's folder and the bubblewrap sandbox of an installation (the browser
+    // stand: an agent makes a document there and shows it with «Скачать», spec section 8.18).
+    sandbox?: boolean;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -190,7 +204,7 @@ export async function createTestApp(
   };
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const skillsDir = mkdtempSync(join(tmpdir(), 'bba-test-skills-'));
-  const skillsDeps = { db, skillsDir };
+  const skillsDeps = { db, skillsDir, systemSkills: SYSTEM_SKILLS };
   const skills = createSkillsRuntime(skillsDeps);
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
@@ -206,6 +220,9 @@ export async function createTestApp(
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
     workflows: { [workflow.id]: workflow },
+    ...(opts.sandbox
+      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) }, isolation: assertIsolationAvailable() } }
+      : {}),
   });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
@@ -264,6 +281,7 @@ export async function createTestApp(
     workspaceRoot,
     memory,
     skillsDir,
+    skillsDeps,
     sentMail,
     call,
     roleId,

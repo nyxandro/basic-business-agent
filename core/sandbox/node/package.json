@@ -1,0 +1,14 @@
+{
+  "name": "bba-sandbox-node",
+  "private": true,
+  "description": "Node packages the scripts of skills may use in the sandbox (spec, section 8.18): the system skills of documents expect docx, pptxgenjs, sharp and react-icons already installed. Installed into .venv-skills/node by `pnpm skills:setup` and into the Docker image; NODE_PATH of the sandbox points at them.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "docx": "9.15.1",
+    "pptxgenjs": "4.0.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-icons": "5.7.0",
+    "sharp": "0.35.5"
+  }
+}

@@ -18,7 +18,7 @@ import { createStandModel, standNaming } from './stand-model.ts';
 const PORT = 3000;
 
 const openai = await startFakeChatGpt();
-const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url } });
+const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true });
 const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
 await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
 const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
@@ -43,8 +43,9 @@ const morning = await createTask({ db: t.db, registry: t.registry, background: t
 await t.background.fire(morning.id);
 await t.background.idle();
 
-// The skill of the core for the whole organisation, as the admin uploads it in «Скиллы».
-await createSkill({ db: t.db, skillsDir: t.skillsDir }, igor, new Uint8Array(readFileSync(new URL('../../skills/read-documents.skill', import.meta.url))), { scope: 'org', departmentIds: [], userIds: [] });
+// A skill of the company for the whole organisation, as the admin uploads it in «Скиллы»; the
+// system skills of documents are there without any upload (spec, section 8.18).
+await createSkill(t.skillsDeps, igor, new Uint8Array(readFileSync(new URL('../../skills/note-taking.skill', import.meta.url))), { scope: 'org', departmentIds: [], userIds: [] });
 // Ольга's project with its instructions.
 const tender = await createProject({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot }, olga, 'Тендер');
 await t.db.query('UPDATE app.projects SET instructions = $1 WHERE id = $2', ['Заказчик — ООО «Пример». Отвечай кратко.', tender.id]);

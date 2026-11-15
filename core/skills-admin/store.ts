@@ -1,7 +1,9 @@
 // Skills of the installation (spec, scenario 10, section 8.15): the admin uploads a `.skill` file,
 // chooses who gets it, switches it off, replaces it with a new version or removes it. The archive is
-// kept in the database; its unpacked copy for the agents is in APP_SKILLS_DIR/<name>/<sha256>.
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+// kept in the database; its unpacked copy for the agents is in APP_SKILLS_DIR/<sha256>/<name>.
+// System skills of the core (section 8.18) are listed first and refuse every change; their names
+// cannot be taken by an uploaded skill.
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SkillAccess, SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
 import type pg from 'pg';
@@ -9,14 +11,15 @@ import { writeAudit } from '../audit/audit.ts';
 import { checkScope, writeScopeTargets } from '../auth/scope.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import { sandboxContents } from '../sandbox/environment.ts';
 import { invalidSkill, readSkillArchive, writeSkillFiles, type SkillPackage } from './archive.ts';
-
-// The libraries of the sandbox's Python, the same list the image and `pnpm skills:setup` install.
-const REQUIREMENTS = new URL('../sandbox/requirements.txt', import.meta.url);
+import type { SystemSkill } from './system.ts';
 
 export interface SkillsDeps {
   db: Db;
   skillsDir: string;
+  // core/system-skills, loaded once at the start (loadSystemSkills).
+  systemSkills: SystemSkill[];
 }
 
 interface SkillRow {
@@ -36,14 +39,6 @@ interface SkillRow {
 }
 
 const UNIQUE_VIOLATION = '23505';
-
-export function sandboxLibraries(): string[] {
-  return readFileSync(REQUIREMENTS, 'utf8')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#'))
-    .map((l) => l.split(/[=<>~! ]/)[0]!);
-}
 
 // A copy of a skill: <skillsDir>/<sha256>/<name>/. Mastra takes a skill only from a folder named as
 // the skill (the name in its SKILL.md); the version folder keeps the copy a running answer still reads.
@@ -67,6 +62,35 @@ export function removeSkillCopies(skillsDir: string, drop: (name: string, sha256
 }
 
 const notFound = (name: string) => appError('APP_NOT_FOUND', `skill ${name} not found`, { userMessage: 'Скилл не найден. Обновите страницу.' });
+
+const isSystem = (deps: SkillsDeps, name: string) => deps.systemSkills.some((s) => s.name === name);
+
+function refuseSystem(deps: SkillsDeps, name: string): void {
+  if (isSystem(deps, name)) throw appError('APP_SKILL_SYSTEM', `system skill ${name} cannot be changed`);
+}
+
+function refuseSystemName(deps: SkillsDeps, name: string): void {
+  if (!isSystem(deps, name)) return;
+  throw appError('APP_SKILL_SYSTEM', `skill name ${name} belongs to a system skill`, {
+    userMessage: `Имя «${name}» занято системным скиллом. Переименуйте скилл (поле name в SKILL.md) и загрузите снова.`,
+  });
+}
+
+function systemDto(s: SystemSkill): SkillDto {
+  return {
+    name: s.name,
+    title: s.title,
+    description: s.description,
+    sizeBytes: s.sizeBytes,
+    files: s.files,
+    hasScripts: s.hasScripts,
+    enabled: true,
+    access: { scope: 'org', departmentIds: [], userIds: [] },
+    system: true,
+    uploadedAt: null,
+    uploadedBy: null,
+  };
+}
 
 function filesOf(pkg: SkillPackage): SkillFile[] {
   return [...pkg.files.entries()].map(([path, data]) => ({ path, bytes: data.length })).sort((a, b) => a.path.localeCompare(b.path));
@@ -98,6 +122,7 @@ function toDto(r: SkillRow): SkillDto {
     hasScripts: r.has_scripts,
     enabled: r.enabled,
     access: { scope: r.scope, departmentIds: [...r.department_ids].sort(), userIds: [...r.user_ids].sort() },
+    system: false,
     uploadedAt: r.uploaded_at.toISOString(),
     uploadedBy: r.uploaded_by,
   };
@@ -109,13 +134,15 @@ async function dtoOf(db: Db, name: string): Promise<SkillDto> {
   return toDto(row);
 }
 
-export async function listSkills(db: Db): Promise<SkillsResponse> {
-  return { skills: (await rows(db)).map(toDto), libraries: sandboxLibraries() };
+export async function listSkills(deps: SkillsDeps): Promise<SkillsResponse> {
+  const uploaded = (await rows(deps.db)).filter((r) => !isSystem(deps, r.name)).map(toDto);
+  return { skills: [...deps.systemSkills.map(systemDto), ...uploaded], sandbox: sandboxContents() };
 }
 
-export async function previewSkill(db: Db, archive: Uint8Array): Promise<SkillPreview> {
+export async function previewSkill(deps: SkillsDeps, archive: Uint8Array): Promise<SkillPreview> {
   const pkg = readSkillArchive(archive);
-  const { rowCount } = await db.query('SELECT 1 FROM app.skills WHERE name = $1', [pkg.name]);
+  refuseSystemName(deps, pkg.name);
+  const { rowCount } = await deps.db.query('SELECT 1 FROM app.skills WHERE name = $1', [pkg.name]);
   return { name: pkg.name, title: pkg.title, description: pkg.description, sizeBytes: pkg.sizeBytes, files: filesOf(pkg), hasScripts: pkg.hasScripts, exists: (rowCount ?? 0) > 0 };
 }
 
@@ -126,6 +153,7 @@ async function writeScope(c: pg.PoolClient, name: string, access: SkillAccess): 
 
 export async function createSkill(deps: SkillsDeps, actorUserId: string, archive: Uint8Array, rawAccess: SkillAccess): Promise<SkillDto> {
   const pkg = readSkillArchive(archive);
+  refuseSystemName(deps, pkg.name);
   await inTransaction(deps.db, async (c) => {
     const access = await checkScope(c, rawAccess);
     try {
@@ -147,6 +175,7 @@ export async function createSkill(deps: SkillsDeps, actorUserId: string, archive
 
 // A new version: answers already running keep the old copy (another sha256 folder) to the end.
 export async function replaceSkill(deps: SkillsDeps, actorUserId: string, name: string, archive: Uint8Array): Promise<SkillDto> {
+  refuseSystem(deps, name);
   await dtoOf(deps.db, name);
   const pkg = readSkillArchive(archive);
   if (pkg.name !== name) throw invalidSkill(`в файле другой скилл — «${pkg.name}», а заменяется «${name}»`);
@@ -164,6 +193,7 @@ export async function replaceSkill(deps: SkillsDeps, actorUserId: string, name: 
 }
 
 export async function updateSkill(deps: SkillsDeps, actorUserId: string, name: string, change: SkillUpdate): Promise<SkillDto> {
+  refuseSystem(deps, name);
   await dtoOf(deps.db, name);
   await inTransaction(deps.db, async (c) => {
     if (change.enabled !== undefined) await c.query('UPDATE app.skills SET enabled = $2 WHERE name = $1', [name, change.enabled]);
@@ -175,6 +205,7 @@ export async function updateSkill(deps: SkillsDeps, actorUserId: string, name: s
 }
 
 export async function deleteSkill(deps: SkillsDeps, actorUserId: string, name: string): Promise<void> {
+  refuseSystem(deps, name);
   await dtoOf(deps.db, name);
   await inTransaction(deps.db, async (c) => {
     await c.query('DELETE FROM app.skills WHERE name = $1', [name]);

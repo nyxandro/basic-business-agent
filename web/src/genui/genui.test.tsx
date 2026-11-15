@@ -6,6 +6,7 @@ import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
 import { ChartBlockView, pieSlices } from './ChartBlock.tsx';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
+import { FileCall } from './FileBlock.tsx';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
 
@@ -108,5 +109,24 @@ describe('choice and form', () => {
     await user.type(screen.getByLabelText('Сумма'), '1500');
     await user.click(screen.getByRole('button', { name: 'Отправить заявку' }));
     expect(onAnswer).toHaveBeenCalledWith('Заявка:\n- Клиент: ООО Пример\n- Сумма: 1500\n- Этап: Переговоры');
+  });
+
+  // Spec, section 8.18: a file the agent made, with «Скачать» from the folder of the conversation.
+  it('draws the file the agent made with its size and a link to download it from the conversation', () => {
+    const result = JSON.stringify({ shown: true, path: 'итоги/КП «Ёлка».docx', name: 'КП «Ёлка».docx', bytes: 48_128 });
+    render(<FileCall call={call({ path: 'итоги/КП «Ёлка».docx' }, { result })} threadId="t-1" />);
+    expect(screen.getByText('КП «Ёлка».docx')).toBeInTheDocument();
+    expect(screen.getByText('47 КБ')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Скачать КП «Ёлка».docx' });
+    expect(link).toHaveAttribute('href', `/app/api/threads/t-1/file?path=${encodeURIComponent('итоги/КП «Ёлка».docx')}`);
+    expect(link).toHaveAttribute('download', 'КП «Ёлка».docx');
+  });
+
+  it('draws nothing for a file that was not there, and a placeholder while the call runs', () => {
+    const missing = render(<FileCall call={call({ path: 'нет.docx' }, { result: JSON.stringify({ shown: false, error: 'Файла «нет.docx» нет в рабочей папке.' }) })} threadId="t-1" />);
+    expect(missing.container).toBeEmptyDOMElement();
+    missing.unmount();
+    render(<FileCall call={call({ path: 'КП.docx' }, { status: 'executing', result: undefined })} threadId="t-1" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Готовлю…');
   });
 });

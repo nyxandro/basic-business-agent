@@ -97,20 +97,20 @@ describe('tool line', () => {
 describe('activation of a skill', () => {
   // As the agents of an installation get it from the server (core/sandbox/workspace.ts).
   const SKILL_AGENT = { systems: SYSTEMS, actions: { skill: { title: 'Активация навыка', fields: {}, readOnly: true } } };
-  const skillRow = (p: Partial<ToolRowProps>) => render(<ToolRow name="skill" status="complete" parameters={{ name: 'read-documents' }} agent={SKILL_AGENT} {...p} />);
+  const skillRow = (p: Partial<ToolRowProps>) => render(<ToolRow name="skill" status="complete" parameters={{ name: 'contract-check' }} agent={SKILL_AGENT} {...p} />);
 
   it('names the skill as people know it, from the heading of its instructions', () => {
-    skillRow({ result: '# Чтение документов\n\nФайлы сотрудника лежат в рабочей папке…' });
-    expect(screen.getByRole('button', { name: 'Активирован навык «Чтение документов»' })).toBeInTheDocument();
+    skillRow({ result: '# Проверка договора\n\nСроки, штрафы, приёмка…' });
+    expect(screen.getByRole('button', { name: 'Активирован навык «Проверка договора»' })).toBeInTheDocument();
     expect(screen.queryByText('только чтение')).not.toBeInTheDocument();
   });
 
   it('names it by its name when the instructions have no heading, and says when there is no such skill', () => {
     skillRow({ result: 'Файлы сотрудника лежат в рабочей папке…' });
-    expect(screen.getByRole('button', { name: 'Активирован навык «read-documents»' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Активирован навык «contract-check»' })).toBeInTheDocument();
     cleanup();
     // Mastra's own answer for an unknown name.
-    skillRow({ parameters: { name: 'reports' }, result: 'Skill "reports" not found. Available skills: read-documents (/skills/read-documents)' });
+    skillRow({ parameters: { name: 'reports' }, result: 'Skill "reports" not found. Available skills: contract-check (/skills/contract-check)' });
     expect(screen.getByText('Навык «reports» не найден')).toBeInTheDocument();
   });
 

@@ -55,6 +55,7 @@ export const ERROR_CATALOG = {
   APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },
   APP_AGENT_IMAGE_INVALID: { status: 400, userMessage: 'Картинка не подходит: нужен PNG, JPEG или WebP.' },
   APP_SKILL_EXISTS: { status: 409, userMessage: 'Скилл с таким именем уже загружен. Чтобы обновить его, нажмите «Заменить».' },
+  APP_SKILL_SYSTEM: { status: 409, userMessage: 'Это системный скилл: он встроен в ядро и всегда включён у всех сотрудников. Выключить, заменить или удалить его нельзя.' },
   APP_CHATGPT_LOGIN_EXPIRED: { status: 410, userMessage: 'Время на вход вышло. Начните заново.' },
   APP_CHATGPT_LOGIN_FAILED: { status: 502, userMessage: 'Вход не выполнен. Попробуйте ещё раз.' },
   APP_GATEWAY_SYNC_FAILED: { status: 502, userMessage: 'Шлюз не принял изменения. Попробуйте ещё раз; если повторяется — сообщите разработчику код.' },

@@ -251,3 +251,29 @@
   border-top-color: var(--acc);
   animation: bba-spin 0.8s linear infinite;
 }
+
+/* The file block (spec, section 8.18): a file the agent made, with «Скачать». */
+.file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  max-width: 460px;
+}
+
+.fileText {
+  flex: 1;
+  min-width: 0;
+}
+
+.fileName {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileSize {
+  font-size: 12px;
+  color: var(--muted);
+}

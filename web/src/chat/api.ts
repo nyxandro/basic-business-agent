@@ -8,6 +8,8 @@ export const THREAD_PAGE = 30;
 // Conversations of all the person's agents, newest first; `before` continues after a page.
 export const fetchThreadPage = (before: string | null) =>
   api<ThreadPage>('GET', `/app/api/threads?limit=${THREAD_PAGE}${before ? `&before=${enc(before)}` : ''}`);
+// «Скачать» of the file block: a file of the folder of the conversation (spec, section 8.18).
+export const threadFileUrl = (threadId: string, path: string) => `/app/api/threads/${enc(threadId)}/file?path=${enc(path)}`;
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);
 export const renameThread = (threadId: string, title: string) => api<RenameThreadResponse>('PATCH', `/app/api/threads/${enc(threadId)}`, { title });
 // «Ответить заново»: the server takes the question and its broken answer out and gives the question back.

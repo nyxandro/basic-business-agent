@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { contextRoot, deleteUserWorkspace, listFiles, removeProjectFolder, saveFile } from './layout.ts';
+import { contextRoot, deleteUserWorkspace, listFiles, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
 
 let ws: string;
 beforeEach(() => {
@@ -50,6 +50,16 @@ describe('workspace layout', () => {
       { path: 'выгрузки/итог.csv', bytes: 3 },
       { path: 'договор.pdf', bytes: 2 },
     ]);
+  });
+
+  // The instructions of the document skills pass absolute paths of the pages they drew (section 8.18).
+  it('takes a path from the folder or an absolute one inside it, and nothing outside', () => {
+    const root = contextRoot(ws, 'olga', null);
+    expect(resolveInside(root, 'слайды/slide-1.jpg')).toBe(join(root, 'слайды/slide-1.jpg'));
+    expect(resolveInside(root, join(root, 'слайды/slide-1.jpg'))).toBe(join(root, 'слайды/slide-1.jpg'));
+    for (const outside of ['../igor/files/x.pdf', join(ws, 'igor', 'files', 'x.pdf'), '/etc/passwd', `${root}/../x`, root, '']) {
+      expect(() => resolveInside(root, outside), outside).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+    }
   });
 
   it('removes a project folder and the whole workspace of a person', () => {

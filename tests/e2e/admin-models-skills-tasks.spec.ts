@@ -37,12 +37,15 @@ test('«Пул аккаунтов подписки» shows the states and connec
   await expect(page.getByText('3 из 4 активны')).toBeVisible();
 });
 
-test('«Скиллы» lists the uploaded skill for the whole organisation with its switch', async ({ browser }) => {
+test('«Скиллы» lists the system skills of documents without a switch, then the uploaded skill with its switch', async ({ browser }) => {
   const page = await pageAs(browser, 'igor@example.com');
   await page.goto('/admin/skills');
-  await expect(page.getByText('read-documents')).toBeVisible();
-  await expect(page.getByText('Вся организация')).toBeVisible();
-  await expect(page.getByRole('switch', { name: 'Чтение документов' })).toHaveAttribute('aria-checked', 'true');
+  // System skills of the core (spec, section 8.18): built in, always on, nothing to change.
+  for (const title of ['Документы Word', 'Презентации PowerPoint', 'Таблицы Excel', 'PDF']) await expect(page.getByText(title, { exact: true })).toBeVisible();
+  await expect(page.getByText('Системный')).toHaveCount(4);
+  await expect(page.getByRole('switch')).toHaveCount(1);
+  await expect(page.getByText('note-taking')).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Заметки сотрудника' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('«Режимы работы» shows the task of the department with its last fire and breakdown', async ({ browser }) => {

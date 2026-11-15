@@ -36,11 +36,11 @@ function accessField(raw: unknown) {
 export function registerSkillRoutes(app: Hono<AppEnv>, deps: SkillsDeps): void {
   const skills = requirePermission('skills');
 
-  app.get('/app/api/admin/skills', skills, async (c) => c.json(await listSkills(deps.db)));
+  app.get('/app/api/admin/skills', skills, async (c) => c.json(await listSkills(deps)));
 
   app.post('/app/api/admin/skills', skills, async (c) => {
     const { archive, fields } = await upload(c);
-    if (c.req.query('check') === '1') return c.json(await previewSkill(deps.db, archive));
+    if (c.req.query('check') === '1') return c.json(await previewSkill(deps, archive));
     return c.json(await createSkill(deps, access(c).userId, archive, accessField(fields.access)), 201);
   });
 

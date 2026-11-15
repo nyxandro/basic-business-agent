@@ -1,5 +1,5 @@
 // Buttons of the mock-up. The look is one explicit variant, not a set of flags.
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
 import styles from './button.module.css';
 import { Icon, type IconName } from './Icon.tsx';
 
@@ -23,6 +23,23 @@ export function Button({ variant = 'secondary', size = 'md', icon, block, classN
       {icon ? <Icon name={icon} size={size === 'sm' ? 14 : 15} /> : null}
       {children}
     </button>
+  );
+}
+
+export interface ButtonLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'children'> {
+  variant?: ButtonProps['variant'];
+  size?: Size;
+  icon?: IconName;
+  children: ReactNode;
+}
+
+// A link that looks like a button: a download or an address to open.
+export function ButtonLink({ variant = 'secondary', size = 'md', icon, className, children, ...rest }: ButtonLinkProps) {
+  return (
+    <a className={cx(styles.button, styles[variant], size !== 'md' && styles[size], className)} {...rest}>
+      {icon ? <Icon name={icon} size={size === 'sm' ? 14 : 15} /> : null}
+      {children}
+    </a>
   );
 }
 

@@ -1,5 +1,5 @@
 // pnpm skills:pack [<folder of a skill>…] — packs skill sources into `.skill` files for «Скиллы»
-// in the admin panel, next to their folders: skills/read-documents → skills/read-documents.skill.
+// in the admin panel, next to their folders: skills/note-taking → skills/note-taking.skill.
 // Without arguments packs every folder of skills/. The same sources give the same bytes.
 import { readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';

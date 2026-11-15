@@ -36,6 +36,18 @@ function textOf(content: unknown): string {
 
 const call = (name: string, args: Record<string, unknown>): FakeTurn => ({ toolCalls: [{ name, args }] });
 
+// «документ word» (spec, section 8.18): the agent writes a Word file in the sandbox with the docx
+// package the document skills use, then shows it with «Скачать».
+export const STAND_DOCUMENT = 'КП для ООО «Ёлка».docx';
+const MAKE_DOCUMENT =
+  `node -e "const d = require('docx'); const doc = new d.Document({ sections: [{ children: [new d.Paragraph('Коммерческое предложение для ООО Ёлка')] }] }); ` +
+  `d.Packer.toBuffer(doc).then((b) => require('fs').writeFileSync(process.argv[1], b))" '${STAND_DOCUMENT}'`;
+
+function lastCallName(req: FakeRequest): string | undefined {
+  const calls = [...req.messages].reverse().find((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))?.tool_calls as { function: { name: string } }[] | undefined;
+  return calls?.at(-1)?.function.name;
+}
+
 // What LiteLLM sends inside the stream when the provider goes away mid-answer (core/models/gateway.test.ts).
 const BREAK: GatewayStreamError = { message: 'litellm.APIConnectionError: APIConnectionError: GroqException - Connection closed.', type: 'internal_server_error', param: null, code: '500' };
 export const AFTER_ONE_BREAK = 'Ответ дошёл целиком, хотя модель один раз оборвала его.';
@@ -74,12 +86,19 @@ function standModel(req: FakeRequest): FakeTurn {
   const last = req.messages.at(-1);
   if (last?.role === 'tool') {
     const result = textOf(last.content);
+    if (lastCallName(req)?.endsWith('execute_command')) return call('show_file', { path: STAND_DOCUMENT });
+    if (lastCallName(req) === 'show_file') return { text: /"shown":\s*true/.test(result) ? 'Готово: документ ниже, его можно скачать.' : 'Не получилось сделать документ.' };
     if (/not approved|declin|отклон|отмен/i.test(result)) return { text: 'Хорошо, не отправляю.' };
     if (/waitForAnswer/.test(result)) return { text: 'Жду вашего ответа.' };
     if (/sent/.test(result)) return { text: 'Письмо отправлено.' };
     return { text: 'Готово, показал выше.' };
   }
   const text = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).toLowerCase();
+  if (text.includes('документ word')) {
+    const tool = req.tools?.map((x) => x.function.name).find((n) => n.endsWith('execute_command'));
+    if (!tool) return { text: 'У этого стенда нет рабочей папки.' };
+    return call(tool, { command: MAKE_DOCUMENT });
+  }
   if (text.includes('таблиц')) return call('show_table', TABLE);
   if (text.includes('сломан')) return call('show_chart', { kind: 'bar', labels: ['Сен', 'Окт'], series: [{ name: 'Выручка', values: [1] }] });
   if (text.includes('график')) return call('show_chart', CHART);

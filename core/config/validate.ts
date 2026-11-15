@@ -50,7 +50,7 @@ function issuesToProblems(file: string, error: z.ZodError, prefix = ''): ConfigP
   });
 }
 
-export function configError(problems: ConfigProblem[]): AppError {
+export function configError(problems: ConfigProblem[], cause?: unknown): AppError {
   const lines = problems.map((p) => `  ${p.file}: ${p.field}: ${p.message}`).join('\n');
   return new AppError({
     code: 'APP_CONFIG_INVALID',
@@ -58,6 +58,7 @@ export function configError(problems: ConfigProblem[]): AppError {
     userMessage: 'Приложение не запущено: в настройках установки ошибка.',
     nextStep: 'Исправьте файлы и поля, перечисленные в журнале запуска, и запустите приложение снова.',
     details: { problems },
+    ...(cause !== undefined ? { cause } : {}),
   });
 }
 

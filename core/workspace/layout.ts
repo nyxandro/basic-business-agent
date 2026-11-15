@@ -5,7 +5,7 @@
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { extname, join, relative } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
 
@@ -85,10 +85,12 @@ export function listFiles(dir: string): { path: string; bytes: number }[] {
   return out;
 }
 
+// A path from the folder, or an absolute one inside it (the document skills pass absolute paths of
+// the pages they drew); anything leading out of the folder is refused.
 export function resolveInside(dir: string, path: string): string {
-  const full = join(dir, path);
+  const full = isAbsolute(path) ? resolve(path) : join(dir, path);
   const rel = relative(dir, full);
-  if (rel.startsWith('..') || rel === '') throw appError('APP_VALIDATION_FAILED', `path ${path} is outside the folder`);
+  if (rel.startsWith('..') || isAbsolute(rel) || rel === '') throw appError('APP_VALIDATION_FAILED', `path ${path} is outside the folder`);
   return full;
 }
 

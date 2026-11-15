@@ -5,7 +5,8 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'inbox/**', 'docs/**'] },
+  // core/system-skills: skills of Anthropic kept exactly as published (spec, section 8.18).
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'inbox/**', 'docs/**', '.venv-skills/**', 'core/system-skills/*/**'] },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {

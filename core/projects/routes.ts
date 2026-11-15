@@ -1,29 +1,18 @@
 // Projects, their files and the list of conversations (spec, sections 8.12 and 17.5). Everything
 // here is the signed-in person's own: someone else's project or conversation is "not found".
-import { readFileSync, rmSync, statSync } from 'node:fs';
-import { extname } from 'node:path';
+import { rmSync, statSync } from 'node:fs';
 import { MAX_UPLOAD_BYTES } from '@bba/contracts';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { fileDownload } from '../workspace/download.ts';
 import { contextRoot, listFiles, resolveInside, saveFile } from '../workspace/layout.ts';
 import { createProject, deleteProject, getProject, listProjects, listThreadPage, projectDto, projectOfThread, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
 export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.csv': 'text/csv; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-};
 
 const createSchema = z.object({ name: z.string() });
 const updateSchema = z.object({ name: z.string().optional(), instructions: z.string().optional() });
@@ -80,15 +69,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   app.get('/app/api/projects/:id/file', async (c) => {
     const userId = access(c).userId;
     const project = await getProject(deps, userId, c.req.param('id'));
-    const full = resolveInside(contextRoot(deps.workspaceRoot, userId, project.id), c.req.query('path') ?? '');
-    if (!statSync(full, { throwIfNoEntry: false })?.isFile()) throw appError('APP_NOT_FOUND', 'no such project file', { userMessage: 'Файл не найден.' });
-    const name = full.split('/').pop()!;
-    return new Response(readFileSync(full), {
-      headers: {
-        'content-type': CONTENT_TYPES[extname(name).toLowerCase()] ?? 'application/octet-stream',
-        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
-      },
-    });
+    return fileDownload(contextRoot(deps.workspaceRoot, userId, project.id), c.req.query('path') ?? '', 'Файл не найден.');
   });
 
   app.delete('/app/api/projects/:id/file', async (c) => {

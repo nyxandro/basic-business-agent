@@ -37,6 +37,21 @@
   font-weight: 600;
 }
 
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sandboxLead {
+  margin: 0 0 4px;
+}
+
+.sandbox {
+  margin: 0;
+  padding-left: 18px;
+}
+
 .desc {
   margin: 0;
   font-size: 13px;

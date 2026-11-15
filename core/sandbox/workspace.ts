@@ -5,7 +5,7 @@
 import { splitAttachments, type ActionDescription } from '@bba/contracts';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { extname } from 'node:path';
 import type { Processor } from '@mastra/core/processors';
 import { createTool } from '@mastra/core/tools';
 import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS, type WorkspaceToolHookContext } from '@mastra/core/workspace';
@@ -15,6 +15,7 @@ import { logEvent } from '../server/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
 import { contextRoot, resolveInside } from '../workspace/layout.ts';
+import { nodeModulesDir, SANDBOX_SYSTEM_PATHS, sandboxPath } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
 export const COMMAND_TIMEOUT_MS = 120_000;
@@ -25,7 +26,7 @@ export const VIEW_IMAGE_TOOL = 'view_image';
 // raw bytes read by Mastra's read_file would go to the model as text and overflow its window.
 const RAW_ENCODINGS = new Set(['base64', 'binary', 'hex']);
 const NO_PICTURE_IN_READ_FILE = 'Это картинка: её содержимое через чтение файла не передаётся. Чтобы увидеть её, вызови view_image с этим путём.';
-const NO_RAW_BYTES = 'Сырые байты файла в разговор не передаются. Картинку открой через view_image, PDF, Word, Excel — скриптами скилла «Чтение документов».';
+const NO_RAW_BYTES = 'Сырые байты файла в разговор не передаются. Картинку открой через view_image; PDF, Word, Excel и PowerPoint читай скиллами pdf, docx, xlsx и pptx.';
 
 // How the chat line names the tools the workspace and the skills give every agent (Mastra's own
 // names would show as mastra_workspace_read_file).
@@ -88,15 +89,25 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
     filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: skillPathsOf(requestContext) }),
     sandbox: ({ requestContext }) => {
       const dir = dirOf(requestContext);
-      const readOnlyPaths = [...skillPathsOf(requestContext), deps.skillsVenv].filter((p) => existsSync(p));
+      const readOnlyPaths = [...skillPathsOf(requestContext), deps.skillsVenv, ...SANDBOX_SYSTEM_PATHS].filter((p) => existsSync(p));
       return limitedSandbox(
         {
           workingDirectory: dir,
           isolation,
           timeout: COMMAND_TIMEOUT_MS,
           nativeSandbox: { allowNetwork: false, readOnlyPaths },
-          // Nothing from the app's environment (secrets) reaches the scripts.
-          env: { PATH: `${join(deps.skillsVenv, 'bin')}:/usr/local/bin:/usr/bin:/bin`, HOME: dir, LANG: 'C.UTF-8', PYTHONIOENCODING: 'utf-8' },
+          // Nothing from the app's environment (secrets) reaches the scripts. Caches and settings of
+          // the programs (fontconfig, LibreOffice) go to the command's own /tmp, not into the
+          // employee's files.
+          env: {
+            PATH: sandboxPath(deps.skillsVenv),
+            NODE_PATH: nodeModulesDir(deps.skillsVenv),
+            HOME: dir,
+            XDG_CACHE_HOME: '/tmp/.cache',
+            XDG_CONFIG_HOME: '/tmp/.config',
+            LANG: 'C.UTF-8',
+            PYTHONIOENCODING: 'utf-8',
+          },
         },
         deps.limiter,
       );

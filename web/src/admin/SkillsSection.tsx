@@ -1,7 +1,8 @@
 // «Скиллы» (spec, scenario 10; mockup): methods for the agents as `.skill` files — a card each with
 // what it does, who has it and a switch; «Добавить скилл», a new version over the old one, who has
-// it, removal after a question. Scripts run in the sandbox without network.
-import type { AdminDepartment, AdminPerson, SkillAccess, SkillDto } from '@bba/contracts';
+// it, removal after a question. Scripts run in the sandbox without network. The system skills of the
+// core (section 8.18) come first: built in, always on for everyone — no switch and no actions.
+import type { AdminDepartment, AdminPerson, SkillAccess, SkillDto, SkillsSandbox } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -13,6 +14,7 @@ import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { ru } from '../i18n/ru.ts';
 import { AccessPicker, accessIsEmpty, accessText } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
 import { Feedback, useAction } from './parts.tsx';
@@ -40,6 +42,44 @@ function AccessDialog({ skill, departments, users, onClose, onSaved }: { skill: 
   );
 }
 
+function SystemSkillCard({ skill, who }: { skill: SkillDto; who: string }) {
+  return (
+    <Card className={`${styles.card} rise`}>
+      <div className={styles.head} data-skill={skill.name}>
+        <IconTile icon={skill.hasScripts ? 'term' : 'layers'} size={36} />
+        <div className={styles.title}>
+          <div className={styles.name}>{skill.title}</div>
+          <div className={styles.pills}>
+            <Pill>{skill.name}</Pill>
+            <Pill tone="accent">{ru.admin.skills.system}</Pill>
+          </div>
+        </div>
+      </div>
+      <p className={styles.desc}>{skill.description}</p>
+      <div className={styles.meta}>
+        <span className={section.sub}>Кому:</span> <span className={styles.who}>{who}</span>
+      </div>
+      <div className={section.sub}>
+        {fileSize(skill.sizeBytes)} · {ru.admin.skills.builtIn}
+      </div>
+    </Card>
+  );
+}
+
+function SandboxNote({ sandbox }: { sandbox: SkillsSandbox }) {
+  const t = ru.admin.skills;
+  return (
+    <div className={section.note}>
+      <p className={styles.sandboxLead}>{t.sandboxLead}</p>
+      <ul className={styles.sandbox}>
+        <li>{t.sandboxPrograms(sandbox.programs.join(', '))}</li>
+        <li>{t.sandboxPython(sandbox.python.join(', '))}</li>
+        <li>{t.sandboxNode(sandbox.node.join(', '))}</li>
+      </ul>
+    </div>
+  );
+}
+
 function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: string; onAccess: () => void; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -51,7 +91,7 @@ function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: 
   };
   return (
     <Card className={`${styles.card} rise`}>
-      <div className={styles.head}>
+      <div className={styles.head} data-skill={skill.name}>
         <IconTile icon={skill.hasScripts ? 'term' : 'layers'} size={36} />
         <div className={styles.title}>
           <div className={styles.name}>{skill.title}</div>
@@ -100,7 +140,8 @@ function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: 
         <span className={section.sub}>Кому:</span> <span className={styles.who}>{who}</span>
       </div>
       <div className={section.sub}>
-        {fileSize(skill.sizeBytes)} · загружен {dateTime(skill.uploadedAt)}
+        {fileSize(skill.sizeBytes)}
+        {skill.uploadedAt ? ` · загружен ${dateTime(skill.uploadedAt)}` : ''}
         {skill.uploadedBy ? ` · ${skill.uploadedBy}` : ''}
       </div>
       <Feedback error={error} />
@@ -129,23 +170,27 @@ export function SkillsSection() {
   );
   if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
-  const { skills, libraries, departments, users } = state.data;
-  const editing = skills.find((s) => s.name === accessOf) ?? null;
+  const { skills, sandbox, departments, users } = state.data;
+  const editing = skills.find((s) => s.name === accessOf && !s.system) ?? null;
+  const own = skills.filter((s) => !s.system);
   return (
     <div className={section.stack}>
       {head}
-      {skills.length === 0 ? (
-        <Card>
-          <EmptyState title="Скиллов пока нет" text="Добавьте файл .skill — папку с SKILL.md и, если нужно, скриптами." />
-        </Card>
-      ) : (
-        <div className={styles.grid}>
-          {skills.map((s) => (
+      <div className={styles.grid}>
+        {skills.map((s) =>
+          s.system ? (
+            <SystemSkillCard key={s.name} skill={s} who={accessText(s.access, departments, users)} />
+          ) : (
             <SkillCard key={s.name} skill={s} who={accessText(s.access, departments, users)} onAccess={() => setAccessOf(s.name)} onChanged={reload} />
-          ))}
-        </div>
-      )}
-      {libraries.length > 0 ? <p className={section.note}>В песочнице есть библиотеки Python: {libraries.join(', ')}.</p> : null}
+          ),
+        )}
+      </div>
+      {own.length === 0 ? (
+        <Card>
+          <EmptyState title={ru.admin.skills.noOwnTitle} text={ru.admin.skills.noOwnText} />
+        </Card>
+      ) : null}
+      <SandboxNote sandbox={sandbox} />
       {adding ? (
         <SkillUpload
           departments={departments}

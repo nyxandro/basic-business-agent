@@ -15,15 +15,31 @@ const SKILL = {
   hasScripts: false,
   enabled: true,
   access: { scope: 'org', departmentIds: [], userIds: [] },
+  system: false,
   uploadedAt: '2026-11-12T08:00:00Z',
   uploadedBy: 'Игорь',
 };
+// A system skill of the core (spec, section 8.18): always on, nothing to change.
+const SYSTEM = {
+  name: 'docx',
+  title: 'Документы Word',
+  description: 'Читает, создаёт и правит документы Word.',
+  sizeBytes: 300_000,
+  files: [{ path: 'SKILL.md', bytes: 7442 }],
+  hasScripts: true,
+  enabled: true,
+  access: { scope: 'org', departmentIds: [], userIds: [] },
+  system: true,
+  uploadedAt: null,
+  uploadedBy: null,
+};
+const SANDBOX = { programs: ['LibreOffice', 'pandoc'], python: ['pandas', 'openpyxl'], node: ['docx', 'pptxgenjs'] };
 const PREVIEW = { name: 'kp-builder', title: 'Коммерческое предложение', description: 'Собирает КП по шаблону.', sizeBytes: 8192, files: [{ path: 'SKILL.md', bytes: 1024 }, { path: 'scripts/build.py', bytes: 2048 }], hasScripts: true, exists: false };
 
-function server(skills: object[] = [SKILL]) {
+function server(skills: object[] = [SYSTEM, SKILL]) {
   return mockServer({
     'GET /app/api/me': { body: ADMIN },
-    'GET /app/api/admin/skills': { body: { skills, libraries: ['pandas', 'openpyxl'] } },
+    'GET /app/api/admin/skills': { body: { skills, sandbox: SANDBOX } },
     'GET /app/api/admin/departments': { body: { departments: DEPARTMENTS } },
     'GET /app/api/admin/people': { body: { people: [] } },
   });
@@ -95,10 +111,33 @@ describe('«Скиллы»', () => {
     await waitFor(() => expect(s.calls.some((c) => c.method === 'DELETE')).toBe(true));
   });
 
-  it('shows who has a skill and the sandbox libraries', async () => {
-    server([{ ...SKILL, access: { scope: 'departments', departmentIds: [DEPARTMENTS[0]!.id], userIds: [] } }]);
+  it('shows who has a skill and what the sandbox has', async () => {
+    server([SYSTEM, { ...SKILL, access: { scope: 'departments', departmentIds: [DEPARTMENTS[0]!.id], userIds: [] } }]);
     renderApp('/admin/skills');
     expect(await screen.findByText('Отделы: Отдел продаж')).toBeInTheDocument();
-    expect(screen.getByText(/pandas, openpyxl/)).toBeInTheDocument();
+    expect(screen.getByText(/Программы: LibreOffice, pandoc/)).toBeInTheDocument();
+    expect(screen.getByText(/Библиотеки Python: pandas, openpyxl/)).toBeInTheDocument();
+    expect(screen.getByText(/Пакеты Node: docx, pptxgenjs/)).toBeInTheDocument();
+  });
+
+  it('shows a system skill as built into the core: no switch, no actions, for the whole organisation', async () => {
+    server();
+    renderApp('/admin/skills');
+    // The card: the head of the skill and what follows it.
+    const card = (await screen.findByText('Документы Word')).closest('[data-skill]')!.parentElement!;
+    expect(within(card).getByText('Системный')).toBeInTheDocument();
+    expect(within(card).getByText('Вся организация')).toBeInTheDocument();
+    expect(within(card).getByText(/Встроен в ядро/)).toBeInTheDocument();
+    expect(within(card).queryByRole('switch')).toBeNull();
+    expect(within(card).queryByRole('button', { name: /Действия/ })).toBeNull();
+    // The skill uploaded by the admin keeps its switch and actions.
+    expect(screen.getByRole('switch', { name: 'Проверка договора' })).toBeInTheDocument();
+  });
+
+  it('says there are no own skills yet while the system ones are there', async () => {
+    server([SYSTEM]);
+    renderApp('/admin/skills');
+    expect(await screen.findByText('Документы Word')).toBeInTheDocument();
+    expect(screen.getByText('Своих скиллов пока нет')).toBeInTheDocument();
   });
 });

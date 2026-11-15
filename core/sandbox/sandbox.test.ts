@@ -12,15 +12,16 @@ import type { AgentRuntime } from '../loader/registry.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter } from './limiter.ts';
 import { contextRoot } from '../workspace/layout.ts';
+import { findSandboxGaps } from './environment.ts';
 import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-// «Чтение документов» as the run of an employee gets it: the folder of one skill.
-const SKILL = join(ROOT, 'skills/read-documents');
+// A skill of the company as the run of an employee gets it: the folder of one skill.
+const SKILL = join(ROOT, 'skills/note-taking');
 const VENV = join(ROOT, '.venv-skills');
-const SCRIPTS = join(SKILL, 'scripts');
 let workspaceRoot: string;
 let model: FakeModel;
 let agent: Agent;
@@ -126,7 +127,8 @@ afterAll(async () => {
 });
 
 describe('sandbox', () => {
-  it('reads PDF, Word and Excel with the skill scripts inside the employee’s folder', async () => {
+  // The ways the document skills read files (spec, section 8.18), inside the employee's folder.
+  it('reads PDF, Word and Excel the way the document skills do, inside the employee’s folder', async () => {
     const dir = contextRoot(workspaceRoot, 'olga', null);
     writeFileSync(join(dir, 'invoice.pdf'), pdfWithText('Invoice total 98765'));
     execFileSync(join(VENV, 'bin/python'), ['-c', `
@@ -134,9 +136,10 @@ from docx import Document; d=Document(); d.add_paragraph('Договор пос�
 from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.append(['Поставщик','Сумма']); s.append(['Альфа-Строй', 120000]); w.save('${dir}/prices.xlsx')
 `]);
     const cases: [string, string[]][] = [
-      [`python3 "${SCRIPTS}"/read_pdf.py invoice.pdf`, ['Страница 1', 'Invoice total 98765']],
-      [`python3 "${SCRIPTS}"/read_docx.py contract.docx`, ['Договор поставки №17', '| Бетон | 4500 |']],
-      [`python3 "${SCRIPTS}"/read_xlsx.py prices.xlsx`, ['Лист «Цены»', '| Альфа-Строй | 120000 |']],
+      ['pdftotext -layout invoice.pdf -', ['Invoice total 98765']],
+      [`python -c "import pdfplumber; print(pdfplumber.open('invoice.pdf').pages[0].extract_text())"`, ['Invoice total 98765']],
+      ['pandoc contract.docx -t markdown', ['Договор поставки №17', 'Бетон', '4500']],
+      ['markitdown prices.xlsx', ['## Цены', 'Альфа-Строй', '120000']],
     ];
     for (const [cmd, expected] of cases) {
       model.script(command(cmd), { text: 'Готово.' });
@@ -146,29 +149,76 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
     }
   });
 
+  // Spec, section 8.18: what the system skills of documents run is there and works in the isolation.
+  it('has the whole environment of the document skills on this machine', () => {
+    expect(findSandboxGaps(VENV)).toEqual({ programs: [], python: [], node: [], ocrLanguages: [] });
+  });
+
+  it('runs LibreOffice, pandoc, poppler, tesseract, the Python libraries and the Node packages inside the isolation', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    execFileSync(join(VENV, 'bin/python'), ['-c', `
+from docx import Document; d=Document(); d.add_paragraph('Договор поставки №17'); d.save('${dir}/env.docx')
+from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1']); w.save('${dir}/env.xlsx')
+`]);
+    const cases: [string, string][] = [
+      // The file must be there, not only named in an error of ls.
+      ['soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to pdf env.docx >/dev/null 2>&1; test -s env.pdf && echo converted-docx', 'converted-docx'],
+      ['pandoc env.docx -t plain', 'Договор поставки №17'],
+      ['pdftoppm -png -r 40 -f 1 -l 1 env.pdf env-page && ls env-page*', 'env-page-1.png'],
+      ['tesseract --list-langs', 'rus'],
+      // LibreOffice computes the formula openpyxl only wrote down.
+      [`mkdir -p calc && soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to xlsx --outdir calc env.xlsx >/dev/null 2>&1; python -c "from openpyxl import load_workbook; print('value', load_workbook('calc/env.xlsx', data_only=True).active['C1'].value)"`, 'value 6'],
+      [`python -c "import pptx, pandas, pdfplumber, reportlab, defusedxml, pdf2image, pytesseract, markitdown; print('python-ok')"`, 'python-ok'],
+      [`node -e "require('docx'); require('pptxgenjs'); require('sharp'); require('react-icons/fa'); require('react-dom/server'); console.log('node-ok')"`, 'node-ok'],
+    ];
+    for (const [cmd, expected] of cases) {
+      model.script(command(cmd), { text: 'Готово.' });
+      await runAs('olga');
+      expect(lastToolOutput(), cmd).toContain(expected);
+    }
+    // Caches and settings of the programs stay in the command's /tmp, not in the employee's files.
+    expect(existsSync(join(dir, '.cache'))).toBe(false);
+    expect(existsSync(join(dir, '.config'))).toBe(false);
+  }, 120_000);
+
+  it('offers the agent the system skills of documents with their folders, and their scripts run in the isolation', async () => {
+    const system = ['docx', 'pptx', 'xlsx', 'pdf'].map((n) => join(SYSTEM_SKILLS_DIR, n));
+    model.script({ text: 'Ок.' });
+    await runAs('olga', undefined, system);
+    const prompt = JSON.stringify(model.requests.at(-1)!.messages.filter((m) => m.role === 'system'));
+    for (const dir of system) expect(prompt).toContain(dir);
+
+    // The wrapper of LibreOffice the instructions of the skills call (scripts/office/soffice.py).
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    execFileSync(join(VENV, 'bin/python'), ['-c', `from docx import Document; d=Document(); d.add_paragraph('КП'); d.save('${dir}/kp.docx')`]);
+    model.script(command(`python "${join(SYSTEM_SKILLS_DIR, 'docx')}/scripts/office/soffice.py" --headless --convert-to pdf kp.docx >/dev/null 2>&1; test -s kp.pdf && echo converted-kp`), { text: 'Готово.' });
+    await runAs('olga', undefined, system);
+    expect(lastToolOutput()).toContain('converted-kp');
+  }, 60_000);
+
   // V14: the skills of a run are the employee's own set (core/skills-admin/runtime.ts).
   it('V14: a skill not given to the employee is neither offered, nor read, nor run', async () => {
     const system = () => JSON.stringify(model.requests.at(-1)!.messages.filter((m) => m.role === 'system'));
     model.script({ text: 'Ок.' });
     await runAs('olga');
-    expect(system()).toContain('read-documents');
+    expect(system()).toContain('note-taking');
 
     model.script({ text: 'Ок.' });
     await runAs('petr', undefined, []);
-    expect(system()).not.toContain('read-documents');
-    model.script({ toolCalls: [{ name: 'skill', args: { name: 'read-documents' } }] }, { text: 'Ок.' });
+    expect(system()).not.toContain('note-taking');
+    model.script({ toolCalls: [{ name: 'skill', args: { name: 'note-taking' } }] }, { text: 'Ок.' });
     await runAs('petr', undefined, []);
-    expect(lastToolOutput()).not.toContain('Чтение документов');
-    model.script({ toolCalls: [{ name: 'skill_read', args: { skillName: 'read-documents', path: 'SKILL.md' } }] }, { text: 'Ок.' });
+    expect(lastToolOutput()).not.toContain('Заметки сотрудника');
+    model.script({ toolCalls: [{ name: 'skill_read', args: { skillName: 'note-taking', path: 'SKILL.md' } }] }, { text: 'Ок.' });
     await runAs('petr', undefined, []);
-    expect(lastToolOutput()).not.toContain('Чтение документов');
+    expect(lastToolOutput()).not.toContain('Заметки сотрудника');
     model.script(command(`cat "${SKILL}/SKILL.md"`), { text: 'Ок.' });
     await runAs('petr', undefined, []);
     expect(lastToolOutput()).toContain('No such file');
 
     model.script(command(`cat "${SKILL}/SKILL.md"`), { text: 'Ок.' });
     await runAs('olga');
-    expect(lastToolOutput()).toContain('Чтение документов');
+    expect(lastToolOutput()).toContain('Заметки сотрудника');
   });
 
   it('keeps other employees’ folders, the app’s secrets, the network and the code out of reach', async () => {
@@ -190,14 +240,48 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
   it('shows the model a scanned page: render it, then view_image puts the picture into the next request', async () => {
     const dir = contextRoot(workspaceRoot, 'olga', null);
     writeFileSync(join(dir, 'scan.pdf'), pdfWithText(null));
-    model.script(command(`python3 "${SCRIPTS}"/read_pdf.py scan.pdf`), { text: 'Похоже на скан.' });
+    model.script(command('pdftotext scan.pdf - | wc -w'), { text: 'Текста нет — похоже на скан.' });
     await runAs('olga');
-    expect(lastToolOutput()).toContain('похожа на скан');
+    expect(lastToolOutput()).toMatch(/\b0\b/);
 
-    model.script(command(`python3 "${SCRIPTS}"/render_pdf_page.py scan.pdf 1`), { toolCalls: [{ name: 'view_image', args: { path: '.renders/scan-p1.png' } }] }, { text: 'Вижу пустую страницу.' });
+    model.script(command('mkdir -p .renders && pdftoppm -png -r 50 -f 1 -l 1 scan.pdf .renders/scan'), { toolCalls: [{ name: 'view_image', args: { path: '.renders/scan-1.png' } }] }, { text: 'Вижу пустую страницу.' });
     await runAs('olga');
     const last = JSON.stringify(model.requests.at(-1)!.messages);
     expect(last).toContain('data:image/png;base64,');
+  });
+
+  // Spec, section 8.18: the file block of the chat with «Скачать».
+  it('shows the employee a ready file of the folder with show_file, and refuses what is not a file there', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    mkdirSync(join(dir, 'черновики'), { recursive: true });
+    writeFileSync(join(dir, 'КП «Ёлка».docx'), 'DOCX');
+    const other = contextRoot(workspaceRoot, 'igor', null);
+    writeFileSync(join(other, 'чужой.docx'), 'X');
+    const show = (path: string) => ({ toolCalls: [{ name: 'show_file', args: { path } }] });
+
+    for (const path of ['КП «Ёлка».docx', join(dir, 'КП «Ёлка».docx')]) {
+      model.script(show(path), { text: 'Готово.' });
+      await runAs('olga');
+      // The tool result comes as JSON inside the JSON of the message.
+      expect(lastToolOutput()).toContain('\\"shown\\":true');
+      expect(lastToolOutput()).toContain('\\"path\\":\\"КП «Ёлка».docx\\"');
+      expect(lastToolOutput()).toContain('\\"bytes\\":4');
+    }
+    for (const path of ['нет.docx', 'черновики', join(other, 'чужой.docx'), '../igor/files/чужой.docx']) {
+      model.script(show(path), { text: 'Ок.' });
+      await runAs('olga');
+      expect(lastToolOutput(), path).toContain('\\"shown\\":false');
+      expect(lastToolOutput(), path).toContain('Сохрани файл в рабочую папку');
+    }
+  });
+
+  it('opens a picture by its absolute path inside the folder, as the document skills pass it', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    mkdirSync(join(dir, 'слайды'), { recursive: true });
+    writeFileSync(join(dir, 'слайды', 'slide-1.png'), png(32));
+    model.script({ toolCalls: [{ name: 'view_image', args: { path: join(dir, 'слайды', 'slide-1.png') } }] }, { text: 'Вижу слайд.' });
+    await runAs('olga');
+    expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain('data:image/png;base64,');
   });
 
   it('gives the model the picture attached to the message with the message itself', async () => {
@@ -222,7 +306,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
     expect(lastToolOutput()).not.toContain('iVBORw0KGgo');
     model.script(readFile({ path: 'files/счёт.pdf', encoding: 'base64' }), { text: 'Ок.' });
     await runAs('olga');
-    expect(lastToolOutput()).toContain('Чтение документов');
+    expect(lastToolOutput()).toContain('скиллами pdf, docx, xlsx и pptx');
     expect(lastToolOutput()).not.toContain('JVBERi0');
   });
 });

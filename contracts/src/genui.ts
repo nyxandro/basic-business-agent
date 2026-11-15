@@ -71,8 +71,17 @@ export const GENUI_TOOL = {
   card: 'show_card',
   choice: 'ask_choice',
   form: 'ask_form',
+  // A file the agent made in the folder of the conversation, with «Скачать» (spec, section 8.18).
+  file: 'show_file',
 } as const;
 export const GENUI_TOOL_IDS: readonly string[] = Object.values(GENUI_TOOL);
+
+// What show_file answers: the file is there (path from the folder of the conversation), or why not.
+export const fileBlockResultSchema = z.discriminatedUnion('shown', [
+  z.object({ shown: z.literal(true), path: z.string(), name: z.string(), bytes: z.number() }),
+  z.object({ shown: z.literal(false), error: z.string() }),
+]);
+export type FileBlockResult = z.infer<typeof fileBlockResultSchema>;
 
 // A plugin tool whose result has this shape gets its table drawn in the chat as is.
 export const toolTableResultSchema = z.object({ table: tableBlockSchema });

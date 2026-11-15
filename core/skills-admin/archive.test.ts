@@ -6,7 +6,8 @@ import { zipSync, type Zippable } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { packSkill, readSkillArchive, writeSkillFiles } from './archive.ts';
 
-const READ_DOCUMENTS = fileURLToPath(new URL('../../skills/read-documents', import.meta.url));
+// A real skill with scripts: the PDF skill of the core (spec, section 8.18).
+const PDF = fileURLToPath(new URL('../system-skills/pdf', import.meta.url));
 const SKILLS = fileURLToPath(new URL('../../skills', import.meta.url));
 const text = (s: string) => new TextEncoder().encode(s);
 const skillMd = (name = 'notes', heading = '# Заметки') => text(`---\nname: ${name}\ndescription: >\n  Ведёт заметки\n  сотрудника\n---\n\n${heading}\n\nТекст.\n`);
@@ -21,11 +22,11 @@ const refusal = (archive: Uint8Array) => {
 };
 
 describe('the .skill archive', () => {
-  it('reads «Чтение документов»: name, title from the heading, description, scripts', () => {
-    const pkg = readSkillArchive(packSkill(READ_DOCUMENTS));
-    expect(pkg).toMatchObject({ name: 'read-documents', title: 'Чтение документов', hasScripts: true });
+  it('reads a skill folder: name, title from the heading, description, scripts', () => {
+    const pkg = readSkillArchive(packSkill(PDF));
+    expect(pkg).toMatchObject({ name: 'pdf', title: 'PDF Processing Guide', hasScripts: true });
     expect(pkg.description).toContain('PDF');
-    expect([...pkg.files.keys()]).toEqual(expect.arrayContaining(['SKILL.md', 'scripts/read_pdf.py', 'scripts/render_pdf_page.py']));
+    expect([...pkg.files.keys()]).toEqual(expect.arrayContaining(['SKILL.md', 'LICENSE.txt', 'scripts/fill_fillable_fields.py']));
   });
 
   it('keeps every packed file of the repository equal to its sources (pnpm skills:pack)', () => {
@@ -86,9 +87,9 @@ describe('the .skill archive', () => {
   it('writes the files of a skill into its folder', () => {
     const root = mkdtempSync(join(tmpdir(), 'bba-skill-'));
     try {
-      const pkg = readSkillArchive(packSkill(READ_DOCUMENTS));
-      writeSkillFiles(pkg.files, join(root, 'read-documents', pkg.sha256));
-      expect(readFileSync(join(root, 'read-documents', pkg.sha256, 'scripts', 'read_pdf.py'), 'utf8')).toContain('pypdf');
+      const pkg = readSkillArchive(packSkill(PDF));
+      writeSkillFiles(pkg.files, join(root, 'pdf', pkg.sha256));
+      expect(readFileSync(join(root, 'pdf', pkg.sha256, 'scripts', 'fill_fillable_fields.py'), 'utf8')).toContain('pypdf');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

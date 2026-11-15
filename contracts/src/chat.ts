@@ -28,9 +28,10 @@ export interface AgentListResponse {
   agents: AgentSummary[];
 }
 
-// Attachments of a conversation (spec, section 7): what the skills read, and the size limit.
+// Attachments of a conversation (spec, sections 7 and 8.18): what the skills read, and the size
+// limit. The old .doc, .xls and .ppt are turned into the new formats by the document skills.
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export const UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.csv', '.txt', '.png', '.jpg', '.jpeg'] as const;
+export const UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.csv', '.txt', '.png', '.jpg', '.jpeg'] as const;
 
 export interface UploadedFile {
   path: string;

@@ -8,6 +8,8 @@ import { BrokenData } from './BrokenData.tsx';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, Preparing, type CallProps } from './CatalogBlock.tsx';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
+import { FileCall } from './FileBlock.tsx';
+import { useChatExtras } from '../chat/chat-context.ts';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
 
@@ -49,6 +51,11 @@ function Form({ call }: { call: CallProps }) {
   return <FormBlockView block={parsed.data} answered={answered} onAnswer={send} />;
 }
 
+// The file block needs the conversation: «Скачать» takes the file from its folder.
+function File({ call }: { call: CallProps }) {
+  return <FileCall call={call} threadId={useChatExtras().threadId} />;
+}
+
 export function useGenuiRenderers(agent: AgentSummary): void {
   useRenderTool({ name: GENUI_TOOL.table, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={modelTableBlockSchema} View={TableBlockView} /> }, []);
   useRenderTool(
@@ -66,6 +73,7 @@ export function useGenuiRenderers(agent: AgentSummary): void {
   useRenderTool({ name: GENUI_TOOL.card, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={cardBlockSchema} View={CardBlockView} /> }, []);
   useRenderTool({ name: GENUI_TOOL.choice, parameters: anyArgs, render: (call) => <Choice call={call} /> }, []);
   useRenderTool({ name: GENUI_TOOL.form, parameters: anyArgs, render: (call) => <Form call={call} /> }, []);
+  useRenderTool({ name: GENUI_TOOL.file, parameters: anyArgs, render: (call) => <File call={call} /> }, []);
   useRenderTool(
     {
       name: '*',
