@@ -37,6 +37,8 @@ export const ERROR_CATALOG = {
   APP_PROJECT_OWNER_ONLY: { status: 403, userMessage: 'Это может только создатель проекта.' },
   APP_PROJECT_ARCHIVED: { status: 409, userMessage: 'Проект в архиве. Верните его, чтобы что-то изменить.' },
   APP_PROJECT_ACCESS_LOST: { status: 404, userMessage: 'Файл лежит в проекте, к которому у вас больше нет доступа.' },
+  APP_FILE_IN_TRASH: { status: 404, userMessage: 'Файл удалён из рабочей папки и лежит в корзине проекта.' },
+  APP_FILE_DELETED: { status: 404, userMessage: 'Файл удалён из рабочей папки — скачать его нельзя.' },
   APP_PROJECT_DELETE_TOO_EARLY: { status: 409, userMessage: 'Удалить проект навсегда можно только через 30 дней после переноса в архив.' },
   APP_ADMIN_DELETE_PARTIAL: {
     status: 500,

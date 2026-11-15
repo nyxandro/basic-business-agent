@@ -1,5 +1,6 @@
 // Start of the server: read the environment, load and validate the installation, migrate, serve.
 // Any configuration problem stops the start with APP_CONFIG_INVALID and the list of files and fields.
+import { recoverProjectFolders, startTrashPurge } from '../projects/trash.ts';
 import { serve } from '@hono/node-server';
 import { fileURLToPath } from 'node:url';
 import { createAuth } from '../auth/auth.ts';
@@ -83,12 +84,15 @@ async function main(): Promise<void> {
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR });
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
   await background.syncSchedules();
+  // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
+  await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);
+  const stopTrashPurge = startTrashPurge(db, env.APP_WORKSPACE_DIR);
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
@@ -105,6 +109,7 @@ async function main(): Promise<void> {
     logEvent('info', 'server_stopping', { signal });
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
+    stopTrashPurge();
     await mastra.stopWorkers();
     await connections.close();
     server.close();

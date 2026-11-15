@@ -22,7 +22,8 @@ import { ensureThread } from '../memory/memory.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels } from '../models/resolve.ts';
 import { runProjectOf, runProjectOfWaitingAnswer } from '../projects/access.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { settleSnapshot, takeSnapshot } from '../projects/trash.ts';
+import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
@@ -61,6 +62,8 @@ export interface BackgroundDeps {
   editor: EditorDeps;
   timezone: string;
   skills: Pick<SkillsRuntime, 'skillsFor'>;
+  // Employees' folders: what a run removes from a project goes into its trash (spec, section 8.20).
+  workspaceRoot: string;
 }
 
 export interface BackgroundService {
@@ -131,6 +134,21 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     return rc;
   }
 
+  // A run in a project: its files are remembered before it, and what it removes goes into the trash
+  // after it, whatever way it ends (spec, section 8.20).
+  async function inProjectSnapshot<T>(rc: RequestContext, userId: string, threadId: string, work: () => Promise<T>): Promise<T> {
+    const projectId = optionalContextValue(rc, REQUEST_KEYS.projectId);
+    const ownerId = optionalContextValue(rc, REQUEST_KEYS.projectOwnerId);
+    if (!projectId || !ownerId) return work();
+    const snapshot = takeSnapshot(deps.workspaceRoot, { projectId, ownerId, userId, threadId });
+    rc.set(REQUEST_KEYS.projectSnapshot, snapshot.id);
+    try {
+      return await work();
+    } finally {
+      await settleSnapshot(db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId, error }));
+    }
+  }
+
   // Only the mark: Mastra merges it under a row lock and keeps a name the person gave meanwhile.
   async function markUnread(threadId: string): Promise<void> {
     const thread = await memory.getThreadById({ threadId });
@@ -165,12 +183,15 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       const agent = await resolveAgent(deps.editor, row.agent_id, 'published');
       const requestContext = await contextFor(row, threadId, userId);
       await writeJournal(db, { ...journalBase, event: 'background_started', result: 'started' });
-      const stream = await agent.stream(row.prompt, { memory: { thread: threadId, resource: userId }, requestContext });
-      let awaiting = false;
-      for await (const part of stream.fullStream) {
-        if (part.type === 'tool-call-approval') awaiting = true;
-        if (part.type === 'error') throw (part.payload as { error: unknown }).error;
-      }
+      const awaiting = await inProjectSnapshot(requestContext, userId, threadId, async () => {
+        const stream = await agent.stream(row.prompt, { memory: { thread: threadId, resource: userId }, requestContext });
+        let waits = false;
+        for await (const part of stream.fullStream) {
+          if (part.type === 'tool-call-approval') waits = true;
+          if (part.type === 'error') throw (part.payload as { error: unknown }).error;
+        }
+        return waits;
+      });
       await markUnread(threadId);
       await writeJournal(db, { ...journalBase, event: 'background_finished', result: 'ok' });
       return { outcome: awaiting ? 'awaiting-approval' : 'done', code: null };
@@ -212,11 +233,14 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
     const row = { id: approval.taskId, agent_id: approval.agentId };
     const agent = await resolveAgent(deps.editor, approval.agentId, 'published');
-    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.threadId, approval.userId, approval) };
-    const stream = approved ? await agent.approveToolCall(options) : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
-    for await (const part of stream.fullStream) {
-      if (part.type === 'error') throw (part.payload as { error: unknown }).error;
-    }
+    const requestContext = await contextFor(row, approval.threadId, approval.userId, approval);
+    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext };
+    await inProjectSnapshot(requestContext, approval.userId, approval.threadId, async () => {
+      const stream = approved ? await agent.approveToolCall(options) : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
+      for await (const part of stream.fullStream) {
+        if (part.type === 'error') throw (part.payload as { error: unknown }).error;
+      }
+    });
     await markUnread(approval.threadId);
   }
 

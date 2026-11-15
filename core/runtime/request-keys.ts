@@ -16,6 +16,8 @@ export const REQUEST_KEYS = {
   projectOwnerId: 'bba.projectOwnerId',
   // JSON { name, reason }: the conversation's project is closed to the person, archived or removed.
   lostProject: 'bba.lostProject',
+  // The id of the snapshot of the project's files taken before this answer (core/projects/trash.ts).
+  projectSnapshot: 'bba.projectSnapshot',
   // Folders of the skills the employee gets (core/skills-admin/runtime.ts), JSON: fixed for the run,
   // so a skill replaced meanwhile does not change under a running answer.
   skillPaths: 'bba.skillPaths',

@@ -228,7 +228,7 @@ export async function createTestApp(
       : {}),
   });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills, workspaceRoot });
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };

@@ -15,6 +15,7 @@ import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
+import { keepBeforeWrite } from '../projects/trash.ts';
 import { contextRoot, existingInside, openFileInside } from '../workspace/layout.ts';
 import { sandboxOptions } from './environment.ts';
 import type { Limiter } from './limiter.ts';
@@ -101,9 +102,31 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
     tools: {
       // Without media parts a picture or a PDF read with read_file is only described, not sent.
       [WORKSPACE_TOOLS.FILESYSTEM.READ_FILE]: { mediaTypes: false },
-      hooks: { beforeToolCall: keepBytesOutOfReadFile },
+      hooks: { beforeToolCall: (ctx) => keepBytesOutOfReadFile(ctx) ?? keepPreviousVersion(deps.workspaceRoot, ctx) },
     },
   });
+}
+
+// The agent's own tools write a file in place: in a project, the file as it was before this answer
+// is copied into the answer's snapshot first, so its previous version reaches the trash (spec, 8.20).
+const PATCH_FILE = /^\*\*\* (?:Update|Delete) File: (.+)$/gm;
+
+function pathsWritten(tool: string, input: unknown): string[] {
+  const { path, patch } = (input ?? {}) as { path?: unknown; patch?: unknown };
+  if ([WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE, WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE, WORKSPACE_TOOLS.FILESYSTEM.AST_EDIT].includes(tool as never)) return typeof path === 'string' ? [path] : [];
+  if (tool === WORKSPACE_TOOLS.FILESYSTEM.APPLY_PATCH && typeof patch === 'string') return [...patch.matchAll(PATCH_FILE)].map((m) => m[1]!.trim());
+  return [];
+}
+
+function keepPreviousVersion(workspaceRoot: string, { workspaceToolName, input, context }: WorkspaceToolHookContext): undefined {
+  const paths = pathsWritten(workspaceToolName, input);
+  if (paths.length === 0) return undefined;
+  const ctx = (context as { requestContext?: Ctx } | undefined)?.requestContext;
+  const id = optionalContextValue(ctx, REQUEST_KEYS.projectSnapshot);
+  const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
+  const ownerId = optionalContextValue(ctx, REQUEST_KEYS.projectOwnerId);
+  if (id && projectId && ownerId) keepBeforeWrite(workspaceRoot, { id, projectId, ownerId }, paths);
+  return undefined;
 }
 
 function keepBytesOutOfReadFile({ workspaceToolName, input }: WorkspaceToolHookContext): void | { proceed: false; output: string } {

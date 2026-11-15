@@ -22,7 +22,8 @@ export function userRoot(workspaceRoot: string, userId: string): string {
   return join(workspaceRoot, userId);
 }
 
-function projectRoot(workspaceRoot: string, userId: string, projectId: string): string {
+// The folder of a project — its files, trash and working snapshots — with the project's creator.
+export function projectRoot(workspaceRoot: string, userId: string, projectId: string): string {
   if (!SAFE_PROJECT_ID.test(projectId)) throw new Error(`unsafe project id for a workspace path: ${projectId}`);
   return join(userRoot(workspaceRoot, userId), 'projects', projectId);
 }
@@ -40,7 +41,7 @@ export function safeFileName(name: string): string {
   return base.slice(-MAX_NAME_LENGTH) || 'file';
 }
 
-function freeName(dir: string, name: string): string {
+export function freeName(dir: string, name: string): string {
   if (!existsSync(join(dir, name))) return name;
   const ext = extname(name);
   const stem = name.slice(0, name.length - ext.length);
@@ -156,6 +157,12 @@ function openChecked(dir: string, real: string, flags: number, again: () => stri
   }
 }
 
+// There is a regular file at this path of `dir` (a link inside it to one counts).
+export function isFileInside(dir: string, path: string): boolean {
+  const real = existingInside(dir, path);
+  return real !== null && statSync(real).isFile();
+}
+
 // A regular file of `dir` opened for reading, or null when there is none (a folder, a pipe, nothing).
 // Opened without waiting: a pipe put in place of a file would otherwise hang the server.
 export function openFileInside(dir: string, path: string): { fd: number; size: number } | null {
@@ -167,6 +174,34 @@ export function openFileInside(dir: string, path: string): { fd: number; size: n
   if (stat.isFile()) return { fd, size: stat.size };
   closeSync(fd);
   return null;
+}
+
+// Moves a regular file of `dir` to `dest` (outside it, on the same disk) — into the project's trash
+// (spec, section 8.20). Null when there is no regular file; a link is not moved (the caller removes
+// it). Like removeFileInside, the entry is taken from the folder that was opened and checked.
+export function moveFileOutOf(dir: string, path: string, dest: string): { bytes: number } | null {
+  const full = resolveInside(dir, path);
+  const parentPath = relative(dir, dirname(full));
+  const parentOf = () => (parentPath === '' ? realpathSync(dir) : existingInside(dir, parentPath));
+  const parent = parentOf();
+  if (!parent) return null;
+  const fd = openChecked(dir, parent, constants.O_RDONLY | constants.O_DIRECTORY, parentOf, true);
+  if (fd === null) return null;
+  try {
+    const entry = join(process.platform === 'linux' ? `/proc/self/fd/${fd}` : parent, basename(full));
+    const stat = lstatSync(entry, { throwIfNoEntry: false });
+    if (!stat?.isFile()) return null;
+    mkdirSync(dirname(dest), { recursive: true });
+    try {
+      renameSync(entry, dest);
+    } catch (error) {
+      if (noFile(error)) return null;
+      throw error;
+    }
+    return { bytes: stat.size };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // Removes a file of `dir` (a link — the link itself); false when there is no file. The entry is

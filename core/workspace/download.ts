@@ -26,11 +26,11 @@ const CONTENT_TYPES: Record<string, string> = {
 const OTHER = 'application/octet-stream';
 
 // `missing`: what the person reads when there is no such file (it was removed, or the folder changed).
-export function fileDownload(dir: string, path: string, missing: string): Response {
+// `name`: the name the person gets — by default the one in the folder (a link inside it keeps its own
+// name); a file of the trash lies under its id and is given under the name it had.
+export function fileDownload(dir: string, path: string, missing: string, name: string = basename(resolveInside(dir, path))): Response {
   const file = openFileInside(dir, path);
   if (!file) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
-  // The name the person sees is the one in the folder (a link inside it keeps its own name).
-  const name = basename(resolveInside(dir, path));
   // Streamed from the opened file: a big file does not fill the memory of the server.
   const body = Readable.toWeb(createReadStream('', { fd: file.fd, autoClose: true })) as ReadableStream<Uint8Array>;
   return new Response(body, {

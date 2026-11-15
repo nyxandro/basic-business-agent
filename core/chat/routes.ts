@@ -1,6 +1,7 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
-import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse } from '@bba/contracts';
+import { basename, relative } from 'node:path';
+import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -12,10 +13,11 @@ import { threadProjectState, type ThreadProjectState } from '../projects/access.
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileDownload } from '../workspace/download.ts';
-import { contextRoot, existingInside, saveFile } from '../workspace/layout.ts';
+import { contextRoot, isFileInside, resolveInside, saveFile } from '../workspace/layout.ts';
+import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
-import { assertAgentOpen, assertNewTurnAllowed, newMessageOf, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
+import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, prepareRun, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
@@ -37,6 +39,11 @@ const LOST_FILE_TEXT = {
   archived: (name: string) => `Файл лежит в проекте «${name}», который перенесён в архив.`,
   deleted: (name: string) => `Файл был в проекте «${name}», а проект удалён.`,
 } as const;
+
+// «до 16 декабря» in the time zone of the installation.
+function dayMonth(date: Date, timezone: string): string {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: timezone }).format(date);
+}
 
 function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): AppError {
   return appError('APP_PROJECT_ACCESS_LOST', `file of a project gone for the person (${reason})`, { userMessage: LOST_FILE_TEXT[reason](name) });
@@ -131,14 +138,14 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
       const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));
       return wrapRunResponse(res, {
-        onEnd: () => releaseThread(run.threadId),
+        onEnd: () => endRun(deps, run),
         translate: (raw) => translate(a.userId, raw),
         afterStart,
         takeDiscarded: () => discarded.splice(0),
         title: naming ? { threadId: run.threadId, result: naming.result, waitAtEndMs: deps.naming.waitAtEndMs } : null,
       });
     } catch (error) {
-      releaseThread(run.threadId);
+      endRun(deps, run);
       throw error;
     }
   });
@@ -232,13 +239,34 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json(saveFile(folder, file.name, new Uint8Array(await file.arrayBuffer())), 201);
   });
 
-  // «Скачать» of the file block a file the agent made (spec, section 8.18). In a conversation whose
-  // project is gone for the person, a file of their own folder is still theirs; one of the project
-  // is not, and the person is told why.
+  // What «Скачать» of a file block will find (spec, sections 8.18 and 8.20): the file; or it was
+  // removed and lies in the project's trash (found by its exact path), or is gone; or it is a file of
+  // a project gone for the person — a file of their own folder in such a conversation is still theirs.
+  async function fileStatus(userId: string, threadId: string, path: string): Promise<ThreadFileStatus> {
+    const { state, folder } = await threadFolders(userId, threadId);
+    const full = resolveInside(folder, path);
+    const name = basename(full);
+    if (isFileInside(folder, path)) return { state: 'ok' };
+    if (state.state === 'lost') return { state: 'lost', name, projectName: state.name, reason: state.reason };
+    if (state.state === 'active') {
+      const trashed = await trashedAt(deps.db, state.project.id, relative(folder, full));
+      if (trashed) return { state: 'trash', name, projectId: state.project.id, trashId: trashed.id, expiresAt: trashed.expiresAt.toISOString() };
+    }
+    return { state: 'deleted', name };
+  }
+
+  app.get('/app/api/threads/:threadId/file/status', async (c) => c.json(await fileStatus(access(c).userId, c.req.param('threadId'), c.req.query('path') ?? '')));
+
+  // «Скачать» of the file block a file the agent made (spec, section 8.18).
   app.get('/app/api/threads/:threadId/file', async (c) => {
     const path = c.req.query('path') ?? '';
-    const { state, folder } = await threadFolders(access(c).userId, c.req.param('threadId'));
-    if (state.state === 'lost' && !existingInside(folder, path)) throw projectFileLost(state.name, state.reason);
-    return fileDownload(folder, path, 'Файл не найден. Возможно, его удалили или разговор перенесли в другой проект.');
+    const userId = access(c).userId;
+    const status = await fileStatus(userId, c.req.param('threadId'), path);
+    if (status.state === 'lost') throw projectFileLost(status.projectName, status.reason);
+    if (status.state === 'trash') {
+      throw appError('APP_FILE_IN_TRASH', 'the file was removed into the project trash', { userMessage: `Файл «${status.name}» удалён из рабочей папки. Он в корзине проекта до ${dayMonth(new Date(status.expiresAt), deps.timezone)}.` });
+    }
+    if (status.state === 'deleted') throw appError('APP_FILE_DELETED', 'the file is gone', { userMessage: `Файл «${status.name}» удалён из рабочей папки — скачать его нельзя.` });
+    return fileDownload((await threadFolders(userId, c.req.param('threadId'))).folder, path, `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`);
   });
 }

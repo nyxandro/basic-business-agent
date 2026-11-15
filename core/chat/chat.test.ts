@@ -371,7 +371,8 @@ describe('memory and attachments', () => {
     expect(await leak.text()).not.toContain(readFileSync('/etc/hostname', 'utf8').trim());
     const missing = await t.call('GET', url('нет.docx'), { cookie: olga });
     expect(missing.status).toBe(404);
-    expect(await missing.text()).toContain('Файл не найден');
+    // A file the person's own folder no longer has (spec, section 8.20): the chat says it was removed.
+    expect(await missing.json()).toEqual({ error: { code: 'APP_FILE_DELETED', message: 'Файл «нет.docx» удалён из рабочей папки — скачать его нельзя.' } });
 
     const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ёлка', access: { mode: 'private', departmentIds: [], userIds: [] } } })).json()) as { id: string };
     expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } })).status).toBe(200);

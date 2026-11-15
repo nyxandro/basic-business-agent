@@ -80,3 +80,31 @@ export interface ThreadProjectResponse {
   projectId: string | null;
   lost: { name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean } | null;
 }
+
+// The trash of a project (spec, section 8.20): what one person removed, or one answer of the agent.
+export interface TrashItemDto {
+  id: string;
+  path: string;
+  bytes: number;
+  kind: 'deleted' | 'previous_version';
+  expiresAt: string;
+}
+
+export interface TrashBatchDto {
+  id: string;
+  via: 'page' | 'agent';
+  // Null once the person is removed from the installation.
+  deletedBy: string | null;
+  deletedAt: string;
+  items: TrashItemDto[];
+}
+
+export const trashRestoreSchema = z.union([z.object({ ids: z.array(z.uuid()).min(1) }), z.object({ batchId: z.uuid() })]);
+export type TrashRestore = z.infer<typeof trashRestoreSchema>;
+
+// GET /app/api/threads/:threadId/file/status?path=: what «Скачать» of the chat will find.
+export type ThreadFileStatus =
+  | { state: 'ok' }
+  | { state: 'trash'; name: string; projectId: string; trashId: string; expiresAt: string }
+  | { state: 'deleted'; name: string }
+  | { state: 'lost'; name: string; projectName: string; reason: LostProjectReason };

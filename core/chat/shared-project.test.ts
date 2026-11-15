@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ProjectDto } from '@bba/contracts';
+import type { ProjectDto, TrashBatchDto } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FakeRequest } from '../models/fake-openai.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
@@ -145,5 +145,18 @@ describe('a colleague’s agent in a shared project', () => {
     await run(petr, threadId, 'Что с проектом?');
     expect(systemOf(next!)).not.toContain('# Проект «Письма»');
     expect(systemOf(next!)).toContain('Этот разговор был в проекте «Письма», но доступ к нему закрыт');
+  });
+  it('what the colleague’s agent removes with a command goes into the project’s trash', async () => {
+    const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Корзина', access: { mode: 'list', departmentIds: [], userIds: [petrId] } } });
+    const project = (await created.json()) as ProjectDto;
+    writeFileSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), 'смета.xlsx'), 'СМЕТА');
+    const threadId = randomUUID();
+    await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: petr, body: { projectId: project.id } });
+    t.model.script(tool('execute_command', { command: 'rm смета.xlsx' }), { text: 'Убрал лишнее.' });
+    expect(await run(petr, threadId, 'Убери лишнее из папки')).toBe('Убрал лишнее.');
+    // The trash is filled right after the answer ends.
+    const trash = async () => ((await (await t.call('GET', `/app/api/projects/${project.id}/trash`, { cookie: olga })).json()) as { batches: TrashBatchDto[] }).batches;
+    for (let i = 0; i < 50 && (await trash()).length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(await trash()).toMatchObject([{ via: 'agent', deletedBy: 'Пётр Иванов', items: [{ path: 'смета.xlsx', kind: 'deleted' }] }]);
   });
 });

@@ -15,6 +15,8 @@ import type { Registry } from '../loader/registry.ts';
 import { draftResourceId, ensureThread, titleFrom } from '../memory/memory.ts';
 import { runProjectOf, runProjectOfWaitingAnswer, type RunProject } from '../projects/access.ts';
 import { markSeen } from '../projects/projects.ts';
+import { logEvent } from '../server/log.ts';
+import { settleSnapshot, takeSnapshot, type ProjectSnapshot } from '../projects/trash.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
@@ -55,6 +57,8 @@ export interface PreparedRun {
   projectId: string | null;
   projectOwnerId: string | null;
   lostProject: RunProject['lostProject'];
+  // Files of the project remembered before the answer: what it removes goes into the trash.
+  snapshot: ProjectSnapshot | null;
   // The models of the run (core/models/resolve.ts); null where no model is called (agent listing).
   models: ModelChoice | null;
   // Folders of the skills the employee gets, fixed for the run.
@@ -76,6 +80,16 @@ const NO_PROJECT: RunProject = { projectId: null, projectOwnerId: null, lostProj
 
 export function releaseThread(threadId: string): void {
   busyThreads.delete(threadId);
+}
+
+// The answer ended, whatever way: the thread is free, and what it removed from its project goes into
+// the trash (spec, section 8.20). A failure of the trash is the server's to log, not the answer's.
+export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+  releaseThread(run.threadId);
+  if (!run.snapshot) return;
+  const snapshot = run.snapshot;
+  run.snapshot = null;
+  void settleSnapshot(deps.db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: snapshot.projectId, error }));
 }
 
 function threadBusy(threadId: string): AppError {
@@ -145,6 +159,7 @@ export function requestContextFor(run: PreparedRun): RequestContext {
     rc.set(REQUEST_KEYS.projectOwnerId, run.projectOwnerId);
   }
   if (run.lostProject) rc.set(REQUEST_KEYS.lostProject, JSON.stringify(run.lostProject));
+  if (run.snapshot && run.snapshot.projectId === run.projectId) rc.set(REQUEST_KEYS.projectSnapshot, run.snapshot.id);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(run.skillPaths));
   return rc;
 }
@@ -183,7 +198,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
   // Working in a project shared to the person takes its «новое» off.
@@ -197,6 +212,10 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     const call = parseInterrupt(resume?.interruptId);
     const agent = await resolveAgent(deps.editor, agentId, mode);
     const choose = () => chooseModels(deps.db, deps.timezone, run.userId, agentId);
+    // The project's files as they were before this answer, once its project is known.
+    const remember = () => {
+      if (run.projectId && run.projectOwnerId) run.snapshot = takeSnapshot(deps.workspaceRoot, { projectId: run.projectId, ownerId: run.projectOwnerId, userId: run.userId, threadId });
+    };
 
     if (call) {
       const pending = await findByCall(deps.db, run.userId, call.runId, call.toolCallId);
@@ -207,6 +226,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       if (pending.status !== 'pending') throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} is ${pending.status}`, { userMessage: 'По этому действию решение уже принято.' });
       // «Да» or «Нет» goes on with the answer that waited: it is finished in the project it began in.
       Object.assign(run, await runProjectOfWaitingAnswer(deps.db, pending.projectId));
+      remember();
       if (pending.expiresAt.getTime() < Date.now()) throw appError('APP_NOT_FOUND', `approval ${pending.id} expired`, { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
       const approved = resume?.status === 'resolved' && (resume.payload === true || (resume.payload as { approved?: unknown } | undefined)?.approved === true);
       if (!approved) {
@@ -229,10 +249,11 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     } else {
       await deps.gateway.assertWithinBudget(run.userId);
       run.models = await choose();
+      remember();
       for (const p of await cancelPending(deps, run, agent)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
     }
   } catch (error) {
-    busyThreads.delete(threadId);
+    endRun(deps, run);
     throw error;
   }
   return { ...run, declinedCalls };

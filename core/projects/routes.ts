@@ -1,15 +1,17 @@
 // Projects, their files and the list of conversations (spec, sections 8.12, 8.20 and 17.5). A project
 // is reached only through the rule of ./access.ts: one the person does not see is "not found".
-import { MAX_UPLOAD_BYTES, projectAccessInputSchema, projectCreateSchema, type ThreadProjectResponse } from '@bba/contracts';
+import { basename } from 'node:path';
+import { MAX_UPLOAD_BYTES, projectAccessInputSchema, projectCreateSchema, trashRestoreSchema, type ThreadProjectResponse } from '@bba/contracts';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { fileDownload } from '../workspace/download.ts';
-import { contextRoot, listFiles, removeFileInside, saveFile } from '../workspace/layout.ts';
+import { contextRoot, listFiles, saveFile } from '../workspace/layout.ts';
 import { requireActive, threadProjectState, visibleProject } from './access.ts';
 import { registerDirectoryRoutes } from './directory.ts';
+import { listTrash, restoreFromTrash, trashDir, trashFromPage, trashItem } from './trash.ts';
 import { createProject, deleteProject, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
@@ -87,7 +89,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   });
 
   app.post('/app/api/projects/:id/files', async (c) => {
-    const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id')));
+    const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner'));
     const file = await readUploadedFile(c);
     return c.json(saveFile(folderOf(project), file.name, new Uint8Array(await file.arrayBuffer())), 201);
   });
@@ -97,10 +99,32 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
     return fileDownload(folderOf(project), c.req.query('path') ?? '', 'Файл не найден.');
   });
 
+  // «Удалить» of the page: into the project's trash (spec, section 8.20).
   app.delete('/app/api/projects/:id/file', async (c) => {
-    const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id')));
-    if (!removeFileInside(folderOf(project), c.req.query('path') ?? '')) throw appError('APP_NOT_FOUND', 'no such project file', { userMessage: 'Файл не найден.' });
-    return c.json({ ok: true });
+    const userId = access(c).userId;
+    const project = requireActive(await visibleProject(deps.db, userId, c.req.param('id'), 'owner'));
+    const removed = await trashFromPage(deps.db, deps.workspaceRoot, project, c.req.query('path') ?? '', userId);
+    if (!removed) throw appError('APP_NOT_FOUND', 'no such project file', { userMessage: 'Файл не найден.' });
+    return c.json({ ok: true, trashId: removed.trashId });
+  });
+
+  // The trash is seen by everyone who sees the project; in the archive — by its creator, for reading.
+  app.get('/app/api/projects/:id/trash', async (c) => {
+    const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
+    return c.json({ batches: await listTrash(deps.db, project.id) });
+  });
+
+  app.post('/app/api/projects/:id/trash/restore', async (c) => {
+    const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner'));
+    const body = await parseJson(c, trashRestoreSchema);
+    return c.json({ restored: await restoreFromTrash(deps.db, deps.workspaceRoot, project, body) });
+  });
+
+  app.get('/app/api/projects/:id/trash/:trashId/file', async (c) => {
+    const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
+    const item = await trashItem(deps.db, project.id, c.req.param('trashId'));
+    if (!item) throw appError('APP_NOT_FOUND', 'no such trash item', { userMessage: 'Этого файла в корзине уже нет.' });
+    return fileDownload(trashDir(deps.workspaceRoot, project.user_id, project.id), item.id, 'Этого файла в корзине уже нет.', basename(item.path));
   });
 
   // The project of a conversation, also of one that has no messages yet (chosen beforehand), or why
