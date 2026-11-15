@@ -1,6 +1,7 @@
 // Criteria 1 and 5 of the spec (section 23) and the chat of step 17, in a browser.
 import { expect, test } from '@playwright/test';
 import { newConversation, openAgent, say, pageAs } from './helpers.ts';
+import { AFTER_ANSWER_AGAIN, AFTER_ONE_BREAK } from './stand-model.ts';
 
 test('an employee sees only the agents of their department', async ({ browser }) => {
   const page = await pageAs(browser, 'petr@example.com');
@@ -75,4 +76,39 @@ test('a reload keeps the conversation and the unsent text', async ({ browser }) 
   await page.reload();
   await expect(page.getByRole('cell', { name: 'Поставка бетона' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Сообщение агенту' })).toHaveValue('Черновик вопроса');
+});
+
+// Spec, section 9.1: the model breaks off mid-answer.
+test('a broken answer: a repeat makes it whole; one that stays broken keeps its error after a reload and is answered again', async ({ browser }) => {
+  const page = await pageAs(browser, 'olga@example.com');
+  await openAgent(page, 'Продажи');
+  await newConversation(page);
+  const id = Date.now();
+
+  await say(page, `Проверка: обрыв один раз ${id}`);
+  await expect(page.getByText(AFTER_ONE_BREAK)).toBeVisible();
+  await expect(page.getByText('Начинаю отвечать на вопрос')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ответить заново' })).toHaveCount(0);
+
+  const question = `Проверка: обрыв дважды ${id}`;
+  await say(page, question);
+  await expect(page.getByRole('alert')).toContainText('Модель сейчас не отвечает');
+  await expect(page.getByText('Ответ прервался')).toBeVisible();
+  // The words of the first broken attempt went off the screen; those of the second stay.
+  await expect(page.getByText('Начинаю отвечать на вопрос')).toHaveCount(1);
+
+  await page.reload();
+  await expect(page.getByRole('alert')).toContainText('APP_MODEL_UNAVAILABLE');
+  await expect(page.getByText('Ответ прервался')).toBeVisible();
+  await page.getByRole('button', { name: 'Ответить заново' }).click();
+  await expect(page.getByText(AFTER_ANSWER_AGAIN)).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByText('Ответ прервался')).toHaveCount(0);
+  await expect(page.getByText(question)).toHaveCount(1);
+
+  await page.reload();
+  await expect(page.getByText(AFTER_ANSWER_AGAIN)).toBeVisible();
+  await expect(page.getByText(question)).toHaveCount(1);
+  await expect(page.getByText('Ответ прервался')).toHaveCount(0);
 });

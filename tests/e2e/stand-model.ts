@@ -1,6 +1,6 @@
 // The stand-in model of the browser stand: answers by keywords of the last message, so every
-// block of the catalog and the confirmation card can be seen in a real browser.
-import type { FakeRequest, FakeTurn } from '../../core/models/fake-openai.ts';
+// block of the catalog, the confirmation card and an answer that broke can be seen in a real browser.
+import type { FakeRequest, FakeTurn, GatewayStreamError } from '../../core/models/fake-openai.ts';
 
 const TABLE = {
   title: 'Сделки без движения',
@@ -36,7 +36,28 @@ function textOf(content: unknown): string {
 
 const call = (name: string, args: Record<string, unknown>): FakeTurn => ({ toolCalls: [{ name, args }] });
 
-export function standModel(req: FakeRequest): FakeTurn {
+// What LiteLLM sends inside the stream when the provider goes away mid-answer (core/models/gateway.test.ts).
+const BREAK: GatewayStreamError = { message: 'litellm.APIConnectionError: APIConnectionError: GroqException - Connection closed.', type: 'internal_server_error', param: null, code: '500' };
+export const AFTER_ONE_BREAK = 'Ответ дошёл целиком, хотя модель один раз оборвала его.';
+export const AFTER_ANSWER_AGAIN = 'Ответ после «Ответить заново».';
+
+// A repeated model call sends the same request, so the attempts are counted by the question:
+// «обрыв один раз» breaks once (the server asks again and the answer arrives), «обрыв дважды»
+// breaks twice (the answer stays broken until «Ответить заново»).
+export function createStandModel(): (req: FakeRequest) => FakeTurn {
+  const attempts = new Map<string, number>();
+  return (req) => {
+    const question = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).toLowerCase();
+    const breaks = question.includes('обрыв один раз') ? 1 : question.includes('обрыв дважды') ? 2 : 0;
+    if (breaks === 0 || req.messages.at(-1)?.role === 'tool') return standModel(req);
+    const attempt = (attempts.get(question) ?? 0) + 1;
+    attempts.set(question, attempt);
+    if (attempt <= breaks) return { text: 'Начинаю отвечать на вопрос', chunkSize: 6, delayMs: 300, cut: BREAK };
+    return { text: breaks === 1 ? AFTER_ONE_BREAK : AFTER_ANSWER_AGAIN, chunkSize: 6, delayMs: 300 };
+  };
+}
+
+function standModel(req: FakeRequest): FakeTurn {
   const last = req.messages.at(-1);
   if (last?.role === 'tool') {
     const result = textOf(last.content);
