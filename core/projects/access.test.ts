@@ -180,6 +180,7 @@ describe('a colleague’s work in a shared project', () => {
     expect(await threadProject()).toEqual({ projectId: p.id, lost: null });
 
     // Removed for good: the colleague's conversation keeps the name; the creator's links go.
+    await t.db.query("UPDATE app.projects SET archived_at = now() - interval '31 days' WHERE id = $1", [p.id]);
     expect((await t.call('DELETE', `/app/api/projects/${p.id}`, { cookie: cookie.olga })).status).toBe(200);
     expect(await threadProject()).toEqual({ projectId: null, lost: { name: 'Совместный', reason: 'deleted', ownerName: null, canUnarchive: false } });
     expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: cookie.petr, body: { projectId: null } })).status).toBe(200);

@@ -108,3 +108,14 @@ export type ThreadFileStatus =
   | { state: 'trash'; name: string; projectId: string; trashId: string; expiresAt: string }
   | { state: 'deleted'; name: string }
   | { state: 'lost'; name: string; projectName: string; reason: LostProjectReason };
+
+// GET /app/api/projects/archive: the creator's archived projects (spec, section 8.20). A project is
+// removed for good only from the archive and not before `deletableFrom`.
+export interface ArchivedProjectDto {
+  id: string;
+  name: string;
+  archivedAt: string;
+  deletableFrom: string;
+  files: number;
+  shared: boolean;
+}

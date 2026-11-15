@@ -12,7 +12,7 @@ import { contextRoot, listFiles, saveFile } from '../workspace/layout.ts';
 import { requireActive, threadProjectState, visibleProject } from './access.ts';
 import { registerDirectoryRoutes } from './directory.ts';
 import { listTrash, restoreFromTrash, trashDir, trashFromPage, trashItem } from './trash.ts';
-import { createProject, deleteProject, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
+import { archiveProject, createProject, deleteProject, listArchive, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
 export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
@@ -57,6 +57,18 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   });
 
   // Opening the page takes «новое» off.
+  app.get('/app/api/projects/archive', async (c) => c.json({ projects: await listArchive(deps, access(c).userId) }));
+
+  app.post('/app/api/projects/:id/archive', async (c) => {
+    await archiveProject(deps, access(c).userId, c.req.param('id'), true);
+    return c.json({ ok: true });
+  });
+
+  app.post('/app/api/projects/:id/unarchive', async (c) => {
+    await archiveProject(deps, access(c).userId, c.req.param('id'), false);
+    return c.json({ ok: true });
+  });
+
   app.get('/app/api/projects/:id', async (c) => {
     const userId = access(c).userId;
     const project = await projectDto(deps, userId, c.req.param('id'));

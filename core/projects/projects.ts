@@ -3,7 +3,7 @@
 // Conversations are Mastra threads; their link to a project lives in app.thread_projects; the place of
 // a project in a person's side panel — in app.project_places.
 import { randomUUID } from 'node:crypto';
-import type { ProjectAccessInput, ProjectDto, ProjectListResponse, ThreadPage, ThreadSummaryDto } from '@bba/contracts';
+import type { ArchivedProjectDto, ProjectAccessInput, ProjectDto, ProjectListResponse, ThreadPage, ThreadSummaryDto } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
 import type pg from 'pg';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -11,7 +11,7 @@ import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { listOwnThreads } from '../memory/memory.ts';
 import { logEvent } from '../server/log.ts';
-import { removeProjectFolder } from '../workspace/layout.ts';
+import { contextRoot, listFiles, removeProjectFolder } from '../workspace/layout.ts';
 import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';
 import { checkAccess, describeAccess, writeAccess } from './sharing.ts';
 
@@ -227,10 +227,48 @@ export async function orderProjects(deps: Pick<ProjectsDeps, 'db'>, userId: stri
   );
 }
 
-// Removed for good: the creator's conversations stay, without a project; a colleague's conversation
-// keeps the project's name to say so above the input. Instructions, files and places go.
+// A project is not removed but archived (decision of the owner 16.11): gone from «Проекты» of everyone,
+// its conversations go on without it; its creator brings it back whole, or removes it for good once it
+// has been in the archive this long.
+export const PROJECT_ARCHIVE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export async function archiveProject(deps: Pick<ProjectsDeps, 'db'>, userId: string, projectId: string, archived: boolean): Promise<void> {
+  requireOwner(await visibleProject(deps.db, userId, projectId, 'owner'));
+  await deps.db.query(
+    archived ? 'UPDATE app.projects SET archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL' : 'UPDATE app.projects SET archived_at = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL',
+    [projectId],
+  );
+  logEvent('info', archived ? 'project_archived' : 'project_unarchived', { projectId, userId });
+}
+
+export async function listArchive(deps: ProjectsDeps, userId: string): Promise<ArchivedProjectDto[]> {
+  const { rows } = await deps.db.query<{ id: string; name: string; archived_at: Date; shared: boolean }>(
+    `SELECT p.id, p.name, p.archived_at, ${SHARED} AS shared FROM app.projects p WHERE p.user_id = $1 AND p.archived_at IS NOT NULL ORDER BY p.archived_at DESC, p.id`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    archivedAt: r.archived_at.toISOString(),
+    deletableFrom: new Date(r.archived_at.getTime() + PROJECT_ARCHIVE_DAYS * DAY_MS).toISOString(),
+    files: listFiles(contextRoot(deps.workspaceRoot, userId, r.id)).length,
+    shared: r.shared,
+  }));
+}
+
+// Removed for good — only from the archive, and not before PROJECT_ARCHIVE_DAYS there. The creator's
+// conversations stay, without a project; a colleague's conversation keeps the project's name to say
+// so above the input. Instructions, files, the trash and places go.
 export async function deleteProject(deps: ProjectsDeps, userId: string, projectId: string): Promise<void> {
   const project = requireOwner(await visibleProject(deps.db, userId, projectId, 'owner'));
+  if (!project.archived_at) throw appError('APP_VALIDATION_FAILED', `project ${projectId} is not archived`, { userMessage: 'Сначала перенесите проект в архив.' });
+  const from = new Date(project.archived_at.getTime() + PROJECT_ARCHIVE_DAYS * DAY_MS);
+  if (from.getTime() > Date.now()) {
+    throw appError('APP_PROJECT_DELETE_TOO_EARLY', `project ${projectId} is in the archive since ${project.archived_at.toISOString()}`, {
+      userMessage: `Удалить навсегда можно будет с ${new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(from)}.`,
+    });
+  }
   await inTransaction(deps.db, async (c) => {
     await c.query('UPDATE app.thread_projects SET lost_project_name = $2 WHERE project_id = $1 AND user_id <> $3', [projectId, project.name, project.user_id]);
     await c.query('DELETE FROM app.thread_projects WHERE project_id = $1 AND user_id = $2', [projectId, project.user_id]);

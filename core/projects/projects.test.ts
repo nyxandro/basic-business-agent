@@ -98,6 +98,8 @@ describe('projects', () => {
     const folder = join(t.workspaceRoot, olgaId, 'projects', project.id);
     expect(existsSync(join(folder, 'files', 'смета.xlsx'))).toBe(true);
 
+    // Removed for good only from the archive, 30 days after archiving (spec, section 8.20).
+    await t.db.query("UPDATE app.projects SET archived_at = now() - interval '31 days' WHERE id = $1", [project.id]);
     expect((await t.call('DELETE', `/app/api/projects/${project.id}`, { cookie: olga })).status).toBe(200);
     expect(existsSync(folder)).toBe(false);
     const all = await json<ThreadPage>(await t.call('GET', '/app/api/threads', { cookie: olga }));
