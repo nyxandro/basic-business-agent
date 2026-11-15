@@ -14,7 +14,7 @@ const EXPECTED_TABLES = [
   'model_keys', 'connector_credentials', 'usage_events', 'background_tasks', 'approval_requests',
   'action_journal', 'agent_overrides', 'admin_audit', 'masking_settings', 'masking_map', 'schema_migrations', 'oauth_states',
   'projects', 'thread_projects', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs',
-  'chatgpt_accounts', 'chatgpt_logins', 'account_events',
+  'chatgpt_accounts', 'chatgpt_logins', 'account_events', 'interface_settings',
 ];
 
 async function query<T extends pg.QueryResultRow>(url: string, sql: string, params: unknown[] = []): Promise<T[]> {
@@ -37,7 +37,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");

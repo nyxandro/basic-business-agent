@@ -53,6 +53,7 @@ export const ERROR_CATALOG = {
   APP_VOICE_NOT_CONFIGURED: { status: 409, userMessage: 'Голосовой ввод в этой установке не настроен.' },
   APP_VOICE_FAILED: { status: 502, userMessage: 'Не удалось распознать запись. Попробуйте ещё раз или напишите текстом.' },
   APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },
+  APP_AGENT_IMAGE_INVALID: { status: 400, userMessage: 'Картинка не подходит: нужен PNG, JPEG или WebP.' },
   APP_SKILL_EXISTS: { status: 409, userMessage: 'Скилл с таким именем уже загружен. Чтобы обновить его, нажмите «Заменить».' },
   APP_CHATGPT_LOGIN_EXPIRED: { status: 410, userMessage: 'Время на вход вышло. Начните заново.' },
   APP_CHATGPT_LOGIN_FAILED: { status: 502, userMessage: 'Вход не выполнен. Попробуйте ещё раз.' },

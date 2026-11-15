@@ -26,6 +26,7 @@ import { registerProjectRoutes } from '../projects/routes.ts';
 import { registerSearchRoutes } from '../search/routes.ts';
 import { registerVoiceRoutes } from '../voice/routes.ts';
 import { registerSkillRoutes } from '../skills-admin/routes.ts';
+import { registerInterfaceRoutes } from '../interface-settings/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
@@ -79,6 +80,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
   registerModelRoutes(app, deps.models, deps.accounts);
   registerSkillRoutes(app, deps.skills);
+  registerInterfaceRoutes(app, { db: deps.db });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;
 }

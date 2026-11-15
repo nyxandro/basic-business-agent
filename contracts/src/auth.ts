@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { InterfaceSettings } from './interface.ts';
 
 // Rights a role can grant (spec, section 8.2): sections of the admin panel and, reserved for the
 // knowledge base specification, rights on documents. Nobody gets a right to read others' chats.
@@ -15,6 +16,7 @@ export const ADMIN_SECTIONS = [
   'journal',
   'models',
   'skills',
+  'interface',
 ] as const;
 export const DOCUMENT_PERMISSIONS = ['documents.org.manage', 'documents.department.manage'] as const;
 export const PERMISSIONS = [...ADMIN_SECTIONS, ...DOCUMENT_PERMISSIONS] as const;
@@ -59,4 +61,6 @@ export interface MeResponse {
   // The organisation's primary model is chosen and enabled: agents can answer (spec, section 7,
   // «Пустая установка»).
   modelsConfigured: boolean;
+  // How the chat looks, chosen in «Интерфейс» (spec, section 8.17).
+  interface: InterfaceSettings;
 }
