@@ -1,15 +1,20 @@
 // A stack of status lines between two things the agent shows (decision of the owner 15.11): one line
-// that says what the last call does or did, turning while it runs, with how many there are; it
-// unfolds into every line, each of which unfolds on its own.
+// that says what the last call does or did, turning while it runs. Each new status turns in like the
+// wheel of the iPhone date picker (ui/Ticker.tsx): the old one goes up past the top edge of the line,
+// the new one comes from under its bottom edge; so does the number of calls. A stack of one is the
+// line of its call — «только чтение», «N найдено», unfolds what was asked and found; a stack of more
+// shows how many there are and unfolds into every line, each of which unfolds on its own.
 import type { AgentSummary } from '@bba/contracts';
 import type { Message as AguiMessage } from '@copilotkit/react-core';
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
+import { Ticker } from '../ui/Ticker.tsx';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
-import { toolSummary } from './tool-summary.ts';
+import { toolSummary, type ToolSummary } from './tool-summary.ts';
 import type { ToolCall } from './turn-items.ts';
 
 // The arguments of a call come as JSON text, still unfinished while the model writes them.
@@ -19,6 +24,11 @@ function argumentsOf(call: ToolCall): unknown {
   } catch {
     return null;
   }
+}
+
+function StatusIcon({ summary }: { summary: ToolSummary }) {
+  if (summary.state === 'running') return <span className={styles.spin} />;
+  return <Icon name={summary.state === 'done' ? 'check' : summary.state === 'failed' ? 'alert' : 'x'} size={15} />;
 }
 
 export function ToolStack({
@@ -36,18 +46,38 @@ export function ToolStack({
   const last = calls.at(-1);
   if (!last) throw new Error('a stack of tool lines needs at least one call');
   const result = toolMessageOf(messages, last.id)?.content;
+  const args = argumentsOf(last);
   // A call without its result yet is still under way (or waits for «Да»).
-  const summary = toolSummary(last.function.name, typeof result === 'string' ? 'complete' : 'executing', typeof result === 'string' ? result : undefined, agent, argumentsOf(last));
+  const summary = toolSummary(last.function.name, typeof result === 'string' ? 'complete' : 'executing', typeof result === 'string' ? result : undefined, agent, args);
+  const single = calls.length === 1;
+  // One call unfolds once it is done; several unfold any time.
+  const unfolds = !single || summary.state === 'done';
 
   return (
     <div className={styles.tool}>
-      <button type="button" className={cx(styles.toolLine, summary.state === 'failed' && styles.toolFailed)} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {summary.state === 'running' ? <span className={styles.spin} /> : <Icon name={summary.state === 'done' ? 'check' : summary.state === 'failed' ? 'alert' : 'x'} size={15} />}
-        <span className={cx(styles.toolText, summary.state === 'running' && styles.shimmer)}>{summary.text}</span>
-        <span className={styles.toolCount}>{ru.chat.toolActions(calls.length)}</span>
-        <Icon name={open ? 'up' : 'down'} size={15} />
+      <button
+        type="button"
+        className={cx(styles.toolLine, styles.toolHead, summary.state === 'failed' && styles.toolFailed, !unfolds && styles.toolLineStatic)}
+        disabled={!unfolds}
+        aria-expanded={unfolds ? open : undefined}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Ticker value={`${last.id}:${summary.state}:${summary.text}`}>
+          <StatusIcon summary={summary} />
+          <span className={cx(styles.toolText, summary.state === 'running' && styles.shimmer)}>{summary.text}</span>
+          {single && summary.state === 'done' && summary.readOnly ? <span className={styles.toolTag}>{ru.chat.readOnly}</span> : null}
+          {single && summary.state === 'done' && summary.count !== null ? <span className={styles.toolCount}>{ru.chat.found(summary.count)}</span> : null}
+        </Ticker>
+        {single ? null : (
+          <Ticker value={String(calls.length)}>
+            <span className={styles.toolCount}>{ru.chat.toolActions(calls.length)}</span>
+          </Ticker>
+        )}
+        {unfolds ? <Icon name={open ? 'up' : 'down'} size={15} /> : null}
       </button>
-      {open ? (
+      {single && summary.state === 'failed' && summary.code === 'APP_CONNECTOR_NOT_CONNECTED' ? <Link to="/settings/connections">{ru.chat.connectInSettings}</Link> : null}
+      {open && single && summary.state === 'done' ? <pre className={styles.toolDetails}>{JSON.stringify({ args, result: summary.value }, null, 2)}</pre> : null}
+      {open && !single ? (
         <div className={styles.toolStack}>
           {calls.map((call) => (
             <div key={call.id}>{renderCall(call)}</div>

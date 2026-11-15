@@ -308,6 +308,11 @@
   white-space: nowrap;
 }
 
+/* The head of a stack: a status turns in and out past its edges (ui/Ticker.tsx). */
+.toolHead {
+  overflow: hidden;
+}
+
 /* The lines of an unfolded stack, under its head and set apart by a line on the left. */
 .toolStack {
   display: flex;

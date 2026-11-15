@@ -155,6 +155,23 @@ describe('stack of status lines', () => {
     render(stack(done(['c1', 'c2', 'c3', 'c4'])));
     expect(screen.getByRole('button', { name: /Выполняю действие….*5 действий/ })).toBeInTheDocument();
   });
+
+  it('is the line itself for one call: unfolds what it was asked and found; does not unfold while it runs', async () => {
+    const one = (messages: ReturnType<typeof done>) => (
+      <MemoryRouter>
+        <ToolStack calls={[calls[0]!]} messages={messages} agent={STACK_AGENT} renderCall={() => null} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(one([]));
+    expect(screen.getByRole('button', { name: 'Выполняю действие…' })).toBeDisabled();
+
+    rerender(one(done(['c1'])));
+    const line = screen.getByRole('button', { name: 'Команда в рабочей папке' });
+    expect(line).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.setup().click(line);
+    expect(screen.getByText(/ls c1/)).toBeInTheDocument();
+    expect(screen.getByText(/exitCode/)).toBeInTheDocument();
+  });
 });
 
 describe('chat helpers', () => {

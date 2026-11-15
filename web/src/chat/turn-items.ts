@@ -1,7 +1,8 @@
 // How a turn of the agent is laid out (decision of the owner 15.11): the words of the agent and the
 // things it draws stay in sight; the status lines between two of them go into one stack, which shows
-// the last of them and unfolds into all. A stack of one line is just the line. Within one message the
-// words come first: AG-UI puts the calls of a step on the message of the words said before them.
+// the last of them and unfolds into all. A lone line is a stack of one, so the line stays the same
+// when the next call comes and only turns to it. Within one message the words come first: AG-UI puts
+// the calls of a step on the message of the words said before them.
 import { GENUI_TOOL, toolTableResultSchema } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { toolMessageOf } from './messages.ts';
@@ -37,5 +38,5 @@ export function turnItems(turn: readonly AssistantMessage[], messages: readonly 
       else items.push({ kind: 'stack', calls: [call] });
     }
   }
-  return items.map((item) => (item.kind === 'stack' && item.calls.length === 1 ? { kind: 'call', call: item.calls[0]! } : item));
+  return items;
 }

@@ -20,8 +20,9 @@ describe('the layout of a turn', () => {
     expect(shape(turn)).toEqual(['Смотрю папку.', '[c1 c2 c3]', 'Нашёл три файла. Читаю их.', '[c4 c5]', 'Готово.']);
   });
 
-  it('keeps a lone status line as it is', () => {
-    expect(shape([said('a1', '', [call('c1')]), said('a2', 'Готово.')])).toEqual(['c1', 'Готово.']);
+  // A lone line is a stack of one: when the next call comes, the same line turns to it.
+  it('makes a lone status line a stack of one', () => {
+    expect(shape([said('a1', '', [call('c1')]), said('a2', 'Готово.')])).toEqual(['[c1]', 'Готово.']);
   });
 
   it('collects the calls of messages without words into one stack', () => {
@@ -31,7 +32,7 @@ describe('the layout of a turn', () => {
   it('leaves the blocks the agent draws in sight, and a table that came in a result', () => {
     const turn = [said('a1', '', [call('c1'), call('c2'), call('t1', GENUI_TOOL.table), call('c3'), call('c4'), call('crm', 'crm_search'), call('c5')])];
     const table = JSON.stringify({ table: { title: 'Сделки', columns: [{ key: 'deal', label: 'Сделка' }], rows: [{ deal: 'Поставка' }] } });
-    expect(shape(turn, [result('crm', table)])).toEqual(['[c1 c2]', 't1', '[c3 c4]', 'crm', 'c5']);
+    expect(shape(turn, [result('crm', table)])).toEqual(['[c1 c2]', 't1', '[c3 c4]', 'crm', '[c5]']);
   });
 
   it('puts nothing for a message with neither words nor calls', () => {
