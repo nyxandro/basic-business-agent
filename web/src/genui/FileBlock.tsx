@@ -14,14 +14,16 @@ import styles from './genui.module.css';
 export function FileBlockView({ name, bytes, href }: { name: string; bytes: number; href: string }) {
   return (
     <article className={`${styles.block} ${styles.file}`}>
-      <FileIcon name={name} size={32} />
+      <span className={styles.fileIcon}>
+        <FileIcon name={name} size={26} />
+      </span>
       <div className={styles.fileText}>
         <div className={styles.fileName} title={name}>
           {name}
         </div>
         <div className={styles.fileSize}>{fileSize(bytes)}</div>
       </div>
-      <ButtonLink href={href} download={name} icon="download" size="sm" aria-label={ru.genui.downloadFile(name)}>
+      <ButtonLink href={href} download={name} icon="download" size="sm" className={styles.fileDownload} aria-label={ru.genui.downloadFile(name)}>
         {ru.genui.download}
       </ButtonLink>
     </article>

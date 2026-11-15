@@ -10,10 +10,12 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
+import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Ticker } from '../ui/Ticker.tsx';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
+import { ToolDetails } from './ToolRow.tsx';
 import { toolSummary, type ToolSummary } from './tool-summary.ts';
 import type { ToolCall } from './turn-items.ts';
 
@@ -73,17 +75,22 @@ export function ToolStack({
             <span className={styles.toolCount}>{ru.chat.toolActions(calls.length)}</span>
           </Ticker>
         )}
-        {unfolds ? <Icon name={open ? 'up' : 'down'} size={15} /> : null}
+        {unfolds ? <Icon name="down" size={15} className={cx(styles.toolChevron, open && styles.toolChevronOpen)} /> : null}
       </button>
       {single && summary.state === 'failed' && summary.code === 'APP_CONNECTOR_NOT_CONNECTED' ? <Link to="/settings/connections">{ru.chat.connectInSettings}</Link> : null}
-      {open && single && summary.state === 'done' ? <pre className={styles.toolDetails}>{JSON.stringify({ args, result: summary.value }, null, 2)}</pre> : null}
-      {open && !single ? (
-        <div className={styles.toolStack}>
-          {calls.map((call) => (
-            <div key={call.id}>{renderCall(call)}</div>
-          ))}
-        </div>
-      ) : null}
+      {single ? (
+        <Collapse open={open && summary.state === 'done'} className={styles.toolUnfold}>
+          {summary.state === 'done' ? <ToolDetails args={args} value={summary.value} /> : null}
+        </Collapse>
+      ) : (
+        <Collapse open={open} className={styles.toolUnfold}>
+          <div className={styles.toolStack}>
+            {calls.map((call) => (
+              <div key={call.id}>{renderCall(call)}</div>
+            ))}
+          </div>
+        </Collapse>
+      )}
     </div>
   );
 }

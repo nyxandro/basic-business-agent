@@ -17,13 +17,16 @@ import { startFakeChatGpt, FAKE_SUBSCRIPTION_ANSWER, type FakeChatGpt } from './
 import { TEST_CALLBACK_PORT, TEST_CHATGPT_PORT } from './test-catalog.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
+const GATEWAY_SILENCE_S = 2;
+
 let t: TestApp;
 let server: ServerType;
 let openai: FakeChatGpt;
 
 beforeAll(async () => {
   openai = await startFakeChatGpt({ port: TEST_CHATGPT_PORT, host: '0.0.0.0' });
-  t = await createTestApp({ chatgpt: { authBase: openai.url, gateway: true } });
+  // A provider that goes silent is cut off by the gateway after GATEWAY_SILENCE_S, not after a minute.
+  t = await createTestApp({ chatgpt: { authBase: openai.url, gateway: true }, gatewayTimeouts: { silenceSeconds: GATEWAY_SILENCE_S, requestSeconds: 60 } });
   server = serve({ fetch: t.app.fetch, port: TEST_CALLBACK_PORT, hostname: '0.0.0.0' });
 });
 afterAll(async () => {
@@ -144,6 +147,47 @@ describe('model gateway', () => {
       const out = await agent.stream('привет', { requestContext: rc });
       expect(await out.text).toBe('Привет! Чем помочь?');
       expect(provider.requests.length - before).toBe(2);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  // As neuraldeep on 15.11: 115 tokens, then nothing for five minutes with the connection open; as
+  // Groq the same day (#8): the stream opens and no word comes. The gateway cuts the silence itself and
+  // reports it inside the stream; the agent repeats the step.
+  it.each([
+    ['mid-way', 'Пр'],
+    ['before its first word', ''],
+  ])('asks the model again when the provider went silent %s without closing the connection (owner, 15.11)', async (_, before) => {
+    const key = `sk-silent-${before ? 'mid' : 'start'}-3b90`;
+    const provider = await startFakeModel({ host: '0.0.0.0', acceptKey: key });
+    const userId = await t.createUser({ email: `silent-${before ? 'mid' : 'start'}@example.com`, roleIds: [await t.roleId('superadmin')] });
+    const PRICES = { input: 1000, output: 2000, cacheRead: 0, cacheWrite: 0, reasoning: 0, image: 0 };
+    try {
+      const model = await t.models.create(userId, { kind: 'chat', label: 'Тишина', connection: 'api_key', providerModel: 'openai/silent-test', apiBase: provider.dockerUrl, vision: false, prices: PRICES, pricePerMinute: null, key, maxOutputTokens: 4096 });
+      const sent = provider.requests.length;
+      provider.script({ text: before, cut: 'hang' }, { text: 'Привет! Чем помочь?' });
+      const rt: AgentRuntime = {
+        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [], starters: [] },
+        dir: '/x',
+        instructions: 'Ты помощник.',
+        tools: {},
+        readOnly: new Set(),
+        subagents: [],
+        connectorIds: [],
+        toolSystems: {},
+      };
+      const agent = createMastraAgent(rt, { gateway: t.gateway, firstChunkMs: FALLBACK_FIRST_CHUNK_MS, stepMs: MODEL_CALL_MAX_MS, processorsFor: () => ({ input: [], output: [] }) });
+      const rc = new RequestContext();
+      rc.set(REQUEST_KEYS.userId, userId);
+      rc.set(REQUEST_KEYS.modelId, model.id);
+      rc.set(REQUEST_KEYS.skillPaths, '[]');
+      const started = Date.now();
+      const out = await agent.stream('привет', { requestContext: rc });
+      expect(await out.text).toBe('Привет! Чем помочь?');
+      expect(provider.requests.length - sent).toBe(2);
+      // Cut after the silence, not after the five minutes of one model call.
+      expect(Date.now() - started).toBeLessThan(GATEWAY_SILENCE_S * 1000 * 5);
     } finally {
       await provider.close();
     }

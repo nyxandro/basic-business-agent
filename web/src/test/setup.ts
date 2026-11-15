@@ -14,6 +14,16 @@ class NoResizeObserver {
   disconnect(): void {}
 }
 
+// jsdom has no IntersectionObserver; the list of all conversations loads more when its end is seen.
+class NoIntersectionObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+
 // jsdom does not scroll elements and has no scrollTo on them; the chat feed keeps its bottom with it.
 Object.defineProperty(Element.prototype, 'scrollTo', {
   configurable: true,
@@ -26,6 +36,7 @@ Object.defineProperty(Element.prototype, 'scrollTo', {
 beforeEach(() => {
   stubSystemTheme('light');
   vi.stubGlobal('ResizeObserver', NoResizeObserver);
+  vi.stubGlobal('IntersectionObserver', NoIntersectionObserver);
 });
 
 afterEach(() => {

@@ -27,8 +27,16 @@ interface ProjectRow {
   id: string;
   name: string;
   instructions: string;
+  pinned: boolean;
   created_at: Date;
 }
+
+const COLUMNS = 'id, name, instructions, pinned, created_at';
+// The side panel's order (spec, section 8.12): pinned first, each group by the place the person gave.
+const PANEL_ORDER = 'pinned DESC, position, lower(name)';
+// A new project and an unpinned one: first among the unpinned. A pinned one: after the pinned ones.
+const FIRST_UNPINNED = '(SELECT COALESCE(min(position), 1) - 1 FROM app.projects WHERE user_id = $2 AND NOT pinned)';
+const AFTER_ALL = '(SELECT max(position) + 1 FROM app.projects WHERE user_id = $2)';
 
 const notFound = (id: string) => appError('APP_NOT_FOUND', `project ${id} is not the person's`, { userMessage: 'Проект не найден.' });
 
@@ -66,7 +74,7 @@ async function liveLinks(deps: ProjectsDeps, userId: string, ownThreadIds: Reado
 }
 
 function toDto(row: ProjectRow, threadCount: number): ProjectDto {
-  return { id: row.id, name: row.name, instructions: row.instructions, threadCount, createdAt: row.created_at.toISOString() };
+  return { id: row.id, name: row.name, instructions: row.instructions, threadCount, pinned: row.pinned, createdAt: row.created_at.toISOString() };
 }
 
 export async function listProjects(deps: ProjectsDeps, userId: string): Promise<ProjectDto[]> {
@@ -74,13 +82,13 @@ export async function listProjects(deps: ProjectsDeps, userId: string): Promise<
   const links = await liveLinks(deps, userId, new Set(threads.map((t) => t.id)));
   const counts = new Map<string, number>();
   for (const projectId of links.values()) counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
-  const { rows } = await deps.db.query<ProjectRow>('SELECT id, name, instructions, created_at FROM app.projects WHERE user_id = $1 ORDER BY lower(name)', [userId]);
+  const { rows } = await deps.db.query<ProjectRow>(`SELECT ${COLUMNS} FROM app.projects WHERE user_id = $1 ORDER BY ${PANEL_ORDER}`, [userId]);
   return rows.map((r) => toDto(r, counts.get(r.id) ?? 0));
 }
 
 export async function getProject(deps: Pick<ProjectsDeps, 'db'>, userId: string, projectId: string): Promise<ProjectRow> {
   if (!/^[0-9a-f-]{36}$/.test(projectId)) throw notFound(projectId);
-  const { rows } = await deps.db.query<ProjectRow>('SELECT id, name, instructions, created_at FROM app.projects WHERE id = $1 AND user_id = $2', [projectId, userId]);
+  const { rows } = await deps.db.query<ProjectRow>(`SELECT ${COLUMNS} FROM app.projects WHERE id = $1 AND user_id = $2`, [projectId, userId]);
   if (!rows[0]) throw notFound(projectId);
   return rows[0];
 }
@@ -95,14 +103,14 @@ export async function projectDto(deps: ProjectsDeps, userId: string, projectId: 
 export async function createProject(deps: ProjectsDeps, userId: string, name: string): Promise<ProjectDto> {
   const clean = cleanName(name);
   try {
-    const { rows } = await deps.db.query<ProjectRow>('INSERT INTO app.projects (id, user_id, name) VALUES ($1, $2, $3) RETURNING id, name, instructions, created_at', [randomUUID(), userId, clean]);
+    const { rows } = await deps.db.query<ProjectRow>(`INSERT INTO app.projects (id, user_id, name, position) VALUES ($1, $2, $3, ${FIRST_UNPINNED}) RETURNING ${COLUMNS}`, [randomUUID(), userId, clean]);
     return toDto(rows[0]!, 0);
   } catch (error) {
     throw nameTaken(error, clean) ?? error;
   }
 }
 
-export async function updateProject(deps: ProjectsDeps, userId: string, projectId: string, change: { name?: string; instructions?: string }): Promise<ProjectDto> {
+export async function updateProject(deps: ProjectsDeps, userId: string, projectId: string, change: { name?: string; instructions?: string; pinned?: boolean }): Promise<ProjectDto> {
   await getProject(deps, userId, projectId);
   const name = change.name === undefined ? null : cleanName(change.name);
   const instructions = change.instructions === undefined ? null : checkInstructions(change.instructions);
@@ -114,7 +122,21 @@ export async function updateProject(deps: ProjectsDeps, userId: string, projectI
   } catch (error) {
     throw nameTaken(error, name ?? '') ?? error;
   }
+  // Pinning a pinned project (or unpinning an unpinned one) leaves it in its place.
+  if (change.pinned === true) await deps.db.query(`UPDATE app.projects SET pinned = true, position = ${AFTER_ALL} WHERE id = $1 AND user_id = $2 AND NOT pinned`, [projectId, userId]);
+  if (change.pinned === false) await deps.db.query(`UPDATE app.projects SET pinned = false, position = ${FIRST_UNPINNED} WHERE id = $1 AND user_id = $2 AND pinned`, [projectId, userId]);
   return projectDto(deps, userId, projectId);
+}
+
+// The order the person dragged the projects into, all of them: pinned or not stays as it is, so
+// a project dragged among the others only changes its place in its own group.
+export async function orderProjects(deps: Pick<ProjectsDeps, 'db'>, userId: string, ids: readonly string[]): Promise<void> {
+  const { rows } = await deps.db.query<{ id: string }>('SELECT id FROM app.projects WHERE user_id = $1', [userId]);
+  const own = new Set(rows.map((r) => r.id));
+  if (new Set(ids).size !== ids.length || ids.length !== own.size || ids.some((id) => !own.has(id))) {
+    throw appError('APP_VALIDATION_FAILED', `project order of ${ids.length} ids does not match the person's ${own.size} projects`, { userMessage: 'Список проектов изменился, порядок не сохранён. Перетащите проект ещё раз.' });
+  }
+  await deps.db.query('UPDATE app.projects p SET position = o.n FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, n) WHERE p.id = o.id AND p.user_id = $1', [userId, ids]);
 }
 
 // The project's conversations stay, without a project; its instructions and files go.

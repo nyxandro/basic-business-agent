@@ -3,7 +3,7 @@
 // state from ours without another change slipping in between.
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
-import { deploymentsOf, reconcile, type SyncModel, type SyncResult, type SyncState } from './gateway-sync.ts';
+import { deploymentsOf, reconcile, type GatewayTimeouts, type SyncModel, type SyncResult, type SyncState } from './gateway-sync.ts';
 import type { DeploymentSpec, LiteLLMClient } from './litellm-client.ts';
 import { syncModelOf, type ModelRow } from './model-rows.ts';
 
@@ -16,6 +16,8 @@ export interface GatewayWriterDeps {
   // Models whose deployments are written in LiteLLM's config file, not copied by the server: the
   // mock models of the tests (test-catalog.ts). Empty in an installation.
   fileModelIds: ReadonlySet<string>;
+  // How long the gateway waits on a provider (GATEWAY_TIMEOUTS; shorter in tests).
+  timeouts: GatewayTimeouts;
 }
 
 // Plain functions, not methods: the catalog and the accounts take them apart.
@@ -38,7 +40,7 @@ interface KeyRow {
 }
 
 export function createGatewayWriter(deps: GatewayWriterDeps): GatewayWriter {
-  const { db, box, client, owner } = deps;
+  const { db, box, client, owner, timeouts } = deps;
   let queue: Promise<unknown> = Promise.resolve();
 
   return {
@@ -63,8 +65,8 @@ export function createGatewayWriter(deps: GatewayWriterDeps): GatewayWriter {
       };
     },
 
-    desired: (state) => deploymentsOf(state, owner),
+    desired: (state) => deploymentsOf(state, owner, timeouts),
 
-    apply: (next) => reconcile(client, owner, deploymentsOf(next, owner)),
+    apply: (next) => reconcile(client, owner, deploymentsOf(next, owner, timeouts)),
   };
 }

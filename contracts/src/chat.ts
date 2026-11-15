@@ -126,11 +126,13 @@ export interface ThreadPage {
 }
 
 // A person's project (spec, section 8.12): a folder of conversations with instructions and files.
+// GET /app/api/projects gives them in the order of the side panel: pinned first.
 export interface ProjectDto {
   id: string;
   name: string;
   instructions: string;
   threadCount: number;
+  pinned: boolean;
   createdAt: string;
 }
 

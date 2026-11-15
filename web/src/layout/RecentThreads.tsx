@@ -1,10 +1,10 @@
-// «Недавние» (spec, sections 7 and 8.16): 30 conversations of all the person's agents, newest first,
-// a background task's result marked «новое» until opened, «Показать ещё» for the next page; each
-// conversation can be renamed from its three dots. A new `refreshKey` (after an answer or a new name)
-// loads the list again in place: the old list stays until the new one comes, a name being typed stays.
-import type { ThreadSummaryDto } from '@bba/contracts';
+// «Недавние» (spec, sections 7 and 8.16): the newest conversations of all the person's agents, a
+// background task's result marked «новое» until opened, and «Ещё» when there are more — it opens all
+// of them in the window of «Поиск» (decision of the owner 15.11: a long list stretched the panel).
+// Each conversation can be renamed from its three dots. A new `refreshKey` (after an answer or a new
+// name) loads the list again in place: the old list stays until the new one comes, a name being typed
+// stays.
 import { useCallback, useState } from 'react';
-import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { fetchThreadPage } from '../chat/api.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
@@ -13,46 +13,32 @@ import { useLoad } from '../ui/use-load.ts';
 import styles from './shell.module.css';
 import { ThreadRow } from './ThreadRow.tsx';
 
-export function RecentThreads({ refreshKey, currentThreadId, onNavigate }: { refreshKey: number; currentThreadId: string | null; onNavigate: () => void }) {
-  const first = useCallback(() => fetchThreadPage(null), []);
+// How many of the newest conversations the panel shows (decision of the owner 15.11).
+export const RECENT_SHOWN = 7;
+
+export function RecentThreads({ refreshKey, currentThreadId, onNavigate, onShowAll }: { refreshKey: number; currentThreadId: string | null; onNavigate: () => void; onShowAll: () => void }) {
+  const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN }), []);
   const { state, reload } = useLoad(first);
-  const [more, setMore] = useState<{ threads: ThreadSummaryDto[]; next: string | null } | null>(null);
-  const [moreError, setMoreError] = useState<ApiRequestError | null>(null);
   // Names saved here: shown at once, and over a list loaded before the server had them.
   const [renamed, setRenamed] = useState<Record<string, string>>({});
   const [seenKey, setSeenKey] = useState(refreshKey);
   if (seenKey !== refreshKey) {
     setSeenKey(refreshKey);
-    // The first page may have moved: the pages after it are asked again by «Показать ещё».
-    setMore(null);
     reload();
   }
 
   if (state.status === 'loading') return <Skeleton rows={4} />;
   if (state.status === 'error') return <ErrorBanner title={ru.shell.recentFailed} error={state.error} onRetry={reload} />;
-  const threads = [...state.data.threads, ...(more?.threads ?? [])].map((t) => ({ ...t, title: renamed[t.id] ?? t.title }));
-  const next = more ? more.next : state.data.next;
-
-  async function showMore() {
-    setMoreError(null);
-    try {
-      const page = await fetchThreadPage(next);
-      setMore((prev) => ({ threads: [...(prev?.threads ?? []), ...page.threads], next: page.next }));
-    } catch (raw) {
-      setMoreError(asApiError(raw));
-    }
-  }
-
+  const threads = state.data.threads.map((t) => ({ ...t, title: renamed[t.id] ?? t.title }));
   if (threads.length === 0) return <p className={styles.empty}>{ru.shell.recentEmpty}</p>;
   return (
     <>
       {threads.map((t) => (
         <ThreadRow key={t.id} thread={t} current={t.id === currentThreadId} onNavigate={onNavigate} onRenamed={(title) => setRenamed((prev) => ({ ...prev, [t.id]: title }))} />
       ))}
-      {moreError ? <ErrorBanner error={moreError} onRetry={() => void showMore()} /> : null}
-      {next ? (
-        <button type="button" className={styles.more} onClick={() => void showMore()}>
-          {ru.shell.showMore}
+      {state.data.next ? (
+        <button type="button" className={styles.more} onClick={onShowAll}>
+          {ru.shell.moreThreads}
         </button>
       ) : null}
     </>

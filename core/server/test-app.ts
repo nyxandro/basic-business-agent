@@ -35,7 +35,7 @@ import { createGatewayWriter } from '../models/gateway-writer.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
-import { reconcile } from '../models/gateway-sync.ts';
+import { GATEWAY_TIMEOUTS, reconcile, type GatewayTimeouts } from '../models/gateway-sync.ts';
 import { seedTestModels, TEST_CHATGPT_AUTH_DIR, TEST_MODEL_IDS } from '../models/test-catalog.ts';
 import { AGENT_HEADER } from '../models/usage.ts';
 import { createAuth, type Auth } from '../auth/auth.ts';
@@ -137,6 +137,8 @@ export async function createTestApp(
     firstChunkMs?: number;
     // Shortens the limit of one model call (5 minutes in an installation).
     stepMs?: number;
+    // Shortens how long the gateway waits on a silent provider (GATEWAY_TIMEOUTS in an installation).
+    gatewayTimeouts?: GatewayTimeouts;
     // The models behind the test agents (default: every model answers from `model`).
     modelConfig?: (modelId: string) => { url: string; apiKey: string };
     // OpenAI's login service for ChatGPT accounts (a fake, fake-chatgpt.ts). `gateway: true` writes
@@ -233,7 +235,7 @@ export async function createTestApp(
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
-  const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS });
+  const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });
   const chatgptAuthDir = opts.chatgpt?.gateway ? TEST_CHATGPT_AUTH_DIR : mkdtempSync(join(tmpdir(), 'bba-test-chatgpt-'));
   mkdirSync(chatgptAuthDir, { recursive: true });
   const chatgptAuth: ChatGptAuthClient = opts.chatgpt

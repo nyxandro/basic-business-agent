@@ -319,3 +319,39 @@
   color: var(--bad);
   white-space: nowrap;
 }
+
+.unread {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--acc-text);
+  background: var(--acc-soft);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+
+/* The end of the list of all conversations: the next page comes when it is in view. */
+.more {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.more:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.more:disabled {
+  cursor: default;
+}

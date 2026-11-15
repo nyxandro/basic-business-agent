@@ -188,6 +188,19 @@ const PATHS = {
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />,
   download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
   edit: <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />,
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2v.8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </>
+  ),
+  unpin: (
+    <>
+      <path d="M12 17v5M2 2l20 20" />
+      <path d="M15 9.3V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.9" />
+      <path d="M9 9v1.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2v.8a1 1 0 0 0 1 1h11" />
+    </>
+  ),
   logout: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />,
 } satisfies Record<string, ReactNode>;
 

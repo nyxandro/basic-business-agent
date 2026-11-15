@@ -9,7 +9,7 @@ import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/tes
 import { createChatGptAccounts } from './chatgpt-accounts.ts';
 import { createChatGptAuthClient } from './chatgpt-login.ts';
 import { fakeJwt, startFakeChatGpt, type FakeChatGpt } from './fake-chatgpt.ts';
-import { GATEWAY_AUTH_DIR } from './gateway-sync.ts';
+import { GATEWAY_AUTH_DIR, GATEWAY_TIMEOUTS } from './gateway-sync.ts';
 import { createGatewayWriter } from './gateway-writer.ts';
 import { createLiteLLMClient } from './litellm-client.ts';
 import { TEST_MODEL_IDS } from './test-catalog.ts';
@@ -155,7 +155,7 @@ describe('the login to a ChatGPT account', () => {
 
   it('leaves neither a file, a row nor deployments when LiteLLM refuses a new account', async () => {
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
-    const writer = createGatewayWriter({ db: t.db, box, client: createLiteLLMClient('http://127.0.0.1:9', 'sk-x'), owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const writer = createGatewayWriter({ db: t.db, box, client: createLiteLLMClient('http://127.0.0.1:9', 'sk-x'), owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS, timeouts: GATEWAY_TIMEOUTS });
     const offline = createChatGptAccounts({ db: t.db, box, writer, auth: createChatGptAuthClient(openai.url), authDir: t.chatgptAuthDir, timezone: 'Europe/Moscow' });
     const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
     const filesBefore = readdirSync(t.chatgptAuthDir).length;

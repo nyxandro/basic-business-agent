@@ -1,7 +1,7 @@
 // The frame of signed-in screens (spec, sections 7 and 17.8): the side panel as a column from 860 px,
 // a drawer below that; the screen of the route on the right. The agents of the person and the
 // signal to reload «Недавние» reach the screens through the outlet context.
-import type { AgentSummary, MyUsage } from '@bba/contracts';
+import type { AgentSummary, MyUsage, SearchScope } from '@bba/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useMatch, useNavigate, useOutletContext, useSearchParams } from 'react-router';
 import { fetchAgents } from '../agents/api.ts';
@@ -30,6 +30,8 @@ export interface ShellContext {
   refreshThreads: () => void;
   // A project was created, renamed, removed or got a conversation: «Проекты» load again.
   refreshProjects: () => void;
+  // Bumped by `refreshProjects`: an open project page loads again (a name changed in «Проекты»).
+  projectsKey: number;
   // The open conversation's project is marked in «Проекты» (mockup); null outside a project.
   showChatProject: (projectId: string | null) => void;
 }
@@ -81,7 +83,8 @@ export function AppShell() {
   const [threadsKey, setThreadsKey] = useState(0);
   const [projectsKey, setProjectsKey] = useState(0);
   const [chatProjectId, showChatProject] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
+  // `opened` gives the window a new key each time it opens: it starts afresh, on the scope asked for.
+  const [search, setSearch] = useState<{ open: boolean; scope: SearchScope; opened: number }>({ open: false, scope: 'all', opened: 0 });
   const { state: agentsLoad, reload } = useLoad(fetchAgents);
   const { state: usageLoad } = useLoad(fetchMyUsage);
   // The layout sits above the chat route, so the agent and the project page come from the address itself.
@@ -101,16 +104,16 @@ export function AppShell() {
   const refreshProjects = useCallback(() => setProjectsKey((n) => n + 1), []);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const openSearch = useCallback(() => {
+  const openSearch = useCallback((scope: SearchScope) => {
     setMenuOpen(false);
-    setSearchOpen(true);
+    setSearch((s) => (s.open ? s : { open: true, scope, opened: s.opened + 1 }));
   }, []);
   // Ctrl+K (⌘K on a Mac) opens the search from anywhere; the key code keeps it working in any layout.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
         e.preventDefault();
-        openSearch();
+        openSearch('all');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -128,8 +131,8 @@ export function AppShell() {
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}${project ? `&project=${encodeURIComponent(project)}` : ''}`);
   };
 
-  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: openSearch };
-  const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, refreshProjects, showChatProject };
+  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: () => openSearch('all'), onShowAllThreads: () => openSearch('threads') };
+  const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, refreshProjects, projectsKey, showChatProject };
   return (
     <NotificationsProvider>
       <div className={styles.shell}>
@@ -143,7 +146,7 @@ export function AppShell() {
           </ErrorBoundary>
         </main>
       </div>
-      <SearchDialog open={searchOpen} wide={wide} onClose={() => setSearchOpen(false)} />
+      <SearchDialog key={search.opened} open={search.open} startScope={search.scope} wide={wide} onClose={() => setSearch((s) => ({ ...s, open: false }))} />
     </NotificationsProvider>
   );
 }

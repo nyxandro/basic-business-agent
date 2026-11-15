@@ -11,6 +11,8 @@ export function stubSystemTheme(initial: 'light' | 'dark', width = DESKTOP_WIDTH
   let dark = initial === 'dark';
   const listeners = new Set<Listener>();
   const matches = (query: string): boolean => {
+    // jsdom has no Web Animations: screens run as with «уменьшить движение» and change at once.
+    if (query.includes('prefers-reduced-motion')) return true;
     const minWidth = /min-width:\s*(\d+)px/.exec(query);
     if (minWidth) return width >= Number(minWidth[1]);
     return query.includes('dark') ? dark : !dark;

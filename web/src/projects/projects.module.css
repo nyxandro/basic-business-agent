@@ -37,8 +37,44 @@
   color: var(--bad);
 }
 
-.count {
-  font-size: 12px;
+/* «Проекты» of the side panel: the pinned group, then the rest; a project is dragged inside its own. */
+.projectGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.projectRow {
+  position: relative;
+}
+
+/* A long press picks the project up on a touch screen: no text selection, no link preview, and a
+   finger that moves sooner still scrolls the panel. */
+.projectLink {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.projectDragging {
+  z-index: 2;
+}
+
+.projectDragging > div {
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 8px 20px var(--shadow);
+  cursor: grabbing;
+}
+
+.projectDragging .projectLink {
+  cursor: grabbing;
+}
+
+.pinMark {
+  flex: none;
   color: var(--muted);
 }
 

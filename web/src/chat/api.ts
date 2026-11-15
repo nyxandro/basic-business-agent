@@ -3,11 +3,17 @@ import { api, apiForm } from '../api/client.ts';
 
 const enc = encodeURIComponent;
 
+// A page of the list of all conversations in the window of «Поиск».
 export const THREAD_PAGE = 30;
 
-// Conversations of all the person's agents, newest first; `before` continues after a page.
-export const fetchThreadPage = (before: string | null) =>
-  api<ThreadPage>('GET', `/app/api/threads?limit=${THREAD_PAGE}${before ? `&before=${enc(before)}` : ''}`);
+// Conversations of all the person's agents, newest first, `limit` at a time; `before` continues
+// after a page, `projectId` keeps those of one project.
+export function fetchThreadPage(query: { limit: number; before?: string | null; projectId?: string | null }): Promise<ThreadPage> {
+  const params = new URLSearchParams({ limit: String(query.limit) });
+  if (query.before) params.set('before', query.before);
+  if (query.projectId) params.set('projectId', query.projectId);
+  return api<ThreadPage>('GET', `/app/api/threads?${params.toString()}`);
+}
 // «Скачать» of the file block: a file of the folder of the conversation (spec, section 8.18).
 export const threadFileUrl = (threadId: string, path: string) => `/app/api/threads/${enc(threadId)}/file?path=${enc(path)}`;
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);

@@ -8,7 +8,9 @@ const P = '/app/api/projects';
 export const fetchProjects = () => api<{ projects: ProjectDto[] }>('GET', P);
 export const createProject = (name: string) => api<ProjectDto>('POST', P, { name });
 export const fetchProject = (id: string) => api<ProjectDto>('GET', `${P}/${enc(id)}`);
-export const updateProject = (id: string, change: { name?: string; instructions?: string }) => api<ProjectDto>('PUT', `${P}/${enc(id)}`, change);
+export const updateProject = (id: string, change: { name?: string; instructions?: string; pinned?: boolean }) => api<ProjectDto>('PUT', `${P}/${enc(id)}`, change);
+// All the person's projects in the order of the side panel.
+export const orderProjects = (ids: string[]) => api<{ ok: true }>('PUT', `${P}/order`, { ids });
 export const deleteProject = (id: string) => api<{ ok: true }>('DELETE', `${P}/${enc(id)}`);
 export const fetchProjectFiles = (id: string) => api<{ files: ProjectFile[] }>('GET', `${P}/${enc(id)}/files`);
 export const deleteProjectFile = (id: string, path: string) => api<{ ok: true }>('DELETE', `${P}/${enc(id)}/file?path=${enc(path)}`);

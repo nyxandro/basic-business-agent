@@ -1,5 +1,7 @@
-/* The two contents lie in one cell while they pass each other; the wheel turns away from the eye. */
+/* The two contents lie in one cell; the wheel turns away from the eye. The new one waits in its first
+   frame — under the edge, unseen — until the old one has gone: they do not meet in the middle. */
 .ticker {
+  --tick-out: 0.26s;
   display: inline-grid;
   grid-template-columns: minmax(0, max-content);
   min-width: 0;
@@ -16,11 +18,11 @@
 }
 
 .in {
-  animation: bba-tick-in 0.46s cubic-bezier(0.18, 0.9, 0.3, 1.12) both;
+  animation: bba-tick-in 0.4s cubic-bezier(0.18, 0.9, 0.3, 1.12) var(--tick-out) both;
 }
 
 .out {
-  animation: bba-tick-out 0.38s cubic-bezier(0.5, 0, 0.75, 0.4) both;
+  animation: bba-tick-out var(--tick-out) cubic-bezier(0.5, 0, 0.75, 0.4) both;
 }
 
 @keyframes bba-tick-in {

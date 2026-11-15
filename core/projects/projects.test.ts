@@ -126,6 +126,54 @@ describe('projects', () => {
     expect((await json<{ files: unknown[] }>(await t.call('GET', `/app/api/projects/${project.id}/files`, { cookie: olga }))).files).toEqual([]);
   });
 
+  // Order of the side panel (spec, section 8.12, decisions of the owner 15.11): pinned first in the
+  // order they were pinned, then the rest in the order the person dragged them.
+  it('keeps the order the person dragged, pins after the pinned ones and unpins under them', async () => {
+    await t.createUser({ email: 'nina@example.com', name: 'Нина' });
+    const nina = await t.signIn('nina@example.com');
+    const names = async () => (await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: nina }))).projects.map((p) => `${p.name}${p.pinned ? '*' : ''}`);
+    const ids: Record<string, string> = {};
+    for (const name of ['Альфа', 'Бета', 'Гамма', 'Дельта']) ids[name] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name } }))).id;
+    // A new project comes first among the unpinned ones.
+    expect(await names()).toEqual(['Дельта', 'Гамма', 'Бета', 'Альфа']);
+
+    const order = (list: string[]) => t.call('PUT', '/app/api/projects/order', { cookie: nina, body: { ids: list.map((n) => ids[n]!) } });
+    expect((await order(['Альфа', 'Бета', 'Гамма', 'Дельта'])).status).toBe(200);
+    expect(await names()).toEqual(['Альфа', 'Бета', 'Гамма', 'Дельта']);
+
+    const pin = async (name: string, pinned: boolean) => json<ProjectDto>(await t.call('PUT', `/app/api/projects/${ids[name]}`, { cookie: nina, body: { pinned } }));
+    expect(await pin('Гамма', true)).toMatchObject({ name: 'Гамма', pinned: true });
+    await pin('Бета', true);
+    expect(await names()).toEqual(['Гамма*', 'Бета*', 'Альфа', 'Дельта']);
+    // Pinning a pinned project again does not move it.
+    await pin('Гамма', true);
+    expect(await names()).toEqual(['Гамма*', 'Бета*', 'Альфа', 'Дельта']);
+    // The pinned ones are dragged among themselves; a new project comes under them.
+    await order(['Бета', 'Гамма', 'Альфа', 'Дельта']);
+    ids['Эпсилон'] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name: 'Эпсилон' } }))).id;
+    expect(await names()).toEqual(['Бета*', 'Гамма*', 'Эпсилон', 'Альфа', 'Дельта']);
+    await pin('Бета', false);
+    expect(await names()).toEqual(['Гамма*', 'Бета', 'Эпсилон', 'Альфа', 'Дельта']);
+    // The last pinned one unpinned: the unpinned list keeps its order under it.
+    await pin('Гамма', false);
+    expect(await names()).toEqual(['Гамма', 'Бета', 'Эпсилон', 'Альфа', 'Дельта']);
+  });
+
+  it('takes an order only of exactly the person’s projects', async () => {
+    await t.createUser({ email: 'vera@example.com', name: 'Вера' });
+    const vera = await t.signIn('vera@example.com');
+    const a = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Первый' } }))).id;
+    const b = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Второй' } }))).id;
+    const someoneElses = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: petr, body: { name: 'Чужой' } }))).id;
+    for (const ids of [[a], [a, b, a], [a, b, someoneElses], [a, someoneElses], ['order', b]]) {
+      const res = await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids } });
+      expect(res.status).toBe(400);
+      expect((await json<{ error: { code: string; message: string } }>(res)).error).toMatchObject({ code: 'APP_VALIDATION_FAILED', message: 'Список проектов изменился, порядок не сохранён. Перетащите проект ещё раз.' });
+    }
+    expect((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: vera }))).projects.map((p) => p.id)).toEqual([b, a]);
+    expect((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: petr }))).projects.map((p) => p.id)).toContain(someoneElses);
+  });
+
   it('lists conversations of all agents newest first, page by page', async () => {
     const lena = await t.createUser({ email: 'lena@example.com', name: 'Лена' });
     const cookie = await t.signIn('lena@example.com');

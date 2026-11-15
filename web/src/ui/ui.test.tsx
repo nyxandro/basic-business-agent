@@ -1,8 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button.tsx';
+import { Collapse } from './Collapse.tsx';
 import { Modal } from './Modal.tsx';
 import { Switch } from './Switch.tsx';
 import { THEME_STORAGE_KEY } from './theme/theme.ts';
@@ -89,5 +90,50 @@ describe('modal', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
+  });
+});
+
+describe('collapse', () => {
+  it('folds the content away only after its animation, and turns back from midway', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const animations: { onfinish: (() => void) | null; cancel: () => void }[] = [];
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: () => {
+        const animation = { onfinish: null, cancel: vi.fn() };
+        animations.push(animation);
+        return animation;
+      },
+    });
+    function Probe() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((v) => !v)}>
+            Подробнее
+          </button>
+          <Collapse open={open}>
+            <p>Что спросили и что нашли</p>
+          </Collapse>
+        </>
+      );
+    }
+    try {
+      render(<Probe />);
+      const user = userEvent.setup();
+      expect(screen.queryByText('Что спросили и что нашли')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Подробнее' }));
+      expect(screen.getByText('Что спросили и что нашли')).toBeInTheDocument();
+      expect(animations).toHaveLength(1);
+
+      await user.click(screen.getByRole('button', { name: 'Подробнее' }));
+      expect(animations[0]!.cancel).toHaveBeenCalled();
+      expect(screen.getByText('Что спросили и что нашли')).toBeInTheDocument();
+      act(() => animations[1]!.onfinish?.());
+      expect(screen.queryByText('Что спросили и что нашли')).not.toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    }
   });
 });

@@ -48,6 +48,24 @@ export interface SyncState {
 // Where LiteLLM sees the login files of the accounts: the volume chatgpt-auth (compose files).
 export const GATEWAY_AUTH_DIR = '/chatgpt-auth';
 
+// How long the gateway waits on a provider (decision of the owner 15.11). A provider may go silent
+// with the connection open — mid-answer or before it (neuraldeep and Groq on 15.11) — and that is no
+// error to anyone: Mastra would wait the five minutes of one call (MODEL_CALL_MAX_MS) and end the
+// answer, LiteLLM held such requests up to 6 000 s. LiteLLM's `stream_timeout` is the read timeout of
+// a live stream: no byte for `silenceSeconds`, and the gateway cuts the stream itself and reports it
+// as a failure (code 408) — the agent repeats the step like any break (core/runtime/stream-retry.ts).
+// `timeout` bounds a request that is not streamed (the naming call, speech).
+export interface GatewayTimeouts {
+  silenceSeconds: number;
+  requestSeconds: number;
+}
+
+export const GATEWAY_TIMEOUTS: GatewayTimeouts = { silenceSeconds: 60, requestSeconds: 300 };
+
+function waitParams(kind: ModelKind, timeouts: GatewayTimeouts): Record<string, number> {
+  return { timeout: timeouts.requestSeconds, ...(kind === 'chat' ? { stream_timeout: timeouts.silenceSeconds } : {}) };
+}
+
 export function deploymentId(modelId: string, keyOrAccountId: string): string {
   return `${modelId}:${keyOrAccountId}`;
 }
@@ -71,14 +89,14 @@ function priceParams(m: SyncModel): Record<string, number> {
   throw new Error(`APP_CONFIG_INVALID: model ${m.id} on a key has no prices`);
 }
 
-export function deploymentsOf(state: SyncState, owner: string): DeploymentSpec[] {
+export function deploymentsOf(state: SyncState, owner: string, timeouts: GatewayTimeouts): DeploymentSpec[] {
   const out: DeploymentSpec[] = [];
   for (const m of state.models) {
     if (!m.enabled) continue;
     if (m.connection === 'chatgpt') {
       for (const a of state.accounts) {
         // A subscription costs nothing per token: its tokens count against the daily cap only.
-        const params = { model: m.providerModel, chatgpt_auth_file: `${GATEWAY_AUTH_DIR}/${a.id}.json`, ...pricesToLiteLLM(ZERO_PRICES) };
+        const params = { model: m.providerModel, chatgpt_auth_file: `${GATEWAY_AUTH_DIR}/${a.id}.json`, ...pricesToLiteLLM(ZERO_PRICES), ...waitParams(m.kind, timeouts) };
         out.push({
           id: deploymentId(m.id, a.id),
           modelName: m.id,
@@ -89,7 +107,7 @@ export function deploymentsOf(state: SyncState, owner: string): DeploymentSpec[]
       continue;
     }
     for (const k of state.keys.filter((key) => key.modelId === m.id)) {
-      const visible = { model: m.providerModel, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...priceParams(m), ...answerParams(m) };
+      const visible = { model: m.providerModel, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...priceParams(m), ...answerParams(m), ...waitParams(m.kind, timeouts) };
       // Keys never change in place (a new key is a new row), so the key id stands for the secret.
       const fingerprint = fingerprintOf({ visible, key: k.id, kind: m.kind });
       out.push({

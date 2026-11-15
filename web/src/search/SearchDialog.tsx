@@ -1,7 +1,9 @@
 // «Поиск» (spec, scenario 7; mockup): Ctrl+K or the button in the side panel. On a computer — a
 // window with «Везде / Разговоры / Проекты», «В проекте», groups and «Найдено: N»; on a phone —
 // the whole screen with project chips and «Отмена». A choice opens the conversation or the project.
-import type { ProjectDto, SearchResponse, SearchScope } from '@bba/contracts';
+// Until a query is typed it lists all the person's conversations, newest first (AllThreads.tsx);
+// «Ещё» under «Недавние» opens it on «Разговоры». It starts afresh each time it opens (a new `key`).
+import type { ProjectDto, SearchScope } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ru } from '../i18n/ru.ts';
@@ -9,19 +11,18 @@ import { threadPath } from '../layout/ThreadRow.tsx';
 import { fetchProjects } from '../projects/api.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dayLabel } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
+import { AllThreads } from './AllThreads.tsx';
 import { useSearch, type SearchState } from './use-search.ts';
 import styles from './search.module.css';
+import { ThreadResult } from './ThreadResult.tsx';
 
 const SCOPES: { id: SearchScope; label: string }[] = [
   { id: 'all', label: ru.search.everywhere },
   { id: 'threads', label: ru.search.threads },
   { id: 'projects', label: ru.search.projects },
 ];
-
-type Thread = SearchResponse['threads'][number];
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: string }) {
   return (
@@ -31,31 +32,11 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function ThreadRow({ thread, projectName, wide, onOpen }: { thread: Thread; projectName: string; wide: boolean; onOpen: () => void }) {
-  const when = dayLabel(thread.updatedAt);
-  return (
-    <button type="button" className={styles.result} onClick={onOpen}>
-      <span className={styles.tile}>
-        <Icon name="chat" size={15} />
-      </span>
-      <span className={styles.resultMain}>
-        <span className={styles.resultHead}>
-          <span className={styles.resultTitle}>{thread.title}</span>
-          {wide ? <span className={styles.when}>{when}</span> : null}
-        </span>
-        {thread.snippet ? <span className={styles.snippet}>{thread.snippet}</span> : null}
-        <span className={styles.pill}>
-          {wide ? <Icon name="folder" size={12} /> : null}
-          <span>{projectName}</span>
-          {wide ? null : <span>· {when}</span>}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function Results({ state, scope, wide, projectName, onRetry, onPick }: { state: SearchState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onPick: (path: string) => void }) {
-  if (state.status === 'idle') return <p className={styles.hint}>{ru.search.start}</p>;
+function Results({ state, scope, projectId, wide, projectName, onRetry, onPick }: { state: SearchState; scope: SearchScope; projectId: string | null; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onPick: (path: string) => void }) {
+  if (state.status === 'idle') {
+    if (scope === 'projects') return <p className={styles.hint}>{ru.search.start}</p>;
+    return <AllThreads key={projectId ?? ''} projectId={projectId} wide={wide} projectName={projectName} onPick={onPick} />;
+  }
   if (state.status === 'loading') {
     return (
       <p className={styles.hint} role="status">
@@ -104,7 +85,7 @@ function Results({ state, scope, wide, projectName, onRetry, onPick }: { state: 
         <>
           <div className={styles.group}>{ru.search.threads}</div>
           {threads.map((t) => (
-            <ThreadRow key={t.id} thread={t} projectName={projectName(t.projectId)} wide={wide} onOpen={() => onPick(threadPath(t))} />
+            <ThreadResult key={t.id} thread={t} projectName={projectName(t.projectId)} wide={wide} onOpen={() => onPick(threadPath(t))} />
           ))}
         </>
       ) : null}
@@ -118,9 +99,9 @@ function count(state: SearchState, scope: SearchScope): string | null {
   return n === 0 ? ru.search.noMatches : ru.search.found(n);
 }
 
-export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boolean; onClose: () => void }) {
+export function SearchDialog({ open, startScope, wide, onClose }: { open: boolean; startScope: SearchScope; wide: boolean; onClose: () => void }) {
   const [q, setQ] = useState('');
-  const [scope, setScope] = useState<SearchScope>('all');
+  const [scope, setScope] = useState<SearchScope>(startScope);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsFailed, setProjectsFailed] = useState(false);
@@ -207,7 +188,7 @@ export function SearchDialog({ open, wide, onClose }: { open: boolean; wide: boo
         </div>
       )}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">
-        <Results state={state} scope={scope} wide={wide} projectName={projectName} onRetry={retry} onPick={pick} />
+        <Results state={state} scope={scope} projectId={projectId} wide={wide} projectName={projectName} onRetry={retry} onPick={pick} />
       </div>
       {wide && footer ? <div className={styles.footer}>{footer}</div> : null}
     </Modal>

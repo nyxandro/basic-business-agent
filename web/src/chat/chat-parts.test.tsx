@@ -149,6 +149,10 @@ describe('stack of status lines', () => {
     await user.click(rows[2]!);
     expect(screen.getByText(/ls c3/)).toBeInTheDocument();
     expect(screen.queryByText(/ls c4/)).not.toBeInTheDocument();
+
+    await user.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
   it('turns while the last line runs', () => {

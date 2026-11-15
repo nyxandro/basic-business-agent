@@ -35,6 +35,8 @@ export interface SidebarProps {
   onProjectsChanged: () => void;
   onNewThread: () => void;
   onSearch: () => void;
+  // «Ещё» under «Недавние»: all conversations in the window of «Поиск».
+  onShowAllThreads: () => void;
   // A phone closes the drawer after a choice.
   onNavigate: () => void;
   // The phone's drawer adds its «Закрыть меню» here and opens «Ждёт подтверждения» as a sheet.
@@ -113,7 +115,7 @@ export function Sidebar(props: SidebarProps) {
           <Icon name="search" size={15} />
           {ru.search.open}
         </button>
-        <IconButton icon="plus" label={ru.shell.newThread} variant="outline" onClick={props.onNewThread} />
+        <IconButton icon="plus" label={ru.shell.newThread} onClick={props.onNewThread} />
       </div>
 
       <div className={styles.sectionLabel}>{ru.shell.agents}</div>
@@ -122,7 +124,7 @@ export function Sidebar(props: SidebarProps) {
       <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
-      <RecentThreads refreshKey={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} />
+      <RecentThreads refreshKey={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} />
 
       <div className={styles.spacer} />
       <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />

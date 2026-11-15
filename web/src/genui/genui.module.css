@@ -253,12 +253,83 @@
 }
 
 /* The file block (spec, section 8.18): a file the agent made, with «Скачать». */
+/* A ready file stands out in the answer (decision of the owner 15.11): the accent colour as «liquid
+   glass» — a gradient of the accent, a highlight at the top left, a light rim, a shadow of the same
+   colour, and a gleam that runs across on hover. The icons of every file type turn white on it.
+   The rim is one ring drawn all the way round (::after): a border of its own and inset lines along
+   the top and the bottom faded out at the corners, and the rim looked unfinished there (owner, 15.11). */
 .file {
+  --glass-top: color-mix(in oklab, var(--acc), #c4b5fd 38%);
+  --glass-deep: color-mix(in oklab, var(--acc), #0b0820 22%);
+  --file-pdf: var(--on-acc);
+  --file-doc: var(--on-acc);
+  --file-sheet: var(--on-acc);
+  --file-slides: var(--on-acc);
+  --file-image: var(--on-acc);
+  --file-media: var(--on-acc);
+  --file-archive: var(--on-acc);
+  --file-plain: var(--on-acc);
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  /* The 1px of the border is in the padding: the ring takes its place. */
+  padding: 13px 15px;
   max-width: 460px;
+  color: var(--on-acc);
+  border: 0;
+  background:
+    radial-gradient(130% 150% at 0% 0%, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 52%),
+    linear-gradient(135deg, var(--glass-top) 0%, var(--acc) 52%, var(--glass-deep) 100%);
+  box-shadow:
+    0 10px 28px -12px color-mix(in oklab, var(--acc), transparent 20%),
+    0 2px 6px -2px color-mix(in oklab, var(--acc), transparent 55%);
+  backdrop-filter: blur(14px) saturate(160%);
+}
+
+.file::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.26) 48%, transparent 61%) no-repeat;
+  background-size: 250% 100%;
+  background-position: 130% 0;
+  transition: background-position 0.9s var(--ease-out);
+}
+
+.file:hover::before {
+  background-position: -30% 0;
+}
+
+/* The rim: brighter where the light falls (top left), never gone. */
+.file::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.3) 45%, rgba(255, 255, 255, 0.22) 100%);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+.fileIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 .fileText {
@@ -275,5 +346,36 @@
 
 .fileSize {
   font-size: 12px;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* White on the glass: the one action of the block. The accent text is darkened so it reads on white
+   in both themes (the dark theme's own accent text is light). */
+.file a.fileDownload {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.94);
+  color: color-mix(in oklab, var(--acc), #0b0820 18%);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(10, 8, 40, 0.18);
+  transition:
+    background 0.15s,
+    transform 0.15s var(--ease-out),
+    box-shadow 0.15s;
+}
+
+.file a.fileDownload:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -2px rgba(10, 8, 40, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file::before,
+  .file a.fileDownload {
+    transition: none;
+  }
+
+  .file a.fileDownload:hover {
+    transform: none;
+  }
 }

@@ -170,9 +170,15 @@ export function ProjectPage() {
   if (!projectId) throw new Error('ProjectPage needs the :projectId route parameter');
   const load = useCallback(() => fetchProject(projectId), [projectId]);
   const { state, reload } = useLoad(load);
-  const [saved, setSaved] = useState<ProjectDto | null>(null);
+  // What the page just saved, over the project it was loaded as: the project loaded again has it.
+  const [saved, setSaved] = useState<{ over: ProjectDto; project: ProjectDto } | null>(null);
   const [removeError, setRemoveError] = useState<ApiRequestError | null>(null);
-  const { agents, wide, openMenu, refreshProjects } = useShell();
+  const { agents, wide, openMenu, refreshProjects, projectsKey } = useShell();
+  const [seenKey, setSeenKey] = useState(projectsKey);
+  if (seenKey !== projectsKey) {
+    setSeenKey(projectsKey);
+    reload();
+  }
   const confirm = useConfirm();
   const toast = useToast();
   const navigate = useNavigate();
@@ -181,9 +187,10 @@ export function ProjectPage() {
   if (state.status === 'error') {
     return state.error.code === 'APP_NOT_FOUND' ? <Notice>{ru.projects.notFound}</Notice> : <ErrorBanner title={ru.projects.loadFailed} error={state.error} onRetry={reload} />;
   }
-  const project = saved?.id === projectId ? saved : state.data;
+  const loaded = state.data;
+  const project = saved && saved.over === loaded ? saved.project : loaded;
   const update = (p: ProjectDto) => {
-    setSaved(p);
+    setSaved({ over: loaded, project: p });
     refreshProjects();
   };
 

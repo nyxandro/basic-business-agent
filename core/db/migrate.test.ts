@@ -37,7 +37,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
@@ -92,7 +92,7 @@ describe('migrate', () => {
       for (const name of ['read-documents', 'note-taking']) {
         await query(stage.url, `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope) VALUES ('${name}', 't', 'd', '\\x00', '${'a'.repeat(64)}', 1, '[]', false, 'org')`);
       }
-      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql']);
+      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql']);
       expect(await query(stage.url, 'SELECT name FROM app.skills')).toEqual([{ name: 'note-taking' }]);
       expect(await query(stage.url, `SELECT actor_user_id, action, target FROM app.admin_audit`)).toEqual([{ actor_user_id: null, action: 'skill.delete', target: 'read-documents' }]);
     } finally {
@@ -114,11 +114,40 @@ describe('migrate', () => {
          VALUES ('m-onkey', 'chat', 'Qwen', 'api_key', 'groq/qwen/qwen3.8-27b', true, 1, 1, 1, 1, 1, 0)`,
       );
       await query(stage.url, `INSERT INTO app.models (id, kind, label, connection, provider_model, vision) VALUES ('m-sub', 'chat', 'GPT', 'chatgpt', 'chatgpt/gpt-5.4', true)`);
-      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql']);
+      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql']);
       expect(await query(stage.url, 'SELECT id, max_output_tokens FROM app.models ORDER BY id')).toEqual([
         { id: 'm-onkey', max_output_tokens: null },
         { id: 'm-sub', max_output_tokens: null },
       ]);
+    } finally {
+      rmSync(before, { recursive: true, force: true });
+      await stage.drop();
+    }
+  });
+
+  // 0015: the order of the side panel (spec, section 8.12) goes onto projects that already exist.
+  it('gives existing projects the order they had, by name, per person, none of them pinned', async () => {
+    const stage = await createTestDatabase();
+    const before = mkdtempSync(join(tmpdir(), 'bba-migrations-'));
+    try {
+      for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f < '0015')) copyFileSync(join(MIGRATIONS_DIR, f), join(before, f));
+      await migrate(stage.url, before);
+      await query(stage.url, `INSERT INTO app."user" ("id", "name", "email", "emailVerified") VALUES ('u1', 'Ольга', 'olga@example.com', true), ('u2', 'Пётр', 'petr@example.com', true)`);
+      await query(
+        stage.url,
+        `INSERT INTO app.projects (id, user_id, name) VALUES
+           ('00000000-0000-4000-8000-000000000001', 'u1', 'бета'), ('00000000-0000-4000-8000-000000000002', 'u1', 'Альфа'),
+           ('00000000-0000-4000-8000-000000000003', 'u1', 'Гамма'), ('00000000-0000-4000-8000-000000000004', 'u2', 'Отчёты')`,
+      );
+      expect(await migrate(stage.url)).toEqual(['0015_project_order.sql']);
+      expect(await query(stage.url, 'SELECT user_id, name, position, pinned FROM app.projects ORDER BY user_id, position')).toEqual([
+        { user_id: 'u1', name: 'Альфа', position: 1, pinned: false },
+        { user_id: 'u1', name: 'бета', position: 2, pinned: false },
+        { user_id: 'u1', name: 'Гамма', position: 3, pinned: false },
+        { user_id: 'u2', name: 'Отчёты', position: 1, pinned: false },
+      ]);
+      // A project without a place is a mistake of the server, not something to guess.
+      await expect(query(stage.url, `INSERT INTO app.projects (id, user_id, name) VALUES ('00000000-0000-4000-8000-000000000005', 'u1', 'Дельта')`)).rejects.toThrow(/position/);
     } finally {
       rmSync(before, { recursive: true, force: true });
       await stage.drop();

@@ -231,9 +231,29 @@
   max-width: 100%;
 }
 
-.tool > figure,
-.tool > pre {
+.tool > figure {
   align-self: stretch;
+}
+
+/* What a line unfolds grows out from under it, the gap above included (ui/Collapse.tsx). */
+.toolUnfold {
+  align-self: stretch;
+  margin-top: -8px;
+}
+
+.toolUnfold::before {
+  content: '';
+  display: block;
+  height: 8px;
+}
+
+/* The chevron of a line turns over as the line unfolds. */
+.toolChevron {
+  transition: transform 0.26s var(--ease-out);
+}
+
+.toolChevronOpen {
+  transform: rotate(180deg);
 }
 
 .toolLine {

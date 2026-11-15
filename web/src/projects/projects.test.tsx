@@ -1,6 +1,6 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
@@ -8,8 +8,8 @@ const AGENTS = [
   { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
   { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
 ];
-const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, createdAt: '2026-11-10T08:00:00Z' };
-const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, createdAt: '2026-11-11T08:00:00Z' };
+const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, pinned: false, createdAt: '2026-11-10T08:00:00Z' };
+const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, pinned: false, createdAt: '2026-11-11T08:00:00Z' };
 
 function server(extra: Record<string, Parameters<typeof mockServer>[0][string]> = {}) {
   return mockServer({
@@ -39,12 +39,158 @@ describe('projects of conversations', () => {
     expect(await screen.findByRole('heading', { name: 'Новый тендер' })).toBeInTheDocument();
   });
 
-  it('lists the projects with the number of their conversations', async () => {
+  it('lists the projects without the number of their conversations (decision of the owner 15.11)', async () => {
     server();
     renderApp('/agents/sales?thread=t1');
-    const link = await screen.findByRole('link', { name: /Отчёты/ });
+    const link = await screen.findByRole('link', { name: 'Отчёты' });
     expect(link).toHaveAttribute('href', '/projects/p2');
-    expect(within(link).getByText('3')).toBeInTheDocument();
+    expect(link).toHaveTextContent(/^Отчёты$/);
+  });
+
+  // «Проекты» of the side panel (spec, section 8.12; decisions of the owner 15.11).
+  describe('order of «Проекты»', () => {
+    const PLAN = { ...TENDER, id: 'p3', name: 'План', pinned: true };
+    const PROJECT_LINK = 'a[href^="/projects/"]';
+    const panel = () =>
+      screen.getAllByRole('link').filter((a) => a.matches(PROJECT_LINK)).map((a) => `${a.textContent}${within(a).queryByRole('img', { name: 'Закреплён' }) ? '*' : ''}`);
+    const openMenu = async (name: string) => {
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: `Действия с проектом «${name}»` }));
+      return user;
+    };
+
+    // jsdom lays nothing out: each project row gets 40 px in the order of the page.
+    const layOutPanel = () =>
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+        const all = [...document.querySelectorAll(PROJECT_LINK)];
+        const inside = this.matches(PROJECT_LINK) ? [this] : [...this.querySelectorAll(PROJECT_LINK)];
+        if (inside.length === 0) return new DOMRect(0, 0, 0, 0);
+        return new DOMRect(0, all.indexOf(inside[0]!) * 40, 240, inside.length * 40 - 4);
+      });
+    const dragUpByKeyboard = async (name: string) => {
+      const user = userEvent.setup();
+      screen.getByRole('link', { name }).focus();
+      await user.keyboard(' ');
+      await user.keyboard('{ArrowUp}');
+      await user.keyboard(' ');
+      return user;
+    };
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('pins a project after the pinned ones and unpins it first among the rest', async () => {
+      const s = server({
+        'GET /app/api/projects': { body: { projects: [PLAN, TENDER, REPORTS] } },
+        'PUT /app/api/projects/p2': { body: { ...REPORTS, pinned: true } },
+        'PUT /app/api/projects/p3': { body: { ...PLAN, pinned: false } },
+      });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('link', { name: /План/ });
+      expect(panel()).toEqual(['План*', 'Тендер Альфа', 'Отчёты']);
+
+      let user = await openMenu('Отчёты');
+      await user.click(screen.getByRole('menuitem', { name: 'Закрепить' }));
+      expect(panel()).toEqual(['План*', 'Отчёты*', 'Тендер Альфа']);
+      // The row went over to the other group: its link has the keyboard.
+      expect(screen.getByRole('link', { name: /Отчёты/ })).toHaveFocus();
+      await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === '/app/api/projects/p2')?.body).toEqual({ pinned: true }));
+
+      user = await openMenu('План');
+      await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
+      expect(panel()).toEqual(['Отчёты*', 'План', 'Тендер Альфа']);
+      await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === '/app/api/projects/p3')?.body).toEqual({ pinned: false }));
+    });
+
+    it('drags a project with the keyboard: the space bar picks it up, the arrows move it, the space bar leaves it', async () => {
+      layOutPanel();
+      const s = server({
+        'GET /app/api/projects': { body: { projects: [PLAN, TENDER, REPORTS] } },
+        'PUT /app/api/projects/order': { body: { ok: true } },
+      });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('link', { name: 'Отчёты' });
+      const user = await dragUpByKeyboard('Отчёты');
+      expect(panel()).toEqual(['План*', 'Отчёты', 'Тендер Альфа']);
+      await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p3', 'p2', 'p1'] }));
+      // A drop opens nothing; Enter still opens the project.
+      expect(screen.getByRole('link', { name: 'Отчёты' })).toHaveFocus();
+      expect(screen.queryByRole('heading', { name: 'Отчёты' })).not.toBeInTheDocument();
+      await user.keyboard('{Enter}');
+      expect(await screen.findByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
+    });
+
+    it('a mouse drop does not let the browser follow the link; a click after it opens the project', async () => {
+      layOutPanel();
+      const s = server({ 'PUT /app/api/projects/order': { body: { ok: true } } });
+      renderApp('/agents/sales?thread=t1');
+      const link = await screen.findByRole('link', { name: 'Отчёты' });
+      fireEvent.mouseDown(link, { button: 0, clientX: 20, clientY: 60 });
+      fireEvent.mouseMove(document, { clientX: 20, clientY: 40 });
+      fireEvent.mouseMove(document, { clientX: 20, clientY: 20 });
+      fireEvent.mouseUp(document, { clientX: 20, clientY: 20 });
+      const click = createEvent.click(link, { button: 0 });
+      fireEvent(link, click);
+      expect(click.defaultPrevented).toBe(true);
+      expect(panel()).toEqual(['Отчёты', 'Тендер Альфа']);
+      await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p2', 'p1'] }));
+      await userEvent.setup().click(screen.getByRole('link', { name: 'Отчёты' }));
+      expect(await screen.findByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
+    });
+
+    it('a list that loads while an order is being saved does not bring the old order back', async () => {
+      layOutPanel();
+      let answerList: (() => void) | null = null;
+      const s = server({
+        'PUT /app/api/projects/order': { body: { ok: true } },
+        'PUT /app/api/projects/p1': { body: { ...TENDER, name: 'Тендер Бета' } },
+      });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('link', { name: 'Отчёты' });
+      // The rename loads the list again; that list (the old order) answers only after the drop.
+      s.set('GET /app/api/projects', () => new Promise((resolve) => (answerList = () => resolve({ body: { projects: [{ ...TENDER, name: 'Тендер Бета' }, REPORTS] } }))));
+      const user = await openMenu('Тендер Альфа');
+      await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+      await user.clear(screen.getByRole('textbox', { name: 'Название проекта' }));
+      await user.type(screen.getByRole('textbox', { name: 'Название проекта' }), 'Тендер Бета{Enter}');
+      await waitFor(() => expect(answerList).not.toBeNull());
+      await dragUpByKeyboard('Отчёты');
+      await waitFor(() => expect(s.calls.some((c) => c.path === '/app/api/projects/order')).toBe(true));
+      s.set('GET /app/api/projects', { body: { projects: [REPORTS, { ...TENDER, name: 'Тендер Бета' }] } });
+      answerList!();
+      await waitFor(() => expect(s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/projects')).toHaveLength(3));
+      await waitFor(() => expect(panel()).toEqual(['Отчёты', 'Тендер Бета']));
+    });
+
+    it('says when the order was not saved and shows the order of the server again', async () => {
+      const s = server({ 'PUT /app/api/projects/p2': apiError('APP_INTERNAL', 'Что-то пошло не так на сервере.', 500) });
+      renderApp('/agents/sales?thread=t1');
+      const user = await openMenu('Отчёты');
+      await user.click(screen.getByRole('menuitem', { name: 'Закрепить' }));
+      expect(await screen.findByText('Изменение в «Проектах» не сохранилось')).toBeInTheDocument();
+      await waitFor(() => expect(panel()).toEqual(['Тендер Альфа', 'Отчёты']));
+      expect(s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/projects')).toHaveLength(2);
+    });
+
+    it('renames a project from its three dots, and its open page shows the new name', async () => {
+      const renamed = { ...TENDER, name: 'Тендер Бета' };
+      const s = server({
+        'PUT /app/api/projects/p1': () => {
+          s.set('GET /app/api/projects/p1', { body: renamed });
+          s.set('GET /app/api/projects', { body: { projects: [renamed, REPORTS] } });
+          return { body: renamed };
+        },
+      });
+      renderApp('/projects/p1');
+      await screen.findByRole('heading', { name: 'Тендер Альфа' });
+      const user = await openMenu('Тендер Альфа');
+      await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+      const field = screen.getByRole('textbox', { name: 'Название проекта' });
+      await user.clear(field);
+      await user.type(field, 'Тендер Бета{Enter}');
+      expect(await screen.findByRole('heading', { name: 'Тендер Бета' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Тендер Бета' })).toHaveFocus();
+      expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ name: 'Тендер Бета' });
+    });
   });
 
   it('saves the instructions for the agent', async () => {
@@ -105,7 +251,7 @@ describe('projects of conversations', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Новый разговор в проекте' }));
     await user.click(screen.getByRole('menuitem', { name: /Общий помощник/ }));
-    expect(await screen.findByRole('button', { name: /Тендер Альфа/ })).toHaveAttribute('aria-haspopup', 'menu');
+    expect(await screen.findByRole('button', { name: 'Тендер Альфа' })).toHaveAttribute('aria-haspopup', 'menu');
     expect(s.calls.find((c) => c.method === 'PUT' && c.path === thread)?.body).toEqual({ projectId: 'p1' });
   });
 
@@ -130,17 +276,17 @@ describe('projects of conversations', () => {
       renderApp('/projects/p1');
       await screen.findByRole('heading', { name: 'Тендер Альфа' });
       await startNew();
-      expect(await screen.findByRole('button', { name: /Тендер Альфа/, expanded: false })).toHaveAttribute('aria-haspopup', 'menu');
+      expect(await screen.findByRole('button', { name: 'Тендер Альфа', expanded: false })).toHaveAttribute('aria-haspopup', 'menu');
       expect(s.calls.find((c) => c.method === 'PUT' && c.path === newThread)?.body).toEqual({ projectId: 'p1' });
     });
 
     it('puts the conversation into the project of the open conversation', async () => {
       const s = withNewThread({ 'GET /app/api/threads/t1/project': { body: { projectId: 'p2' } } });
       renderApp('/agents/sales?thread=t1');
-      await screen.findByRole('button', { name: /Отчёты/, expanded: false });
+      await screen.findByRole('button', { name: 'Отчёты', expanded: false });
       await startNew();
       await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === newThread)?.body).toEqual({ projectId: 'p2' }));
-      expect(await screen.findByRole('button', { name: /Отчёты/, expanded: false })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Отчёты', expanded: false })).toBeInTheDocument();
     });
 
     it('starts the conversation without a project outside of one', async () => {
@@ -181,7 +327,7 @@ describe('projects of conversations', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /Без проекта/ }));
     await user.click(await screen.findByRole('menuitemradio', { name: /Отчёты/ }));
-    expect(await screen.findByRole('button', { name: /Отчёты/, expanded: false })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Отчёты', expanded: false })).toBeInTheDocument();
     expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ projectId: 'p2' });
   });
 

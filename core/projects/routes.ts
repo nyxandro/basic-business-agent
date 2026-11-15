@@ -8,13 +8,14 @@ import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { fileDownload } from '../workspace/download.ts';
 import { contextRoot, listFiles, removeFileInside, saveFile } from '../workspace/layout.ts';
-import { createProject, deleteProject, getProject, listProjects, listThreadPage, projectDto, projectOfThread, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
+import { createProject, deleteProject, getProject, listProjects, listThreadPage, orderProjects, projectDto, projectOfThread, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
 export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 
 const createSchema = z.object({ name: z.string() });
-const updateSchema = z.object({ name: z.string().optional(), instructions: z.string().optional() });
+const updateSchema = z.object({ name: z.string().optional(), instructions: z.string().optional(), pinned: z.boolean().optional() });
+const orderSchema = z.object({ ids: z.array(z.string()) });
 const linkSchema = z.object({ projectId: z.string().nullable() });
 const listSchema = z.object({
   projectId: z.string().optional(),
@@ -38,6 +39,13 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   app.post('/app/api/projects', async (c) => {
     const body = await parseJson(c, createSchema);
     return c.json(await createProject(deps, access(c).userId, body.name), 201);
+  });
+
+  // Before the routes of one project: those would take «order» for a project's id.
+  app.put('/app/api/projects/order', async (c) => {
+    const body = await parseJson(c, orderSchema);
+    await orderProjects(deps, access(c).userId, body.ids);
+    return c.json({ ok: true });
   });
 
   app.get('/app/api/projects/:id', async (c) => c.json(await projectDto(deps, access(c).userId, c.req.param('id'))));

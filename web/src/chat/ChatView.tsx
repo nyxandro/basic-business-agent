@@ -68,9 +68,14 @@ interface FeedFailures {
   onAnswerAgain?: (() => void) | undefined;
 }
 
+// What the feed draws or waits on. The model's reasoning (`reasoning`) and the layers of the
+// environment (`activity`) come as messages of their own and are not drawn.
+const FEED_ROLES: ReadonlySet<Message['role']> = new Set(['user', 'assistant', 'tool']);
+
 function Feed({ messages, running, failures }: { messages: Message[]; running: boolean; failures: FeedFailures }) {
-  const last = messages.at(-1);
-  // Until the first words of the answer the agent shows it is working.
+  // Until the next thing to see the agent shows it is working — also while the model reasons, whose
+  // reasoning would otherwise be the last message and take the dots away (decision of the owner 15.11).
+  const last = messages.findLast((m) => FEED_ROLES.has(m.role));
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
   const rows = rowsOf(messages);
   const lastBroken = failures.lastBroken && !running;

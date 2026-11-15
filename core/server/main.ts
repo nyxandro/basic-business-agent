@@ -21,7 +21,7 @@ import { createChatGptAccounts } from '../models/chatgpt-accounts.ts';
 import { createChatGptAuthClient, OPENAI_AUTH_BASE } from '../models/chatgpt-login.ts';
 import { createGatewayWriter } from '../models/gateway-writer.ts';
 import { createModelGateway } from '../models/gateway.ts';
-import { GATEWAY_OWNER } from '../models/gateway-sync.ts';
+import { GATEWAY_OWNER, GATEWAY_TIMEOUTS } from '../models/gateway-sync.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
   await gateway.syncOrgBudget();
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
-  const writer = createGatewayWriter({ db, box, client: litellm, owner: GATEWAY_OWNER, fileModelIds: new Set() });
+  const writer = createGatewayWriter({ db, box, client: litellm, owner: GATEWAY_OWNER, fileModelIds: new Set(), timeouts: GATEWAY_TIMEOUTS });
   const accounts = createChatGptAccounts({ db, box, writer, auth: createChatGptAuthClient(OPENAI_AUTH_BASE), authDir: env.APP_CHATGPT_AUTH_DIR, timezone: installation.app.timezone });
   const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
   // The accounts' login files go into the volume before LiteLLM gets deployments that read them.

@@ -8,6 +8,7 @@ import { Link } from 'react-router';
 import { TableBlockView } from '../genui/TableBlock.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
+import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import styles from './chat.module.css';
 import { toolSummary, type ToolStatus } from './tool-summary.ts';
@@ -18,6 +19,11 @@ export interface ToolRowProps {
   parameters?: unknown;
   result?: string;
   agent: Pick<AgentSummary, 'systems' | 'actions'>;
+}
+
+// What a call was asked and what it found; drawn only while unfolded, a result can be large.
+export function ToolDetails({ args, value }: { args: unknown; value: unknown }) {
+  return <pre className={styles.toolDetails}>{JSON.stringify({ args, result: value }, null, 2)}</pre>;
 }
 
 export function ToolRow({ name, status, parameters, result, agent }: ToolRowProps) {
@@ -66,9 +72,11 @@ export function ToolRow({ name, status, parameters, result, agent }: ToolRowProp
         <span className={styles.toolText}>{summary.text}</span>
         {summary.readOnly ? <span className={styles.toolTag}>{ru.chat.readOnly}</span> : null}
         {summary.count !== null ? <span className={styles.toolCount}>{ru.chat.found(summary.count)}</span> : null}
-        <Icon name={open ? 'up' : 'down'} size={15} />
+        <Icon name="down" size={15} className={cx(styles.toolChevron, open && styles.toolChevronOpen)} />
       </button>
-      {open ? <pre className={styles.toolDetails}>{JSON.stringify({ args: parameters, result: summary.value }, null, 2)}</pre> : null}
+      <Collapse open={open} className={styles.toolUnfold}>
+        <ToolDetails args={parameters} value={summary.value} />
+      </Collapse>
       {table.success ? <TableBlockView block={table.data.table} /> : null}
     </div>
   );

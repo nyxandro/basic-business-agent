@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/test-app.ts';
 import { createModelCatalog } from './catalog.ts';
+import { GATEWAY_TIMEOUTS } from './gateway-sync.ts';
 import { createGatewayWriter } from './gateway-writer.ts';
 import { TEST_MODEL_IDS } from './test-catalog.ts';
 import { startFakeModel, type FakeModel } from './fake-openai.ts';
@@ -211,7 +212,7 @@ describe('models of «Нейросеть»', () => {
   it('shows the catalog from our database when LiteLLM does not answer', async () => {
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     const client = createLiteLLMClient('http://127.0.0.1:9', 'sk-x');
-    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS, timeouts: GATEWAY_TIMEOUTS });
     const offline = createModelCatalog({ db: t.db, box, client, writer, accounts: t.accounts, agentName: (id) => id });
     const list = await offline.list();
     expect(list.gateway).toMatchObject({ reachable: false, pendingModelIds: [] });
@@ -292,7 +293,7 @@ describe('the length of an answer (spec, section 8.19)', () => {
     await t.litellm.deleteDeployment(`${old.id}:${old.keys[0]!.id}`);
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     const client: LiteLLMClient = { ...t.litellm, modelMap: () => Promise.reject(gatewayUnavailable('LiteLLM GET /public/litellm_model_cost_map answered nothing')) };
-    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS });
+    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS, timeouts: GATEWAY_TIMEOUTS });
     const silentMap = createModelCatalog({ db: t.db, box, client, writer, accounts: t.accounts, agentName: (id) => id });
     await silentMap.sync();
     expect((await lastRequestOf(old)).max_tokens).toBeUndefined();
