@@ -45,9 +45,9 @@ const ACTION_TITLES: [name: string, title: string, readOnly: boolean][] = [
   [WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS, 'Остановка команды', false],
   [WORKSPACE_TOOLS.SEARCH.SEARCH, 'Поиск по файлам', true],
   [WORKSPACE_TOOLS.SEARCH.INDEX, 'Указатель файлов', false],
-  ['skill', 'Скилл', true],
-  ['skill_read', 'Чтение скилла', true],
-  ['skill_search', 'Поиск в скиллах', true],
+  ['skill', 'Активация навыка', true],
+  ['skill_read', 'Чтение навыка', true],
+  ['skill_search', 'Поиск в навыках', true],
   [VIEW_IMAGE_TOOL, 'Просмотр картинки', true],
 ];
 export const WORKSPACE_ACTIONS: Record<string, ActionDescription> = Object.fromEntries(ACTION_TITLES.map(([name, title, readOnly]) => [name, { title, fields: {}, readOnly }]));

@@ -22,7 +22,7 @@ export interface ToolRowProps {
 
 export function ToolRow({ name, status, parameters, result, agent }: ToolRowProps) {
   const [open, setOpen] = useState(false);
-  const summary = toolSummary(name, status, result, agent);
+  const summary = toolSummary(name, status, result, agent, parameters);
 
   if (summary.state === 'running') {
     return (

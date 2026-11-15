@@ -12,6 +12,15 @@ import { toolMessageOf } from './messages.ts';
 import { toolSummary } from './tool-summary.ts';
 import type { ToolCall } from './turn-items.ts';
 
+// The arguments of a call come as JSON text, still unfinished while the model writes them.
+function argumentsOf(call: ToolCall): unknown {
+  try {
+    return JSON.parse(call.function.arguments);
+  } catch {
+    return null;
+  }
+}
+
 export function ToolStack({
   calls,
   messages,
@@ -28,7 +37,7 @@ export function ToolStack({
   if (!last) throw new Error('a stack of tool lines needs at least one call');
   const result = toolMessageOf(messages, last.id)?.content;
   // A call without its result yet is still under way (or waits for «Да»).
-  const summary = toolSummary(last.function.name, typeof result === 'string' ? 'complete' : 'executing', typeof result === 'string' ? result : undefined, agent);
+  const summary = toolSummary(last.function.name, typeof result === 'string' ? 'complete' : 'executing', typeof result === 'string' ? result : undefined, agent, argumentsOf(last));
 
   return (
     <div className={styles.tool}>

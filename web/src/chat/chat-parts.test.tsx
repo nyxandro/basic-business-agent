@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -91,6 +91,32 @@ describe('tool line', () => {
     expect(line).toHaveTextContent('только чтение');
     expect(line).toHaveTextContent('1 найдено');
     expect(screen.getByRole('cell', { name: 'Поставка' })).toBeInTheDocument();
+  });
+});
+
+describe('activation of a skill', () => {
+  // As the agents of an installation get it from the server (core/sandbox/workspace.ts).
+  const SKILL_AGENT = { systems: SYSTEMS, actions: { skill: { title: 'Активация навыка', fields: {}, readOnly: true } } };
+  const skillRow = (p: Partial<ToolRowProps>) => render(<ToolRow name="skill" status="complete" parameters={{ name: 'read-documents' }} agent={SKILL_AGENT} {...p} />);
+
+  it('names the skill as people know it, from the heading of its instructions', () => {
+    skillRow({ result: '# Чтение документов\n\nФайлы сотрудника лежат в рабочей папке…' });
+    expect(screen.getByRole('button', { name: 'Активирован навык «Чтение документов»' })).toBeInTheDocument();
+    expect(screen.queryByText('только чтение')).not.toBeInTheDocument();
+  });
+
+  it('names it by its name when the instructions have no heading, and says when there is no such skill', () => {
+    skillRow({ result: 'Файлы сотрудника лежат в рабочей папке…' });
+    expect(screen.getByRole('button', { name: 'Активирован навык «read-documents»' })).toBeInTheDocument();
+    cleanup();
+    // Mastra's own answer for an unknown name.
+    skillRow({ parameters: { name: 'reports' }, result: 'Skill "reports" not found. Available skills: read-documents (/skills/read-documents)' });
+    expect(screen.getByText('Навык «reports» не найден')).toBeInTheDocument();
+  });
+
+  it('says it is being activated while it loads', () => {
+    skillRow({ status: 'executing' });
+    expect(screen.getByText('Активирую навык…')).toBeInTheDocument();
   });
 });
 

@@ -16,6 +16,13 @@ export type ToolSummary =
 
 const SUBAGENT_CALL = 'agent-';
 
+// The skill tool of Mastra: it gets the name of a skill and gives back its instructions (SKILL.md),
+// whose first heading is the name people know (spec, section 8.15; decision of the owner 15.11);
+// an unknown name gets Mastra's «Skill "<name>" not found.».
+const SKILL_TOOL = 'skill';
+const SKILL_NOT_FOUND = /^Skill "(.+?)" not found\./;
+const HEADING = /^#\s+(.+)$/m;
+
 // How many things a result holds, when it is a list or a table: «12 найдено».
 function countOf(value: unknown): number | null {
   if (Array.isArray(value)) return value.length;
@@ -28,7 +35,21 @@ function countOf(value: unknown): number | null {
   return null;
 }
 
-export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>): ToolSummary {
+function skillSummary(status: ToolStatus, result: string | undefined, parameters: unknown): ToolSummary | null {
+  if (status !== 'complete') return { state: 'running', text: ru.chat.skillActivating };
+  const outcome = parseToolResult(result);
+  if (outcome.kind !== 'ok' || typeof outcome.value !== 'string') return null;
+  const asked = typeof (parameters as { name?: unknown } | null)?.name === 'string' ? (parameters as { name: string }).name : null;
+  const missing = SKILL_NOT_FOUND.exec(outcome.value);
+  if (missing) return { state: 'failed', text: ru.chat.skillNotFound(asked ?? missing[1]!), code: null };
+  const title = HEADING.exec(outcome.value)?.[1]?.trim() ?? asked;
+  return { state: 'done', text: ru.chat.skillActivated(title), readOnly: false, count: null, value: outcome.value };
+}
+
+// `parameters` — what the call was asked, for the lines that name it.
+export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
+  const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
+  if (skill) return skill;
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };
