@@ -3,7 +3,7 @@
 //   /workspace/<userId>/projects/<projectId>/files — files of a project
 // A conversation's sandbox root is one of these files folders: the agent works freely inside it,
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
@@ -113,16 +113,31 @@ export function existingInside(dir: string, path: string): string | null {
     real = realpathSync(full);
   } catch (error) {
     if (noFile(error)) return null;
+    // A folder of the path turned into a link while it was being looked up.
+    if ((error as NodeJS.ErrnoException).code === 'EINVAL') throw appError('APP_VALIDATION_FAILED', `path ${path} changed while it was checked`, { cause: error });
     throw error;
   }
   if (real === realpathSync(dir) || outside(realpathSync(dir), real)) throw appError('APP_VALIDATION_FAILED', `path ${path} leads out of the folder through a link`);
   return real;
 }
 
-// Opens `real` and makes sure the opened thing is what `check()` finds inside the folder after the
-// opening: the agent can swap a folder of the path for a link between a check and an open, and the
-// server would read or delete outside (the way of Mastra's LocalFilesystem.openContainedPath).
-function openChecked(real: string, flags: number, check: () => string | null): number | null {
+// Where an opened file or folder really is. Linux tells it for the descriptor itself, so no change of
+// the path after the opening can fool the check (an agent swaps a folder of the path for a link to
+// the server's files and back in a loop; looking the path up again lost that race — independent
+// review 15.11). Elsewhere (macOS, development only) the path is looked up again and compared by
+// device and inode, which leaves a narrow race.
+function placeOfOpened(fd: number, again: () => string | null): string | null {
+  if (process.platform === 'linux') return readlinkSync(`/proc/self/fd/${fd}`);
+  const path = again();
+  if (!path) return null;
+  const opened = fstatSync(fd);
+  const current = statSync(path);
+  return current.dev === opened.dev && current.ino === opened.ino ? path : null;
+}
+
+// Opens `real` and keeps it open only if what was opened is inside `dir` (`root`: the folder itself
+// counts, as the parent of a file of its top level).
+function openChecked(dir: string, real: string, flags: number, again: () => string | null, root: boolean): number | null {
   let fd: number;
   try {
     fd = openSync(real, flags);
@@ -131,10 +146,9 @@ function openChecked(real: string, flags: number, check: () => string | null): n
     throw error;
   }
   try {
-    const opened = fstatSync(fd);
-    const again = check();
-    const current = again ? statSync(again) : null;
-    if (!current || current.dev !== opened.dev || current.ino !== opened.ino) throw appError('APP_VALIDATION_FAILED', `${real} changed while it was opened`);
+    const place = placeOfOpened(fd, again);
+    const top = realpathSync(dir);
+    if (!place || outside(top, place) || (!root && place === top)) throw appError('APP_VALIDATION_FAILED', `${real} changed while it was opened`);
     return fd;
   } catch (error) {
     closeSync(fd);
@@ -147,7 +161,7 @@ function openChecked(real: string, flags: number, check: () => string | null): n
 export function openFileInside(dir: string, path: string): { fd: number; size: number } | null {
   const real = existingInside(dir, path);
   if (!real) return null;
-  const fd = openChecked(real, constants.O_RDONLY | constants.O_NONBLOCK, () => existingInside(dir, path));
+  const fd = openChecked(dir, real, constants.O_RDONLY | constants.O_NONBLOCK, () => existingInside(dir, path), false);
   if (fd === null) return null;
   const stat = fstatSync(fd);
   if (stat.isFile()) return { fd, size: stat.size };
@@ -163,7 +177,7 @@ export function removeFileInside(dir: string, path: string): boolean {
   const parentOf = () => (parentPath === '' ? realpathSync(dir) : existingInside(dir, parentPath));
   const parent = parentOf();
   if (!parent) return false;
-  const fd = openChecked(parent, constants.O_RDONLY | constants.O_DIRECTORY, parentOf);
+  const fd = openChecked(dir, parent, constants.O_RDONLY | constants.O_DIRECTORY, parentOf, true);
   if (fd === null) return false;
   try {
     // Linux names the opened folder itself by its descriptor; elsewhere (macOS for development)
@@ -171,7 +185,12 @@ export function removeFileInside(dir: string, path: string): boolean {
     const entry = join(process.platform === 'linux' ? `/proc/self/fd/${fd}` : parent, basename(full));
     const stat = lstatSync(entry, { throwIfNoEntry: false });
     if (!stat || !(stat.isFile() || stat.isSymbolicLink())) return false;
-    unlinkSync(entry);
+    try {
+      unlinkSync(entry);
+    } catch (error) {
+      if (noFile(error)) return false;
+      throw error;
+    }
     return true;
   } finally {
     closeSync(fd);

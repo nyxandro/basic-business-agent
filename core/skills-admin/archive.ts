@@ -175,12 +175,6 @@ function chmodFolders(dir: string, mode: number): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory()) chmodFolders(join(dir, entry.name), mode);
 }
 
-// Makes an existing copy read-only: copies unpacked before 15.11 were left writable.
-export function lockSkillFolder(dir: string): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) if (entry.isFile()) chmodSync(join(entry.parentPath, entry.name), READ_ONLY_FILE);
-  chmodFolders(dir, READ_ONLY_FOLDER);
-}
-
 // Removes a copy of a skill (or anything under the folder of copies) with its read-only folders.
 export function removeSkillFolder(dir: string): void {
   if (!existsSync(dir)) return;

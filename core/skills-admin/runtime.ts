@@ -7,13 +7,14 @@ import { existsSync } from 'node:fs';
 import { writeAudit } from '../audit/audit.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { logEvent } from '../server/log.ts';
-import { lockSkillFolder, readSkillArchive, writeSkillFiles } from './archive.ts';
+import { readSkillArchive, writeSkillFiles } from './archive.ts';
 import { removeSkillCopies, skillDir, type SkillsDeps } from './store.ts';
 
 export interface SkillsRuntime {
   skillsFor(userId: string): Promise<string[]>;
   // At the start of the server: removes uploaded skills a system skill took the name of, unpacks
-  // the enabled skills, removes copies nobody uses any more.
+  // the enabled skills afresh from their archives (a copy changed on disk does not survive a start),
+  // removes copies nobody uses any more.
   prepare(): Promise<void>;
 }
 
@@ -63,11 +64,9 @@ export function createSkillsRuntime(deps: SkillsDeps): SkillsRuntime {
       await removeSuperseded(deps);
       const { rows } = await deps.db.query<{ name: string; sha256: string; enabled: boolean }>('SELECT name, sha256, enabled FROM app.skills');
       const current = new Map(rows.filter((r) => r.enabled).map((r) => [r.name, r.sha256]));
-      for (const [name, sha256] of current) {
-        const dir = await unpack(deps.db, deps.skillsDir, name, sha256);
-        if (dir) lockSkillFolder(dir);
-      }
-      removeSkillCopies(deps.skillsDir, (name, sha256) => current.get(name) !== sha256);
+      // No answer runs yet at the start: every copy can go and come back from the database.
+      removeSkillCopies(deps.skillsDir, () => true);
+      for (const [name, sha256] of current) await unpack(deps.db, deps.skillsDir, name, sha256);
       logEvent('info', 'skills_prepared', { system: systemNames, skills: [...current.keys()] });
     },
   };

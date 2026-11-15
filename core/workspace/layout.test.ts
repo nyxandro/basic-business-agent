@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -127,6 +127,49 @@ describe('workspace layout', () => {
     expect(removeFileInside(root, 'нет.pdf')).toBe(false);
     mkdirSync(join(root, 'папка'));
     expect(removeFileInside(root, 'папка')).toBe(false);
+  });
+
+  // The attack of the independent review 15.11: the agent swaps a folder of the path for a link to
+  // the server's files and back in a loop while the person downloads or deletes. A check that looks
+  // the path up again loses this race in a share of the attempts; none may get through.
+  it('is not raced: a folder swapped for a link is never read nor deleted through', () => {
+    const root = contextRoot(ws, 'olga', null);
+    const secret = join(ws, 'secret');
+    mkdirSync(secret);
+    writeFileSync(join(secret, 'f.txt'), 'SECRET');
+    writeFileSync(join(secret, 'del.txt'), 'KEEP');
+    mkdirSync(join(root, 'd'));
+    writeFileSync(join(root, 'd', 'f.txt'), 'INSIDE');
+    writeFileSync(join(root, 'd', 'del.txt'), 'INSIDE');
+    symlinkSync(secret, join(root, 'link'));
+    const swapper = spawn('sh', ['-c', 'while :; do mv d real; mv link d; mv d link; mv real d; done'], { cwd: root, stdio: 'ignore' });
+    let reads = 0;
+    let leaks = 0;
+    try {
+      const until = Date.now() + 1500;
+      while (Date.now() < until) {
+        for (const attempt of [() => openFileInside(root, 'd/f.txt'), () => removeFileInside(root, 'd/del.txt')]) {
+          let result: ReturnType<typeof openFileInside> | boolean;
+          try {
+            result = attempt();
+          } catch (error) {
+            // Refused as a change under the check: that is the defence, not a failure.
+            if ((error as { code?: string }).code === 'APP_VALIDATION_FAILED') continue;
+            throw error;
+          }
+          if (result && typeof result === 'object') {
+            reads++;
+            if (readFileSync(result.fd, 'utf8') === 'SECRET') leaks++;
+            closeSync(result.fd);
+          }
+        }
+      }
+    } finally {
+      swapper.kill();
+    }
+    expect(reads).toBeGreaterThan(0);
+    expect(leaks).toBe(0);
+    expect(readFileSync(join(secret, 'del.txt'), 'utf8')).toBe('KEEP');
   });
 
   it('removes a project folder and the whole workspace of a person', () => {
