@@ -17,7 +17,7 @@ test('a conversation is named once its task is clear and renamed by hand from it
   await newConversation(page);
 
   await say(page, 'Привет!');
-  await expect(page.getByText(/Вы написали: «привет!»/)).toBeVisible();
+  await expect(page.getByText(/Вы написали: «привет!/)).toBeVisible();
   await expect(ownRow(page)).toHaveText('Привет!');
 
   await say(page, 'Покажи график выручки');

@@ -100,6 +100,15 @@ function AgentMarkForm({ initial }: { initial: InterfaceAdminState }) {
   const [pickFailure, setPickFailure] = useState<ApiRequestError | null>(null);
   const { busy, error, run } = useAction();
   const { refresh } = useSession();
+  // A picture prepared after the admin left the page gets no address: nothing would let it go.
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => () => {
     if (picked) URL.revokeObjectURL(picked.url);
@@ -117,6 +126,7 @@ function AgentMarkForm({ initial }: { initial: InterfaceAdminState }) {
     setPreparing(true);
     try {
       const blob = await prepareAgentImage(file);
+      if (!mounted.current) return;
       setPicked({ blob, url: URL.createObjectURL(blob) });
     } catch (raw) {
       setPickFailure(pickError(raw));

@@ -3,11 +3,7 @@
 import type { AgentMark, InterfaceAdminState, MeResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
-
-// Real 2×2 pictures; the JPEG is only its first bytes — the server reads nothing else.
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGM8oaHBwMDAxMDAwMDAAAAN6gEcJJUQNAAAAABJRU5ErkJggg==', 'base64');
-const WEBP = Buffer.from('UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoCAAIAAUAmJaACdLoAA5gA/vCbQ/4DdfFtMv/ucD/uyf/2yf+pAAAA', 'base64');
-const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00]);
+import { JPEG_2X2 as JPEG, PNG_2X2 as PNG, pngHeader, WEBP_2X2 as WEBP } from './test-pictures.ts';
 
 let t: TestApp;
 let igor: string;
@@ -117,12 +113,14 @@ describe('the agent mark of the installation', () => {
     expect(await markOf(olga)).toEqual({ kind: 'image', url });
   });
 
-  it('refuses what is not a PNG, JPEG or WebP picture and keeps the previous one', async () => {
+  it('refuses what is not a PNG, JPEG or WebP picture of at most 256×256 and keeps the previous one', async () => {
     const before = await markOf(olga);
     const fakes = [
       { bytes: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'), name: 'logo.svg', type: 'image/svg+xml' },
       { bytes: Buffer.from('GIF89a\x01\x00\x01\x00'), name: 'logo.gif', type: 'image/gif' },
       { bytes: Buffer.from('just text, named as a picture'), name: 'logo.png', type: 'image/png' },
+      // Small in bytes, 16000×16000 in a browser: every employee's tab would unpack a gigabyte.
+      { bytes: pngHeader(16_000, 16_000).bytes, name: 'huge.png', type: 'image/png' },
     ];
     for (const image of fakes) {
       const res = await save({ agentMark: 'image', agentIcon: 'star', image });

@@ -1,11 +1,14 @@
 // The agent's picture as the server accepts it (spec, section 8.17). The browser has already cut and
 // scaled it, but the server does not rely on that: only PNG, JPEG or WebP, told by the first bytes
-// (never by the name or the declared type), and at most AGENT_IMAGE_MAX_BYTES. SVG is refused: it
-// may carry a script that would run on our address.
+// (never by the name or the declared type), at most AGENT_IMAGE_MAX_BYTES and at most
+// AGENT_IMAGE_SIDE_PX on each side by its header — a picture of few bytes and huge sides would make
+// every employee's browser unpack gigabytes for a 30 px circle. SVG is refused: it may carry a
+// script that would run on our address.
 import { createHash } from 'node:crypto';
-import { AGENT_IMAGE_MAX_BYTES } from '@bba/contracts';
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_SIDE_PX } from '@bba/contracts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
+import { imageSizeOf } from './image-size.ts';
 
 export type AgentImageType = 'image/png' | 'image/jpeg' | 'image/webp';
 
@@ -33,6 +36,7 @@ export function imageTypeOf(bytes: Uint8Array): AgentImageType | null {
 
 const FORMAT_MESSAGE = 'Не получилось открыть картинку. Нужен PNG, JPEG или WebP — сохраните её в одном из этих форматов и выберите снова.';
 const SIZE_MESSAGE = `Картинка больше ${AGENT_IMAGE_MAX_BYTES / 1024} КБ. Выберите её на странице «Интерфейс» ещё раз — браузер уменьшит её сам.`;
+const SIDE_MESSAGE = `Картинка больше ${AGENT_IMAGE_SIDE_PX}×${AGENT_IMAGE_SIDE_PX} точек. Выберите её на странице «Интерфейс» ещё раз — браузер уменьшит её сам.`;
 
 export function imageTooLarge(message: string): AppError {
   return new AppError({ code: 'APP_AGENT_IMAGE_INVALID', message, userMessage: SIZE_MESSAGE, status: 413 });
@@ -42,5 +46,10 @@ export function checkAgentImage(bytes: Uint8Array): AgentImage {
   if (bytes.byteLength > AGENT_IMAGE_MAX_BYTES) throw imageTooLarge(`agent image is ${bytes.byteLength} bytes`);
   const type = imageTypeOf(bytes);
   if (!type) throw appError('APP_AGENT_IMAGE_INVALID', 'agent image is not PNG, JPEG or WebP', { userMessage: FORMAT_MESSAGE });
+  const size = imageSizeOf(bytes, type);
+  if (!size) throw appError('APP_AGENT_IMAGE_INVALID', `agent image (${type}) has no readable size in its header`, { userMessage: FORMAT_MESSAGE });
+  if (size.width > AGENT_IMAGE_SIDE_PX || size.height > AGENT_IMAGE_SIDE_PX) {
+    throw appError('APP_AGENT_IMAGE_INVALID', `agent image is ${size.width}×${size.height} px`, { userMessage: SIDE_MESSAGE });
+  }
   return { bytes, type, sha256: createHash('sha256').update(bytes).digest('hex') };
 }

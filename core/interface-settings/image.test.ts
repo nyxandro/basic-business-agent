@@ -1,10 +1,11 @@
 // The agent's picture is recognised by its first bytes (spec, section 8.17): PNG, JPEG or WebP,
-// never by the file's name or the type the browser declared.
+// never by the file's name or the type the browser declared; no larger than the browser makes it.
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { checkAgentImage, imageTypeOf } from './image.ts';
-import { AGENT_IMAGE_MAX_BYTES } from '@bba/contracts';
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_SIDE_PX } from '@bba/contracts';
 import { isAppError } from '../errors/app-error.ts';
+import { PNG_2X2, pngHeader, webpHeader } from './test-pictures.ts';
 
 // Signatures written out here independently of the code under test; `size` is the four bytes of
 // a WebP file's length, which say nothing about the format.
@@ -63,19 +64,27 @@ describe('imageTypeOf', () => {
 
 describe('checkAgentImage', () => {
   it('keeps the bytes, their type and sha256 of a picture', () => {
-    const png = SIGNED['image/png'](new Uint8Array([1, 2, 3]));
-    const image = checkAgentImage(png);
-    expect(image).toEqual({ bytes: png, type: 'image/png', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const image = checkAgentImage(PNG_2X2);
+    expect(image).toEqual({ bytes: PNG_2X2, type: 'image/png', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(checkAgentImage(pngHeader(AGENT_IMAGE_SIDE_PX, AGENT_IMAGE_SIDE_PX).bytes).type).toBe('image/png');
   });
 
-  it('refuses another format and a picture over the limit with APP_AGENT_IMAGE_INVALID', () => {
-    for (const bytes of [Uint8Array.from(ascii('GIF89a')), SIGNED['image/jpeg'](new Uint8Array(AGENT_IMAGE_MAX_BYTES))]) {
+  it('refuses another format, a picture over the limit, a picture without its size and a larger one with APP_AGENT_IMAGE_INVALID', () => {
+    const refused = (bytes: Uint8Array): string => {
       try {
         checkAgentImage(bytes);
-        expect.unreachable('a wrong picture was accepted');
       } catch (error) {
-        expect(isAppError(error) && error.code).toBe('APP_AGENT_IMAGE_INVALID');
+        if (!isAppError(error)) throw error;
+        expect(error.code).toBe('APP_AGENT_IMAGE_INVALID');
+        return error.userMessage;
       }
+      return expect.unreachable('a wrong picture was accepted');
+    };
+    expect(refused(Uint8Array.from(ascii('GIF89a')))).toMatch(/Нужен PNG, JPEG или WebP/);
+    expect(refused(SIGNED['image/jpeg'](new Uint8Array(AGENT_IMAGE_MAX_BYTES)))).toMatch(/больше 512 КБ/);
+    expect(refused(SIGNED['image/png'](new Uint8Array([1, 2, 3])))).toMatch(/Нужен PNG, JPEG или WebP/);
+    for (const larger of [pngHeader(AGENT_IMAGE_SIDE_PX + 1, 1), pngHeader(1, AGENT_IMAGE_SIDE_PX + 1), webpHeader('VP8L', 16_384, 16_384)]) {
+      expect(refused(larger.bytes)).toMatch(/больше 256×256 точек/);
     }
   });
 });

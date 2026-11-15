@@ -63,15 +63,16 @@ test('the admin’s phone photo stands upright next to the agent’s words; «Б
     expect(await topAndBottom(welcome)).toEqual({ top: 'red', bottom: 'blue' });
 
     await say(page, 'Привет');
-    await expect(page.getByText(/Вы написали: «Привет»/)).toBeVisible();
+    // The stand's model repeats the message in lower case, with the time the server adds to it.
+    await expect(page.getByText(/Вы написали: «привет/)).toBeVisible();
     await page.reload();
-    await expect(page.getByText(/Вы написали: «Привет»/)).toBeVisible();
+    await expect(page.getByText(/Вы написали: «привет/)).toBeVisible();
     await expect(page.locator('[data-agent-mark="image"] img')).toHaveCount(1);
 
     await admin.getByRole('radio', { name: 'Без значка' }).click();
     await save(admin);
     await page.reload();
-    await expect(page.getByText(/Вы написали: «Привет»/)).toBeVisible();
+    await expect(page.getByText(/Вы написали: «привет/)).toBeVisible();
     await expect(page.locator('[data-agent-mark]')).toHaveCount(0);
   } finally {
     await admin.getByRole('radio', { name: 'Иконка' }).click();

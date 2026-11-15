@@ -67,6 +67,9 @@ async function showChat(agentMark: AgentMark, { messages, running = false, inter
   await screen.findByText('Сколько сделок за неделю?');
 }
 
+// The row of the agent's words: the mark, then the body that holds them.
+const rowOf = (inBody: Element) => inBody.parentElement!.parentElement!;
+
 function marksIn(place: ParentNode): string[] {
   return [...place.querySelectorAll('[data-agent-mark]')].map((mark) =>
     mark.getAttribute('data-agent-mark') === 'icon' ? `icon ${mark.getAttribute('data-icon')}` : `picture ${mark.querySelector('img')?.getAttribute('src')}`,
@@ -83,7 +86,9 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, agentM
   it('next to its words', async () => {
     await showChat(agentMark, { messages: [QUESTION, ANSWER] });
     // The answer is drawn word by word, each word in an element of its own.
-    expect(document.querySelector('[data-streaming-markdown-root]')).toHaveTextContent('Двенадцать сделок.');
+    const words = document.querySelector('[data-streaming-markdown-root]')!;
+    expect(words).toHaveTextContent('Двенадцать сделок.');
+    expect(marksIn(rowOf(words))).toEqual(expected);
     expect(marksIn(document)).toEqual(expected);
   });
 
@@ -96,7 +101,7 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, agentM
 
   it('next to its question «Да/Нет»', async () => {
     await showChat(agentMark, { messages: [QUESTION], interrupt: <p>Подтвердите действие</p> });
-    expect(screen.getByText('Подтвердите действие')).toBeInTheDocument();
+    expect(marksIn(rowOf(screen.getByText('Подтвердите действие')))).toEqual(expected);
     expect(marksIn(document)).toEqual(expected);
   });
 });

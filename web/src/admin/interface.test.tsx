@@ -25,13 +25,15 @@ function server(state: InterfaceAdminState = SPARK, saved: InterfaceAdminState =
 const saveButton = () => screen.getByRole('button', { name: 'Сохранить' });
 const puts = (s: ReturnType<typeof mockServer>) => s.calls.filter((c) => c.method === 'PUT' && c.path === '/app/api/admin/interface');
 
+let createObjectURL = vi.fn((_: Blob) => 'blob:picture');
 beforeEach(() => {
   let made = 0;
+  const addressOf = (createObjectURL = vi.fn(() => `blob:picture-${++made}`));
   // jsdom has no addresses for files. A subclass, not the real URL changed: unstubbing brings it back.
   vi.stubGlobal(
     'URL',
     class extends URL {
-      static override createObjectURL = vi.fn(() => `blob:picture-${++made}`);
+      static override createObjectURL = addressOf;
       static override revokeObjectURL = vi.fn();
     },
   );
@@ -133,6 +135,21 @@ describe('«Интерфейс»', () => {
     expect(screen.queryByText(/Сервер/)).not.toBeInTheDocument();
     expect(logged).toHaveBeenCalled();
     expect(saveButton()).toBeDisabled();
+  });
+
+  it('makes no address for a picture that is ready after the admin left the page', async () => {
+    let ready: (blob: Blob) => void = () => undefined;
+    vi.mocked(prepareAgentImage).mockReturnValue(new Promise<Blob>((resolve) => (ready = resolve)));
+    server();
+    const page = renderApp('/admin/interface');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('radio', { name: 'Своя картинка' }));
+    await user.upload(screen.getByLabelText('Файл картинки'), new File(['photo'], 'photo.jpg', { type: 'image/jpeg' }));
+    expect(await screen.findByRole('button', { name: 'Готовлю…' })).toBeDisabled();
+    page.unmount();
+    ready(new Blob(['webp'], { type: 'image/webp' }));
+    await Promise.resolve();
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it('keeps a picture chosen while the one before it is being saved', async () => {
