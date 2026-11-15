@@ -9,12 +9,12 @@ import { ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
-import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { canRecord } from '../voice/recorder.ts';
 import { useVoice } from '../voice/use-voice.ts';
 import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
 import { uploadFile } from './api.ts';
+import { Attachments } from './Attachments.tsx';
 import { useChatExtras } from './chat-context.ts';
 import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
@@ -66,29 +66,6 @@ function useDeliverText(agentId: string, threadId: string, value: string, onChan
       window.dispatchEvent(new CustomEvent<DraftChange>(DRAFT_CHANGED, { detail: { agentId, threadId } }));
     },
     [agentId, threadId],
-  );
-}
-
-function Attachments({ uploading, voice }: { uploading: string | null; voice: ReactNode }) {
-  const extras = useChatExtras();
-  if (!uploading && extras.attachments.length === 0 && !voice) return null;
-  return (
-    <div className={styles.chips}>
-      {voice}
-      {extras.attachments.map((f) => (
-        <span key={f.path} className={styles.chip}>
-          <FileIcon name={f.name} />
-          <span className={styles.chipName}>{f.name}</span>
-          <IconButton icon="x" size="sm" label={`${ru.chat.removeAttachment} ${f.name}`} onClick={() => extras.removeAttachment(f.path)} />
-        </span>
-      ))}
-      {uploading ? (
-        <span className={styles.chip} role="status">
-          <span className={styles.spin} />
-          <span className={styles.chipName}>{uploading}</span>
-        </span>
-      ) : null}
-    </div>
   );
 }
 
