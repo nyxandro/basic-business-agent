@@ -168,6 +168,13 @@ describe('projects of conversations', () => {
     expect(screen.getAllByRole('alert').some((a) => a.textContent === 'Проект не найден.')).toBe(true);
   });
 
+  it('shows only the folder on the chip of a conversation without a project (decision of the owner 15.11)', async () => {
+    server({ 'GET /app/api/threads/t1/project': { body: { projectId: null } } });
+    renderApp('/agents/sales?thread=t1');
+    const chip = await screen.findByRole('button', { name: 'Проект разговора: Без проекта' });
+    expect(chip).toHaveTextContent(/^$/);
+  });
+
   it('moves the conversation into a project from the chip of the input', async () => {
     const s = server({ 'GET /app/api/threads/t1/project': { body: { projectId: null } }, 'PUT /app/api/threads/t1/project': { body: { ok: true } } });
     renderApp('/agents/sales?thread=t1');

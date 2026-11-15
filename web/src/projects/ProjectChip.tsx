@@ -1,6 +1,7 @@
-// The chip of the conversation's project in the input (spec, scenario 6; mockup): «Без проекта» or
-// the project; its menu moves the conversation into another project or out of it — also before the
-// first message — and «Новый проект» creates one and moves the conversation there.
+// The chip of the conversation's project in the input (spec, scenario 6; mockup): the project, or
+// without one only the folder, the size of the paperclip next to it (decision of the owner 15.11); its
+// menu moves the conversation into another project or out of it — also before the first message — and
+// «Новый проект» creates one and moves the conversation there.
 import type { ProjectDto } from '@bba/contracts';
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
@@ -97,11 +98,25 @@ export function ProjectChip({ threadId, state, retry, changed, moveError }: Chip
 
   return (
     <MenuAnchor>
-      <button type="button" className={cx(styles.chip, project && styles.chipOn)} onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={ru.projects.ofThread}>
-        <Icon name="folder" size={15} className={project ? styles.chipIconOn : styles.chipIcon} />
-        <span className={styles.chipName}>{project?.name ?? ru.projects.none}</span>
-        <Icon name="down" size={15} className={styles.chipIcon} />
-      </button>
+      {project ? (
+        <button type="button" className={cx(styles.chip, styles.chipOn)} onClick={toggle} aria-haspopup="menu" aria-expanded={open} title={ru.projects.ofThread}>
+          <Icon name="folder" size={15} className={styles.chipIconOn} />
+          <span className={styles.chipName}>{project.name}</span>
+          <Icon name="down" size={15} className={styles.chipIcon} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={cx(styles.chip, styles.chipBare)}
+          onClick={toggle}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={`${ru.projects.ofThread}: ${ru.projects.none}`}
+          title={`${ru.projects.ofThread}: ${ru.projects.none}`}
+        >
+          <Icon name="folder" size={17} className={styles.chipIcon} />
+        </button>
+      )}
       <Menu open={open} onClose={() => setOpen(false)} label={ru.projects.ofThread} placement="top-start" width={270}>
         <MenuTitle>{ru.projects.ofThread}</MenuTitle>
         <MenuItem icon="chat" checked={!project} onSelect={() => void move(null)}>

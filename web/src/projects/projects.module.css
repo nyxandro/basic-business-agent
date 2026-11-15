@@ -69,6 +69,13 @@
   background: var(--acc-soft);
 }
 
+/* Without a project only the folder, a square the size of the paperclip next to it. */
+.chipBare {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
 .chipIcon {
   color: var(--muted);
   flex: none;
