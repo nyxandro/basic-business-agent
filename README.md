@@ -30,12 +30,12 @@
 
 ## Запуск для разработки
 
-Нужны: Node 24, pnpm 11, Docker, bubblewrap (Linux; на macOS — встроенная изоляция), [uv](https://docs.astral.sh/uv/) для Python скиллов и программы песочницы — LibreOffice, pandoc, poppler, qpdf, tesseract с русским (Ubuntu: `sudo apt install -y --no-install-recommends $(grep -v '^#' core/sandbox/apt-packages.txt)`). Без них сервер не запустится и назовёт, чего не хватает.
+Нужны: Node 24, pnpm 11, Docker, bubblewrap (Linux; на macOS — встроенная изоляция), [uv](https://docs.astral.sh/uv/) для Python скиллов и программы песочницы — LibreOffice, pandoc, poppler, qpdf, tesseract с русским (Ubuntu: `sudo apt install -y --no-install-recommends $(grep -v '^#' core/sandbox/apt-packages.txt)`; без прав администратора их поставит `pnpm skills:setup` в `.venv-skills`). Без них сервер не запустится и назовёт, чего не хватает.
 
 ```bash
 pnpm install                 # заодно включает проверку перед отправкой (нет ли данных заказчиков)
 cp .env.example .env         # заполните: секреты — openssl rand -base64 48, ключ шифрования — openssl rand -base64 32
-pnpm skills:setup            # библиотеки Python и пакеты Node для скиллов документов
+pnpm skills:setup            # библиотеки Python, пакеты Node и недостающие программы для скиллов документов
 pnpm dev:db                  # Postgres и LiteLLM с моделями-заглушками для тестов
 ```
 
