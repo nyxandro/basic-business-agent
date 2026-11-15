@@ -22,6 +22,12 @@ export const FALLBACK_FIRST_CHUNK_MS = 60_000;
 // a model that went silent without closing the connection would otherwise hold the answer forever.
 export const MODEL_CALL_MAX_MS = 5 * 60_000;
 
+// The agent works until it answers (decision of the owner 15.11): without a stop condition of its
+// own Mastra ends an answer after 5 calls of the model, in silence when the last one was a tool call.
+// The loop ends when the model answers without calling a tool; what stops a run that goes on too long
+// are the spending limits, the limit of one model call and «Стоп».
+const UNTIL_THE_ANSWER = () => false;
+
 // Mastra repeats a call that failed with a transient error once before it tries the fallback.
 // LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
 // repeat only delays the switch; without one the repeat stays. A stream that broke after the first
@@ -108,7 +114,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     ...(deps.memory ? { memory: deps.memory } : {}),
     // Every entry point (chat, background tasks, sub-agents) gets the limit; with a fallback model a
     // primary over it gives way to the fallback (Mastra).
-    defaultOptions: { modelSettings: { timeout: { stepMs: deps.stepMs } } },
+    defaultOptions: { modelSettings: { timeout: { stepMs: deps.stepMs } }, stopWhen: UNTIL_THE_ANSWER },
     workspace,
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,

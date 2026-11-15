@@ -332,3 +332,16 @@ describe('memory and attachments', () => {
     expect(existsSync(join(t.workspaceRoot, olgaId, 'files', 'Счёт.pdf'))).toBe(true);
   });
 });
+
+// The agent works until it answers (decision of the owner 15.11): Mastra's own cap of 5 calls of the
+// model in one answer cut work short in silence. Spending limits and «Стоп» stay what stops it.
+describe('the loop of the agent', () => {
+  it('goes on however many steps the work takes and ends with its answer', async () => {
+    const threadId = randomUUID();
+    const before = t.model.requests.length;
+    t.model.script(...Array.from({ length: 7 }, (_, i) => ({ toolCalls: [{ name: 'crm_search', args: { q: `шаг ${i + 1}` } }] })), { text: 'Нашёл 12 сделок без движения.' });
+    const { events } = await run(olga, 'sales', threadId, 'Найди сделки без движения, проверь всё по шагам');
+    expect(textOf(events)).toBe('Нашёл 12 сделок без движения.');
+    expect(t.model.requests.length - before).toBe(8);
+  });
+});
