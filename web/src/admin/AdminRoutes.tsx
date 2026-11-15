@@ -6,6 +6,7 @@ import { AgentsSection } from './AgentsSection.tsx';
 import { ConnectionsSection } from './ConnectionsSection.tsx';
 import { DepartmentsSection } from './DepartmentsSection.tsx';
 import { DraftCheckPage } from './DraftCheckPage.tsx';
+import { InterfaceSection } from './InterfaceSection.tsx';
 import { JournalSection } from './JournalSection.tsx';
 import { LimitsPage } from './LimitsPage.tsx';
 import { MaskingSection } from './MaskingSection.tsx';
@@ -34,6 +35,7 @@ export default function AdminRoutes() {
         <Route path="masking" element={<RequireSection path="masking"><MaskingSection /></RequireSection>} />
         <Route path="connections" element={<RequireSection path="connections"><ConnectionsSection /></RequireSection>} />
         <Route path="journal" element={<RequireSection path="journal"><JournalSection /></RequireSection>} />
+        <Route path="interface" element={<RequireSection path="interface"><InterfaceSection /></RequireSection>} />
       </Route>
     </Routes>
   );

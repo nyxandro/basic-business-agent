@@ -23,8 +23,11 @@
   --ease-send: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* [data-theme-scope] gives a part of the page the other theme: the sample of «Интерфейс» shows
+   the agent's mark in both at once. */
 :root,
-:root[data-theme='light'] {
+:root[data-theme='light'],
+[data-theme-scope='light'] {
   color-scheme: light;
   --bg: #ffffff;
   --side: #f7f7fb;
@@ -74,7 +77,8 @@
   --file-plain: #6b6b80;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+[data-theme-scope='dark'] {
   color-scheme: dark;
   --bg: #0e0e17;
   --side: #0a0a12;

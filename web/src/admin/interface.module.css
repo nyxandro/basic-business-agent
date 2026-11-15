@@ -1,0 +1,140 @@
+/* «Интерфейс»: the agent's mark — the choice, the sample in both themes, «Сохранить». */
+.page {
+  max-width: 720px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 0 18px 18px;
+}
+
+/* The icons as the chat draws them: the chosen one on the accent with a ring, the rest soft. */
+.icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.iconOption {
+  width: var(--touch);
+  height: var(--touch);
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.iconOption:hover {
+  background: var(--acc-mid);
+}
+
+.iconOn,
+.iconOn:hover {
+  background: var(--acc);
+  color: var(--on-acc);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--acc);
+}
+
+.picture {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pictureFrame {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface2);
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.pictureImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pictureText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.samplesTitle {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+/* A piece of the chat in a theme of its own (data-theme-scope). */
+.sample {
+  margin: 0;
+  padding: 14px 16px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.sampleLabel {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.sampleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.sampleEmpty {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px dashed var(--border);
+  background: var(--surface2);
+}
+
+.sampleText {
+  margin: 0;
+  line-height: 30px;
+}
+
+.foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* On a phone the three choices of equal width do not fit in one line: «Своя картинка» is the
+   longest. Columns by their words and narrower sides keep them in one line at 390 px. */
+@media (max-width: 859px) {
+  .kinds > [role='radiogroup'] {
+    grid-auto-columns: auto;
+  }
+  .kinds [role='radio'] {
+    padding: 0 9px;
+  }
+}

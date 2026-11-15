@@ -3,7 +3,7 @@
 import type { AgentSummary } from '@bba/contracts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
-import { Icon } from '../ui/Icon.tsx';
+import { AgentMark } from './AgentMark.tsx';
 import styles from './chat.module.css';
 
 const STARTERS_SHOWN = 3;
@@ -12,9 +12,7 @@ export function Welcome({ agent, onStart }: { agent: AgentSummary; onStart: (tex
   const firstName = useMe().user.name.split(/\s+/)[0] ?? '';
   return (
     <div className={styles.welcome}>
-      <div className={styles.welcomeMark}>
-        <Icon name="spark" size={24} />
-      </div>
+      <AgentMark size="large" className={styles.welcomeMark} />
       <h2 className={styles.welcomeTitle}>{ru.chat.greeting(firstName)}</h2>
       <p className={styles.welcomeText}>{agent.description}</p>
       {agent.starters.length > 0 ? (

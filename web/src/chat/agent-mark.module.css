@@ -1,0 +1,37 @@
+/* The agent's mark (mockup «Чат с агентом»): a circle next to its words, a rounded square on the
+   welcome; an icon on the accent, a picture filling the shape. */
+.mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.small {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.large {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+}
+
+.icon {
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+/* Seen while the picture loads, and behind a transparent one. */
+.picture {
+  background: var(--surface2);
+}
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

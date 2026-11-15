@@ -1,5 +1,8 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  AgentIcon,
+  AgentMarkKind,
+  InterfaceAdminState,
   AdminAgentsResponse,
   AdminConnectionsResponse,
   AdminDepartment,
@@ -119,6 +122,15 @@ export const adminApi = {
 
   orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),
   saveOrgProfile: (body: OrgProfile) => api<Ok>('PUT', `${A}/org-profile`, body),
+  interfaceSettings: () => api<InterfaceAdminState>('GET', `${A}/interface`),
+  // The picture goes only when a new one was chosen; the one kept on the server stays otherwise.
+  saveInterface: ({ agentMark, agentIcon, image }: { agentMark: AgentMarkKind; agentIcon: AgentIcon; image: Blob | null }) => {
+    const form = new FormData();
+    form.append('agentMark', agentMark);
+    form.append('agentIcon', agentIcon);
+    if (image) form.append('image', image, image.type === 'image/png' ? 'agent.png' : 'agent.webp');
+    return apiFormPut<InterfaceAdminState>(`${A}/interface`, form);
+  },
 
   masking: () => api<{ kinds: string[] }>('GET', `${A}/masking`),
   saveMasking: (kinds: string[]) => api<Ok>('PUT', `${A}/masking`, { kinds }),

@@ -9,21 +9,13 @@ import type { AssistantMessage as AgentMessage, Message } from '@copilotkit/reac
 import { StreamingMarkdownDefaultRenderer, useRenderToolCall } from '@copilotkit/react-core';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
-import { Icon } from '../ui/Icon.tsx';
 import { useToast } from '../ui/Toast.tsx';
+import { AgentMark } from './AgentMark.tsx';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolStack } from './ToolStack.tsx';
 import { turnItems, type ToolCall } from './turn-items.ts';
-
-export function AgentMark() {
-  return (
-    <span className={styles.avatar} aria-hidden="true">
-      <Icon name="spark" size={16} />
-    </span>
-  );
-}
 
 const textOfAgent = (m: AgentMessage) => (typeof m.content === 'string' ? m.content : '');
 

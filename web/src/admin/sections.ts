@@ -1,7 +1,7 @@
 // Sections of the admin panel in menu order and groups (mockup «Админка»), and who may open them:
 // a section opens with any of its rights. Kept light — the side panel of the chat reads it to
 // show «Админка», while the panel itself loads separately.
-import type { AdminSection, MeResponse } from '@bba/contracts';
+import type { AdminSection, MeResponse, Permission } from '@bba/contracts';
 import type { IconName } from '../ui/Icon.tsx';
 
 export interface SectionDef {
@@ -25,10 +25,11 @@ export const SECTIONS: SectionDef[] = [
   { path: 'connections', label: 'Подключения', icon: 'plug', group: 'Система', rights: ['connections'] },
   { path: 'journal', label: 'Журнал действий', icon: 'list', group: 'Система', rights: ['journal'] },
   { path: 'org-profile', label: 'Профиль организации', icon: 'org', group: 'Система', rights: ['org_profile'] },
+  { path: 'interface', label: 'Интерфейс', icon: 'sliders', group: 'Система', rights: ['interface'] },
 ];
 
 // Names of rights in the role editor; the document rights are reserved for the knowledge base.
-export const PERMISSION_LABELS: Record<string, string> = {
+export const PERMISSION_LABELS: Record<Permission, string> = {
   users: 'Сотрудники',
   roles: 'Роли',
   departments: 'Отделы',
@@ -41,6 +42,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   journal: 'Журнал действий',
   models: 'Нейросеть',
   skills: 'Скиллы',
+  interface: 'Интерфейс',
   'documents.org.manage': 'Документы организации',
   'documents.department.manage': 'Документы отдела',
 };
