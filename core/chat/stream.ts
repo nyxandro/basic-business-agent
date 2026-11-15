@@ -23,36 +23,39 @@ export interface RunStreamHooks {
 
 const isEvent = (line: string, type: string) => line.startsWith('data:') && line.includes(`"${type}"`);
 
-// The name goes to the chat as soon as it is known, between events of the run; the end of the run
-// waits for a call still under way, but only so long — the name shows at the next refresh then.
+// The name goes to the chat as soon as it is known, between events of the run — after its start and
+// before its end, as AG-UI allows nothing else. The end of the run waits for a call still under way,
+// but only so long; the name shows at the next refresh of «Недавние» then.
 function createTitleAnnouncer(title: RunStreamHooks['title']) {
   let name: string | null = null;
   let settled = title === null;
   let sent = false;
   let started = false;
+  let finished = false;
   // The naming call never fails (core/chat/naming.ts): its failure is logged there and gives null.
   void title?.result.then((value) => {
     name = value;
     settled = true;
   });
-  const due = (line: string): string => {
-    if (sent || name === null) return line;
-    sent = true;
-    return [`data: ${JSON.stringify({ type: 'CUSTOM', name: CHAT_EVENTS.threadTitled, value: { threadId: title!.threadId, title: name } })}`, '', line].join('\n');
-  };
   return {
-    async pass(line: string): Promise<string> {
+    // The end of the run is due and the name may still come: wait for it (`wait`) first.
+    mustWait: (line: string) => started && !finished && !settled && isEvent(line, 'RUN_FINISHED'),
+    async wait(): Promise<void> {
+      if (!title) return;
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([title.result, new Promise((resolve) => (timer = setTimeout(resolve, title.waitAtEndMs)))]);
+      clearTimeout(timer);
+    },
+    pass(line: string): string {
       if (!started) {
         started = isEvent(line, 'RUN_STARTED');
         return line;
       }
-      if (!line.startsWith('data:')) return line;
-      if (isEvent(line, 'RUN_FINISHED') && !settled && title) {
-        let timer: NodeJS.Timeout | undefined;
-        await Promise.race([title.result, new Promise((resolve) => (timer = setTimeout(resolve, title.waitAtEndMs)))]);
-        clearTimeout(timer);
-      }
-      return due(line);
+      if (finished || !line.startsWith('data:')) return line;
+      finished = isEvent(line, 'RUN_FINISHED') || isEvent(line, 'RUN_ERROR');
+      if (sent || name === null) return line;
+      sent = true;
+      return [`data: ${JSON.stringify({ type: 'CUSTOM', name: CHAT_EVENTS.threadTitled, value: { threadId: title!.threadId, title: name } })}`, '', line].join('\n');
     },
   };
 }
@@ -86,12 +89,27 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
   let started = false;
   const discards = createDiscardTracker(() => hooks.takeDiscarded());
   const titles = createTitleAnnouncer(hooks.title);
-  // A line of the run with whatever is due before it: dropped messages, then the name.
-  const rewrite = async (line: string) => titles.pass(discards.pass(await rewriteEvent(line, hooks)));
   const withPrelude = (line: string): string => {
     if (started || hooks.afterStart.length === 0 || !line.includes('"RUN_STARTED"')) return line;
     started = true;
     return [line, '', ...hooks.afterStart.flatMap((e) => [`data: ${JSON.stringify(e)}`, ''])].join('\n');
+  };
+  // Lines of the run with whatever is due before each: dropped messages, then the name. What came
+  // before the end of the run goes out before the end waits for the name — the last words are not held.
+  const emit = async (lines: string[], controller: ReadableStreamDefaultController<Uint8Array>) => {
+    const out: string[] = [];
+    const flush = () => {
+      if (out.length > 0) controller.enqueue(encoder.encode(out.splice(0).map((l) => `${l}\n`).join('')));
+    };
+    for (const line of lines) {
+      const rewritten = discards.pass(await rewriteEvent(line, hooks));
+      if (titles.mustWait(rewritten)) {
+        flush();
+        await titles.wait();
+      }
+      out.push(withPrelude(titles.pass(rewritten)));
+    }
+    flush();
   };
   const end = () => {
     if (!ended) {
@@ -104,7 +122,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
       try {
         const { done, value } = await reader.read();
         if (done) {
-          if (buffer) controller.enqueue(encoder.encode(await rewrite(buffer)));
+          if (buffer) await emit([buffer], controller);
           const rest = discards.rest();
           if (rest) controller.enqueue(encoder.encode(rest));
           controller.close();
@@ -114,9 +132,7 @@ export function wrapRunResponse(res: Response, hooks: RunStreamHooks): Response 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-        const out: string[] = [];
-        for (const line of lines) out.push(withPrelude(await rewrite(line)));
-        controller.enqueue(encoder.encode(out.map((l) => `${l}\n`).join('')));
+        await emit(lines, controller);
       } catch (error) {
         end();
         controller.error(error);

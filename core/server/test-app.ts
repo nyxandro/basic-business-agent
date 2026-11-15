@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import { createBackgroundService, createBackgroundWorkflow, type BackgroundService } from '../background/service.ts';
 import { createCopilotHandler } from '../chat/copilot.ts';
-import { TITLE_WAIT_AT_END_MS } from '../chat/naming.ts';
+import { NAMING_MAX_MS, TITLE_WAIT_AT_END_MS } from '../chat/naming.ts';
 import type { Mastra } from '@mastra/core';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
@@ -112,6 +112,8 @@ export async function createTestApp(
     namingFallback?: (req: FakeRequest) => FakeTurn;
     // Shortens how long the end of an answer waits for the naming call (3 s in an installation).
     titleWaitMs?: number;
+    // Shortens the limit of one naming call (60 s in an installation).
+    namingMaxMs?: number;
     // Gives the test agent "assistant" a sub-agent "mailer" that sends letters (needs "Да").
     assistantSubagent?: boolean;
     // A real installation instead of the test agents (e.g. the demo of the repository); its plugin
@@ -209,7 +211,7 @@ export async function createTestApp(
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills });
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
-  const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS };
+  const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.

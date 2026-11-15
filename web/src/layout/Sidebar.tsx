@@ -122,7 +122,7 @@ export function Sidebar(props: SidebarProps) {
       <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
-      <RecentThreads key={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} />
+      <RecentThreads refreshKey={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} />
 
       <div className={styles.spacer} />
       <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />

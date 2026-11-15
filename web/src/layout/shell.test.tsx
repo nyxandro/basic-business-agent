@@ -157,6 +157,8 @@ describe('the frame of the application', () => {
 
     const renamed = await within(panel).findByRole('link', { name: 'Сделки для отчёта' });
     expect(renamed).toHaveAttribute('href', '/agents/sales?thread=t1');
+    // The keyboard stays on the conversation, not lost on the page.
+    expect(renamed).toHaveFocus();
     expect(s.calls.filter((c) => c.method === 'PATCH')).toEqual([expect.objectContaining({ path: '/app/api/threads/t1', body: { title: 'Сделки для отчёта' } })]);
     // The rest of the list stays as it was.
     expect(within(panel).getByRole('link', { name: /Задача: Утренняя сводка/ })).toBeInTheDocument();
@@ -175,7 +177,7 @@ describe('the frame of the application', () => {
     };
 
     await user.type(await rename(), ' за ноябрь{Escape}');
-    expect(within(panel).getByRole('link', { name: 'Сделки без движения' })).toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: 'Сделки без движения' })).toHaveFocus();
     expect(s.calls.some((c) => c.method === 'PATCH')).toBe(false);
 
     const field = await rename();

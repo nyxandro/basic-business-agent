@@ -9,8 +9,10 @@ import { setAutoTitle } from '../memory/titles.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { NAMING_TITLE_LENGTH, titleFromModel } from './naming.ts';
 
-// How long the end of an answer waits for the naming call in these tests (3 s in an installation).
-const WAIT_MS = 300;
+// How long the end of an answer waits for the naming call in these tests (3 s in an installation),
+// and how long one naming call may take (60 s in an installation).
+const WAIT_MS = 1000;
+const NAMING_MS = 4000;
 
 let t: TestApp;
 let olga: string;
@@ -57,7 +59,7 @@ async function threads(cookie = olga): Promise<ThreadPage['threads']> {
 const titleOf = async (threadId: string) => (await threads()).find((x) => x.id === threadId)?.title;
 
 beforeAll(async () => {
-  t = await createTestApp({ titleWaitMs: WAIT_MS });
+  t = await createTestApp({ titleWaitMs: WAIT_MS, namingMaxMs: NAMING_MS });
   olgaId = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
   await t.createUser({ email: 'igor@example.com', name: 'Игорь' });
   const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
@@ -124,6 +126,36 @@ describe('naming a conversation', () => {
     } finally {
       await setMaskingKinds(t.db, olgaId, []);
     }
+  });
+
+  it('hides personal data in the whole message before it is cut short for the naming call', async () => {
+    await setMaskingKinds(t.db, olgaId, ['email']);
+    try {
+      const threadId = randomUUID();
+      // The address lies across the 400th character, where the message is cut.
+      const message = `${'а'.repeat(385)} Пишите ivan.petrov@example.com по вопросам договора поставки`;
+      expect(message.indexOf('ivan.petrov')).toBeLessThan(400);
+      expect(message.indexOf('example.com')).toBeGreaterThan(400);
+      await run(olga, 'sales', threadId, message);
+      const seen = JSON.stringify(t.model.namingRequests.at(-1)!.messages);
+      expect(seen).not.toContain('ivan');
+      expect(seen).not.toContain('petrov');
+    } finally {
+      await setMaskingKinds(t.db, olgaId, []);
+    }
+  });
+
+  // Mastra ends a call cut by the deadline without an error (empty text, finish reason «aborted»).
+  it('a naming call that runs out of time is a failure: the name stays and it is logged', async () => {
+    const log = vi.spyOn(console, 'log');
+    const threadId = randomUUID();
+    t.model.scriptNaming({ text: 'Письмо клиентам', delayMs: NAMING_MS + 1000 });
+    await run(olga, 'sales', threadId, 'Подготовь письмо клиентам о новых ценах');
+    await vi.waitFor(() => expect(log.mock.calls.map(([line]) => String(line)).some((line) => line.includes('"event":"thread_title_failed"') && line.includes(threadId))).toBe(true), {
+      timeout: NAMING_MS + 3000,
+      interval: 100,
+    });
+    expect(await titleOf(threadId)).toBe('Подготовь письмо клиентам о новых ценах');
   });
 
   it('a failed naming call neither breaks the answer nor changes the name, and is logged once', async () => {
