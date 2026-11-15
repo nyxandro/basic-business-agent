@@ -109,6 +109,50 @@ describe('projects of conversations', () => {
     expect(s.calls.find((c) => c.method === 'PUT' && c.path === thread)?.body).toEqual({ projectId: 'p1' });
   });
 
+  // «Новый разговор» of the side panel inside a project (decision of the owner 15.11).
+  describe('«Новый разговор» of the side panel', () => {
+    const NEW_ID = '00000000-0000-4000-8000-000000000003';
+    const newThread = `/app/api/threads/${NEW_ID}/project`;
+    // The new conversation remembers the project it was put into.
+    function withNewThread(extra: Record<string, Parameters<typeof mockServer>[0][string]> = {}) {
+      vi.spyOn(crypto, 'randomUUID').mockReturnValue(NEW_ID);
+      let linked: string | null = null;
+      return server({
+        [`PUT ${newThread}`]: (call) => ((linked = (call.body as { projectId: string }).projectId), { body: { ok: true } }),
+        [`GET ${newThread}`]: () => ({ body: { projectId: linked } }),
+        ...extra,
+      });
+    }
+    const startNew = async () => userEvent.setup().click(await screen.findByRole('button', { name: 'Новый разговор' }));
+
+    it('puts the conversation into the project whose page is open', async () => {
+      const s = withNewThread();
+      renderApp('/projects/p1');
+      await screen.findByRole('heading', { name: 'Тендер Альфа' });
+      await startNew();
+      expect(await screen.findByRole('button', { name: /Тендер Альфа/, expanded: false })).toHaveAttribute('aria-haspopup', 'menu');
+      expect(s.calls.find((c) => c.method === 'PUT' && c.path === newThread)?.body).toEqual({ projectId: 'p1' });
+    });
+
+    it('puts the conversation into the project of the open conversation', async () => {
+      const s = withNewThread({ 'GET /app/api/threads/t1/project': { body: { projectId: 'p2' } } });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('button', { name: /Отчёты/, expanded: false });
+      await startNew();
+      await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === newThread)?.body).toEqual({ projectId: 'p2' }));
+      expect(await screen.findByRole('button', { name: /Отчёты/, expanded: false })).toBeInTheDocument();
+    });
+
+    it('starts the conversation without a project outside of one', async () => {
+      const s = withNewThread({ 'GET /app/api/threads/t1/project': { body: { projectId: null } } });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('button', { name: /Без проекта/ });
+      await startNew();
+      await waitFor(() => expect(s.calls.some((c) => c.method === 'GET' && c.path === newThread)).toBe(true));
+      expect(s.calls.some((c) => c.method === 'PUT')).toBe(false);
+    });
+  });
+
   it('keeps the chip working and says why when the new conversation could not go into the project', async () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000002');
     const thread = '/app/api/threads/00000000-0000-4000-8000-000000000002/project';

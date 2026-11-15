@@ -84,8 +84,9 @@ export function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const { state: agentsLoad, reload } = useLoad(fetchAgents);
   const { state: usageLoad } = useLoad(fetchMyUsage);
-  // The layout sits above the chat route, so the agent comes from the address itself.
+  // The layout sits above the chat route, so the agent and the project page come from the address itself.
   const agentId = useMatch('/agents/:agentId')?.params.agentId;
+  const projectPageId = useMatch('/projects/:projectId')?.params.projectId;
   const [params] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -120,8 +121,11 @@ export function AppShell() {
     // address, or the admin may have taken it away.
     const available = agents.status === 'ready' ? agents.agents : [];
     const target = [agentId, lastAgent()].find((id) => id && available.some((a) => a.id === id)) ?? available[0]?.id;
+    // Inside a project — its page or one of its conversations, the project marked in «Проекты» — the
+    // new conversation goes into it (decision of the owner 15.11).
+    const project = projectPageId ?? chatProjectId;
     closeMenu();
-    if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}`);
+    if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}${project ? `&project=${encodeURIComponent(project)}` : ''}`);
   };
 
   const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: openSearch };
