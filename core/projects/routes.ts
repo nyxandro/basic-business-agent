@@ -9,6 +9,7 @@ import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { fileDownload } from '../workspace/download.ts';
 import { contextRoot, listFiles, removeFileInside, saveFile } from '../workspace/layout.ts';
 import { requireActive, threadProjectState, visibleProject } from './access.ts';
+import { registerDirectoryRoutes } from './directory.ts';
 import { createProject, deleteProject, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
@@ -36,6 +37,8 @@ export async function readUploadedFile(c: Context<AppEnv>): Promise<File> {
 export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): void {
   // The files folder of a project: it lives with its creator, whoever works in it.
   const folderOf = (project: { id: string; user_id: string }) => contextRoot(deps.workspaceRoot, project.user_id, project.id);
+
+  registerDirectoryRoutes(app, deps.db);
 
   app.get('/app/api/projects', async (c) => c.json(await listProjects(deps, access(c).userId)));
 
