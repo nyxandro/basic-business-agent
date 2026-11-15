@@ -36,29 +36,24 @@ describe('a failed turn', () => {
 describe('events of the chat stream', () => {
   const event = (name: string, value: unknown) => ({ event: { type: 'CUSTOM', name, value }, messages: [user('u1', 'привет'), said('a1', 'Пр'), said('a2', 'Привет!')] });
 
-  const handlers = () => ({ onMessageDiscarded: vi.fn(), onTurnsFailed: vi.fn() });
-
-  it('names the message whose words a broken attempt left on the screen, and leaves the run as it is', () => {
-    const h = handlers();
-    expect(failureSubscriber(h).onCustomEvent(event(CHAT_EVENTS.messageDiscarded, { messageId: 'a1' }))).toBeUndefined();
-    expect(h.onMessageDiscarded).toHaveBeenCalledWith('a1');
-    expect(h.onTurnsFailed).not.toHaveBeenCalled();
+  it('takes the words of a broken attempt off the screen', () => {
+    const result = failureSubscriber(vi.fn()).onCustomEvent(event(CHAT_EVENTS.messageDiscarded, { messageId: 'a1' }));
+    expect(result?.messages?.map((m) => m.id)).toEqual(['u1', 'a2']);
   });
 
   it('hands over the broken answers of an opened conversation', () => {
-    const h = handlers();
+    const onTurnsFailed = vi.fn();
     const value = { interruptedMessageIds: ['a1'], last: { code: 'APP_MODEL_UNAVAILABLE', message: 'Модель сейчас не отвечает.' } };
-    expect(failureSubscriber(h).onCustomEvent(event(CHAT_EVENTS.turnsFailed, value))).toBeUndefined();
-    expect(h.onTurnsFailed).toHaveBeenCalledWith(value);
+    expect(failureSubscriber(onTurnsFailed).onCustomEvent(event(CHAT_EVENTS.turnsFailed, value))).toBeUndefined();
+    expect(onTurnsFailed).toHaveBeenCalledWith(value);
   });
 
   it('leaves the screen as it is on a malformed event', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const h = handlers();
-    expect(failureSubscriber(h).onCustomEvent(event(CHAT_EVENTS.messageDiscarded, { id: 'a1' }))).toBeUndefined();
-    expect(failureSubscriber(h).onCustomEvent(event(CHAT_EVENTS.turnsFailed, { last: 'x' }))).toBeUndefined();
-    expect(h.onMessageDiscarded).not.toHaveBeenCalled();
-    expect(h.onTurnsFailed).not.toHaveBeenCalled();
+    const onTurnsFailed = vi.fn();
+    expect(failureSubscriber(onTurnsFailed).onCustomEvent(event(CHAT_EVENTS.messageDiscarded, { id: 'a1' }))).toBeUndefined();
+    expect(failureSubscriber(onTurnsFailed).onCustomEvent(event(CHAT_EVENTS.turnsFailed, { last: 'x' }))).toBeUndefined();
+    expect(onTurnsFailed).not.toHaveBeenCalled();
     expect(errors).toHaveBeenCalledTimes(2);
   });
 });

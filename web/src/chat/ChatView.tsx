@@ -5,7 +5,7 @@
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
@@ -99,10 +99,7 @@ export function ChatView(props: CopilotChatViewProps) {
   const extras = useChatExtras();
   const { agent } = useAgent();
   const { inputValue = '', onInputChange, onSubmitMessage, onStop, isRunning = false, isConnecting = false } = props;
-  // Messages whose words a repeated model call dropped (spec, section 9.1): hidden at once, taken out
-  // of the agent once the run is over, so the next turn does not send them back to the server.
-  const [discarded, setDiscarded] = useState<ReadonlySet<string>>(() => new Set());
-  const messages = (props.messages ?? []).filter((m) => !discarded.has(m.id));
+  const messages = props.messages ?? [];
   const restored = useRef(false);
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -123,13 +120,9 @@ export function ChatView(props: CopilotChatViewProps) {
   // Before the conversation is connected: its broken answers come in the events of the connection.
   const { onTurnsFailed } = extras;
   useEffect(() => {
-    const subscription = agent.subscribe(failureSubscriber({ onTurnsFailed, onMessageDiscarded: (id) => setDiscarded((prev) => new Set(prev).add(id)) }));
+    const subscription = agent.subscribe(failureSubscriber(onTurnsFailed));
     return () => subscription.unsubscribe();
   }, [agent, onTurnsFailed]);
-  useEffect(() => {
-    if (isRunning || !agent.messages.some((m) => discarded.has(m.id))) return;
-    agent.setMessages(agent.messages.filter((m) => !discarded.has(m.id)));
-  }, [agent, isRunning, discarded]);
 
   const lastContent = messages.at(-1)?.content;
   useLayoutEffect(() => {

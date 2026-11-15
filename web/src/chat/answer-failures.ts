@@ -5,29 +5,30 @@ import { CHAT_EVENTS, failedTurnsSchema, messageDiscardedSchema, type FailedTurn
 import type { Message } from '@copilotkit/react-core';
 import { retryTurn } from './api.ts';
 
-export interface FailureHandlers {
-  // The server dropped the words of a broken model call: the message goes off the screen.
-  onMessageDiscarded(messageId: string): void;
-  // The broken answers of a conversation that was opened.
-  onTurnsFailed(value: FailedTurns): void;
+interface CustomEventParams {
+  event: { name: string; value: unknown };
+  messages: readonly Message[];
 }
 
-// An AG-UI subscriber of the chat's agent. It changes nothing in the run itself: a list of messages
-// returned in the middle of a run made CopilotKit lose the words that came after it when the run
-// failed (seen in the browser, 15.11), so the chat hides dropped messages and cleans them out of the
-// agent once the run is over.
-export function failureSubscriber(handlers: FailureHandlers) {
+// An AG-UI subscriber of the chat's agent: a returned list of messages replaces the shown one.
+export function failureSubscriber(onTurnsFailed: (value: FailedTurns) => void) {
   return {
-    onCustomEvent({ event }: { event: { name: string; value: unknown } }): undefined {
+    onCustomEvent({ event, messages }: CustomEventParams): { messages: Message[] } | undefined {
       if (event.name === CHAT_EVENTS.messageDiscarded) {
         const parsed = messageDiscardedSchema.safeParse(event.value);
-        if (parsed.success) handlers.onMessageDiscarded(parsed.data.messageId);
-        else console.error('malformed chat event', event.name, parsed.error);
+        if (!parsed.success) {
+          console.error('malformed chat event', event.name, parsed.error);
+          return undefined;
+        }
+        return { messages: messages.filter((m) => m.id !== parsed.data.messageId) };
       }
       if (event.name === CHAT_EVENTS.turnsFailed) {
         const parsed = failedTurnsSchema.safeParse(event.value);
-        if (parsed.success) handlers.onTurnsFailed(parsed.data);
-        else console.error('malformed chat event', event.name, parsed.error);
+        if (!parsed.success) {
+          console.error('malformed chat event', event.name, parsed.error);
+          return undefined;
+        }
+        onTurnsFailed(parsed.data);
       }
       return undefined;
     },

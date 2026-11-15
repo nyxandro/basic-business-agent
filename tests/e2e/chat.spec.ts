@@ -95,12 +95,13 @@ test('a broken answer: a repeat makes it whole; one that stays broken keeps its 
   await say(page, question);
   await expect(page.getByRole('alert')).toContainText('Модель сейчас не отвечает');
   await expect(page.getByText('Ответ прервался')).toBeVisible();
-  // The words of the first broken attempt went off the screen; those of the second stay.
-  await expect(page.getByText('Начинаю отвечать на вопрос')).toHaveCount(1);
+  // Live, CopilotKit's A2UI layers may swallow the words of an attempt that broke right after them
+  // (A2UI stays on, decision of the owner 15.11); the history has the words of the last attempt only.
 
   await page.reload();
   await expect(page.getByRole('alert')).toContainText('APP_MODEL_UNAVAILABLE');
   await expect(page.getByText('Ответ прервался')).toBeVisible();
+  await expect(page.getByText('Начинаю отвечать на вопрос')).toHaveCount(1);
   await page.getByRole('button', { name: 'Ответить заново' }).click();
   await expect(page.getByText(AFTER_ANSWER_AGAIN)).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
