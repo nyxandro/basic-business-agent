@@ -17,6 +17,7 @@ import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
 import { withAttachments } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
+import { titleSubscriber } from './title-events.ts';
 import { Welcome } from './Welcome.tsx';
 
 // The feed sticks to the bottom while the person is within this distance of it.
@@ -126,6 +127,13 @@ export function ChatView(props: CopilotChatViewProps) {
     const subscription = agent.subscribe(failureSubscriber(onTurnsFailed));
     return () => subscription.unsubscribe();
   }, [agent, onTurnsFailed]);
+
+  // The conversation got its name while the agent answers (spec, section 8.16).
+  const { threadId, onThreadTitled } = extras;
+  useEffect(() => {
+    const subscription = agent.subscribe(titleSubscriber(threadId, onThreadTitled));
+    return () => subscription.unsubscribe();
+  }, [agent, threadId, onThreadTitled]);
 
   const lastContent = messages.at(-1)?.content;
   const lastRole = messages.at(-1)?.role;

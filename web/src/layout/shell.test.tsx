@@ -141,6 +141,49 @@ describe('the frame of the application', () => {
     expect(await screen.findByRole('link', { name: /Продажи/ })).toHaveAttribute('href', '/agents/sales');
   });
 
+  it('renames a conversation from its three dots in «Недавние», in place', async () => {
+    const s = server();
+    s.set('PATCH /app/api/threads/t1', (call) => ({ body: { thread: { id: 't1', title: (call.body as { title: string }).title } } }));
+    renderApp('/');
+    const user = userEvent.setup();
+    const panel = (await screen.findByText('Недавние')).parentElement!;
+    await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
+    await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));
+    const field = within(panel).getByRole('textbox', { name: 'Название разговора' });
+    expect(field).toHaveValue('Сделки без движения');
+    expect(field).toHaveFocus();
+    await user.clear(field);
+    await user.type(field, 'Сделки для отчёта{Enter}');
+
+    const renamed = await within(panel).findByRole('link', { name: 'Сделки для отчёта' });
+    expect(renamed).toHaveAttribute('href', '/agents/sales?thread=t1');
+    expect(s.calls.filter((c) => c.method === 'PATCH')).toEqual([expect.objectContaining({ path: '/app/api/threads/t1', body: { title: 'Сделки для отчёта' } })]);
+    // The rest of the list stays as it was.
+    expect(within(panel).getByRole('link', { name: /Задача: Утренняя сводка/ })).toBeInTheDocument();
+  });
+
+  it('Esc leaves the name as it was; a refusal keeps the field with the reason', async () => {
+    const s = server();
+    s.set('PATCH /app/api/threads/t1', apiError('APP_NOT_FOUND', 'Разговор не найден.', 404));
+    renderApp('/');
+    const user = userEvent.setup();
+    const panel = (await screen.findByText('Недавние')).parentElement!;
+    const rename = async () => {
+      await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
+      await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));
+      return within(panel).getByRole('textbox', { name: 'Название разговора' });
+    };
+
+    await user.type(await rename(), ' за ноябрь{Escape}');
+    expect(within(panel).getByRole('link', { name: 'Сделки без движения' })).toBeInTheDocument();
+    expect(s.calls.some((c) => c.method === 'PATCH')).toBe(false);
+
+    const field = await rename();
+    await user.type(field, ' за ноябрь{Enter}');
+    expect(await within(panel).findByText(/Разговор не найден/)).toBeInTheDocument();
+    expect(field).toHaveValue('Сделки без движения за ноябрь');
+  });
+
   it('turns the side panel into a drawer on a phone', async () => {
     stubSystemTheme('light', PHONE_WIDTH);
     server();

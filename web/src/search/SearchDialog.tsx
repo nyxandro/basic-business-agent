@@ -5,7 +5,7 @@ import type { ProjectDto, SearchResponse, SearchScope } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ru } from '../i18n/ru.ts';
-import { threadPath } from '../layout/RecentThreads.tsx';
+import { threadPath } from '../layout/ThreadRow.tsx';
 import { fetchProjects } from '../projects/api.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';

@@ -14,6 +14,8 @@ export interface ChatExtras {
   clearAttachments: () => void;
   onSubmitted: () => void;
   onRunFinished: () => void;
+  // The conversation got its name while the agent answered (spec, section 8.16).
+  onThreadTitled: () => void;
   onUploadError: (error: unknown) => void;
   // The confirmation card of a waiting action, placed under the feed.
   interrupt: ReactElement | null;

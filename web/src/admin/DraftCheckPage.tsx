@@ -43,7 +43,7 @@ export function DraftCheckPage() {
       />
       <Card className={styles.checkChat}>
         <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
-          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} />
+          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} />
         </CopilotKit>
       </Card>
     </div>

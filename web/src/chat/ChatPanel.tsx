@@ -13,7 +13,19 @@ import { ChatView } from './ChatView.tsx';
 
 const APPROVAL_REASON = 'mastra:tool_approval';
 
-export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { agent: AgentSummary; threadId: string; onRunFinished: () => void; composerExtra?: ReactNode }) {
+export function ChatPanel({
+  agent,
+  threadId,
+  onRunFinished,
+  onThreadTitled,
+  composerExtra,
+}: {
+  agent: AgentSummary;
+  threadId: string;
+  onRunFinished: () => void;
+  onThreadTitled: () => void;
+  composerExtra?: ReactNode;
+}) {
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [interruptedIds, setInterruptedIds] = useState<readonly string[]>([]);
@@ -45,6 +57,7 @@ export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { a
       clearAttachments: () => setAttachments([]),
       onSubmitted: () => setFailure(null),
       onRunFinished,
+      onThreadTitled,
       onUploadError: (raw) => setFailure({ error: asApiError(raw), broken: false }),
       interrupt: interrupt ?? null,
       failure,
@@ -54,7 +67,7 @@ export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { a
       onTurnsFailed,
       composerExtra,
     }),
-    [agent, threadId, attachments, onRunFinished, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra],
+    [agent, threadId, attachments, onRunFinished, onThreadTitled, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra],
   );
 
   return (

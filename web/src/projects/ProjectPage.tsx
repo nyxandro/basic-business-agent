@@ -8,7 +8,7 @@ import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ChatHeaderBar } from '../layout/ChatHeader.tsx';
 import { useShell } from '../layout/AppShell.tsx';
-import { threadPath } from '../layout/RecentThreads.tsx';
+import { threadPath } from '../layout/ThreadRow.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';

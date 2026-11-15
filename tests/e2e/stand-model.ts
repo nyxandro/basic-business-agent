@@ -57,6 +57,19 @@ export function createStandModel(): (req: FakeRequest) => FakeTurn {
   };
 }
 
+// The naming call of a conversation (core/chat/naming.ts) on the stand: a greeting is no task yet
+// («-», the name stays), anything else is named by the person's last message — so a conversation of
+// any scenario keeps the words of its question in «Недавние».
+const GREETING = /^(привет|здравствуй|добрый день|как дела|что ты умеешь)[\s!?.,]*$/i;
+export function standNaming(req: FakeRequest): FakeTurn {
+  const said = textOf(req.messages.at(-1)?.content)
+    .split('\n')
+    .filter((line) => line.startsWith('Сотрудник: '))
+    .map((line) => line.slice('Сотрудник: '.length).trim());
+  const last = said.at(-1) ?? '';
+  return { text: last === '' || GREETING.test(last) ? '-' : last };
+}
+
 function standModel(req: FakeRequest): FakeTurn {
   const last = req.messages.at(-1);
   if (last?.role === 'tool') {

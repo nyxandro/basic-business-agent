@@ -64,7 +64,7 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
     <>
       <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} />} />
       {me.modelsConfigured ? (
-        <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} composerExtra={<ProjectChip threadId={threadId} {...project} />} />
+        <ChatPanel key={threadId} agent={agent} threadId={threadId} onRunFinished={refreshThreads} onThreadTitled={refreshThreads} composerExtra={<ProjectChip threadId={threadId} {...project} />} />
       ) : (
         <EmptyInstallation />
       )}

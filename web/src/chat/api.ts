@@ -1,4 +1,4 @@
-import type { RetryTurnResponse, ThreadPage, UploadedFile } from '@bba/contracts';
+import type { RenameThreadResponse, RetryTurnResponse, ThreadPage, UploadedFile } from '@bba/contracts';
 import { api, apiForm } from '../api/client.ts';
 
 const enc = encodeURIComponent;
@@ -9,6 +9,7 @@ export const THREAD_PAGE = 30;
 export const fetchThreadPage = (before: string | null) =>
   api<ThreadPage>('GET', `/app/api/threads?limit=${THREAD_PAGE}${before ? `&before=${enc(before)}` : ''}`);
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);
+export const renameThread = (threadId: string, title: string) => api<RenameThreadResponse>('PATCH', `/app/api/threads/${enc(threadId)}`, { title });
 // «Ответить заново»: the server takes the question and its broken answer out and gives the question back.
 export const retryTurn = (threadId: string, questionId: string) => api<RetryTurnResponse>('POST', `/app/api/threads/${enc(threadId)}/retry`, { questionId });
 

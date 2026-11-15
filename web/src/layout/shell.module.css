@@ -160,6 +160,66 @@
   color: var(--on-acc);
 }
 
+/* A conversation of «Недавние»: the row takes the hover, three dots come up at its right end
+   (always on a touch screen), and the name makes room for them. */
+.threadRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  transition: background-color 0.2s ease;
+}
+
+.threadRow:hover {
+  background: var(--hover);
+}
+
+.threadRow .threadLink {
+  flex: 1;
+}
+
+.threadRow .threadLink:hover {
+  background: transparent;
+}
+
+.threadMore {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.threadRow:hover .threadMore,
+.threadRow:focus-within .threadMore,
+.threadRowOpen .threadMore {
+  opacity: 1;
+}
+
+.threadRow:hover .threadLink,
+.threadRow:focus-within .threadLink,
+.threadRowOpen .threadLink {
+  padding-right: 38px;
+}
+
+/* The open menu lies over the rows below it. */
+.threadRowOpen {
+  z-index: 1;
+}
+
+@media (hover: none) {
+  .threadMore {
+    opacity: 1;
+  }
+
+  .threadRow .threadLink {
+    padding-right: 38px;
+  }
+}
+
 .newPill {
   font-size: 11px;
   font-weight: 600;

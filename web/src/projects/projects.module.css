@@ -22,6 +22,11 @@
   font: inherit;
 }
 
+/* The box around the field already shows the focus with its accent border and ring. */
+.newInput:focus-visible {
+  outline: none;
+}
+
 .newInput::placeholder {
   color: var(--muted);
 }
