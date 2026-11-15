@@ -9,6 +9,7 @@ import { ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
+import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { canRecord } from '../voice/recorder.ts';
 import { useVoice } from '../voice/use-voice.ts';
@@ -76,7 +77,7 @@ function Attachments({ uploading, voice }: { uploading: string | null; voice: Re
       {voice}
       {extras.attachments.map((f) => (
         <span key={f.path} className={styles.chip}>
-          <Icon name="file" size={15} />
+          <FileIcon name={f.name} />
           <span className={styles.chipName}>{f.name}</span>
           <IconButton icon="x" size="sm" label={`${ru.chat.removeAttachment} ${f.name}`} onClick={() => extras.removeAttachment(f.path)} />
         </span>

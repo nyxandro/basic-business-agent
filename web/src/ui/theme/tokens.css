@@ -63,6 +63,15 @@
   --off: #c9c9d8;
   --shadow: rgba(20, 20, 60, 0.07);
   --scrim: rgba(8, 8, 20, 0.45);
+  /* File icons by type (ui/FileIcon.tsx). */
+  --file-pdf: #dc2626;
+  --file-doc: #2563eb;
+  --file-sheet: #15803d;
+  --file-slides: #ea580c;
+  --file-image: #7c3aed;
+  --file-media: #db2777;
+  --file-archive: #b45309;
+  --file-plain: #6b6b80;
 }
 
 :root[data-theme='dark'] {
@@ -102,4 +111,12 @@
   --off: #3a3a52;
   --shadow: rgba(0, 0, 0, 0.35);
   --scrim: rgba(8, 8, 20, 0.55);
+  --file-pdf: #f87171;
+  --file-doc: #60a5fa;
+  --file-sheet: #4ade80;
+  --file-slides: #fb923c;
+  --file-image: #a78bfa;
+  --file-media: #f472b6;
+  --file-archive: #fbbf24;
+  --file-plain: #a3a3be;
 }

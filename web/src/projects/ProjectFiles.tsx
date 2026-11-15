@@ -9,6 +9,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { fileSize } from '../ui/format.ts';
+import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Skeleton } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
@@ -81,7 +82,7 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
         <ul className={styles.rows}>
           {busy ? (
             <li className={styles.row} role="status">
-              <Icon name="file" size={16} />
+              <FileIcon name={busy} size={20} />
               <span className={styles.rowMain}>
                 <span className={styles.rowName}>{busy}</span>
                 <span className={styles.rowMeta}>{ru.chat.uploadingName(busy)}</span>
@@ -107,7 +108,7 @@ export function ProjectFiles({ projectId }: { projectId: string }) {
           ) : null}
           {state.data.files.map((f) => (
             <li key={f.path} className={styles.row}>
-              <Icon name="file" size={16} />
+              <FileIcon name={f.path} size={20} />
               <span className={styles.rowMain}>
                 <a className={styles.rowName} href={projectFileUrl(projectId, f.path)} download>
                   {f.path}
