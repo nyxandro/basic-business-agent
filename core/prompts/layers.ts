@@ -8,7 +8,9 @@
 // (processLLMRequest), so the stored history never holds it.
 import { readFileSync } from 'node:fs';
 import type { Processor } from '@mastra/core/processors';
+import type { LostProjectReason } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
+import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { contextRoot, listFiles } from '../workspace/layout.ts';
 
@@ -75,20 +77,44 @@ function sizeText(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} МБ`;
 }
 
-export async function projectLayer(db: Db, workspaceRoot: string, userId: string, projectId: string): Promise<string | null> {
-  const { rows } = await db.query<{ name: string; instructions: string }>('SELECT name, instructions FROM app.projects WHERE id = $1 AND user_id = $2', [projectId, userId]);
+// The project of the run: the run's entry point checked that the person sees it, so it is read by its
+// id; its files live with its creator (spec, section 8.20). A project open to colleagues says so, and
+// warns the agent off their files.
+export async function projectLayer(db: Db, workspaceRoot: string, viewerId: string, ownerId: string, projectId: string): Promise<string | null> {
+  const { rows } = await db.query<{ name: string; instructions: string; owner_name: string; shared: boolean }>(
+    `SELECT p.name, p.instructions, u."name" AS owner_name, ${SHARED} AS shared
+       FROM app.projects p JOIN app."user" u ON u."id" = p.user_id WHERE p.id = $1 AND p.user_id = $2`,
+    [projectId, ownerId],
+  );
   const project = rows[0];
   if (!project) return null;
-  const files = listFiles(contextRoot(workspaceRoot, userId, projectId));
+  const files = listFiles(contextRoot(workspaceRoot, ownerId, projectId));
   const shown = files.slice(0, PROMPT_FILES_LIMIT).map((f) => `- ${f.path} (${sizeText(f.bytes)})`);
   const more = files.length > PROMPT_FILES_LIMIT ? [`- и ещё ${files.length - PROMPT_FILES_LIMIT}`] : [];
+  const shared = !project.shared
+    ? null
+    : viewerId === ownerId
+      ? 'Проект открыт коллегам: его файлы видят и меняют и они.'
+      : `Проект общий, его открыл(а) тебе ${project.owner_name}. Файлы проекта видят и меняют коллеги: не удаляй и не перезаписывай файлы, которые сотрудник прямо не просил менять; новый результат сохраняй новым файлом.`;
   return [
     `# Проект «${project.name}»`,
+    shared,
     project.instructions.trim() || null,
     files.length > 0 ? ['Файлы проекта лежат в твоей рабочей папке:', ...shown, ...more].join('\n') : 'Файлов в проекте пока нет.',
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+const LOST_PROJECT_WHY: Record<LostProjectReason, string> = {
+  access: 'доступ к нему закрыт',
+  archived: 'проект перенесён в архив',
+  deleted: 'проект удалён',
+};
+
+// The conversation's project is gone for the person: the agent hears why from the person's side.
+export function lostProjectLayer(lost: { name: string; reason: LostProjectReason }): string {
+  return `# Проект разговора недоступен\n\nЭтот разговор был в проекте «${lost.name}», но ${LOST_PROJECT_WHY[lost.reason]}. Файлов и инструкций проекта у тебя больше нет. Если сотрудник просит работать с ними — объясни это и предложи прислать нужные файлы в разговор.`;
 }
 
 export function timeLayer(timezone: string, now = new Date()): string {
@@ -102,10 +128,13 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
     async processInput({ messages, systemMessages, requestContext }) {
       const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
       const projectId = optionalContextValue(requestContext, REQUEST_KEYS.projectId);
+      const lost = optionalContextValue(requestContext, REQUEST_KEYS.lostProject);
       const [org, employee, project] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
-        projectId ? projectLayer(deps.db, deps.workspaceRoot, userId, projectId) : Promise.resolve(null),
+        projectId
+          ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId)
+          : Promise.resolve(lost ? lostProjectLayer(JSON.parse(lost) as { name: string; reason: LostProjectReason }) : null),
       ]);
       return {
         messages,

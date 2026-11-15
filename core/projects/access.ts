@@ -76,6 +76,32 @@ export type ThreadProjectState =
   | { state: 'active'; project: ProjectRow; role: ProjectRole }
   | { state: 'lost'; name: string; reason: LostProjectReason; ownerName: string | null; canUnarchive: boolean };
 
+// What a run of the conversation works in, fixed for the whole run (spec, section 8.20): the files and
+// instructions of a project the person sees, or their own files with a word for the agent why the
+// project is gone. Every run — a message, «Да», a background run — asks anew.
+export interface RunProject {
+  projectId: string | null;
+  projectOwnerId: string | null;
+  lostProject: { name: string; reason: LostProjectReason } | null;
+}
+
+export async function runProjectOf(db: Queryable, userId: string, threadId: string): Promise<RunProject> {
+  const state = await threadProjectState(db, userId, threadId);
+  if (state.state === 'active') return { projectId: state.project.id, projectOwnerId: state.project.user_id, lostProject: null };
+  if (state.state === 'lost') return { projectId: null, projectOwnerId: null, lostProject: { name: state.name, reason: state.reason } };
+  return { projectId: null, projectOwnerId: null, lostProject: null };
+}
+
+// The project of an answer that waited for «Да»: Mastra goes on with that same answer, its prompt
+// still holding the project, so it is finished there — with the files of the project as they are now,
+// with its creator — even when access was closed meanwhile (the owner: the agent finishes the request).
+// A project removed since then leaves the answer the person's own folder.
+export async function runProjectOfWaitingAnswer(db: Queryable, projectId: string | null): Promise<RunProject> {
+  if (!projectId) return { projectId: null, projectOwnerId: null, lostProject: null };
+  const { rows } = await db.query<{ user_id: string }>('SELECT user_id FROM app.projects WHERE id = $1', [projectId]);
+  return rows[0] ? { projectId, projectOwnerId: rows[0].user_id, lostProject: null } : { projectId: null, projectOwnerId: null, lostProject: null };
+}
+
 export async function threadProjectState(db: Queryable, userId: string, threadId: string): Promise<ThreadProjectState> {
   const { rows } = await db.query<{ project_id: string | null; lost_project_name: string | null }>(
     'SELECT project_id, lost_project_name FROM app.thread_projects WHERE thread_id = $1 AND user_id = $2',

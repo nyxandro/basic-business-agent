@@ -12,7 +12,7 @@ import { appError } from '../errors/catalog.ts';
 import { listOwnThreads } from '../memory/memory.ts';
 import { logEvent } from '../server/log.ts';
 import { removeProjectFolder } from '../workspace/layout.ts';
-import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, threadProjectState, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';
+import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';
 import { checkAccess, describeAccess, writeAccess } from './sharing.ts';
 
 export const NAME_MAX = 80;
@@ -254,12 +254,6 @@ export async function setThreadProject(deps: ProjectsDeps, userId: string, threa
      ON CONFLICT (thread_id) DO UPDATE SET project_id = EXCLUDED.project_id, lost_project_name = NULL WHERE app.thread_projects.user_id = EXCLUDED.user_id`,
     [threadId, userId, projectId],
   );
-}
-
-// The project a run works in: active for the person, otherwise none.
-export async function projectOfThread(db: Db, userId: string, threadId: string): Promise<string | null> {
-  const state = await threadProjectState(db, userId, threadId);
-  return state.state === 'active' ? state.project.id : null;
 }
 
 function cursorOf(t: ThreadSummaryDto): string {

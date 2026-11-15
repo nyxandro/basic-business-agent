@@ -58,7 +58,10 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
   rc.set(REQUEST_KEYS.skillPaths, '[]');
   const threadId = `t-${Date.now()}`;
   rc.set(REQUEST_KEYS.threadId, threadId);
-  if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
+  if (projectId) {
+    rc.set(REQUEST_KEYS.projectId, projectId);
+    rc.set(REQUEST_KEYS.projectOwnerId, 'olga');
+  }
   model.script({ text: 'Ок.' });
   await agent.generate('привет', { requestContext: rc, maxSteps: 1, memory: { thread: threadId, resource: 'olga' } });
   return model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content));

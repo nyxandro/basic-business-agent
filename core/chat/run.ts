@@ -13,7 +13,8 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import type { Registry } from '../loader/registry.ts';
 import { draftResourceId, ensureThread, titleFrom } from '../memory/memory.ts';
-import { projectOfThread } from '../projects/projects.ts';
+import { runProjectOf, runProjectOfWaitingAnswer, type RunProject } from '../projects/access.ts';
+import { markSeen } from '../projects/projects.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
@@ -49,8 +50,11 @@ export interface PreparedRun {
   resourceId: string;
   threadId: string;
   mode: 'published' | 'draft';
-  // Project of the conversation: the sandbox works in its files, the prompt gets its instructions.
+  // Project of the conversation: the sandbox works in its files (they live with its creator), the
+  // prompt gets its instructions; or why the project is gone for the person (spec, section 8.20).
   projectId: string | null;
+  projectOwnerId: string | null;
+  lostProject: RunProject['lostProject'];
   // The models of the run (core/models/resolve.ts); null where no model is called (agent listing).
   models: ModelChoice | null;
   // Folders of the skills the employee gets, fixed for the run.
@@ -67,6 +71,8 @@ const APPROVAL_PREFIX = 'mastra-approval::';
 const SUPERSEDED = 'Отменено: сотрудник написал новое сообщение.';
 
 const busyThreads = new Set<string>();
+// A draft check of a prompt never belongs to the admin's projects.
+const NO_PROJECT: RunProject = { projectId: null, projectOwnerId: null, lostProject: null };
 
 export function releaseThread(threadId: string): void {
   busyThreads.delete(threadId);
@@ -134,7 +140,11 @@ export function requestContextFor(run: PreparedRun): RequestContext {
     rc.set(REQUEST_KEYS.modelId, run.models.primary);
     if (run.models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, run.models.fallback);
   }
-  if (run.projectId) rc.set(REQUEST_KEYS.projectId, run.projectId);
+  if (run.projectId && run.projectOwnerId) {
+    rc.set(REQUEST_KEYS.projectId, run.projectId);
+    rc.set(REQUEST_KEYS.projectOwnerId, run.projectOwnerId);
+  }
+  if (run.lostProject) rc.set(REQUEST_KEYS.lostProject, JSON.stringify(run.lostProject));
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(run.skillPaths));
   return rc;
 }
@@ -160,7 +170,7 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
       toolCallId: pending.toolCallId,
       reason: SUPERSEDED,
       memory: { thread: run.threadId, resource: run.resourceId },
-      requestContext: requestContextFor(run),
+      requestContext: requestContextFor({ ...run, ...(await runProjectOfWaitingAnswer(deps.db, pending.projectId)) }),
     });
     await stream.consumeStream();
     await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
@@ -172,11 +182,12 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   assertAgentOpen(deps, access, agentId, mode);
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
-  // A draft check of a prompt never belongs to the admin's projects.
-  const projectId = mode === 'draft' ? null : await projectOfThread(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, projectId, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
+  const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
+  // Working in a project shared to the person takes its «новое» off.
+  if (run.projectId) await markSeen(deps.db, access.userId, run.projectId);
 
   if (busyThreads.has(threadId)) throw threadBusy(threadId);
   busyThreads.add(threadId);
@@ -194,6 +205,8 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
         throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} belongs to background task ${pending.taskId}`, { userMessage: 'На вопросы фоновых задач отвечают на экране «Ждёт подтверждения».' });
       }
       if (pending.status !== 'pending') throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} is ${pending.status}`, { userMessage: 'По этому действию решение уже принято.' });
+      // «Да» or «Нет» goes on with the answer that waited: it is finished in the project it began in.
+      Object.assign(run, await runProjectOfWaitingAnswer(deps.db, pending.projectId));
       if (pending.expiresAt.getTime() < Date.now()) throw appError('APP_NOT_FOUND', `approval ${pending.id} expired`, { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
       const approved = resume?.status === 'resolved' && (resume.payload === true || (resume.payload as { approved?: unknown } | undefined)?.approved === true);
       if (!approved) {

@@ -8,10 +8,11 @@ import { agentActions, subagentCalls } from '../approvals/describe.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
-import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/projects.ts';
+import { threadProjectState, type ThreadProjectState } from '../projects/access.ts';
+import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileDownload } from '../workspace/download.ts';
-import { contextRoot, saveFile } from '../workspace/layout.ts';
+import { contextRoot, existingInside, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
 import { assertAgentOpen, assertNewTurnAllowed, newMessageOf, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
@@ -30,6 +31,16 @@ const STOP_PATH = /^\/agent\/([^/]+)\/stop\/([^/]+)$/;
 
 const notFound = (message: string) => new AppError({ code: 'APP_NOT_FOUND', message, userMessage: 'Разговор не найден.', status: 404 });
 const memoryBody = z.object({ text: z.string().max(20_000) });
+
+const LOST_FILE_TEXT = {
+  access: (name: string) => `Файл лежит в проекте «${name}», к которому у вас больше нет доступа.`,
+  archived: (name: string) => `Файл лежит в проекте «${name}», который перенесён в архив.`,
+  deleted: (name: string) => `Файл был в проекте «${name}», а проект удалён.`,
+} as const;
+
+function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): AppError {
+  return appError('APP_PROJECT_ACCESS_LOST', `file of a project gone for the person (${reason})`, { userMessage: LOST_FILE_TEXT[reason](name) });
+}
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
   // A failure of a run in our code and words: the text of RUN_ERROR, or the failure Mastra kept in
@@ -199,27 +210,35 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json({ ok: true });
   });
 
-  // The files folder of a conversation: the project's when it is in one, otherwise the person's
-  // (spec, section 8.9). Only the person's own conversation or their draft check of a prompt; a
-  // conversation not saved yet (a file attached before the first message) is their own.
-  async function threadFolder(userId: string, threadId: string): Promise<string> {
+  // The project of a conversation and where its files are (spec, sections 8.9 and 8.20): the project's
+  // folder — with its creator — when the person sees the project, otherwise the person's own. Only the
+  // person's own conversation or their draft check of a prompt; a conversation not saved yet (a file
+  // attached before the first message) is their own.
+  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; folder: string }> {
     const thread = await deps.memory.getThreadById({ threadId });
     if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
     }
-    return contextRoot(deps.workspaceRoot, userId, await projectOfThread(deps.db, userId, threadId));
+    const state = await threadProjectState(deps.db, userId, threadId);
+    const folder = state.state === 'active' ? contextRoot(deps.workspaceRoot, state.project.user_id, state.project.id) : contextRoot(deps.workspaceRoot, userId, null);
+    return { state, folder };
   }
 
+  // An attachment goes where the agent of the conversation works: a project gone for the person
+  // leaves them their own folder.
   app.post('/app/api/threads/:threadId/files', async (c) => {
-    const userId = access(c).userId;
-    const root = await threadFolder(userId, c.req.param('threadId'));
+    const { folder } = await threadFolders(access(c).userId, c.req.param('threadId'));
     const file = await readUploadedFile(c);
-    return c.json(saveFile(root, file.name, new Uint8Array(await file.arrayBuffer())), 201);
+    return c.json(saveFile(folder, file.name, new Uint8Array(await file.arrayBuffer())), 201);
   });
 
-  // «Скачать» of the file block a file the agent made (spec, section 8.18).
+  // «Скачать» of the file block a file the agent made (spec, section 8.18). In a conversation whose
+  // project is gone for the person, a file of their own folder is still theirs; one of the project
+  // is not, and the person is told why.
   app.get('/app/api/threads/:threadId/file', async (c) => {
-    const root = await threadFolder(access(c).userId, c.req.param('threadId'));
-    return fileDownload(root, c.req.query('path') ?? '', 'Файл не найден. Возможно, его удалили или разговор перенесли в другой проект.');
+    const path = c.req.query('path') ?? '';
+    const { state, folder } = await threadFolders(access(c).userId, c.req.param('threadId'));
+    if (state.state === 'lost' && !existingInside(folder, path)) throw projectFileLost(state.name, state.reason);
+    return fileDownload(folder, path, 'Файл не найден. Возможно, его удалили или разговор перенесли в другой проект.');
   });
 }

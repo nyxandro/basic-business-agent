@@ -21,7 +21,7 @@ import type { Registry } from '../loader/registry.ts';
 import { ensureThread } from '../memory/memory.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels } from '../models/resolve.ts';
-import { projectOfThread } from '../projects/projects.ts';
+import { runProjectOf, runProjectOfWaitingAnswer } from '../projects/access.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
@@ -111,8 +111,9 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     logEvent('warn', 'background_task_paused', { taskId: row.id, reason });
   }
 
-  async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string): Promise<RequestContext> {
-    const [projectId, models, skillPaths] = await Promise.all([projectOfThread(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId)]);
+  // `waiting`: the project of an answer that waited for «Да» — the answer is finished there (spec, 8.20).
+  async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string, waiting?: { projectId: string | null }): Promise<RequestContext> {
+    const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId)]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
     rc.set(REQUEST_KEYS.threadId, threadId);
@@ -121,7 +122,11 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
-    if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
+    if (project.projectId && project.projectOwnerId) {
+      rc.set(REQUEST_KEYS.projectId, project.projectId);
+      rc.set(REQUEST_KEYS.projectOwnerId, project.projectOwnerId);
+    }
+    if (project.lostProject) rc.set(REQUEST_KEYS.lostProject, JSON.stringify(project.lostProject));
     rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skillPaths));
     return rc;
   }
@@ -207,7 +212,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
     const row = { id: approval.taskId, agent_id: approval.agentId };
     const agent = await resolveAgent(deps.editor, approval.agentId, 'published');
-    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.threadId, approval.userId) };
+    const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext: await contextFor(row, approval.threadId, approval.userId, approval) };
     const stream = approved ? await agent.approveToolCall(options) : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
     for await (const part of stream.fullStream) {
       if (part.type === 'error') throw (part.payload as { error: unknown }).error;

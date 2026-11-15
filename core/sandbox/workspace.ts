@@ -61,9 +61,12 @@ export interface SandboxDeps {
 
 type Ctx = { get(key: string): unknown } | undefined;
 
-// The files folder of the run: the project's when the conversation is in one, otherwise the person's.
+// The files folder of the run: the project's when the conversation is in one — it lives with the
+// project's creator, who may be someone else (spec, section 8.20) — otherwise the person's.
 export function runRoot(workspaceRoot: string, ctx: Ctx): string {
-  return contextRoot(workspaceRoot, requireContextValue(ctx, REQUEST_KEYS.userId), optionalContextValue(ctx, REQUEST_KEYS.projectId));
+  const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
+  if (projectId) return contextRoot(workspaceRoot, requireContextValue(ctx, REQUEST_KEYS.projectOwnerId), projectId);
+  return contextRoot(workspaceRoot, requireContextValue(ctx, REQUEST_KEYS.userId), null);
 }
 
 // Isolation is required: without it a skill script could reach the server (spec, anti-goals).

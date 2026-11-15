@@ -28,6 +28,8 @@ export interface ApprovalRequest {
   errorCode: string | null;
   createdAt: Date;
   expiresAt: Date;
+  // The project the waiting answer was started in: it is finished there (spec, section 8.20).
+  projectId: string | null;
 }
 
 interface Row {
@@ -46,6 +48,7 @@ interface Row {
   error_code: string | null;
   created_at: Date;
   expires_at: Date;
+  project_id: string | null;
 }
 
 const toRequest = (r: Row): ApprovalRequest => ({
@@ -64,6 +67,7 @@ const toRequest = (r: Row): ApprovalRequest => ({
   errorCode: r.error_code,
   createdAt: r.created_at,
   expiresAt: r.expires_at,
+  projectId: r.project_id,
 });
 
 function contextValue(ctx: { get(key: string): unknown } | undefined, key: string): string | null {
@@ -84,8 +88,8 @@ export function createApprovalRecorder(db: Db, describe: (toolName: string) => A
       if (!userId || !threadId || !runId) throw new Error('approval request without employee, thread or run in the request context');
       const action = describe(payload.toolName);
       await db.query(
-        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
+        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at, project_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
         [
           userId,
           contextValue(requestContext, REQUEST_KEYS.agentId) ?? 'unknown',
@@ -99,6 +103,7 @@ export function createApprovalRecorder(db: Db, describe: (toolName: string) => A
           JSON.stringify(action?.fields ?? {}),
           JSON.stringify(summariseArgs(payload.args ?? {})),
           new Date(Date.now() + APPROVAL_TTL_MS),
+          contextValue(requestContext, REQUEST_KEYS.projectId),
         ],
       );
       return part;

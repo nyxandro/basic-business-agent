@@ -10,8 +10,12 @@ export const REQUEST_KEYS = {
   fallbackModelId: 'bba.fallbackModelId',
   runKind: 'bba.runKind',
   taskId: 'bba.taskId',
-  // Project of the conversation, when it is in one: the sandbox then works in the project's files.
+  // Project of the conversation, when it is in one: the sandbox then works in the project's files,
+  // which live with the project's creator — another person when the project is shared (spec, 8.20).
   projectId: 'bba.projectId',
+  projectOwnerId: 'bba.projectOwnerId',
+  // JSON { name, reason }: the conversation's project is closed to the person, archived or removed.
+  lostProject: 'bba.lostProject',
   // Folders of the skills the employee gets (core/skills-admin/runtime.ts), JSON: fixed for the run,
   // so a skill replaced meanwhile does not change under a running answer.
   skillPaths: 'bba.skillPaths',

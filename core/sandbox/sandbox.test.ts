@@ -94,7 +94,10 @@ async function runAs(userId: string, projectId?: string, skills: string[] = [SKI
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skills));
-  if (projectId) rc.set(REQUEST_KEYS.projectId, projectId);
+  if (projectId) {
+    rc.set(REQUEST_KEYS.projectId, projectId);
+    rc.set(REQUEST_KEYS.projectOwnerId, userId);
+  }
   await agent.generate(text, { requestContext: rc, maxSteps: 3 });
 }
 
