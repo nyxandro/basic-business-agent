@@ -8,6 +8,7 @@ import type { Db } from '../db/pool.ts';
 import { inTransaction } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import type { ModelGateway } from '../models/gateway.ts';
+import { transferProjects } from '../projects/transfer.ts';
 import { deleteUserWorkspace } from '../workspace/layout.ts';
 import { logEvent } from '../server/log.ts';
 
@@ -63,6 +64,8 @@ export async function deleteEmployee(deps: DeletionDeps, actorUserId: string, us
       },
     ],
     ['memory', () => deps.memory.updateWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId, workingMemory: '' })],
+    // Their projects go to the administrator who removes them (spec, section 8.20), before their folder goes.
+    ['projects', () => transferProjects(deps.db, deps.workspaceRoot, userId, actorUserId)],
     ['workspace', () => Promise.resolve(deleteUserWorkspace(deps.workspaceRoot, userId))],
     ['account', () => deps.db.query('DELETE FROM app."user" WHERE "id" = $1', [userId])],
   ];

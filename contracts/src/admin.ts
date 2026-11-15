@@ -55,6 +55,8 @@ export interface AdminUser {
   roleIds: string[];
   departmentIds: string[];
   createdAt: string;
+  // Their projects and how many are open to colleagues: removal gives them to the administrator.
+  projects: { total: number; shared: number };
 }
 
 // GET admin/people: whom a skill or a background task can be for — names only.

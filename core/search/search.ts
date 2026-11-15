@@ -97,14 +97,18 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
   if (query.q.trim().length < MIN_QUERY || terms.length === 0) {
     throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
-  const [projects, threads] = await Promise.all([
-    query.scope === 'threads' ? [] : listProjects(deps, userId).then((list) => list.projects),
+  const [seen, threads] = await Promise.all([
+    listProjects(deps, userId).then((list) => list.projects),
     query.scope === 'projects' ? [] : searchThreads(deps.db, userId, terms, query.projectId),
   ]);
+  const projects = query.scope === 'threads' ? [] : seen;
+  // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
+  const seenIds = new Set(seen.map((p) => p.id));
+  if (query.projectId && !seenIds.has(query.projectId)) return { projects: [], threads: [] };
   return {
+    threads: threads.map((th) => (th.projectId && !seenIds.has(th.projectId) ? { ...th, projectId: null } : th)),
     projects: projects
       .filter((p) => (!query.projectId || p.id === query.projectId) && terms.every((w) => p.name.toLowerCase().includes(w)))
       .map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
-    threads,
   };
 }
