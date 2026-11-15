@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiError, mockServer } from '../test/fetch-mock.ts';
 import { ToastProvider } from '../ui/Toast.tsx';
-import { answerAgain, failureSubscriber, lastTurnIds } from './answer-failures.ts';
+import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answer-failures.ts';
 import { chatFailureOf } from './chat-errors.ts';
 import { TurnFooter } from './AssistantMessage.tsx';
 
@@ -22,14 +22,37 @@ afterEach(() => {
 });
 
 describe('a failed turn', () => {
-  it('can be answered again when it failed inside the run, not when it was refused or the connection to the server broke', () => {
+  it('is a broken answer when it failed inside the run, not when it was refused or the connection to the server broke', () => {
     const broke = chatFailureOf(Object.assign(new Error('Модель сейчас не отвечает.'), { code: 'APP_MODEL_UNAVAILABLE' }));
-    expect([broke.error.code, broke.answerAgain]).toEqual(['APP_MODEL_UNAVAILABLE', true]);
+    expect([broke.error.code, broke.broken]).toEqual(['APP_MODEL_UNAVAILABLE', true]);
     const refused = chatFailureOf(new Error('HTTP 402: {"error":{"code":"APP_USAGE_LIMIT_EXCEEDED","message":"Ваш лимит исчерпан."}}'));
-    expect([refused.error.code, refused.error.message, refused.answerAgain]).toEqual(['APP_USAGE_LIMIT_EXCEEDED', 'Ваш лимит исчерпан.', false]);
+    expect([refused.error.code, refused.error.message, refused.broken]).toEqual(['APP_USAGE_LIMIT_EXCEEDED', 'Ваш лимит исчерпан.', false]);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const lost = chatFailureOf(new Error('socket hang up'));
-    expect([lost.error.code, lost.answerAgain]).toEqual(['APP_CHAT_STREAM_INTERRUPTED', false]);
+    expect([lost.error.code, lost.broken]).toEqual(['APP_CHAT_STREAM_INTERRUPTED', false]);
+  });
+
+  const ACTIONS = { mail_send: { title: 'Отправить письмо', fields: {}, readOnly: false }, crm_search: { title: 'Найти сделки', fields: {}, readOnly: true } };
+  const call = (id: string, name: string): Message => ({ id: `a-${id}`, role: 'assistant', content: '', toolCalls: [{ id, type: 'function', function: { name, arguments: '{}' } }] });
+  const result = (id: string, content: string): Message => ({ id: `r-${id}`, role: 'tool', toolCallId: id, content });
+
+  it('can be answered again only when a repeat helps', () => {
+    const turn = [user('u1', 'привет'), said('a1', 'При')];
+    expect(liveVerdict('APP_MODEL_UNAVAILABLE', turn, ACTIONS)).toEqual({ answerAgain: true, actionDone: false });
+    expect(liveVerdict('APP_MODEL_TIMEOUT', turn, ACTIONS)).toEqual({ answerAgain: true, actionDone: false });
+    expect(liveVerdict('APP_MODEL_CONTEXT_EXCEEDED', turn, ACTIONS)).toEqual({ answerAgain: false, actionDone: false });
+    expect(liveVerdict('APP_USAGE_LIMIT_EXCEEDED', turn, ACTIONS)).toEqual({ answerAgain: false, actionDone: false });
+  });
+
+  it('cannot be answered again once an action ran in it; a declined action or a reading does not count, nor one of an earlier turn', () => {
+    const ran = [user('u1', 'напиши клиенту'), call('c1', 'mail_send'), result('c1', '{"sent":true}'), said('a1', 'Пис')];
+    expect(liveVerdict('APP_MODEL_UNAVAILABLE', ran, ACTIONS)).toEqual({ answerAgain: false, actionDone: true });
+    const declined = [user('u1', 'напиши клиенту'), call('c1', 'mail_send'), result('c1', '{"declined":true,"superseded":false}'), said('a1', 'Хор')];
+    expect(liveVerdict('APP_MODEL_UNAVAILABLE', declined, ACTIONS)).toEqual({ answerAgain: true, actionDone: false });
+    const read = [user('u1', 'сделки'), call('c1', 'crm_search'), result('c1', '{"deals":12}'), said('a1', 'Сде')];
+    expect(liveVerdict('APP_MODEL_UNAVAILABLE', read, ACTIONS)).toEqual({ answerAgain: true, actionDone: false });
+    const earlier = [...ran, user('u2', 'ещё'), said('a2', 'Ещ')];
+    expect(liveVerdict('APP_MODEL_UNAVAILABLE', earlier, ACTIONS)).toEqual({ answerAgain: true, actionDone: false });
   });
 });
 
@@ -41,9 +64,16 @@ describe('events of the chat stream', () => {
     expect(result?.messages?.map((m) => m.id)).toEqual(['u1', 'a2']);
   });
 
+  it('takes only the unfinished calls off a message of an earlier step', () => {
+    const withCalls: Message = { id: 'a1', role: 'assistant', content: 'Смотрю.', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'crm_search', arguments: '{}' } }, { id: 'c2', type: 'function', function: { name: 'crm_search', arguments: '{}' } }] };
+    const done: Message = { id: 'r1', role: 'tool', toolCallId: 'c1', content: '{}' };
+    const result = failureSubscriber(vi.fn()).onCustomEvent({ event: { name: CHAT_EVENTS.messageDiscarded, value: { messageId: 'a1', toolCallIds: ['c2'] } }, messages: [user('u1', 'привет'), withCalls, done] });
+    expect(result?.messages).toEqual([user('u1', 'привет'), { ...withCalls, toolCalls: [withCalls.toolCalls![0]] }, done]);
+  });
+
   it('hands over the broken answers of an opened conversation', () => {
     const onTurnsFailed = vi.fn();
-    const value = { interruptedMessageIds: ['a1'], last: { code: 'APP_MODEL_UNAVAILABLE', message: 'Модель сейчас не отвечает.' } };
+    const value = { interruptedMessageIds: ['a1'], last: { code: 'APP_MODEL_UNAVAILABLE', message: 'Модель сейчас не отвечает.', answerAgain: true, actionDone: false } };
     expect(failureSubscriber(onTurnsFailed).onCustomEvent(event(CHAT_EVENTS.turnsFailed, value))).toBeUndefined();
     expect(onTurnsFailed).toHaveBeenCalledWith(value);
   });
@@ -65,7 +95,7 @@ describe('«Ответить заново»', () => {
     const agent = { messages: [user('u0', 'привет'), said('a0', 'Готово.'), user('u1', question), said('a1', 'При')], setMessages: vi.fn() };
     const send = vi.fn();
     await answerAgain('t1', agent, send);
-    expect(calls.some((c) => c.method === 'POST' && c.path === '/app/api/threads/t1/retry')).toBe(true);
+    expect(calls.find((c) => c.method === 'POST' && c.path === '/app/api/threads/t1/retry')?.body).toEqual({ questionId: 'u1' });
     expect(agent.setMessages).toHaveBeenCalledWith([user('u0', 'привет'), said('a0', 'Готово.')]);
     expect(send).toHaveBeenCalledWith(question);
   });

@@ -154,6 +154,46 @@ describe('an answer that broke after it started', () => {
   });
 });
 
+describe('failures that are not a broken answer', () => {
+  it('keeps the retries Mastra makes on its own: a connection reset before the answer is asked again twice', async () => {
+    await withModels({ main: [{ reset: true }, { reset: true }, { text: ANSWER }] }, async (models) => {
+      const outcome = await answer(buildAgent(urls(models)), 't-reset');
+      expect(models.main!.requests).toHaveLength(3);
+      expect(outcome.text).toBe(ANSWER);
+    });
+  });
+
+  it('is not taken for a switch to the fallback when the stream reports a refusal: nothing is dropped, nothing is logged', async () => {
+    const log = vi.spyOn(console, 'log');
+    try {
+      await withModels({ main: [{ text: 'Пр', cut: TOO_LONG }], spare: [{ text: 'Ответ запасной.' }] }, async (models) => {
+        const outcome = await answer(buildAgent(urls(models)), 't-fallback-refused', { fallback: true });
+        expect(models.spare!.requests).toHaveLength(0);
+        expect(outcome.discarded).toEqual([]);
+      });
+      expect(log.mock.calls.some(([line]) => String(line).includes('"model_fallback_used"'))).toBe(false);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('leaves the earlier answers of the conversation as they are when a call is asked again before its first words', async () => {
+    await withModels({ main: [{ text: 'Первый ответ.' }, { status: 500, error: 'boom' }, { text: ANSWER }] }, async (models) => {
+      const agent = buildAgent(urls(models));
+      await answer(agent, 't-history');
+      const outcome = await answer(agent, 't-history');
+      expect(outcome.text).toBe(ANSWER);
+      const { messages } = await memory.recall({ threadId: 't-history', resourceId: 'igor', perPage: false });
+      expect(toHistory(messages).map((m) => [m.role, m.text])).toEqual([
+        ['user', 'привет'],
+        ['assistant', 'Первый ответ.'],
+        ['user', 'привет'],
+        ['assistant', ANSWER],
+      ]);
+    });
+  });
+});
+
 describe('a primary model that went silent mid-answer, with a fallback set', () => {
   it('gives way to the fallback after the limit of one call; the shown words are dropped', async () => {
     await withModels({ main: [{ text: 'Пр', cut: 'hang' }], spare: [{ text: 'Ответ запасной.' }] }, async (models) => {

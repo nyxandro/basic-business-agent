@@ -17,10 +17,11 @@ export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { a
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [interruptedIds, setInterruptedIds] = useState<readonly string[]>([]);
-  // The last broken answer of an opened conversation can be answered again, as right after it broke.
+  // The broken answers of an opened conversation, as the server tells: the last one as right after it broke.
   const onTurnsFailed = useCallback((value: FailedTurns) => {
     setInterruptedIds(value.interruptedMessageIds);
-    setFailure(value.last ? { error: new ApiRequestError({ code: value.last.code, message: value.last.message, status: 0 }), answerAgain: true } : null);
+    const last = value.last;
+    setFailure(last ? { error: new ApiRequestError({ code: last.code, message: last.message, status: 0 }), broken: true, verdict: { answerAgain: last.answerAgain, actionDone: last.actionDone } } : null);
   }, []);
 
   useGenuiRenderers(agent);
@@ -44,7 +45,7 @@ export function ChatPanel({ agent, threadId, onRunFinished, composerExtra }: { a
       clearAttachments: () => setAttachments([]),
       onSubmitted: () => setFailure(null),
       onRunFinished,
-      onUploadError: (raw) => setFailure({ error: asApiError(raw), answerAgain: false }),
+      onUploadError: (raw) => setFailure({ error: asApiError(raw), broken: false }),
       interrupt: interrupt ?? null,
       failure,
       onFailure: setFailure,

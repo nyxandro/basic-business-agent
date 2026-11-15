@@ -9,7 +9,10 @@ import { CHAT_EVENTS, type DeclinedToolResult, type FailedTurns } from '@bba/con
 import { pendingForThread, supersededCallsOfThread } from '../approvals/requests.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
-import { readHistory, type BrokenAnswer, type HistoryMessage } from './history.ts';
+import { ERROR_CATALOG } from '../errors/catalog.ts';
+import { logEvent } from '../server/log.ts';
+import { readHistory, type BrokenAnswer, type HistoryMessage, type StoredMessage } from './history.ts';
+import { lastBrokenTurn, verdictOf } from './retry.ts';
 import type { TranslatedError } from './stream.ts';
 
 const APPROVAL_PREFIX = 'mastra-approval::';
@@ -67,13 +70,29 @@ function sse(events: object[]): Response {
 
 // Broken answers as the chat shows them: marked where they are on the screen, the last one with what
 // happened in our code and words (the kept failure is technical and never goes to the browser).
-async function failedTurns(broken: BrokenAnswer[], shown: ReadonlySet<string>, translate: (error: unknown) => Promise<TranslatedError>): Promise<FailedTurns | null> {
-  if (broken.length === 0) return null;
-  const last = broken.find((b) => b.last);
-  return {
-    interruptedMessageIds: broken.flatMap((b) => (b.messageId && shown.has(b.messageId) ? [b.messageId] : [])),
-    last: last ? await translate(last.error) : null,
-  };
+// Explaining a kept failure may need the gateway (whose limit ran out); a conversation opens even
+// when the gateway is down, and then that is what the person reads.
+async function explain(translate: (error: unknown) => Promise<TranslatedError>, failure: unknown): Promise<TranslatedError> {
+  try {
+    return await translate(failure);
+  } catch (error) {
+    logEvent('warn', 'chat_failure_explain_failed', { error: error instanceof Error ? error.name : 'unknown' });
+    return { code: 'APP_MODEL_GATEWAY_UNAVAILABLE', message: ERROR_CATALOG.APP_MODEL_GATEWAY_UNAVAILABLE.userMessage };
+  }
+}
+
+async function failedTurns(
+  deps: { db: Db; translate: (error: unknown) => Promise<TranslatedError> },
+  input: { userId: string; threadId: string; stored: StoredMessage[]; broken: BrokenAnswer[]; shown: ReadonlySet<string> },
+): Promise<FailedTurns | null> {
+  if (input.broken.length === 0) return null;
+  const turn = lastBrokenTurn(input.stored);
+  let last: FailedTurns['last'] = null;
+  if (turn) {
+    const explained = await explain(deps.translate, turn.error);
+    last = { ...explained, ...(await verdictOf(deps.db, { userId: input.userId, threadId: input.threadId, turn, code: explained.code })) };
+  }
+  return { interruptedMessageIds: input.broken.flatMap((b) => (b.messageId && input.shown.has(b.messageId) ? [b.messageId] : [])), last };
 }
 
 export async function connectResponse(
@@ -109,7 +128,7 @@ export async function connectResponse(
     expiresAt: p.expiresAt.toISOString(),
     metadata: { mastra: { type: 'mastra_tool_approval', toolName: p.tool, args: waitingArgs.get(p.toolCallId) ?? p.args, runId: p.runId } },
   }));
-  const failed = await failedTurns(broken, new Set(messages.map((m) => m.id)), deps.translate);
+  const failed = await failedTurns(deps, { userId: input.userId, threadId, stored: recalled.messages, broken, shown: new Set(messages.map((m) => m.id)) });
   return sse([
     { type: 'RUN_STARTED', threadId, runId },
     { type: 'MESSAGES_SNAPSHOT', messages },

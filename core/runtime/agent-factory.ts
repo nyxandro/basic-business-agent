@@ -12,7 +12,7 @@ import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE
 import type { ModelGateway } from '../models/gateway.ts';
 import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
-import { createStreamRetry, dropShownWords, isGatewayStreamBreak } from './stream-retry.ts';
+import { createStreamRetry, dropShownWords, isGatewayStreamFailure } from './stream-retry.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
 // Only the first chunk is timed: a total deadline would end the run instead of switching.
@@ -26,18 +26,19 @@ export const MODEL_CALL_MAX_MS = 5 * 60_000;
 // LiteLLM has already tried the primary's other keys or accounts by then, so with a fallback the
 // repeat only delays the switch; without one the repeat stays. A stream that broke after the first
 // words is repeated once in both cases (core/runtime/stream-retry.ts).
-const RETRY_ONCE = createStreamRetry(1);
-const SWITCH_AT_ONCE = createStreamRetry(0);
+const RETRY_AS_MASTRA = createStreamRetry({ mastraRetries: true });
+const SWITCH_AT_ONCE = createStreamRetry({ mastraRetries: false });
 
 // Mastra has no event of the switch itself; the failure of the primary that causes it reaches the
-// error processors first. Only the first failure of a request is the primary's; a broken stream is
-// asked again on the primary, not switched. Words the primary already showed are dropped: the
-// fallback answers in a message of its own.
+// error processors first. Only the first failure of a request is the primary's. A failure the
+// gateway reports inside the stream never switches (Mastra ends the answer with it, a broken stream
+// is asked again on the primary). Words the primary already showed are dropped: the fallback answers
+// in a message of its own.
 const FALLBACK_SWITCH: ErrorProcessor = {
   id: 'bba-model-fallback-switch',
   processAPIError(args) {
     const { error, requestContext, state } = args;
-    if (state.logged || isGatewayStreamBreak(error)) return;
+    if (state.logged || isGatewayStreamFailure(error)) return;
     state.logged = true;
     dropShownWords(args);
     logEvent('warn', 'model_fallback_used', {
@@ -112,6 +113,6 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     ...(rt.subagents.length > 0 ? { agents: subagents } : {}),
     inputProcessors: processors.input,
     outputProcessors: processors.output,
-    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_SWITCH, SWITCH_AT_ONCE] : [RETRY_ONCE]),
+    errorProcessors: ({ requestContext }) => (optionalContextValue(requestContext, REQUEST_KEYS.fallbackModelId) ? [FALLBACK_SWITCH, SWITCH_AT_ONCE] : [RETRY_AS_MASTRA]),
   });
 }

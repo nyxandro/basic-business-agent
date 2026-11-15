@@ -6,7 +6,7 @@ import { createDiscardTracker } from './discards.ts';
 
 const line = (event: object) => `data: ${JSON.stringify(event)}`;
 const text = (messageId: string, delta: string) => line({ type: 'TEXT_MESSAGE_CONTENT', messageId, delta });
-const discard = (messageId: string) => line({ type: 'CUSTOM', name: CHAT_EVENTS.messageDiscarded, value: { messageId } });
+const discard = (messageId: string, toolCallIds?: string[]) => line({ type: 'CUSTOM', name: CHAT_EVENTS.messageDiscarded, value: { messageId, ...(toolCallIds ? { toolCallIds } : {}) } });
 
 // Feeds the lines through a tracker; `drop` marks where the retry processor reports a broken call.
 function stream(items: (string | { drop: string })[]): string[] {
@@ -49,5 +49,19 @@ describe('announcing dropped messages', () => {
 
   it('announces at the end of the stream what nothing came after', () => {
     expect(stream([text('m1', 'Пр'), { drop: 'm1' }])).toEqual([text('m1', 'Пр'), discard('m1')]);
+  });
+
+  it('drops only the unfinished call when the broken step began with a call on the message of an earlier step', () => {
+    const first = line({ type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'crm_search', parentMessageId: 'm1' });
+    const result = line({ type: 'TOOL_CALL_RESULT', messageId: 'r1', toolCallId: 'c1', content: '{}', role: 'tool' });
+    const second = line({ type: 'TOOL_CALL_START', toolCallId: 'c2', toolCallName: 'crm_search', parentMessageId: 'm1' });
+    const out = stream([text('m1', 'Смотрю.'), first, result, second, { drop: 'm1' }, text('m2', 'Готово.')]);
+    expect(out).toEqual([text('m1', 'Смотрю.'), first, result, second, discard('m1', ['c2']), text('m2', 'Готово.')]);
+  });
+
+  it('drops the reasoning of the broken attempt as well', () => {
+    const thinking = line({ type: 'REASONING_MESSAGE_START', messageId: 'think-1', role: 'reasoning' });
+    const out = stream([thinking, text('m1', 'Пр'), { drop: 'm1' }, text('m2', 'Привет')]);
+    expect(out).toEqual([thinking, text('m1', 'Пр'), discard('think-1'), discard('m1'), text('m2', 'Привет')]);
   });
 });

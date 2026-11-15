@@ -69,6 +69,24 @@ export function releaseThread(threadId: string): void {
   busyThreads.delete(threadId);
 }
 
+function threadBusy(threadId: string): AppError {
+  return new AppError({
+    code: 'APP_CHAT_THREAD_BUSY',
+    message: `thread ${threadId} already has a run in progress`,
+    userMessage: 'В этом разговоре уже идёт ответ в другой вкладке. Дождитесь его и обновите страницу.',
+    status: 409,
+  });
+}
+
+// What a new message of the person must pass before it starts a run — checked without starting one,
+// e.g. before «Ответить заново» takes the broken turn out (spec, section 9.1).
+export async function assertNewTurnAllowed(deps: ChatDeps, access: AccessContext, agentId: string, mode: 'published' | 'draft', threadId: string): Promise<void> {
+  assertAgentOpen(deps, access, agentId, mode);
+  if (busyThreads.has(threadId)) throw threadBusy(threadId);
+  await deps.gateway.assertWithinBudget(access.userId);
+  await chooseModels(deps.db, deps.timezone, access.userId, agentId);
+}
+
 export function agentAccessError(agentId: string): AppError {
   return new AppError({
     code: 'APP_AGENT_ACCESS_DENIED',
@@ -150,14 +168,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
 
-  if (busyThreads.has(threadId)) {
-    throw new AppError({
-      code: 'APP_CHAT_THREAD_BUSY',
-      message: `thread ${threadId} already has a run in progress`,
-      userMessage: 'В этом разговоре уже идёт ответ в другой вкладке. Дождитесь его и обновите страницу.',
-      status: 409,
-    });
-  }
+  if (busyThreads.has(threadId)) throw threadBusy(threadId);
   busyThreads.add(threadId);
   const declinedCalls: PreparedTurn['declinedCalls'] = [];
   try {

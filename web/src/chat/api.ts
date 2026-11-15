@@ -10,7 +10,7 @@ export const fetchThreadPage = (before: string | null) =>
   api<ThreadPage>('GET', `/app/api/threads?limit=${THREAD_PAGE}${before ? `&before=${enc(before)}` : ''}`);
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);
 // «Ответить заново»: the server takes the question and its broken answer out and gives the question back.
-export const retryTurn = (threadId: string) => api<RetryTurnResponse>('POST', `/app/api/threads/${enc(threadId)}/retry`);
+export const retryTurn = (threadId: string, questionId: string) => api<RetryTurnResponse>('POST', `/app/api/threads/${enc(threadId)}/retry`, { questionId });
 
 export function uploadFile(threadId: string, file: File): Promise<UploadedFile> {
   const form = new FormData();

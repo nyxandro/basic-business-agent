@@ -66,18 +66,31 @@ export const CHAT_EVENTS = {
   turnsFailed: 'bba.turns_failed',
 } as const;
 
-export const messageDiscardedSchema = z.object({ messageId: z.string().min(1) });
+// Without `toolCallIds` the message goes; with them only those calls go (a broken step whose first
+// call hangs on the message of an earlier step) and the message stays.
+export const messageDiscardedSchema = z.object({ messageId: z.string().min(1), toolCallIds: z.array(z.string().min(1)).min(1).optional() });
+
+// Failures of an answer that sending the question again can fix (decision of the owner 15.11): the
+// model did not answer or broke off, went silent, was busy, or the gateway was down. A conversation
+// too long for the model, a spent limit or refused access stay as they are — their text says what to do.
+export const ANSWER_AGAIN_CODES: readonly string[] = ['APP_MODEL_UNAVAILABLE', 'APP_MODEL_TIMEOUT', 'APP_MODEL_RATE_LIMITED', 'APP_MODEL_GATEWAY_UNAVAILABLE'];
 
 export const failedTurnsSchema = z.object({
   // Answers that broke, as they are on the screen («Ответ прервался» under them).
   interruptedMessageIds: z.array(z.string()),
-  // The last answer of the conversation broke: what happened, in our code and words; it can be answered again.
-  last: z.object({ code: z.string(), message: z.string() }).nullable(),
+  // The last answer of the conversation broke: what happened, in our code and words. «Ответить
+  // заново» is offered only when a repeat helps and no action ran after «Да» in that turn
+  // (`actionDone`: it would be asked for again — decision of the owner 15.11).
+  last: z.object({ code: z.string(), message: z.string(), answerAgain: z.boolean(), actionDone: z.boolean() }).nullable(),
 });
 export type FailedTurns = z.infer<typeof failedTurnsSchema>;
 
-// POST /app/api/threads/:threadId/retry: the person's question of the broken last answer, taken out
-// of the conversation together with the answer, to be sent again as it was (attachments included).
+// POST /app/api/threads/:threadId/retry: the question the person sees under the broken answer — only
+// that turn is taken out, so a second click never reaches an earlier one.
+export const retryTurnSchema = z.object({ questionId: z.string().min(1) });
+
+// The question, taken out of the conversation together with its broken answer, to be sent again as
+// it was (attachments included).
 export interface RetryTurnResponse {
   text: string;
 }

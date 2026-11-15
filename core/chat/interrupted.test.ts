@@ -6,6 +6,7 @@ import { CHAT_EVENTS, withAttachments, type FailedTurns } from '@bba/contracts';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { GatewayStreamError } from '../models/fake-openai.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
+import { connectResponse } from './connect.ts';
 
 // What LiteLLM sends inside the stream when the provider goes away mid-answer (gateway.test.ts).
 const BREAK: GatewayStreamError = { message: 'litellm.APIConnectionError: APIConnectionError: GroqException - Connection closed.', type: 'internal_server_error', param: null, code: '500' };
@@ -14,6 +15,9 @@ const ANSWER = 'Привет! Чем помочь?';
 const STEP_MS = 2000;
 
 const UNAVAILABLE = 'Модель сейчас не отвечает. Попробуйте ещё раз через минуту; если повторяется — сообщите администратору код ошибки.';
+// A refusal the gateway reports inside the stream: the conversation is too long for the model.
+const TOO_LONG: GatewayStreamError = { message: 'litellm.BadRequestError: GroqException - Please reduce the length of the messages or completion.', type: 'invalid_request_error', param: 'messages', code: '400' };
+const BROKEN = { code: 'APP_MODEL_UNAVAILABLE', message: UNAVAILABLE, answerAgain: true, actionDone: false };
 
 let t: TestApp;
 let olga: string;
@@ -28,6 +32,7 @@ interface AguiEvent {
   code?: string;
   message?: string;
   messages?: { id: string; role: string; content?: string }[];
+  outcome?: { interrupts?: { id: string }[] };
 }
 
 const eventsOf = (body: string) =>
@@ -52,11 +57,11 @@ async function turnStored(threadId: string, before: number): Promise<void> {
   throw new Error(`the turn of ${threadId} was not stored`);
 }
 
-async function run(threadId: string, text: string): Promise<AguiEvent[]> {
+async function run(threadId: string, text: string, questionId = randomUUID()): Promise<AguiEvent[]> {
   const before = await storedCount(threadId);
   const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
     cookie: olga,
-    body: { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps: {} },
+    body: { threadId, runId: randomUUID(), messages: [{ id: questionId, role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps: {} },
   });
   expect(res.status).toBe(200);
   const events = eventsOf(await res.text());
@@ -74,7 +79,21 @@ async function reopen(threadId: string): Promise<{ answers: { id: string; conten
   return { answers: snapshot.filter((m) => m.role === 'assistant'), failed };
 }
 
-const answerAgain = (threadId: string, cookie = olga) => t.call('POST', `/app/api/threads/${threadId}/retry`, { cookie });
+// «Да» to the action the run waits for; the answer goes on and its failure is stored a moment later.
+async function approve(threadId: string, events: AguiEvent[]): Promise<AguiEvent[]> {
+  const interruptId = events.find((e) => e.type === 'RUN_FINISHED')?.outcome?.interrupts?.[0]?.id;
+  expect(interruptId).toBeDefined();
+  const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
+    cookie: olga,
+    body: { threadId, runId: randomUUID(), messages: [], tools: [], context: [], state: {}, forwardedProps: {}, resume: [{ interruptId, status: 'resolved', payload: { approved: true } }] },
+  });
+  expect(res.status).toBe(200);
+  const resumed = eventsOf(await res.text());
+  for (let i = 0; i < 100 && !(await reopen(threadId)).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  return resumed;
+}
+
+const answerAgain = (threadId: string, questionId: string, cookie = olga) => t.call('POST', `/app/api/threads/${threadId}/retry`, { cookie, body: { questionId } });
 
 async function historyTexts(threadId: string): Promise<string[]> {
   const res = await t.call('GET', `/app/api/threads/${threadId}/messages`, { cookie: olga });
@@ -150,7 +169,7 @@ describe('an answer that stayed broken', () => {
     expect(live.find((e) => e.type === 'RUN_ERROR')?.code).toBe('APP_MODEL_UNAVAILABLE');
     const { answers, failed } = await reopen(threadId);
     expect(answers.map((m) => m.content)).toEqual(['При']);
-    expect(failed).toEqual({ interruptedMessageIds: [answers[0]!.id], last: { code: 'APP_MODEL_UNAVAILABLE', message: UNAVAILABLE } });
+    expect(failed).toEqual({ interruptedMessageIds: [answers[0]!.id], last: BROKEN });
   });
 
   it('is known after a reload when it broke before the first words', async () => {
@@ -159,7 +178,45 @@ describe('an answer that stayed broken', () => {
     await run(threadId, 'привет');
     const { answers, failed } = await reopen(threadId);
     expect(answers).toEqual([]);
-    expect(failed).toEqual({ interruptedMessageIds: [], last: { code: 'APP_MODEL_UNAVAILABLE', message: UNAVAILABLE } });
+    expect(failed).toEqual({ interruptedMessageIds: [], last: BROKEN });
+  });
+
+  it('opens even when what happened cannot be explained now: the gateway is said to be down', async () => {
+    const threadId = randomUUID();
+    t.model.script({ text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK });
+    await run(threadId, 'привет');
+    const olgaId = (await t.memory.getThreadById({ threadId }))!.resourceId;
+    const res = await connectResponse({ db: t.db, memory: t.memory, translate: () => Promise.reject(new Error('fetch failed')) }, { userId: olgaId, resourceId: olgaId, agentId: 'sales', threadId });
+    const failed = eventsOf(await res.text()).find((e) => e.name === CHAT_EVENTS.turnsFailed)?.value as FailedTurns;
+    expect(failed.last).toMatchObject({ code: 'APP_MODEL_GATEWAY_UNAVAILABLE', answerAgain: true, actionDone: false });
+  });
+
+  it('is not offered to answer again when a repeat would not help', async () => {
+    const threadId = randomUUID();
+    const questionId = randomUUID();
+    t.model.script({ text: 'Пр', cut: TOO_LONG });
+    await run(threadId, 'привет', questionId);
+    const { failed } = await reopen(threadId);
+    expect(failed?.last).toMatchObject({ code: 'APP_MODEL_CONTEXT_EXCEEDED', answerAgain: false, actionDone: false });
+    const res = await answerAgain(threadId, questionId);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { code: 'APP_CHAT_ANSWER_AGAIN_USELESS' } });
+    expect(await historyTexts(threadId)).toEqual(['Пр']);
+  });
+
+  it('is not offered to answer again once an action ran after «Да»: the record of the action stays', async () => {
+    const threadId = randomUUID();
+    const questionId = randomUUID();
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'client@example.com', text: 'Добрый день' } }] }, { text: 'Пис', cut: BREAK }, { text: 'Пись', cut: BREAK });
+    const asked = await run(threadId, 'Напиши клиенту', questionId);
+    await approve(threadId, asked);
+    expect(t.sentMail).toEqual([{ to: 'client@example.com', text: 'Добрый день' }]);
+    const { failed } = await reopen(threadId);
+    expect(failed?.last).toMatchObject({ code: 'APP_MODEL_UNAVAILABLE', answerAgain: false, actionDone: true });
+    const res = await answerAgain(threadId, questionId);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { code: 'APP_CHAT_ACTION_DONE' } });
+    t.sentMail.length = 0;
   });
 
   it('is only marked once the conversation went on', async () => {
@@ -184,10 +241,11 @@ describe('«Ответить заново»', () => {
   it('takes the question and its broken answer out and gives the question back as it was sent', async () => {
     const threadId = randomUUID();
     const question = withAttachments('Прочитай счёт', [{ name: 'Счёт.pdf', path: 'Счёт.pdf' }]);
+    const questionId = randomUUID();
     t.model.script({ text: 'Готово.' }, { text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK });
     await run(threadId, 'привет');
-    await run(threadId, question);
-    const res = await answerAgain(threadId);
+    await run(threadId, question, questionId);
+    const res = await answerAgain(threadId, questionId);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: question });
     const { messages } = (await (await t.call('GET', `/app/api/threads/${threadId}/messages`, { cookie: olga })).json()) as { messages: { role: string; text: string }[] };
@@ -200,19 +258,51 @@ describe('«Ответить заново»', () => {
 
   it('is refused when the last answer is not broken', async () => {
     const threadId = randomUUID();
+    const questionId = randomUUID();
     t.model.script({ text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK }, { text: 'Готово.' });
     await run(threadId, 'привет');
-    await run(threadId, 'ещё раз');
-    const res = await answerAgain(threadId);
+    await run(threadId, 'ещё раз', questionId);
+    const res = await answerAgain(threadId, questionId);
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: { code: 'APP_CHAT_NOT_INTERRUPTED' } });
   });
 
   it('does not touch a conversation of another employee', async () => {
     const threadId = randomUUID();
+    const questionId = randomUUID();
     t.model.script({ text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK });
-    await run(threadId, 'привет');
-    expect((await answerAgain(threadId, igor)).status).toBe(404);
+    await run(threadId, 'привет', questionId);
+    expect((await answerAgain(threadId, questionId, igor)).status).toBe(404);
     expect((await reopen(threadId)).failed?.last?.code).toBe('APP_MODEL_UNAVAILABLE');
+  });
+
+  it('takes out only the turn the person sees: a second click does not reach an earlier broken question', async () => {
+    const threadId = randomUUID();
+    const first = randomUUID();
+    const second = randomUUID();
+    t.model.script({ text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK }, { text: 'Сд', cut: BREAK }, { text: 'Сде', cut: BREAK });
+    await run(threadId, 'привет', first);
+    await run(threadId, 'покажи сделки', second);
+    expect((await answerAgain(threadId, second)).status).toBe(200);
+    const again = await answerAgain(threadId, second);
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ error: { code: 'APP_CHAT_NOT_INTERRUPTED' } });
+    expect(await historyTexts(threadId)).toEqual(['При']);
+  });
+
+  it('takes nothing out when the question would be refused anyway', async () => {
+    const threadId = randomUUID();
+    const questionId = randomUUID();
+    t.model.script({ text: 'Пр', cut: BREAK }, { text: 'При', cut: BREAK });
+    await run(threadId, 'привет', questionId);
+    await t.db.query('UPDATE app.limit_settings SET org_monthly_rub = 0');
+    try {
+      const res = await answerAgain(threadId, questionId);
+      expect(res.status).toBe(402);
+      expect(await res.json()).toMatchObject({ error: { code: 'APP_USAGE_ORG_LIMIT_EXCEEDED' } });
+    } finally {
+      await t.db.query('UPDATE app.limit_settings SET org_monthly_rub = NULL');
+    }
+    expect(await historyTexts(threadId)).toEqual(['При']);
   });
 });

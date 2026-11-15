@@ -40,7 +40,9 @@ export type FakeTurn =
   // the connection open.
   | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut }
   | { toolCalls: { name: string; args: Record<string, unknown> }[] }
-  | { status: number; error: string };
+  | { status: number; error: string }
+  // The connection closes before any answer, as a provider or a proxy that restarted.
+  | { reset: true };
 
 export interface FakeRequest {
   model: string;
@@ -86,6 +88,10 @@ function sse(res: import('node:http').ServerResponse, chunks: object[], finish: 
 }
 
 function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream: boolean): void {
+  if ('reset' in turn) {
+    res.socket?.destroy();
+    return;
+  }
   if ('status' in turn) {
     res.writeHead(turn.status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: turn.error, type: 'error', code: turn.status } }));
     return;

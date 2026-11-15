@@ -1,6 +1,6 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
-import type { AgentListResponse, MemoryResponse, RetryTurnResponse } from '@bba/contracts';
+import { retryTurnSchema, type AgentListResponse, type MemoryResponse, type RetryTurnResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -11,12 +11,12 @@ import { listThreadPage, projectOfThread, THREAD_PAGE_MAX } from '../projects/pr
 import { readUploadedFile } from '../projects/routes.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { assertAgentOpen, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
+import { assertAgentOpen, assertNewTurnAllowed, prepareRun, releaseThread, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory, toolCallArgsOf } from './history.ts';
-import { takeBackBrokenTurn } from './retry.ts';
+import { takeBack, turnToAnswerAgain } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 
@@ -137,11 +137,20 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   });
 
   // «Ответить заново» of the person's own conversation or their draft check of an agent's prompt.
+  // The turn leaves the conversation only when the question sent again would start a run now.
   app.post('/app/api/threads/:threadId/retry', async (c) => {
-    const userId = access(c).userId;
+    const a = access(c);
+    const { questionId } = await parseJson(c, retryTurnSchema);
     const thread = await deps.memory.getThreadById({ threadId: c.req.param('threadId') });
-    if (!thread || (thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId))) throw notFound('answer again in a foreign or unknown thread');
-    const body: RetryTurnResponse = { text: await takeBackBrokenTurn(deps.memory, thread.id, thread.resourceId) };
+    if (!thread || (thread.resourceId !== a.userId && thread.resourceId !== draftResourceId(a.userId))) throw notFound('answer again in a foreign or unknown thread');
+    const turn = await turnToAnswerAgain(
+      { db: deps.db, memory: deps.memory, codeOf: async (failure) => (await translate(a.userId, failure)).code },
+      { userId: a.userId, threadId: thread.id, resourceId: thread.resourceId, questionId },
+    );
+    const agentId = thread.metadata?.agentId;
+    if (typeof agentId !== 'string') throw new Error(`thread ${thread.id} has no agentId in its metadata`);
+    await assertNewTurnAllowed(deps, a, agentId, thread.resourceId === a.userId ? 'published' : 'draft', thread.id);
+    const body: RetryTurnResponse = { text: await takeBack(deps.memory, turn) };
     return c.json(body);
   });
 

@@ -5,11 +5,11 @@
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
-import { useEffect, useLayoutEffect, useRef } from 'react';
-import { asApiError } from '../api/client.ts';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { answerAgain, failureSubscriber, lastTurnIds } from './answer-failures.ts';
+import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answer-failures.ts';
 import { AgentMark, AssistantTurn } from './AssistantMessage.tsx';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
@@ -60,9 +60,10 @@ function rowsOf(messages: Message[]): Row[] {
 interface FeedFailures {
   // Earlier answers that broke, by message id.
   interrupted: ReadonlySet<string>;
-  // The last answer broke: it is marked and offers «Ответить заново».
+  // The last answer broke: it is marked «Ответ прервался».
   lastBroken: boolean;
-  onAnswerAgain: () => void;
+  // …and offers «Ответить заново» when a repeat helps and no action ran in it.
+  onAnswerAgain?: (() => void) | undefined;
 }
 
 function Feed({ messages, running, failures }: { messages: Message[]; running: boolean; failures: FeedFailures }) {
@@ -84,12 +85,14 @@ function Feed({ messages, running, failures }: { messages: Message[]; running: b
             messages={messages}
             streaming={running && isLast}
             interrupted={broken}
-            {...(isLast && lastBroken ? { onAnswerAgain: failures.onAnswerAgain } : {})}
+            {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
           />
         );
       })}
       {/* The answer broke before its first words: its row is only the mark and «Ответить заново». */}
-      {lastBroken && rows.at(-1)?.kind !== 'agent' ? <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted onAnswerAgain={failures.onAnswerAgain} /> : null}
+      {lastBroken && rows.at(-1)?.kind !== 'agent' ? (
+        <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted {...(failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})} />
+      ) : null}
       {waiting ? <Thinking /> : null}
     </>
   );
@@ -144,19 +147,33 @@ export function ChatView(props: CopilotChatViewProps) {
   const send = (value: string) => {
     if (!onSubmitMessage || !value.trim()) return;
     // Moving on from a broken answer keeps its mark; «Ответить заново» is only for the last one.
-    if (extras.failure?.answerAgain) extras.keepInterrupted(lastTurnIds(messages));
+    if (extras.failure?.broken) extras.keepInterrupted(lastTurnIds(messages));
     writeDraft(extras.agentId, extras.threadId, '');
     extras.clearAttachments();
     submit(withAttachments(value.trim(), extras.attachments));
     onInputChange?.('');
   };
+  // While «Ответить заново» waits for the server the button is gone: a second click cannot take out
+  // another turn (the server takes out only the question the person sees anyway).
+  const [answeringAgain, setAnsweringAgain] = useState(false);
+  const failure = extras.failure;
+  const verdict = failure?.broken ? (failure.verdict ?? liveVerdict(failure.error.code, messages, extras.agent.actions)) : null;
   const failures: FeedFailures = {
     interrupted: new Set(extras.interruptedIds),
-    lastBroken: extras.failure?.answerAgain === true,
-    onAnswerAgain: () => {
-      answerAgain(extras.threadId, agent, submit).catch((raw: unknown) => extras.onFailure({ error: asApiError(raw), answerAgain: false }));
-    },
+    lastBroken: failure?.broken === true,
+    onAnswerAgain:
+      verdict?.answerAgain && !answeringAgain
+        ? () => {
+            setAnsweringAgain(true);
+            answerAgain(extras.threadId, agent, submit)
+              .catch((raw: unknown) => extras.onFailure({ error: asApiError(raw), broken: false }))
+              .finally(() => setAnsweringAgain(false));
+          }
+        : undefined,
   };
+  // An action already ran in the broken answer: what to do instead of answering it again.
+  const bannerError =
+    failure && verdict?.actionDone ? new ApiRequestError({ code: failure.error.code, message: failure.error.message, status: failure.error.status, nextStep: ru.chat.actionDoneHint }) : failure?.error;
 
   const empty = messages.length === 0;
   return (
@@ -188,7 +205,7 @@ export function ChatView(props: CopilotChatViewProps) {
       </div>
       <div className={styles.dock}>
         <div className={styles.dockInner}>
-          {extras.failure ? <ErrorBanner error={extras.failure.error} /> : null}
+          {bannerError ? <ErrorBanner error={bannerError} /> : null}
           <Composer value={inputValue} onChange={change} onSend={() => send(inputValue)} {...(onStop ? { onStop } : {})} running={isRunning} extra={extras.composerExtra} />
         </div>
       </div>
