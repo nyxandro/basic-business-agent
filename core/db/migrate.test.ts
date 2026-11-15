@@ -13,7 +13,7 @@ const EXPECTED_TABLES = [
   'org_profile', 'user_profiles', 'invites', 'password_resets', 'limit_settings', 'user_limits',
   'model_keys', 'connector_credentials', 'usage_events', 'background_tasks', 'approval_requests',
   'action_journal', 'agent_overrides', 'admin_audit', 'masking_settings', 'masking_map', 'schema_migrations', 'oauth_states',
-  'projects', 'thread_projects', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs',
+  'projects', 'thread_projects', 'project_shares', 'project_places', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs',
   'chatgpt_accounts', 'chatgpt_logins', 'account_events', 'interface_settings',
 ];
 
@@ -37,7 +37,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
@@ -92,7 +92,7 @@ describe('migrate', () => {
       for (const name of ['read-documents', 'note-taking']) {
         await query(stage.url, `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope) VALUES ('${name}', 't', 'd', '\\x00', '${'a'.repeat(64)}', 1, '[]', false, 'org')`);
       }
-      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql']);
+      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql']);
       expect(await query(stage.url, 'SELECT name FROM app.skills')).toEqual([{ name: 'note-taking' }]);
       expect(await query(stage.url, `SELECT actor_user_id, action, target FROM app.admin_audit`)).toEqual([{ actor_user_id: null, action: 'skill.delete', target: 'read-documents' }]);
     } finally {
@@ -114,7 +114,7 @@ describe('migrate', () => {
          VALUES ('m-onkey', 'chat', 'Qwen', 'api_key', 'groq/qwen/qwen3.8-27b', true, 1, 1, 1, 1, 1, 0)`,
       );
       await query(stage.url, `INSERT INTO app.models (id, kind, label, connection, provider_model, vision) VALUES ('m-sub', 'chat', 'GPT', 'chatgpt', 'chatgpt/gpt-5.4', true)`);
-      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql']);
+      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql']);
       expect(await query(stage.url, 'SELECT id, max_output_tokens FROM app.models ORDER BY id')).toEqual([
         { id: 'm-onkey', max_output_tokens: null },
         { id: 'm-sub', max_output_tokens: null },
@@ -139,7 +139,9 @@ describe('migrate', () => {
            ('00000000-0000-4000-8000-000000000001', 'u1', 'бета'), ('00000000-0000-4000-8000-000000000002', 'u1', 'Альфа'),
            ('00000000-0000-4000-8000-000000000003', 'u1', 'Гамма'), ('00000000-0000-4000-8000-000000000004', 'u2', 'Отчёты')`,
       );
-      expect(await migrate(stage.url)).toEqual(['0015_project_order.sql']);
+      // Only 0015: the next migrations move these columns elsewhere.
+      copyFileSync(join(MIGRATIONS_DIR, '0015_project_order.sql'), join(before, '0015_project_order.sql'));
+      expect(await migrate(stage.url, before)).toEqual(['0015_project_order.sql']);
       expect(await query(stage.url, 'SELECT user_id, name, position, pinned FROM app.projects ORDER BY user_id, position')).toEqual([
         { user_id: 'u1', name: 'Альфа', position: 1, pinned: false },
         { user_id: 'u1', name: 'бета', position: 2, pinned: false },
@@ -148,6 +150,40 @@ describe('migrate', () => {
       ]);
       // A project without a place is a mistake of the server, not something to guess.
       await expect(query(stage.url, `INSERT INTO app.projects (id, user_id, name) VALUES ('00000000-0000-4000-8000-000000000005', 'u1', 'Дельта')`)).rejects.toThrow(/position/);
+    } finally {
+      rmSync(before, { recursive: true, force: true });
+      await stage.drop();
+    }
+  });
+
+  // 0016: shared projects (spec, section 8.20) go onto projects with their places in the panel.
+  it('keeps existing projects private, moves their places into the panel table and keeps links', async () => {
+    const stage = await createTestDatabase();
+    const before = mkdtempSync(join(tmpdir(), 'bba-migrations-'));
+    try {
+      for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f < '0016')) copyFileSync(join(MIGRATIONS_DIR, f), join(before, f));
+      await migrate(stage.url, before);
+      await query(stage.url, `INSERT INTO app."user" ("id", "name", "email", "emailVerified") VALUES ('u1', 'Ольга', 'olga@example.com', true)`);
+      await query(
+        stage.url,
+        `INSERT INTO app.projects (id, user_id, name, position, pinned) VALUES
+           ('00000000-0000-4000-8000-000000000001', 'u1', 'Альфа', 2, false), ('00000000-0000-4000-8000-000000000002', 'u1', 'Бета', 1, true)`,
+      );
+      await query(stage.url, `INSERT INTO app.thread_projects (thread_id, user_id, project_id) VALUES ('t1', 'u1', '00000000-0000-4000-8000-000000000001')`);
+      expect(await migrate(stage.url)).toEqual(['0016_project_access.sql']);
+      expect(await query(stage.url, 'SELECT name, access, archived_at FROM app.projects ORDER BY name')).toEqual([
+        { name: 'Альфа', access: 'private', archived_at: null },
+        { name: 'Бета', access: 'private', archived_at: null },
+      ]);
+      expect(await query(stage.url, 'SELECT user_id, project_id, position, pinned, seen_at IS NOT NULL AS seen FROM app.project_places ORDER BY position')).toEqual([
+        { user_id: 'u1', project_id: '00000000-0000-4000-8000-000000000002', position: 1, pinned: true, seen: true },
+        { user_id: 'u1', project_id: '00000000-0000-4000-8000-000000000001', position: 2, pinned: false, seen: true },
+      ]);
+      // Removing a project leaves the link of a conversation empty: the server names it before that.
+      await query(stage.url, `DELETE FROM app.projects WHERE id = '00000000-0000-4000-8000-000000000001'`);
+      expect(await query(stage.url, 'SELECT thread_id, project_id, lost_project_name FROM app.thread_projects')).toEqual([{ thread_id: 't1', project_id: null, lost_project_name: null }]);
+      // A project without its access is a mistake of the server, not something to guess.
+      await expect(query(stage.url, `INSERT INTO app.projects (id, user_id, name) VALUES ('00000000-0000-4000-8000-000000000003', 'u1', 'Гамма')`)).rejects.toThrow(/access/);
     } finally {
       rmSync(before, { recursive: true, force: true });
       await stage.drop();

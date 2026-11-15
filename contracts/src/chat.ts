@@ -125,29 +125,13 @@ export interface ThreadPage {
   next: string | null;
 }
 
-// A person's project (spec, section 8.12): a folder of conversations with instructions and files.
-// GET /app/api/projects gives them in the order of the side panel: pinned first.
-export interface ProjectDto {
-  id: string;
-  name: string;
-  instructions: string;
-  threadCount: number;
-  pinned: boolean;
-  createdAt: string;
-}
-
-// GET /app/api/search (spec, section 8.13): the person's own projects and conversations.
+// GET /app/api/search (spec, sections 8.13 and 8.20): projects the person sees and their own conversations.
 export const SEARCH_SCOPES = ['all', 'threads', 'projects'] as const;
 export type SearchScope = (typeof SEARCH_SCOPES)[number];
 
 export interface SearchResponse {
-  projects: { id: string; name: string; threadCount: number }[];
+  projects: { id: string; name: string; threadCount: number; shared: boolean; ownerName: string | null }[];
   threads: { id: string; agentId: string; title: string; snippet: string; projectId: string | null; updatedAt: string }[];
-}
-
-export interface ProjectFile {
-  path: string;
-  bytes: number;
 }
 
 // Result of a tool call the person declined (or cancelled by writing a new message instead of

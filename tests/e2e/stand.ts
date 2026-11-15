@@ -47,7 +47,7 @@ await t.background.idle();
 // system skills of documents are there without any upload (spec, section 8.18).
 await createSkill(t.skillsDeps, igor, new Uint8Array(readFileSync(new URL('../../skills/note-taking.skill', import.meta.url))), { scope: 'org', departmentIds: [], userIds: [] });
 // Ольга's project with its instructions.
-const tender = await createProject({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot }, olga, 'Тендер');
+const tender = await createProject({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot }, olga, { name: 'Тендер', access: { mode: 'private', departmentIds: [], userIds: [] } });
 await t.db.query('UPDATE app.projects SET instructions = $1 WHERE id = $2', ['Заказчик — ООО «Пример». Отвечай кратко.', tender.id]);
 
 // The pool of the subscription: one account works, one cools down after a 429, one is new.

@@ -373,7 +373,7 @@ describe('memory and attachments', () => {
     expect(missing.status).toBe(404);
     expect(await missing.text()).toContain('Файл не найден');
 
-    const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ёлка' } })).json()) as { id: string };
+    const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ёлка', access: { mode: 'private', departmentIds: [], userIds: [] } } })).json()) as { id: string };
     expect((await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } })).status).toBe(200);
     writeFileSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), 'смета.xlsx'), 'XLSX');
     const fromProject = await t.call('GET', url('смета.xlsx'), { cookie: olga });

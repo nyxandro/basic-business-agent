@@ -102,7 +102,7 @@ describe('prompt layers', () => {
   });
 
   it('puts the project after the employee and the current time only into the outgoing last message, so the prompt and the history do not change between requests', async () => {
-    await db.query(`INSERT INTO app.projects (id, user_id, name, instructions, position) VALUES ($1, 'olga', 'Тендер ЖК Северный', 'Заказчик тендера — ООО Стройресурс.', 1)`, [PROJECT]);
+    await db.query(`INSERT INTO app.projects (id, user_id, name, instructions, access) VALUES ($1, 'olga', 'Тендер ЖК Северный', 'Заказчик тендера — ООО Стройресурс.', 'private')`, [PROJECT]);
     saveFile(contextRoot(workspaceRoot, 'olga', PROJECT), 'договор.pdf', new Uint8Array(2048));
     const first = await systemPromptOf('sales', 'published', PROJECT);
     const all = first.join('\n');

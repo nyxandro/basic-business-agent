@@ -3,7 +3,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { moveProject, pinProject } from './order.ts';
 
-const project = (id: string, pinned = false): ProjectDto => ({ id, name: id, instructions: '', threadCount: 0, pinned, createdAt: '2026-11-15T08:00:00Z' });
+const project = (id: string, pinned = false): ProjectDto => ({ id, name: id, instructions: '', threadCount: 0, pinned, createdAt: '2026-11-15T08:00:00Z', role: 'owner', owner: { id: 'u1', name: 'Ольга' }, shared: false, unseen: false, access: null, archivedAt: null });
 const ids = (list: ProjectDto[] | null) => list?.map((p) => `${p.id}${p.pinned ? '*' : ''}`) ?? null;
 
 // A side panel's list as the server gives it: the pinned projects first.

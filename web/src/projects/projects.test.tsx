@@ -35,7 +35,7 @@ describe('projects of conversations', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Новый проект' }));
     await user.type(screen.getByRole('textbox', { name: 'Название проекта' }), 'Новый тендер{Enter}');
-    expect(s.calls.find((c) => c.method === 'POST' && c.path === '/app/api/projects')?.body).toEqual({ name: 'Новый тендер' });
+    expect(s.calls.find((c) => c.method === 'POST' && c.path === '/app/api/projects')?.body).toEqual({ name: 'Новый тендер', access: { mode: 'private', departmentIds: [], userIds: [] } });
     expect(await screen.findByRole('heading', { name: 'Новый тендер' })).toBeInTheDocument();
   });
 

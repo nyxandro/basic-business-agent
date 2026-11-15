@@ -46,7 +46,7 @@ function NewProject({ onDone }: { onDone: (project: ProjectDto | null) => void }
     setBusy(true);
     setError(null);
     try {
-      onDone(await createProject(name.trim()));
+      onDone(await createProject(name.trim(), { mode: 'private', departmentIds: [], userIds: [] }));
     } catch (raw) {
       setError(asApiError(raw));
       setBusy(false);

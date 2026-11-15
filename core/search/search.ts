@@ -98,13 +98,13 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
     throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
   const [projects, threads] = await Promise.all([
-    query.scope === 'threads' ? [] : listProjects(deps, userId),
+    query.scope === 'threads' ? [] : listProjects(deps, userId).then((list) => list.projects),
     query.scope === 'projects' ? [] : searchThreads(deps.db, userId, terms, query.projectId),
   ]);
   return {
     projects: projects
       .filter((p) => (!query.projectId || p.id === query.projectId) && terms.every((w) => p.name.toLowerCase().includes(w)))
-      .map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount })),
+      .map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
     threads,
   };
 }

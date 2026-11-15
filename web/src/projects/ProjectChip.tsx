@@ -21,7 +21,7 @@ function NewProjectDialog({ open, onClose, onCreated }: { open: boolean; onClose
   async function create() {
     setError(null);
     try {
-      onCreated(await createProject(name.trim()));
+      onCreated(await createProject(name.trim(), { mode: 'private', departmentIds: [], userIds: [] }));
       setName('');
     } catch (raw) {
       setError(asApiError(raw));

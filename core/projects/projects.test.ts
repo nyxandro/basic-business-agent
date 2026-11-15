@@ -14,6 +14,7 @@ let petrId: string;
 let olga: string;
 let petr: string;
 
+const PRIVATE = { mode: 'private', departmentIds: [], userIds: [] };
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
 async function thread(userId: string, agentId = 'sales', title = 'Разговор'): Promise<string> {
@@ -41,15 +42,15 @@ afterAll(async () => {
 
 describe('projects', () => {
   it('creates a project once per name, keeps instructions and hides it from others', async () => {
-    const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: '  Тендер ЖК Северный ' } });
+    const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: '  Тендер ЖК Северный ', access: PRIVATE } });
     expect(created.status).toBe(201);
     const project = await json<ProjectDto>(created);
     expect(project).toMatchObject({ name: 'Тендер ЖК Северный', instructions: '', threadCount: 0 });
 
-    const twice = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'тендер жк северный' } });
+    const twice = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'тендер жк северный', access: PRIVATE } });
     expect(twice.status).toBe(409);
     expect((await json<{ error: { code: string } }>(twice)).error.code).toBe('APP_PROJECT_EXISTS');
-    expect((await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: ' ' } })).status).toBe(400);
+    expect((await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: ' ', access: PRIVATE } })).status).toBe(400);
 
     const saved = await t.call('PUT', `/app/api/projects/${project.id}`, { cookie: olga, body: { instructions: 'Заказчик — ООО Стройресурс.' } });
     expect(await json<ProjectDto>(saved)).toMatchObject({ instructions: 'Заказчик — ООО Стройресурс.' });
@@ -58,15 +59,15 @@ describe('projects', () => {
       const res = await t.call(method, path, { cookie: petr, body: method === 'PUT' ? { name: 'Чужой' } : undefined });
       expect(res.status).toBe(404);
     }
-    expect(await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: petr }))).toEqual({ projects: [] });
+    expect(await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: petr }))).toEqual({ projects: [], archivedCount: 0 });
   });
 
   it('puts a conversation into a project before its first message and counts only existing conversations', async () => {
-    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ключевые клиенты' } }));
+    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ключевые клиенты', access: PRIVATE } }));
     const futureThread = randomUUID();
     expect((await t.call('PUT', `/app/api/threads/${futureThread}/project`, { cookie: olga, body: { projectId: project.id } })).status).toBe(200);
-    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: olga }))).toEqual({ projectId: project.id });
-    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: petr }))).toEqual({ projectId: null });
+    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: olga }))).toEqual({ projectId: project.id, lost: null });
+    expect(await json(await t.call('GET', `/app/api/threads/${futureThread}/project`, { cookie: petr }))).toEqual({ projectId: null, lost: null });
     let list = await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: olga }));
     expect(list.projects.find((p) => p.id === project.id)?.threadCount).toBe(0);
 
@@ -90,7 +91,7 @@ describe('projects', () => {
   });
 
   it('removes the project with its files and leaves its conversations without a project', async () => {
-    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'На удаление' } }));
+    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'На удаление', access: PRIVATE } }));
     const id = await thread(olgaId);
     await t.call('PUT', `/app/api/threads/${id}/project`, { cookie: olga, body: { projectId: project.id } });
     expect((await upload(`/app/api/projects/${project.id}/files`, olga, 'смета.xlsx', [1, 2])).status).toBe(201);
@@ -104,7 +105,7 @@ describe('projects', () => {
   });
 
   it('keeps project files: an attachment of a project conversation, listing, download and removal', async () => {
-    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Отчётность' } }));
+    const project = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Отчётность', access: PRIVATE } }));
     const id = await thread(olgaId);
     await t.call('PUT', `/app/api/threads/${id}/project`, { cookie: olga, body: { projectId: project.id } });
     expect((await upload(`/app/api/threads/${id}/files`, olga, 'отчёт.pdf', [1, 2, 3])).status).toBe(201);
@@ -133,7 +134,7 @@ describe('projects', () => {
     const nina = await t.signIn('nina@example.com');
     const names = async () => (await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: nina }))).projects.map((p) => `${p.name}${p.pinned ? '*' : ''}`);
     const ids: Record<string, string> = {};
-    for (const name of ['Альфа', 'Бета', 'Гамма', 'Дельта']) ids[name] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name } }))).id;
+    for (const name of ['Альфа', 'Бета', 'Гамма', 'Дельта']) ids[name] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name, access: PRIVATE } }))).id;
     // A new project comes first among the unpinned ones.
     expect(await names()).toEqual(['Дельта', 'Гамма', 'Бета', 'Альфа']);
 
@@ -150,7 +151,7 @@ describe('projects', () => {
     expect(await names()).toEqual(['Гамма*', 'Бета*', 'Альфа', 'Дельта']);
     // The pinned ones are dragged among themselves; a new project comes under them.
     await order(['Бета', 'Гамма', 'Альфа', 'Дельта']);
-    ids['Эпсилон'] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name: 'Эпсилон' } }))).id;
+    ids['Эпсилон'] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name: 'Эпсилон', access: PRIVATE } }))).id;
     expect(await names()).toEqual(['Бета*', 'Гамма*', 'Эпсилон', 'Альфа', 'Дельта']);
     await pin('Бета', false);
     expect(await names()).toEqual(['Гамма*', 'Бета', 'Эпсилон', 'Альфа', 'Дельта']);
@@ -162,9 +163,9 @@ describe('projects', () => {
   it('takes an order only of exactly the person’s projects', async () => {
     await t.createUser({ email: 'vera@example.com', name: 'Вера' });
     const vera = await t.signIn('vera@example.com');
-    const a = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Первый' } }))).id;
-    const b = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Второй' } }))).id;
-    const someoneElses = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: petr, body: { name: 'Чужой' } }))).id;
+    const a = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Первый', access: PRIVATE } }))).id;
+    const b = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Второй', access: PRIVATE } }))).id;
+    const someoneElses = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: petr, body: { name: 'Чужой', access: PRIVATE } }))).id;
     for (const ids of [[a], [a, b, a], [a, b, someoneElses], [a, someoneElses], ['order', b]]) {
       const res = await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids } });
       expect(res.status).toBe(400);
