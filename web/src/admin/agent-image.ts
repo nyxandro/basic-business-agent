@@ -18,12 +18,15 @@ export function squareCrop(width: number, height: number): Crop {
   return { sx: Math.floor((width - side) / 2), sy: Math.floor((height - side) / 2), side, target: Math.min(side, AGENT_IMAGE_SIDE_PX) };
 }
 
-// Why a chosen file did not become a picture: too big to open, or not an image the browser reads
-// (damaged, HEIC in a browser without it, a document).
-export class AgentImageError extends Error {
-  readonly reason: 'too-big' | 'unreadable';
+// Why a chosen file did not become a picture: too big to open; not an image the browser reads
+// (damaged, HEIC in a browser without it, a document); or an opened picture the browser could not
+// draw and write (no 2D canvas, no memory left for it) — the file is fine, the browser is not.
+export type AgentImageFailure = 'too-big' | 'unreadable' | 'not-prepared';
 
-  constructor(reason: 'too-big' | 'unreadable', options?: { cause?: unknown }) {
+export class AgentImageError extends Error {
+  readonly reason: AgentImageFailure;
+
+  constructor(reason: AgentImageFailure, options?: { cause?: unknown }) {
     super(`agent image is ${reason}`, options);
     this.name = 'AgentImageError';
     this.reason = reason;
@@ -40,18 +43,24 @@ export async function prepareAgentImage(file: File): Promise<Blob> {
     throw new AgentImageError('unreadable', { cause: error });
   }
   try {
-    const crop = squareCrop(bitmap.width, bitmap.height);
-    const canvas = document.createElement('canvas');
-    canvas.width = crop.target;
-    canvas.height = crop.target;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('2d canvas is not available');
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(bitmap, crop.sx, crop.sy, crop.side, crop.side, 0, 0, crop.target, crop.target);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', WEBP_QUALITY));
-    if (!blob) throw new Error('canvas.toBlob gave no picture');
-    return blob;
+    return await drawSquare(bitmap);
+  } catch (error) {
+    throw new AgentImageError('not-prepared', { cause: error });
   } finally {
     bitmap.close();
   }
+}
+
+async function drawSquare(bitmap: ImageBitmap): Promise<Blob> {
+  const crop = squareCrop(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = crop.target;
+  canvas.height = crop.target;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2d canvas is not available');
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(bitmap, crop.sx, crop.sy, crop.side, crop.side, 0, 0, crop.target, crop.target);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', WEBP_QUALITY));
+  if (!blob) throw new Error('canvas.toBlob gave no picture');
+  return blob;
 }

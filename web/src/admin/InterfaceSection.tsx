@@ -29,6 +29,11 @@ type Picked = { blob: Blob; url: string };
 
 function pickError(error: unknown): ApiRequestError {
   if (!(error instanceof AgentImageError)) return asApiError(error);
+  if (error.reason === 'not-prepared') {
+    // Not the file but the browser: the details are kept for diagnosis.
+    console.error('agent image preparation failed', error);
+    return new ApiRequestError({ code: 'APP_AGENT_IMAGE_PREPARE_FAILED', message: t.notPrepared, status: 0, cause: error });
+  }
   return new ApiRequestError({ code: 'APP_AGENT_IMAGE_INVALID', message: error.reason === 'too-big' ? t.tooBig : t.unreadable, status: 0, cause: error });
 }
 
@@ -124,7 +129,8 @@ function AgentMarkForm({ initial }: { initial: InterfaceAdminState }) {
     await run(async () => {
       const next = await adminApi.saveInterface({ agentMark: kind, agentIcon: icon, image: newPicture?.blob ?? null });
       setSaved(next);
-      if (newPicture) setPicked(null);
+      // A picture chosen while this one was saving stays the choice: it is not saved yet.
+      if (newPicture) setPicked((current) => (current === newPicture ? null : current));
       await refresh();
     });
   }

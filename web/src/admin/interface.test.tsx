@@ -4,7 +4,7 @@ import type { InterfaceAdminState } from '@bba/contracts';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
+import { apiError, ME, mockServer, type Reply } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 import { prepareAgentImage } from './agent-image.ts';
 
@@ -26,7 +26,15 @@ const saveButton = () => screen.getByRole('button', { name: 'Сохранить'
 const puts = (s: ReturnType<typeof mockServer>) => s.calls.filter((c) => c.method === 'PUT' && c.path === '/app/api/admin/interface');
 
 beforeEach(() => {
-  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:picture'), revokeObjectURL: vi.fn() }));
+  let made = 0;
+  // jsdom has no addresses for files. A subclass, not the real URL changed: unstubbing brings it back.
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static override createObjectURL = vi.fn(() => `blob:picture-${++made}`);
+      static override revokeObjectURL = vi.fn();
+    },
+  );
 });
 afterEach(() => {
   vi.mocked(prepareAgentImage).mockReset();
@@ -109,6 +117,43 @@ describe('«Интерфейс»', () => {
     expect(await screen.findByText(/Не получилось открыть картинку/)).toBeInTheDocument();
     expect(screen.getByText(/APP_AGENT_IMAGE_INVALID/)).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
+  });
+
+  it('says the browser could not prepare the picture, not that the server is down', async () => {
+    const { AgentImageError } = await import('./agent-image.ts');
+    vi.mocked(prepareAgentImage).mockRejectedValue(new AgentImageError('not-prepared', { cause: new Error('canvas.toBlob gave no picture') }));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    server();
+    renderApp('/admin/interface');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('radio', { name: 'Своя картинка' }));
+    await user.upload(screen.getByLabelText('Файл картинки'), new File(['photo'], 'photo.png', { type: 'image/png' }));
+    expect(await screen.findByText(/Браузер не смог подготовить картинку/)).toBeInTheDocument();
+    expect(screen.getByText(/APP_AGENT_IMAGE_PREPARE_FAILED/)).toBeInTheDocument();
+    expect(screen.queryByText(/Сервер/)).not.toBeInTheDocument();
+    expect(logged).toHaveBeenCalled();
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('keeps a picture chosen while the one before it is being saved', async () => {
+    vi.mocked(prepareAgentImage).mockResolvedValueOnce(new Blob(['first'], { type: 'image/webp' })).mockResolvedValueOnce(new Blob(['second'], { type: 'image/webp' }));
+    let answer: (reply: Reply) => void = () => undefined;
+    const s = server();
+    s.set('PUT /app/api/admin/interface', () => new Promise<Reply>((resolve) => (answer = resolve)));
+    renderApp('/admin/interface');
+    const user = userEvent.setup();
+    const chosen = () => screen.getByRole('img', { name: 'Выбранная картинка' });
+    await user.click(await screen.findByRole('radio', { name: 'Своя картинка' }));
+    await user.upload(screen.getByLabelText('Файл картинки'), new File(['1'], 'first.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(chosen()).toHaveAttribute('src', 'blob:picture-1'));
+    await user.click(saveButton());
+    await user.upload(screen.getByLabelText('Файл картинки'), new File(['2'], 'second.jpg', { type: 'image/jpeg' }));
+    await waitFor(() => expect(chosen()).toHaveAttribute('src', 'blob:picture-2'));
+    answer({ body: { agentMark: 'image', agentIcon: 'spark', image: { url: PICTURE_URL } } });
+    await screen.findByText('Сохранено');
+    // The first picture is saved; the second is still the choice and waits for its own «Сохранить».
+    expect(chosen()).toHaveAttribute('src', 'blob:picture-2');
+    expect(saveButton()).toBeEnabled();
   });
 
   it('keeps the choice when the server refuses, so it can be saved again', async () => {
