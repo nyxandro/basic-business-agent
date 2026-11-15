@@ -10,11 +10,12 @@ import type { Processor } from '@mastra/core/processors';
 import { createTool } from '@mastra/core/tools';
 import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS, type WorkspaceToolHookContext } from '@mastra/core/workspace';
 import { z } from 'zod';
+import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
-import { contextRoot, resolveInside } from '../workspace/layout.ts';
+import { contextRoot, existingInside } from '../workspace/layout.ts';
 import { nodeModulesDir, SANDBOX_SYSTEM_PATHS, sandboxPath } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
@@ -136,14 +137,10 @@ export function createViewImageTool(workspaceRoot: string): AnyTool {
   return createTool({
     id: VIEW_IMAGE_TOOL,
     description: 'Посмотреть картинку из рабочей папки сотрудника (PNG или JPG): отрисованную страницу скана, фото документа.',
-    inputSchema: z.object({ path: z.string().min(1).describe('Путь от рабочей папки, например .renders/dogovor-p3.png') }),
+    inputSchema: z.object({ path: z.string().min(1).describe('Путь от рабочей папки или абсолютный путь внутри неё, например .renders/dogovor-p3.png') }),
     execute: ({ path }, context) => {
-      const full = resolveInside(runRoot(workspaceRoot, context?.requestContext), path);
-      const mediaType = IMAGE_TYPES[extname(full).toLowerCase()];
-      if (!mediaType) return Promise.resolve({ ok: false, error: 'Это не PNG или JPG' });
-      if (!existsSync(full)) return Promise.resolve({ ok: false, error: `Файла ${path} нет` });
-      if (statSync(full).size > MAX_IMAGE_BYTES) return Promise.resolve({ ok: false, error: 'Картинка больше 5 МБ' });
-      return Promise.resolve({ ok: true, path, mediaType });
+      const picture = findPicture(runRoot(workspaceRoot, context?.requestContext), path);
+      return Promise.resolve(typeof picture === 'string' ? { ok: false, error: picture } : { ok: true, path, mediaType: picture.mediaType });
     },
   }) as AnyTool;
 }
@@ -157,13 +154,28 @@ interface ViewResult {
 type PromptMessage = { role: string; content: unknown };
 type FilePart = { type: 'file'; data: string; mediaType: string };
 
-// A picture of the employee's folder as a part of a model message, or why it cannot be one.
+// A picture of the employee's folder, or why there is none. Only a file inside the folder: the server
+// reads it outside the sandbox, so a link the agent made to a file of the server is refused.
+function findPicture(dir: string, path: string): { real: string; mediaType: string } | string {
+  const mediaType = IMAGE_TYPES[extname(path).toLowerCase()];
+  if (!mediaType) return 'Это не PNG или JPG';
+  let real: string | null;
+  try {
+    real = existingInside(dir, path);
+  } catch (error) {
+    if (!isAppError(error)) throw error;
+    return `Путь ${path} ведёт за пределы рабочей папки`;
+  }
+  if (!real || !statSync(real).isFile()) return `Файла ${path} нет`;
+  if (statSync(real).size > MAX_IMAGE_BYTES) return 'Картинка больше 5 МБ';
+  return { real, mediaType };
+}
+
+// The picture as a part of a model message, or why it cannot be one.
 function pictureOf(dir: string, path: string): FilePart | string {
-  const full = resolveInside(dir, path);
-  const mediaType = IMAGE_TYPES[extname(full).toLowerCase()];
-  if (!mediaType || !existsSync(full)) return `нет картинки ${path}`;
-  if (statSync(full).size > MAX_IMAGE_BYTES) return `картинка ${path} больше 5 МБ`;
-  return { type: 'file', data: readFileSync(full).toString('base64'), mediaType };
+  const picture = findPicture(dir, path);
+  if (typeof picture === 'string') return picture;
+  return { type: 'file', data: readFileSync(picture.real).toString('base64'), mediaType: picture.mediaType };
 }
 
 function textOf(content: unknown): string {
@@ -203,10 +215,15 @@ export function createImageViewProcessor(workspaceRoot: string) {
         .map((r) => (r.output?.type === 'json' ? r.output.value : r.output) as ViewResult)
         .filter((r) => r?.ok && r.path && r.mediaType);
       if (shown.length === 0) return withAttached ? { prompt: withAttached as typeof prompt } : undefined;
-      const parts = shown.flatMap((r) => [
-        { type: 'text' as const, text: `Картинка ${r.path}:` },
-        { type: 'file' as const, data: readFileSync(resolveInside(dir, r.path!)).toString('base64'), mediaType: r.mediaType! },
-      ]);
+      // Checked again: the file could have changed since the call (e.g. into a link out of the folder).
+      const parts = shown.flatMap((r) => {
+        const picture = pictureOf(dir, r.path!);
+        if (typeof picture === 'string') {
+          logEvent('warn', 'viewed_picture_not_sent', { reason: picture });
+          return [];
+        }
+        return [{ type: 'text' as const, text: `Картинка ${r.path}:` }, picture];
+      });
       return { prompt: [...((withAttached ?? prompt) as typeof prompt), { role: 'user' as const, content: parts }] };
     },
   } satisfies Processor;

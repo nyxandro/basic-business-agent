@@ -3,7 +3,7 @@
 //   /workspace/<userId>/projects/<projectId>/files — files of a project
 // A conversation's sandbox root is one of these files folders: the agent works freely inside it,
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
@@ -92,6 +92,23 @@ export function resolveInside(dir: string, path: string): string {
   const rel = relative(dir, full);
   if (rel.startsWith('..') || isAbsolute(rel) || rel === '') throw appError('APP_VALIDATION_FAILED', `path ${path} is outside the folder`);
   return full;
+}
+
+// The real place of an existing file or folder of `dir`, or null when there is none (a broken link
+// is none). The server reads these files outside the sandbox, and the agent can make links in its
+// folder (ln -s /proc/self/environ x.docx): a link is followed only to a place inside the folder.
+export function existingInside(dir: string, path: string): string | null {
+  const full = resolveInside(dir, path);
+  let real: string;
+  try {
+    real = realpathSync(full);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  const rel = relative(realpathSync(dir), real);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) throw appError('APP_VALIDATION_FAILED', `path ${path} leads out of the folder through a link`);
+  return real;
 }
 
 export function removeProjectFolder(workspaceRoot: string, userId: string, projectId: string): void {

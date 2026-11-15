@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
@@ -364,6 +364,11 @@ describe('memory and attachments', () => {
     const foreign = await t.call('GET', url('итоги/КП «Ёлка».docx'), { cookie: igor });
     expect(foreign.status).toBe(404);
     expect((await t.call('GET', url('../../x'), { cookie: olga })).status).toBe(400);
+    // A link the agent made in the folder to a file of the server is not followed.
+    symlinkSync('/etc/hostname', join(folder, 'leak.docx'));
+    const leak = await t.call('GET', url('leak.docx'), { cookie: olga });
+    expect(leak.status).toBe(400);
+    expect(await leak.text()).not.toContain(readFileSync('/etc/hostname', 'utf8').trim());
     const missing = await t.call('GET', url('нет.docx'), { cookie: olga });
     expect(missing.status).toBe(404);
     expect(await missing.text()).toContain('Файл не найден');

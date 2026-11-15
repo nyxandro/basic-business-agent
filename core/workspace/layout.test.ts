@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { contextRoot, deleteUserWorkspace, listFiles, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
+import { contextRoot, deleteUserWorkspace, existingInside, listFiles, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
 
 let ws: string;
 beforeEach(() => {
@@ -59,6 +59,26 @@ describe('workspace layout', () => {
     expect(resolveInside(root, join(root, 'слайды/slide-1.jpg'))).toBe(join(root, 'слайды/slide-1.jpg'));
     for (const outside of ['../igor/files/x.pdf', join(ws, 'igor', 'files', 'x.pdf'), '/etc/passwd', `${root}/../x`, root, '']) {
       expect(() => resolveInside(root, outside), outside).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+    }
+  });
+
+  // The server reads these files outside the sandbox: a link the agent made in its folder must not
+  // take it to a file of the server (ln -s /proc/self/environ x.docx).
+  it('follows links only inside the folder; a missing file or a broken link is no file', () => {
+    const root = contextRoot(ws, 'olga', null);
+    writeFileSync(join(root, 'КП.docx'), 'DOCX');
+    mkdirSync(join(ws, 'secret'));
+    writeFileSync(join(ws, 'secret', 'env'), 'KEY=1');
+    symlinkSync(join(root, 'КП.docx'), join(root, 'копия.docx'));
+    symlinkSync(join(ws, 'secret', 'env'), join(root, 'leak.docx'));
+    symlinkSync(join(ws, 'secret'), join(root, 'папка'));
+    symlinkSync(join(root, 'нет.docx'), join(root, 'битая.docx'));
+    expect(existingInside(root, 'КП.docx')).toBe(join(root, 'КП.docx'));
+    expect(existingInside(root, 'копия.docx')).toBe(join(root, 'КП.docx'));
+    expect(existingInside(root, 'нет.docx')).toBeNull();
+    expect(existingInside(root, 'битая.docx')).toBeNull();
+    for (const path of ['leak.docx', 'папка/env', '/proc/self/environ']) {
+      expect(() => existingInside(root, path), path).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
     }
   });
 

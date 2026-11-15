@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -267,12 +267,24 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
       expect(lastToolOutput()).toContain('\\"path\\":\\"КП «Ёлка».docx\\"');
       expect(lastToolOutput()).toContain('\\"bytes\\":4');
     }
-    for (const path of ['нет.docx', 'черновики', join(other, 'чужой.docx'), '../igor/files/чужой.docx']) {
+    // A link to a file outside the folder (the server reads files outside the sandbox).
+    symlinkSync(join(other, 'чужой.docx'), join(dir, 'ссылка.docx'));
+    for (const path of ['нет.docx', 'черновики', join(other, 'чужой.docx'), '../igor/files/чужой.docx', 'ссылка.docx']) {
       model.script(show(path), { text: 'Ок.' });
       await runAs('olga');
       expect(lastToolOutput(), path).toContain('\\"shown\\":false');
       expect(lastToolOutput(), path).toContain('Сохрани файл в рабочую папку');
     }
+  });
+
+  it('does not send the model a file of the server behind a link that looks like a picture', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const secret = join(workspaceRoot, 'server-secret.png');
+    writeFileSync(secret, png(16));
+    symlinkSync(secret, join(dir, 'leak.png'));
+    model.script({ toolCalls: [{ name: 'view_image', args: { path: 'leak.png' } }] }, { text: 'Ок.' });
+    await runAs('olga');
+    expect(JSON.stringify(model.requests.at(-1)!.messages)).not.toContain('data:image/png;base64,');
   });
 
   it('opens a picture by its absolute path inside the folder, as the document skills pass it', async () => {

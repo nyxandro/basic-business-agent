@@ -4,7 +4,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { appError } from '../errors/catalog.ts';
-import { resolveInside } from './layout.ts';
+import { existingInside, resolveInside } from './layout.ts';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -26,10 +26,11 @@ const OTHER = 'application/octet-stream';
 
 // `missing`: what the person reads when there is no such file (it was removed, or the folder changed).
 export function fileDownload(dir: string, path: string, missing: string): Response {
-  const full = resolveInside(dir, path);
-  if (!statSync(full, { throwIfNoEntry: false })?.isFile()) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
-  const name = basename(full);
-  return new Response(readFileSync(full), {
+  const real = existingInside(dir, path);
+  if (!real || !statSync(real).isFile()) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
+  // The name the person sees is the one in the folder (a link inside it keeps its own name).
+  const name = basename(resolveInside(dir, path));
+  return new Response(readFileSync(real), {
     headers: {
       'content-type': CONTENT_TYPES[extname(name).toLowerCase()] ?? OTHER,
       'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
