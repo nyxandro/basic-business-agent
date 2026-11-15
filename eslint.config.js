@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   // core/system-skills: skills of Anthropic kept exactly as published (spec, section 8.18).
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'inbox/**', 'docs/**', '.venv-skills/**', 'core/system-skills/*/**'] },
+  // .data: the development installation's data, including scripts agents write in their workspace.
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'inbox/**', 'docs/**', '.venv-skills/**', '.data/**', 'core/system-skills/*/**'] },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {
