@@ -29,6 +29,6 @@ describe('sandbox environment', () => {
     expect(contents.programs).toEqual(['LibreOffice', 'pandoc', 'poppler', 'qpdf', 'tesseract']);
     expect(contents.python).toContain('python-pptx');
     expect(contents.python).toContain('markitdown');
-    expect(contents.node).toEqual(['docx', 'pptxgenjs', 'react', 'react-dom', 'react-icons', 'sharp']);
+    expect(contents.node).toEqual(['docx', 'pdf-lib', 'pptxgenjs', 'react', 'react-dom', 'react-icons', 'sharp']);
   });
 });

@@ -3,7 +3,7 @@
 // kept in the database; its unpacked copy for the agents is in APP_SKILLS_DIR/<sha256>/<name>.
 // System skills of the core (section 8.18) are listed first and refuse every change; their names
 // cannot be taken by an uploaded skill.
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SkillAccess, SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
 import type pg from 'pg';
@@ -12,7 +12,7 @@ import { checkScope, writeScopeTargets } from '../auth/scope.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { sandboxContents } from '../sandbox/environment.ts';
-import { invalidSkill, readSkillArchive, writeSkillFiles, type SkillPackage } from './archive.ts';
+import { invalidSkill, readSkillArchive, removeSkillFolder, writeSkillFiles, type SkillPackage } from './archive.ts';
 import type { SystemSkill } from './system.ts';
 
 export interface SkillsDeps {
@@ -53,11 +53,11 @@ export function removeSkillCopies(skillsDir: string, drop: (name: string, sha256
   for (const version of readdirSync(skillsDir)) {
     const dir = join(skillsDir, version);
     if (!statSync(dir).isDirectory()) {
-      rmSync(dir, { force: true });
+      removeSkillFolder(dir);
       continue;
     }
-    for (const name of readdirSync(dir)) if (drop(name, version)) rmSync(join(dir, name), { recursive: true, force: true });
-    if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+    for (const name of readdirSync(dir)) if (drop(name, version)) removeSkillFolder(join(dir, name));
+    if (readdirSync(dir).length === 0) removeSkillFolder(dir);
   }
 }
 

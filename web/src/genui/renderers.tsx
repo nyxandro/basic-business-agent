@@ -52,7 +52,7 @@ function Form({ call }: { call: CallProps }) {
 }
 
 // The file block needs the conversation: «Скачать» takes the file from its folder.
-function File({ call }: { call: CallProps }) {
+function FileOfCall({ call }: { call: CallProps }) {
   return <FileCall call={call} threadId={useChatExtras().threadId} />;
 }
 
@@ -73,7 +73,7 @@ export function useGenuiRenderers(agent: AgentSummary): void {
   useRenderTool({ name: GENUI_TOOL.card, parameters: anyArgs, render: (call) => <CatalogBlock call={call} schema={cardBlockSchema} View={CardBlockView} /> }, []);
   useRenderTool({ name: GENUI_TOOL.choice, parameters: anyArgs, render: (call) => <Choice call={call} /> }, []);
   useRenderTool({ name: GENUI_TOOL.form, parameters: anyArgs, render: (call) => <Form call={call} /> }, []);
-  useRenderTool({ name: GENUI_TOOL.file, parameters: anyArgs, render: (call) => <File call={call} /> }, []);
+  useRenderTool({ name: GENUI_TOOL.file, parameters: anyArgs, render: (call) => <FileOfCall call={call} /> }, []);
   useRenderTool(
     {
       name: '*',

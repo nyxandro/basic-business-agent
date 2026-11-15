@@ -57,7 +57,7 @@ function SystemSkillCard({ skill, who }: { skill: SkillDto; who: string }) {
       </div>
       <p className={styles.desc}>{skill.description}</p>
       <div className={styles.meta}>
-        <span className={section.sub}>Кому:</span> <span className={styles.who}>{who}</span>
+        <span className={section.sub}>{ru.admin.skills.who}</span> <span className={styles.who}>{who}</span>
       </div>
       <div className={section.sub}>
         {fileSize(skill.sizeBytes)} · {ru.admin.skills.builtIn}
@@ -137,7 +137,7 @@ function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: 
       />
       <p className={styles.desc}>{skill.description}</p>
       <div className={styles.meta}>
-        <span className={section.sub}>Кому:</span> <span className={styles.who}>{who}</span>
+        <span className={section.sub}>{ru.admin.skills.who}</span> <span className={styles.who}>{who}</span>
       </div>
       <div className={section.sub}>
         {fileSize(skill.sizeBytes)}

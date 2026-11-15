@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { contextRoot, deleteUserWorkspace, existingInside, listFiles, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
+import { contextRoot, deleteUserWorkspace, existingInside, listFiles, openFileInside, removeFileInside, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
 
 let ws: string;
 beforeEach(() => {
@@ -77,9 +78,55 @@ describe('workspace layout', () => {
     expect(existingInside(root, 'копия.docx')).toBe(join(root, 'КП.docx'));
     expect(existingInside(root, 'нет.docx')).toBeNull();
     expect(existingInside(root, 'битая.docx')).toBeNull();
+    // A path through a file, and a link to itself, are no file either (not a failure of the server).
+    symlinkSync('петля.png', join(root, 'петля.png'));
+    expect(existingInside(root, 'КП.docx/стр-1.png')).toBeNull();
+    expect(existingInside(root, 'петля.png')).toBeNull();
     for (const path of ['leak.docx', 'папка/env', '/proc/self/environ']) {
       expect(() => existingInside(root, path), path).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
     }
+  });
+
+  // Opened once and checked as opened (a link swapped in between cannot take the read outside);
+  // without waiting, so a pipe put in place of a file cannot hang the server.
+  it('opens only a regular file of the folder for reading', () => {
+    const root = contextRoot(ws, 'olga', null);
+    writeFileSync(join(root, 'КП.docx'), 'DOCX');
+    mkdirSync(join(root, 'черновики'));
+    execFileSync('mkfifo', [join(root, 'труба.docx')]);
+    const file = openFileInside(root, 'КП.docx')!;
+    try {
+      expect(file.size).toBe(4);
+      expect(readFileSync(file.fd, 'utf8')).toBe('DOCX');
+    } finally {
+      closeSync(file.fd);
+    }
+    expect(openFileInside(root, 'черновики')).toBeNull();
+    expect(openFileInside(root, 'труба.docx')).toBeNull();
+    expect(openFileInside(root, 'нет.docx')).toBeNull();
+    writeFileSync(join(ws, 'server-env'), 'KEY=1');
+    symlinkSync(join(ws, 'server-env'), join(root, 'leak.docx'));
+    expect(() => openFileInside(root, 'leak.docx')).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+  });
+
+  // Deleting goes by the folder that was checked: a folder of the path turned into a link to
+  // someone else's files deletes nothing there.
+  it('removes a file of the folder, a link itself, and nothing outside', () => {
+    const root = contextRoot(ws, 'olga', null);
+    const other = contextRoot(ws, 'igor', null);
+    writeFileSync(join(other, 'отчёт.pdf'), 'IGOR');
+    writeFileSync(join(root, 'смета.xlsx'), 'X');
+    symlinkSync(join(other, 'отчёт.pdf'), join(root, 'ссылка.pdf'));
+    symlinkSync(other, join(root, 'чужая'));
+    expect(removeFileInside(root, 'смета.xlsx')).toBe(true);
+    expect(existsSync(join(root, 'смета.xlsx'))).toBe(false);
+    expect(removeFileInside(root, 'ссылка.pdf')).toBe(true);
+    expect(readFileSync(join(other, 'отчёт.pdf'), 'utf8')).toBe('IGOR');
+    expect(() => removeFileInside(root, 'чужая/отчёт.pdf')).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+    expect(readFileSync(join(other, 'отчёт.pdf'), 'utf8')).toBe('IGOR');
+    expect(removeFileInside(root, 'нет.pdf')).toBe(false);
+    mkdirSync(join(root, 'папка'));
+    expect(removeFileInside(root, 'папка')).toBe(false);
   });
 
   it('removes a project folder and the whole workspace of a person', () => {

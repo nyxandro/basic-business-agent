@@ -1,10 +1,10 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipSync, type Zippable } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { packSkill, readSkillArchive, writeSkillFiles } from './archive.ts';
+import { packSkill, readSkillArchive, removeSkillFolder, writeSkillFiles } from './archive.ts';
 
 // A real skill with scripts: the PDF skill of the core (spec, section 8.18).
 const PDF = fileURLToPath(new URL('../system-skills/pdf', import.meta.url));
@@ -91,7 +91,7 @@ describe('the .skill archive', () => {
       writeSkillFiles(pkg.files, join(root, 'pdf', pkg.sha256));
       expect(readFileSync(join(root, 'pdf', pkg.sha256, 'scripts', 'fill_fillable_fields.py'), 'utf8')).toContain('pypdf');
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeSkillFolder(root);
     }
   });
 });

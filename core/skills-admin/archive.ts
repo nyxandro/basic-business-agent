@@ -7,7 +7,7 @@
 // would pass as a file); the library then unpacks into buffers of the declared sizes, so an
 // archive lying about its sizes cannot fill the memory, and the checksum catches the lie.
 import { createHash } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { crc32 } from 'node:zlib';
 import { unzipSync, zipSync, type Zippable } from 'fflate';
@@ -163,17 +163,43 @@ export function readSkillArchive(zip: Uint8Array): SkillPackage {
   };
 }
 
+// A copy of a skill is shared by everyone who has it, and the file tools of the agents reach it (the
+// sandbox mounts it read-only, but those tools run in the server): its files and folders are made
+// read-only, so no agent can change the skill for the others. Only the server removes a copy.
+const READ_ONLY_FILE = 0o444;
+const READ_ONLY_FOLDER = 0o555;
+const WRITABLE_FOLDER = 0o755;
+
+function chmodFolders(dir: string, mode: number): void {
+  chmodSync(dir, mode);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isDirectory()) chmodFolders(join(dir, entry.name), mode);
+}
+
+// Makes an existing copy read-only: copies unpacked before 15.11 were left writable.
+export function lockSkillFolder(dir: string): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) if (entry.isFile()) chmodSync(join(entry.parentPath, entry.name), READ_ONLY_FILE);
+  chmodFolders(dir, READ_ONLY_FOLDER);
+}
+
+// Removes a copy of a skill (or anything under the folder of copies) with its read-only folders.
+export function removeSkillFolder(dir: string): void {
+  if (!existsSync(dir)) return;
+  if (statSync(dir).isDirectory()) chmodFolders(dir, WRITABLE_FOLDER);
+  rmSync(dir, { recursive: true, force: true });
+}
+
 // Writes the files into `dir` through a temporary folder next to it: a half-written copy is never seen.
 export function writeSkillFiles(files: ReadonlyMap<string, Uint8Array>, dir: string): void {
   const temp = `${dir}.tmp-${process.pid}-${Date.now()}`;
-  rmSync(temp, { recursive: true, force: true });
+  removeSkillFolder(temp);
   for (const [path, data] of files) {
     const full = join(temp, path);
     mkdirSync(dirname(full), { recursive: true });
-    writeFileSync(full, data, { mode: 0o644 });
+    writeFileSync(full, data, { mode: READ_ONLY_FILE });
   }
+  chmodFolders(temp, READ_ONLY_FOLDER);
   mkdirSync(dirname(dir), { recursive: true });
-  rmSync(dir, { recursive: true, force: true });
+  removeSkillFolder(dir);
   renameSync(temp, dir);
 }
 

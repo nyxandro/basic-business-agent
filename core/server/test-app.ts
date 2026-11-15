@@ -20,6 +20,7 @@ import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from '../models/fake-openai.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createSkillsRuntime } from '../skills-admin/runtime.ts';
+import { removeSkillFolder } from '../skills-admin/archive.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
@@ -310,7 +311,7 @@ export async function createTestApp(
       await mastra.stopWorkers();
       await model.close();
       rmSync(workspaceRoot, { recursive: true, force: true });
-      rmSync(skillsDir, { recursive: true, force: true });
+      removeSkillFolder(skillsDir);
       await connections.close();
       await db.end();
       await authPool.end();

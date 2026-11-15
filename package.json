@@ -26,7 +26,7 @@
     "lint": "eslint . && node tooling/architecture/cli.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
     "skills:pack": "node tooling/skills-pack.ts",
-    "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/sandbox/requirements.txt && mkdir -p .venv-skills/node && cp core/sandbox/node/package.json core/sandbox/node/package-lock.json .venv-skills/node/ && npm ci --prefix .venv-skills/node --omit=dev --no-audit --no-fund",
+    "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/sandbox/requirements.txt && mkdir -p .venv-skills/node && cp core/sandbox/node/package.json core/sandbox/node/package-lock.json .venv-skills/node/ && npm ci --prefix .venv-skills/node --omit=dev --no-audit --no-fund && node tooling/sandbox-programs/install.ts",
     "smoke": "bash deploy/smoke.sh",
     "stand": "node --env-file=.env tests/e2e/stand.ts",
     "start": "node core/server/main.ts",

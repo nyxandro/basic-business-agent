@@ -43,9 +43,35 @@ export const PYTHON_MODULES: Record<string, string> = {
 const OCR_LANGUAGES = ['rus', 'eng'];
 
 // Folders of the machine the programs read besides /usr and the few files Mastra's sandbox mounts
-// itself: font configuration (fontconfig) and LibreOffice's own configuration (Debian keeps its
-// sofficerc there). Without them LibreOffice in the sandbox has no fonts or does not start.
-export const SANDBOX_SYSTEM_PATHS = ['/etc/fonts', '/etc/libreoffice'];
+// itself: font configuration and its cache of the system fonts (fontconfig; without the cache every
+// command scans the fonts again) and LibreOffice's own configuration (Debian keeps its sofficerc
+// there). Without them LibreOffice in the sandbox has no fonts or does not start.
+const SANDBOX_SYSTEM_PATHS = ['/etc/fonts', '/var/cache/fontconfig', '/etc/libreoffice'];
+
+// One command of the sandbox (a conversion of LibreOffice takes ~1 s).
+export const COMMAND_TIMEOUT_MS = 120_000;
+
+// How a command of the sandbox runs (core/sandbox/workspace.ts; deploy/smoke.sh checks the image with
+// the same): the employee's folder writable, the skills, the tools of the skills and the system
+// folders above read-only, no network. Nothing from the app's environment (secrets) reaches the
+// scripts; caches and settings of the programs go to the command's own /tmp, not into the files.
+export function sandboxOptions(venv: string, dir: string, skillPaths: string[], isolation: 'bwrap' | 'seatbelt') {
+  return {
+    workingDirectory: dir,
+    isolation,
+    timeout: COMMAND_TIMEOUT_MS,
+    nativeSandbox: { allowNetwork: false, readOnlyPaths: [...skillPaths, venv, ...SANDBOX_SYSTEM_PATHS].filter((p) => existsSync(p)) },
+    env: {
+      PATH: sandboxPath(venv),
+      NODE_PATH: nodeModulesDir(venv),
+      HOME: dir,
+      XDG_CACHE_HOME: '/tmp/.cache',
+      XDG_CONFIG_HOME: '/tmp/.config',
+      LANG: 'C.UTF-8',
+      PYTHONIOENCODING: 'utf-8',
+    },
+  };
+}
 
 const SYSTEM_BIN_DIRS = ['/usr/local/bin', '/usr/bin', '/bin'];
 
@@ -98,18 +124,27 @@ function moduleOf(library: string): string {
   return module;
 }
 
+// A program of the sandbox that is there but fails stops the start with the same code.
+function ask(program: string, args: string[]): string {
+  try {
+    return execFileSync(program, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    throw appError('APP_SANDBOX_UNAVAILABLE', `the sandbox of skills cannot run ${program}`, { cause: error });
+  }
+}
+
 function missingModules(python: string, libraries: string[]): string[] {
   const modules = libraries.map(moduleOf);
   if (!executable(python)) return libraries;
   // find_spec looks the module up without importing it: the check costs no import of pandas.
   const code = 'import importlib.util,sys\nfor n in sys.argv[1:]:\n  print(n if importlib.util.find_spec(n) is None else "")';
-  const out = execFileSync(python, ['-I', '-c', code, ...modules], { encoding: 'utf8' }).split('\n');
+  const out = ask(python, ['-I', '-c', code, ...modules]).split('\n');
   return libraries.filter((_, i) => out[i] !== '');
 }
 
 function missingOcrLanguages(tesseract: string | undefined): string[] {
   if (!tesseract) return OCR_LANGUAGES;
-  const listed = execFileSync(tesseract, ['--list-langs'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).split('\n').map((l) => l.trim());
+  const listed = ask(tesseract, ['--list-langs']).split('\n').map((l) => l.trim());
   return OCR_LANGUAGES.filter((l) => !listed.includes(l));
 }
 

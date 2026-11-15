@@ -277,6 +277,7 @@ export const ru = {
     forbidden: 'Этот раздел вам недоступен. Если он нужен для работы, обратитесь к администратору.',
     // «Скиллы»: system skills of the core and what the sandbox has (spec, section 8.18).
     skills: {
+      who: 'Кому:',
       system: 'Системный',
       builtIn: 'Встроен в ядро, всегда включён',
       noOwnTitle: 'Своих скиллов пока нет',

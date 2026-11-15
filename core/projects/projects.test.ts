@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectDto, ThreadPage } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
+import { contextRoot } from '../workspace/layout.ts';
 
 let t: TestApp;
 let olgaId: string;
@@ -113,6 +115,14 @@ describe('projects', () => {
     expect(new Uint8Array(await download.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect((await t.call('GET', `/app/api/projects/${project.id}/file?path=${encodeURIComponent('../../x')}`, { cookie: olga })).status).toBe(400);
     expect((await t.call('DELETE', `/app/api/projects/${project.id}/file?path=${encodeURIComponent('отчёт.pdf')}`, { cookie: olga })).status).toBe(200);
+    // A folder of the path that is a link to someone else's files: nothing is deleted there.
+    const outside = mkdtempSync(join(tmpdir(), 'bba-outside-'));
+    writeFileSync(join(outside, 'чужой.txt'), 'KEEP');
+    symlinkSync(outside, join(contextRoot(t.workspaceRoot, olgaId, project.id), 'чужая'));
+    expect((await t.call('DELETE', `/app/api/projects/${project.id}/file?path=${encodeURIComponent('чужая/чужой.txt')}`, { cookie: olga })).status).toBe(400);
+    expect(readFileSync(join(outside, 'чужой.txt'), 'utf8')).toBe('KEEP');
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), 'чужая'));
     expect((await json<{ files: unknown[] }>(await t.call('GET', `/app/api/projects/${project.id}/files`, { cookie: olga }))).files).toEqual([]);
   });
 

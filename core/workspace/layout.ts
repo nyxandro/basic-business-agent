@@ -3,9 +3,9 @@
 //   /workspace/<userId>/projects/<projectId>/files — files of a project
 // A conversation's sandbox root is one of these files folders: the agent works freely inside it,
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
-import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
 
@@ -94,21 +94,88 @@ export function resolveInside(dir: string, path: string): string {
   return full;
 }
 
-// The real place of an existing file or folder of `dir`, or null when there is none (a broken link
-// is none). The server reads these files outside the sandbox, and the agent can make links in its
-// folder (ln -s /proc/self/environ x.docx): a link is followed only to a place inside the folder.
+// No such file: missing, a broken link, a path through a file, a link to itself.
+const NO_FILE = new Set(['ENOENT', 'ENOTDIR', 'ELOOP']);
+const noFile = (error: unknown) => NO_FILE.has((error as NodeJS.ErrnoException).code ?? '');
+
+const outside = (root: string, real: string) => {
+  const rel = relative(root, real);
+  return rel.startsWith('..') || isAbsolute(rel);
+};
+
+// The real place of an existing file or folder of `dir`, or null when there is none. The server reads
+// these files outside the sandbox, and the agent can make links in its folder
+// (ln -s /proc/self/environ x.docx): a link is followed only to a place inside the folder.
 export function existingInside(dir: string, path: string): string | null {
   const full = resolveInside(dir, path);
   let real: string;
   try {
     real = realpathSync(full);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (noFile(error)) return null;
     throw error;
   }
-  const rel = relative(realpathSync(dir), real);
-  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) throw appError('APP_VALIDATION_FAILED', `path ${path} leads out of the folder through a link`);
+  if (real === realpathSync(dir) || outside(realpathSync(dir), real)) throw appError('APP_VALIDATION_FAILED', `path ${path} leads out of the folder through a link`);
   return real;
+}
+
+// Opens `real` and makes sure the opened thing is what `check()` finds inside the folder after the
+// opening: the agent can swap a folder of the path for a link between a check and an open, and the
+// server would read or delete outside (the way of Mastra's LocalFilesystem.openContainedPath).
+function openChecked(real: string, flags: number, check: () => string | null): number | null {
+  let fd: number;
+  try {
+    fd = openSync(real, flags);
+  } catch (error) {
+    if (noFile(error)) return null;
+    throw error;
+  }
+  try {
+    const opened = fstatSync(fd);
+    const again = check();
+    const current = again ? statSync(again) : null;
+    if (!current || current.dev !== opened.dev || current.ino !== opened.ino) throw appError('APP_VALIDATION_FAILED', `${real} changed while it was opened`);
+    return fd;
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+}
+
+// A regular file of `dir` opened for reading, or null when there is none (a folder, a pipe, nothing).
+// Opened without waiting: a pipe put in place of a file would otherwise hang the server.
+export function openFileInside(dir: string, path: string): { fd: number; size: number } | null {
+  const real = existingInside(dir, path);
+  if (!real) return null;
+  const fd = openChecked(real, constants.O_RDONLY | constants.O_NONBLOCK, () => existingInside(dir, path));
+  if (fd === null) return null;
+  const stat = fstatSync(fd);
+  if (stat.isFile()) return { fd, size: stat.size };
+  closeSync(fd);
+  return null;
+}
+
+// Removes a file of `dir` (a link — the link itself); false when there is no file. The entry is
+// removed in the folder that was opened and checked, not by its path again.
+export function removeFileInside(dir: string, path: string): boolean {
+  const full = resolveInside(dir, path);
+  const parentPath = relative(dir, dirname(full));
+  const parentOf = () => (parentPath === '' ? realpathSync(dir) : existingInside(dir, parentPath));
+  const parent = parentOf();
+  if (!parent) return false;
+  const fd = openChecked(parent, constants.O_RDONLY | constants.O_DIRECTORY, parentOf);
+  if (fd === null) return false;
+  try {
+    // Linux names the opened folder itself by its descriptor; elsewhere (macOS for development)
+    // the checked path stays.
+    const entry = join(process.platform === 'linux' ? `/proc/self/fd/${fd}` : parent, basename(full));
+    const stat = lstatSync(entry, { throwIfNoEntry: false });
+    if (!stat || !(stat.isFile() || stat.isSymbolicLink())) return false;
+    unlinkSync(entry);
+    return true;
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function removeProjectFolder(workspaceRoot: string, userId: string, projectId: string): void {

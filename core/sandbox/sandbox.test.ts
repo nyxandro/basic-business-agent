@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -176,9 +176,11 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
       await runAs('olga');
       expect(lastToolOutput(), cmd).toContain(expected);
     }
-    // Caches and settings of the programs stay in the command's /tmp, not in the employee's files.
-    expect(existsSync(join(dir, '.cache'))).toBe(false);
-    expect(existsSync(join(dir, '.config'))).toBe(false);
+    // Caches and settings of the programs stay in the command's /tmp, not in the employee's files
+    // (LibreOffice leaves an empty .config behind; nothing goes into it).
+    const kept = (sub: string) => (existsSync(join(dir, sub)) ? readdirSync(join(dir, sub), { recursive: true }) : []);
+    expect(kept('.cache')).toEqual([]);
+    expect(kept('.config')).toEqual([]);
   }, 120_000);
 
   it('offers the agent the system skills of documents with their folders, and their scripts run in the isolation', async () => {
@@ -284,6 +286,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     symlinkSync(secret, join(dir, 'leak.png'));
     model.script({ toolCalls: [{ name: 'view_image', args: { path: 'leak.png' } }] }, { text: 'Ок.' });
     await runAs('olga');
+    expect(lastToolOutput()).toContain('ведёт за пределы рабочей папки');
     expect(JSON.stringify(model.requests.at(-1)!.messages)).not.toContain('data:image/png;base64,');
   });
 

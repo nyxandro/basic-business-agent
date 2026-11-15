@@ -73,7 +73,22 @@ check "bubblewrap isolation starts" ok "$(compose exec -T app node -e "import('@
 check "inside the isolation there is no network" blocked "$(compose exec -T app bwrap --unshare-all --die-with-parent --ro-bind / / --dev /dev --proc /proc python3 -c "import socket; socket.create_connection(('1.1.1.1', 53), 2)" >/dev/null 2>&1 && echo open || echo blocked)"
 check "the programs, Python libraries and Node packages of the skills are in the image" ok "$(compose exec -T app node -e "import('/app/core/sandbox/environment.ts').then((m) => { m.assertSandboxEnvironment('/app/.venv-skills'); console.log('ok'); })")"
 check "Node packages of the skills load (sharp with its native part)" ok "$(compose exec -T app sh -c 'NODE_PATH=/app/.venv-skills/node/node_modules node -e "require(\"docx\"); require(\"pptxgenjs\"); require(\"sharp\"); console.log(\"ok\")"')"
-check "LibreOffice turns a Word document into PDF inside the isolation" ok "$(compose exec -T app sh -c 'd=$(mktemp -d /workspace/.smoke-XXXXXX) && /app/.venv-skills/bin/python -c "import docx, sys; x = docx.Document(); x.add_paragraph(\"Проверка\"); x.save(sys.argv[1])" "$d/t.docx" && bwrap --unshare-all --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --bind "$d" "$d" --chdir "$d" soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to pdf t.docx >/dev/null 2>&1; test -s "$d/t.pdf" && echo ok || echo missing; rm -rf "$d"')"
+# The sandbox of the agents exactly (Mastra's bubblewrap with core/sandbox/environment.ts sandboxOptions:
+# only /usr, /lib, a few files of /etc and the folders of the skills are seen), not the whole image.
+check "LibreOffice turns a Word document into PDF in the sandbox of the agents" ok "$(compose exec -T app node --input-type=module -e "
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { LocalSandbox } from '@mastra/core/workspace';
+import { sandboxOptions } from '/app/core/sandbox/environment.ts';
+const dir = mkdtempSync('/workspace/.smoke-');
+try {
+  execFileSync('/app/.venv-skills/bin/python', ['-c', 'import docx, sys; d = docx.Document(); d.add_paragraph(sys.argv[2]); d.save(sys.argv[1])', dir + '/t.docx', 'Проверка']);
+  const result = await new LocalSandbox(sandboxOptions('/app/.venv-skills', dir, [], 'bwrap')).executeCommand('soffice -env:UserInstallation=file:///tmp/lo --headless --convert-to pdf t.docx');
+  console.log(existsSync(dir + '/t.pdf') ? 'ok' : 'missing: ' + result.stderr.slice(-300));
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
+")"
 check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
 echo "== login files of the ChatGPT accounts (volume chatgpt-auth)"

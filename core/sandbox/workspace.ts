@@ -4,7 +4,7 @@
 // gets (and only those, V14) and the Python of the skills are visible read-only.
 import { splitAttachments, type ActionDescription } from '@bba/contracts';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, readFileSync, statSync } from 'node:fs';
 import { extname } from 'node:path';
 import type { Processor } from '@mastra/core/processors';
 import { createTool } from '@mastra/core/tools';
@@ -15,11 +15,10 @@ import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
-import { contextRoot, existingInside } from '../workspace/layout.ts';
-import { nodeModulesDir, SANDBOX_SYSTEM_PATHS, sandboxPath } from './environment.ts';
+import { contextRoot, existingInside, openFileInside } from '../workspace/layout.ts';
+import { sandboxOptions } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
-export const COMMAND_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
 export const VIEW_IMAGE_TOOL = 'view_image';
@@ -90,28 +89,7 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
     filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: skillPathsOf(requestContext) }),
     sandbox: ({ requestContext }) => {
       const dir = dirOf(requestContext);
-      const readOnlyPaths = [...skillPathsOf(requestContext), deps.skillsVenv, ...SANDBOX_SYSTEM_PATHS].filter((p) => existsSync(p));
-      return limitedSandbox(
-        {
-          workingDirectory: dir,
-          isolation,
-          timeout: COMMAND_TIMEOUT_MS,
-          nativeSandbox: { allowNetwork: false, readOnlyPaths },
-          // Nothing from the app's environment (secrets) reaches the scripts. Caches and settings of
-          // the programs (fontconfig, LibreOffice) go to the command's own /tmp, not into the
-          // employee's files.
-          env: {
-            PATH: sandboxPath(deps.skillsVenv),
-            NODE_PATH: nodeModulesDir(deps.skillsVenv),
-            HOME: dir,
-            XDG_CACHE_HOME: '/tmp/.cache',
-            XDG_CONFIG_HOME: '/tmp/.config',
-            LANG: 'C.UTF-8',
-            PYTHONIOENCODING: 'utf-8',
-          },
-        },
-        deps.limiter,
-      );
+      return limitedSandbox(sandboxOptions(deps.skillsVenv, dir, skillPathsOf(requestContext), isolation), deps.limiter);
     },
     // A cached sandbox keeps the folders it was made with, so another set of skills is another sandbox.
     sandboxCacheKey: ({ requestContext }) =>
@@ -171,11 +149,25 @@ function findPicture(dir: string, path: string): { real: string; mediaType: stri
   return { real, mediaType };
 }
 
-// The picture as a part of a model message, or why it cannot be one.
+// The picture as a part of a model message, or why it cannot be one. Read from the file opened and
+// checked once (a link swapped in after the check is not followed).
 function pictureOf(dir: string, path: string): FilePart | string {
   const picture = findPicture(dir, path);
   if (typeof picture === 'string') return picture;
-  return { type: 'file', data: readFileSync(picture.real).toString('base64'), mediaType: picture.mediaType };
+  let file: { fd: number; size: number } | null;
+  try {
+    file = openFileInside(dir, path);
+  } catch (error) {
+    if (!isAppError(error)) throw error;
+    return `Путь ${path} ведёт за пределы рабочей папки`;
+  }
+  if (!file) return `Файла ${path} нет`;
+  try {
+    if (file.size > MAX_IMAGE_BYTES) return 'Картинка больше 5 МБ';
+    return { type: 'file', data: readFileSync(file.fd).toString('base64'), mediaType: picture.mediaType };
+  } finally {
+    closeSync(file.fd);
+  }
 }
 
 function textOf(content: unknown): string {
