@@ -90,8 +90,8 @@ export function AppShell() {
   const [chatProjectId, showChatProject] = useState<string | null>(null);
   // `opened` gives the window a new key each time it opens: it starts afresh, on the scope asked for.
   const [search, setSearch] = useState<{ open: boolean; scope: SearchScope; opened: number }>({ open: false, scope: 'all', opened: 0 });
-  const { state: agentsLoad, reload } = useLoad(fetchAgents);
-  const { state: usageLoad } = useLoad(fetchMyUsage);
+  const { state: agentsLoad, reload } = useLoad(fetchAgents, ['agents']);
+  const { state: usageLoad } = useLoad(fetchMyUsage, ['me', 'usage']);
   // The layout sits above the chat route, so the agent and the project page come from the address itself.
   const agentId = useMatch('/agents/:agentId')?.params.agentId;
   const projectPageId = useMatch('/projects/:projectId')?.params.projectId;

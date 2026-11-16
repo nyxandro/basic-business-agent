@@ -158,7 +158,7 @@ export function SkillsSection() {
     const [skills, departments, users] = await Promise.all([adminApi.skills(), adminApi.departments(), adminApi.people()]);
     return { ...skills, departments: departments.departments, users: users.people };
   }, []);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'skills-page']);
   const [adding, setAdding] = useState(false);
   const [accessOf, setAccessOf] = useState<string | null>(null);
   const head = (

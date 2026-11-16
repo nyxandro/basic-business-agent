@@ -146,7 +146,7 @@ export function UsersSection() {
     const [users, roles, departments, invites, spend] = await Promise.all([adminApi.users(), adminApi.roles(), adminApi.departments(), adminApi.invites(), loadSpend(me)]);
     return { users: users.users, roles: roles.roles, departments: departments.departments, invites: invites.invites, spend };
   }, [me]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'users-page']);
   const [query, setQuery] = useState('');
   const [department, setDepartment] = useState('');
   const [inviting, setInviting] = useState(false);

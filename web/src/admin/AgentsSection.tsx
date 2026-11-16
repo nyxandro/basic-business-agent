@@ -24,7 +24,7 @@ async function load() {
 }
 
 export function AgentsSection() {
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'agents-page']);
   const head = <PageHead title={t.title} lead={t.lead} />;
   if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;

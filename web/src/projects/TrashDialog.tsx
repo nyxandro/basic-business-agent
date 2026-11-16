@@ -18,7 +18,7 @@ import styles from './projects.module.css';
 
 function Trash({ projectId, readOnly, onRestored }: { projectId: string; readOnly: boolean; onRestored: () => void }) {
   const load = useCallback(() => fetchTrash(projectId), [projectId]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['project', projectId, 'trash']);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();

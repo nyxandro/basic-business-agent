@@ -15,7 +15,7 @@ import { fetchMemory, forgetMemory, saveMemory } from './api.ts';
 import styles from './settings.module.css';
 
 export function MemoryPage() {
-  const { state, reload } = useLoad(fetchMemory);
+  const { state, reload } = useLoad(fetchMemory, ['me', 'memory']);
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);

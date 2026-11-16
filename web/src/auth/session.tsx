@@ -1,9 +1,11 @@
 // Who is signed in: GET /app/api/me. 401 means "not signed in"; other failures are shown with a repeat.
 import type { MeResponse } from '@bba/contracts';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { newScreenMemory } from '../ui/screen-memory.ts';
 import { Skeleton } from '../ui/Loading.tsx';
 import { fetchMe, signOut as callSignOut } from './api.ts';
 
@@ -32,32 +34,52 @@ async function loadSession(): Promise<SessionState> {
   }
 }
 
+const personOf = (session: SessionState) => (session.status === 'signed-in' ? session.me.user.id : null);
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionState>({ status: 'loading' });
+  // What screens loaded (spec, section 8.22), for the signed-in person only: emptied before another
+  // person — or nobody — is shown anything.
+  const [memory] = useState(newScreenMemory);
+  const person = useRef<string | null>(null);
+  const apply = useCallback(
+    (next: SessionState) => {
+      if (next.status !== 'error' && personOf(next) !== person.current) {
+        memory.clear();
+        person.current = personOf(next);
+      }
+      setSession(next);
+    },
+    [memory],
+  );
 
   const refresh = useCallback(async () => {
     const next = await loadSession();
-    setSession(next);
+    apply(next);
     return next;
-  }, []);
+  }, [apply]);
 
   const signOut = useCallback(async () => {
     await callSignOut();
-    setSession({ status: 'signed-out' });
-  }, []);
+    apply({ status: 'signed-out' });
+  }, [apply]);
 
   useEffect(() => {
     let current = true;
     void loadSession().then((next) => {
-      if (current) setSession(next);
+      if (current) apply(next);
     });
     return () => {
       current = false;
     };
-  }, []);
+  }, [apply]);
 
   const value = useMemo(() => ({ session, refresh, signOut }), [session, refresh, signOut]);
-  return <SessionContext value={value}>{children}</SessionContext>;
+  return (
+    <SessionContext value={value}>
+      <QueryClientProvider client={memory}>{children}</QueryClientProvider>
+    </SessionContext>
+  );
 }
 
 export function useSession(): SessionValue {

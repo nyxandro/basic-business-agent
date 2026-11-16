@@ -19,7 +19,7 @@ interface Pages {
 
 export function AllThreads({ wide, projectName, onPick }: { wide: boolean; projectName: (id: string | null) => string; onPick: (path: string) => void }) {
   const first = useCallback(() => fetchThreadPage({ limit: THREAD_PAGE }), []);
-  const { state, reload } = useLoad(first);
+  const { state, reload } = useLoad(first, ['threads', 'first-page']);
   const [more, setMore] = useState<Pages | null>(null);
   const [moreError, setMoreError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);

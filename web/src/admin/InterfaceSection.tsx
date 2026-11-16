@@ -52,7 +52,7 @@ function ShowMarks({ initial }: { initial: InterfaceAdminState }) {
 }
 
 export function InterfaceSection() {
-  const { state, reload } = useLoad(adminApi.interfaceSettings);
+  const { state, reload } = useLoad(adminApi.interfaceSettings, ['admin', 'interface']);
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title={t.title} lead={t.lead} />

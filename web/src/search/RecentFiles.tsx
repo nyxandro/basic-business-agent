@@ -9,7 +9,7 @@ import { FilesGroup } from './FileResult.tsx';
 import styles from './search.module.css';
 
 export function RecentFiles({ wide, projectName, onOpen }: { wide: boolean; projectName: (id: string | null) => string; onOpen: (file: SearchFile) => void }) {
-  const { state, reload } = useLoad(fetchRecentFiles);
+  const { state, reload } = useLoad(fetchRecentFiles, ['files', 'recent']);
   if (state.status === 'loading') {
     return (
       <p className={styles.hint} role="status">

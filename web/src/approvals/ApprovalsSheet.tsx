@@ -13,7 +13,7 @@ import styles from './approvals.module.css';
 
 function SheetBody({ onClose }: { onClose: () => void }) {
   const load = useCallback(() => fetchApprovals(), []);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['approvals']);
   return (
     <div>
       <div className={styles.sheetHead}>

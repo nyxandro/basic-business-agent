@@ -85,7 +85,7 @@ function Stats({ month, defaultLimit }: { month: Month; defaultLimit: number | n
 export function LimitsPage() {
   const me = useMe();
   const load = useCallback(() => loadPage(me), [me]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'limits-page']);
   const now = new Date();
   const monthTitle = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);

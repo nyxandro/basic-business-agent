@@ -70,7 +70,7 @@ export function JournalSection() {
   const [to, setTo] = useState(today());
   const [page, setPage] = useState(1);
   const load = useCallback(() => adminApi.journal({ from, to, page }), [from, to, page]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'journal', from, to, page]);
   return (
     <div className={section.stack}>
       <PageHead title="Журнал действий" lead="Что агенты сделали во внешних системах и кто подтвердил. Записи не удаляются." />

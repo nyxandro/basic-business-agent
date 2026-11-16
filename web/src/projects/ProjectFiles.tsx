@@ -23,9 +23,9 @@ const TOO_LARGE = 'APP_UPLOAD_TOO_LARGE';
 
 export function ProjectFiles({ projectId, readOnly, shared }: { projectId: string; readOnly: boolean; shared: boolean }) {
   const load = useCallback(() => fetchProjectFiles(projectId), [projectId]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['project', projectId, 'files']);
   const loadTrash = useCallback(() => fetchTrash(projectId), [projectId]);
-  const { state: trash, reload: reloadTrash } = useLoad(loadTrash);
+  const { state: trash, reload: reloadTrash } = useLoad(loadTrash, ['project', projectId, 'trash']);
   const [trashOpen, setTrashOpen] = useState(false);
   const toast = useToast();
   const inTrash = trash.status === 'ready' ? trash.data.batches.reduce((n, b) => n + b.items.length, 0) : 0;

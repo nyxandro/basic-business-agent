@@ -213,7 +213,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
 }
 
 export function ModelsSection() {
-  const { state, reload } = useLoad(adminApi.models);
+  const { state, reload } = useLoad(adminApi.models, ['admin', 'models']);
   const lead = 'Модели, их ключи и цены, правила обращения к ним. Все запросы идут через шлюз LiteLLM: учёт и лимиты в рублях.';
   if (state.status === 'loading') return <div className={section.stack}><PageHead title="Нейросеть" lead={lead} /><Skeleton rows={5} /></div>;
   if (state.status === 'error') return <div className={section.stack}><PageHead title="Нейросеть" lead={lead} /><ErrorBanner error={state.error} onRetry={reload} /></div>;

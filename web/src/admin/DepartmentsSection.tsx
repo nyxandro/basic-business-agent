@@ -126,7 +126,7 @@ export function DepartmentsSection() {
     const [deps, users, agents] = await Promise.all([adminApi.departments(), adminApi.users(), adminApi.agents()]);
     return { departments: deps.departments, users: users.users, agents: agents.agents };
   }, []);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'departments-page']);
   const [editing, setEditing] = useState<AdminDepartment | null>(null);
   const [creating, setCreating] = useState(false);
 

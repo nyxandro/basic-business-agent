@@ -112,7 +112,7 @@ function Colleagues({ picked, onPick }: { picked: PickedPerson[]; onPick: (perso
 
 export function AccessPicker({ value, onChange, closing }: { value: AccessDraft; onChange: (next: AccessDraft) => void; closing: boolean }) {
   const me = useMe();
-  const { state, reload } = useLoad(fetchDepartments);
+  const { state, reload } = useLoad(fetchDepartments, ['directory', 'departments']);
   const toggle = (id: string, on: boolean) => onChange({ ...value, departmentIds: on ? [...value.departmentIds, id] : value.departmentIds.filter((x) => x !== id) });
   return (
     <fieldset className={styles.access}>

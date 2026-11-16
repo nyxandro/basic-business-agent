@@ -61,7 +61,7 @@ function SystemCard({ c, total }: { c: AdminConnection; total: number }) {
 }
 
 export function ConnectionsSection() {
-  const { state: load, reload } = useLoad(adminApi.connections);
+  const { state: load, reload } = useLoad(adminApi.connections, ['admin', 'connections']);
   return (
     <div className={section.stack}>
       <PageHead title="Подключения" lead="Каждый сотрудник подключает системы сам, и агент работает там с его правами." />

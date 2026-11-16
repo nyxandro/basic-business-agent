@@ -59,7 +59,7 @@ function ProfileForm({ initial }: { initial: Profile }) {
 }
 
 export function OrgProfileSection() {
-  const { state, reload } = useLoad(adminApi.orgProfile);
+  const { state, reload } = useLoad(adminApi.orgProfile, ['admin', 'org-profile']);
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title="Профиль организации" lead="Подставляется в промпт всех агентов." />

@@ -97,7 +97,7 @@ export function ModesSection() {
     const [tasks, agents, departments, users] = await Promise.all([adminApi.tasks(), adminApi.agents(), adminApi.departments(), adminApi.people()]);
     return { tasks: tasks.tasks, agents: agents.agents, departments: departments.departments, users: users.people };
   }, []);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'tasks-page']);
   const wide = useMedia(WIDE_QUERY);
   const [editing, setEditing] = useState<AdminTask | 'new' | null>(null);
   const [runsOf, setRunsOf] = useState<AdminTask | null>(null);

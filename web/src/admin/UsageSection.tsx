@@ -20,7 +20,7 @@ export function UsageSection() {
   const [to, setTo] = useState(today());
   const [groupBy, setGroupBy] = useState<UsageGroup>('user');
   const load = useCallback(() => adminApi.usage(from, to, groupBy), [from, to, groupBy]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['admin', 'usage', from, to, groupBy]);
   return (
     <Card className={`${styles.card} rise`}>
       <div className={styles.cardHead}>

@@ -10,7 +10,7 @@ import { fetchApprovals } from './api.ts';
 import { ApprovalLists } from './ApprovalCards.tsx';
 
 export function ApprovalsPage() {
-  const { state, reload } = useLoad(fetchApprovals);
+  const { state, reload } = useLoad(fetchApprovals, ['approvals']);
   const { wide } = useShell();
   return (
     <PageFrame title={ru.approvals.title} lead={ru.approvals.lead}>

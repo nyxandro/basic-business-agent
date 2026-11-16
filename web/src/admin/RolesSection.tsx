@@ -117,7 +117,7 @@ function Mark({ role, right, busy, onToggle }: { role: AdminRole; right: Permiss
 }
 
 export function RolesSection() {
-  const { state, reload } = useLoad(adminApi.roles);
+  const { state, reload } = useLoad(adminApi.roles, ['admin', 'roles']);
   const [roles, setRoles] = useState<AdminRole[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<AdminRole | null>(null);

@@ -154,7 +154,7 @@ function NewThread({ projectId, agents }: { projectId: string; agents: AgentSumm
 function Threads({ project, agents }: { project: ProjectDto; agents: AgentSummary[] }) {
   const canStart = agents.length > 0 && !project.archivedAt;
   const load = useCallback(() => fetchProjectThreads(project.id), [project.id]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['project', project.id, 'threads']);
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   return (
     <Card className={styles.section}>
@@ -241,7 +241,7 @@ export function ProjectPage() {
   const { projectId } = useParams();
   if (!projectId) throw new Error('ProjectPage needs the :projectId route parameter');
   const load = useCallback(() => fetchProject(projectId), [projectId]);
-  const { state, reload } = useLoad(load);
+  const { state, reload } = useLoad(load, ['project', projectId]);
   // What the page just saved, over the project it was loaded as: the project loaded again has it.
   const [saved, setSaved] = useState<{ over: ProjectDto; project: ProjectDto } | null>(null);
   const [actionError, setActionError] = useState<ApiRequestError | null>(null);

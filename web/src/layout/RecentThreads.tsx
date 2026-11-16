@@ -37,7 +37,7 @@ export function RecentThreads({
   onDeleted: () => void;
 }) {
   const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN }), []);
-  const { state, reload } = useLoad(first);
+  const { state, reload } = useLoad(first, ['threads', 'recent']);
   const navigate = useNavigate();
   const [seenKey, setSeenKey] = useState(refreshKey);
   if (seenKey !== refreshKey) {

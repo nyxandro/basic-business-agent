@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { mockServer } from '../test/fetch-mock.ts';
+import { WithMemory } from '../test/memory.tsx';
 import { ConfirmProvider } from '../ui/Confirm.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
 import { RecentThreads } from './RecentThreads.tsx';
@@ -16,11 +17,13 @@ const page = (title: string) => ({
 
 const list = (refreshKey: number, onShowAll = () => undefined) => (
   <MemoryRouter>
-    <ToastProvider>
-      <ConfirmProvider>
-        <RecentThreads refreshKey={refreshKey} names={{}} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onRenamed={() => undefined} onDeleted={() => undefined} />
-      </ConfirmProvider>
-    </ToastProvider>
+    <WithMemory>
+      <ToastProvider>
+        <ConfirmProvider>
+          <RecentThreads refreshKey={refreshKey} names={{}} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onRenamed={() => undefined} onDeleted={() => undefined} />
+        </ConfirmProvider>
+      </ToastProvider>
+    </WithMemory>
   </MemoryRouter>
 );
 

@@ -22,7 +22,7 @@ import { projectPath } from './ProjectRow.tsx';
 import styles from './projects.module.css';
 
 export function ArchivePage() {
-  const { state, reload } = useLoad(fetchArchive);
+  const { state, reload } = useLoad(fetchArchive, ['projects', 'archive']);
   const { wide, openMenu, refreshProjects, projectsKey } = useShell();
   const [seenKey, setSeenKey] = useState(projectsKey);
   if (seenKey !== projectsKey) {

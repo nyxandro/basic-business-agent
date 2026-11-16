@@ -121,7 +121,7 @@ function ReturnNotice({ list }: { list: MyConnection[] }) {
 }
 
 export function ConnectionsPage() {
-  const { state, reload } = useLoad(fetchConnections);
+  const { state, reload } = useLoad(fetchConnections, ['me', 'connections']);
   return (
     <PageFrame title={ru.settings.connections} lead={ru.connections.lead}>
       {state.status === 'loading' ? <Skeleton rows={2} /> : null}

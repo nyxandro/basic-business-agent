@@ -16,7 +16,7 @@ const WARN_SHARE = 0.8;
 const toneOf = (share: number) => (share >= 1 ? 'bad' : share >= WARN_SHARE ? 'warn' : 'accent');
 
 export function UsagePage() {
-  const { state, reload } = useLoad(fetchMyUsage);
+  const { state, reload } = useLoad(fetchMyUsage, ['me', 'usage']);
   return (
     <PageFrame title={ru.settings.usage} lead={ru.usage.lead}>
       {state.status === 'loading' ? <Skeleton rows={2} /> : null}
