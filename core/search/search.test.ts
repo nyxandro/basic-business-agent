@@ -56,6 +56,15 @@ describe('search', () => {
     expect(found!.snippet).toBe('Вот что я реально умею. Из инструментов: Заметки — вести персональные заметки Что Где Счета bills/');
   });
 
+  it('shows the person’s first message when the word is only in the title', async () => {
+    const id = await conversation(olgaId, 'Цемент марки М500', [
+      ['user', [text('Сколько мешков брать на фундамент?')]],
+      ['assistant', [text('Около сорока.')]],
+    ]);
+    const found = (await search('цемент')).threads.find((x) => x.id === id);
+    expect(found?.snippet).toBe('Сколько мешков брать на фундамент?');
+  });
+
   it('reads only the text of the person and the agent: not tool results, not the service words of the stored format', async () => {
     await conversation(olgaId, 'Сделки', [
       ['user', [text('Покажи сделки')]],

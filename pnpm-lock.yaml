@@ -20,6 +20,9 @@ importers:
       '@bba/contracts':
         specifier: workspace:*
         version: link:contracts
+      '@copilotkit/markdown':
+        specifier: 2.0.0-rc.49
+        version: 2.0.0-rc.49(react@19.3.1)
       '@copilotkit/runtime':
         specifier: 2.0.0-rc.49
         version: 2.0.0-rc.49(@types/express@5.0.6)(express@5.3.0)(react@19.3.1)
@@ -53,15 +56,6 @@ importers:
       hono:
         specifier: 4.13.18
         version: 4.13.18
-      mdast-util-from-markdown:
-        specifier: 2.1.0
-        version: 2.1.0
-      mdast-util-gfm:
-        specifier: 3.1.0
-        version: 3.1.0
-      micromark-extension-gfm:
-        specifier: 3.0.0
-        version: 3.0.0
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -81,9 +75,6 @@ importers:
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
-      '@types/mdast':
-        specifier: 4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2

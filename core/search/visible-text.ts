@@ -1,43 +1,41 @@
-// The text a person sees of an agent's answer: the chat draws answers as Markdown with GFM (tables,
-// strikethrough, task lists, footnotes), so a piece of the stored text showed stars, hashes and
-// pipes in «Поиск». Blocks — paragraphs, headings, list items, table cells — are split by a space.
-import type { Nodes } from 'mdast';
-import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { gfm } from 'micromark-extension-gfm';
+// The text a person sees of an agent's answer in the chat. The chat draws answers with CopilotKit's
+// own parser (@copilotkit/markdown under StreamingMarkdownDefaultRenderer of @copilotkit/react-core,
+// default options); this builds the same render tree and keeps its text, so «Поиск» shows the words
+// of the chat: no stars, hashes or pipes, footnotes as numbers, raw HTML and entities as typed. The
+// package is pinned to the version react-core depends on (visible-text.test.ts checks).
+import { buildStreamingMarkdownRenderTree, createStreamingMarkdownParserState, finalizeStreamingMarkdown, parseStreamingMarkdownChunk, type StreamingMarkdownRenderChild } from '@copilotkit/markdown';
 
-const PARSE = { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] };
+// Elements the chat draws on a line of their own: a space between them.
+const BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'pre', 'table', 'tbody', 'tr', 'td', 'th', 'hr', 'br']);
+// Characters the renderer puts in that take no room on the screen (a word joiner after a footnote).
+const ZERO_WIDTH = /[\u200B-\u200D\u2060\uFEFF]/g;
 
-// Nodes inside a line of text; any other node is a block and ends with a space.
-const INLINE = new Set<Nodes['type']>(['text', 'emphasis', 'strong', 'delete', 'inlineCode', 'link', 'linkReference', 'break', 'html', 'image', 'imageReference', 'footnoteReference']);
-
-function collect(node: Nodes, out: string[]): void {
-  switch (node.type) {
+// A node draws its `output`, where each slot stands for its `children`.
+function collect(child: StreamingMarkdownRenderChild, slot: StreamingMarkdownRenderChild[] | null, out: string[]): void {
+  switch (child.kind) {
     case 'text':
-    case 'inlineCode':
-    case 'code':
-      out.push(node.value);
-      break;
-    case 'image':
-    case 'imageReference':
-      out.push(node.alt ?? '');
-      break;
-    case 'break':
-      out.push(' ');
-      break;
-    // Not shown as text: raw HTML tags, link definitions, footnote numbers.
-    case 'html':
-    case 'definition':
-    case 'footnoteReference':
-      break;
-    default:
-      if ('children' in node) for (const child of node.children) collect(child, out);
+      out.push(child.text);
+      return;
+    case 'slot':
+      for (const inner of slot ?? []) collect(inner, null, out);
+      return;
+    case 'element':
+      for (const inner of child.children) collect(inner, slot, out);
+      if (BLOCKS.has(child.tag)) out.push(' ');
+      return;
+    case 'node':
+      for (const inner of child.output) collect(inner, child.children, out);
+      return;
+    case 'caret':
+      return;
   }
-  if (!INLINE.has(node.type)) out.push(' ');
 }
 
 export function visibleText(markdown: string): string {
+  // Segmenting splits words for the typing animation only: the text is the same without it.
+  const state = finalizeStreamingMarkdown(parseStreamingMarkdownChunk(createStreamingMarkdownParserState({ segmenter: false }), markdown));
+  const { root } = buildStreamingMarkdownRenderTree(state, { caret: false });
   const out: string[] = [];
-  collect(fromMarkdown(markdown, PARSE), out);
-  return out.join('').replace(/\s+/g, ' ').trim();
+  if (root) collect(root, null, out);
+  return out.join('').replace(ZERO_WIDTH, '').replace(/\s+/g, ' ').trim();
 }

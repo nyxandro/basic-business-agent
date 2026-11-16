@@ -25,8 +25,10 @@ interface Row {
   title: string | null;
   agent_id: string;
   updated: Date;
-  // Text parts in order, with who wrote them: the piece of text shows an answer without Markdown.
+  // Text parts holding a word, in order, with who wrote them: an answer is shown as the chat draws it.
   messages: MessageText[];
+  // The person's first message: the piece of text when the words are only in the title or in markup.
+  opening: string | null;
   project_id: string | null;
 }
 
@@ -42,38 +44,57 @@ async function searchThreads(db: Db, userId: string, terms: string[]): Promise<S
     rough.push(`(t.title ILIKE $${n} ESCAPE '\\' OR EXISTS (SELECT 1 FROM mastra.mastra_messages r WHERE r.thread_id = t.id AND r.content ILIKE $${n} ESCAPE '\\'))`);
     return `(own.title ILIKE $${n} ESCAPE '\\' OR COALESCE(msg.body, '') ILIKE $${n} ESCAPE '\\')`;
   });
+  params.push(terms.map(likeOf));
+  const patterns = params.length;
   // Candidates go newest first through the exact pass one by one (LATERAL), and the query stops at
-  // the 50th match: a common word does not make it read every conversation of the person.
+  // the 50th match: a common word does not make it read every conversation of the person. Only the
+  // found ones give their text for the piece — the parts holding a word, not the whole conversation.
   const { rows } = await db.query<Row>(
-    `SELECT own.id, own.title, own.agent_id, own.updated, COALESCE(msg.messages, '[]'::jsonb) AS messages, own.project_id
+    `SELECT found.id, found.title, found.agent_id, found.updated, found.project_id,
+            COALESCE(parts.matching, '[]'::jsonb) AS messages, parts.opening
        FROM (
-         SELECT t.id, t.title, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
-           FROM mastra.mastra_threads t
-           LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
-          WHERE t."resourceId" = $1
-            AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
-            AND ${rough.join(' AND ')}
-          ORDER BY t."updatedAtZ" DESC, t.id DESC
-       ) AS own
+         SELECT own.id, own.title, own.agent_id, own.updated, own.project_id
+           FROM (
+             SELECT t.id, t.title, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
+               FROM mastra.mastra_threads t
+               LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
+              WHERE t."resourceId" = $1
+                AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
+                AND ${rough.join(' AND ')}
+              ORDER BY t."updatedAtZ" DESC, t.id DESC
+           ) AS own
+           CROSS JOIN LATERAL (
+             SELECT string_agg(part->>'text', E'\\n' ORDER BY m."createdAtZ") AS body
+               FROM mastra.mastra_messages m
+               CROSS JOIN LATERAL jsonb_array_elements(
+                 CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
+               ) AS part
+              WHERE m.thread_id = own.id AND m.role IN ('user', 'assistant') AND part->>'type' = 'text'
+           ) AS msg
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY own.updated DESC, own.id DESC
+          LIMIT ${MAX_RESULTS}
+       ) AS found
        CROSS JOIN LATERAL (
-         SELECT string_agg(part->>'text', E'\\n' ORDER BY m."createdAtZ") AS body,
-                jsonb_agg(jsonb_build_object('role', m.role, 'text', part->>'text') ORDER BY m."createdAtZ") AS messages
-           FROM mastra.mastra_messages m
-           CROSS JOIN LATERAL jsonb_array_elements(
-             CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
-           ) AS part
-          WHERE m.thread_id = own.id AND m.role IN ('user', 'assistant') AND part->>'type' = 'text'
-       ) AS msg
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY own.updated DESC, own.id DESC
-      LIMIT ${MAX_RESULTS}`,
+         SELECT jsonb_agg(jsonb_build_object('role', t.role, 'text', t.text) ORDER BY t.at, t.n) FILTER (WHERE t.text ILIKE ANY ($${patterns}::text[])) AS matching,
+                (array_agg(t.text ORDER BY t.at, t.n) FILTER (WHERE t.role = 'user' AND btrim(t.text) <> ''))[1] AS opening
+           FROM (
+             SELECT m.role, m."createdAtZ" AS at, p.n, p.part->>'text' AS text
+               FROM mastra.mastra_messages m
+               CROSS JOIN LATERAL jsonb_array_elements(
+                 CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
+               ) WITH ORDINALITY AS p(part, n)
+              WHERE m.thread_id = found.id AND m.role IN ('user', 'assistant') AND p.part->>'type' = 'text' AND p.part->>'text' IS NOT NULL
+           ) AS t
+       ) AS parts
+      ORDER BY found.updated DESC, found.id DESC`,
     params,
   );
   return rows.map((r) => ({
     id: r.id,
     agentId: r.agent_id,
     title: r.title ?? 'Без названия',
-    snippet: snippetOf(r.messages, r.title ?? '', terms),
+    snippet: snippetOf(r.messages, r.opening, r.title ?? '', terms),
     projectId: r.project_id,
     updatedAt: r.updated.toISOString(),
   }));
