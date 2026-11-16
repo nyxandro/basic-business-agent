@@ -115,7 +115,7 @@ export const ru = {
     projectsEmpty: 'Проектов пока нет',
     more: 'Показать ещё',
     projectsFailed: 'Список проектов не загрузился',
-    threadCount: (n: number) => `${n} ${plural(n, ['разговор', 'разговора', 'разговоров'])}`,
+    threadCount: (n: number) => (n === 0 ? 'Пусто' : `${n} ${plural(n, ['разговор', 'разговора', 'разговоров'])}`),
   },
   projects: {
     title: 'Проекты',

@@ -9,6 +9,7 @@ const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделк�
 const PROJECTS = [
   { id: 'p1', name: 'Тендер Северный', instructions: '', threadCount: 2, createdAt: '2026-11-10T08:00:00Z' },
   { id: 'p2', name: 'Ключевые клиенты', instructions: '', threadCount: 1, createdAt: '2026-11-11T08:00:00Z', role: 'member', owner: { id: 'u9', name: 'Игорь Петров' }, shared: true },
+  { id: 'p3', name: 'Архив договоров', instructions: '', threadCount: 0, createdAt: '2026-11-12T08:00:00Z' },
 ];
 const FOUND = {
   projects: [{ id: 'p1', name: 'Тендер Северный', threadCount: 2 }],
@@ -140,8 +141,9 @@ describe('search over conversations and projects', () => {
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
     await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
-    const rows = await within(dialog).findAllByRole('button', { name: /\d+ разговор/ });
-    expect(rows.map((row) => row.textContent)).toEqual(['Тендер Северный2 разговора', 'Ключевые клиенты1 разговор · Открыл(а): Игорь Петров']);
+    const rows = await within(dialog).findAllByRole('button', { name: /\d+ разговор|Пусто/ });
+    // A project without the person's conversations says so in a word, not «0 разговоров».
+    expect(rows.map((row) => row.textContent)).toEqual(['Тендер Северный2 разговора', 'Ключевые клиенты1 разговор · Открыл(а): Игорь Петров', 'Архив договоровПусто']);
     expect(within(dialog).queryByText(/^Тема \d+$/)).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/Начните вводить/)).not.toBeInTheDocument();
 
