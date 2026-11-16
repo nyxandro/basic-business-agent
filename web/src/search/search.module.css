@@ -201,6 +201,14 @@
   white-space: nowrap;
 }
 
+/* What the search found in a name or the words (spec, section 8.21): a highlighter, as Ctrl+F in a browser. */
+.mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  color: var(--text);
+}
+
 .snippet {
   max-width: 100%;
   font-size: 13px;

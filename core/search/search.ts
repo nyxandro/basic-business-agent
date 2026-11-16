@@ -8,6 +8,7 @@ import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
 import { searchFiles } from './files.ts';
+import { marksOf } from './marks.ts';
 import { snippetOf, type MessageText } from './snippet.ts';
 import { queryVariants, type WordVariants } from './variants.ts';
 
@@ -131,20 +132,24 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
   });
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
   const seenIds = new Set(seen.map((p) => p.id));
-  const projects = [...projectHits].sort((a, b) => Number(b.direct) - Number(a.direct)).map((hit) => seen[hit.index]!);
+  const projects = [...projectHits].sort((a, b) => Number(b.direct) - Number(a.direct)).map((hit) => ({ p: seen[hit.index]!, direct: hit.direct }));
   return {
-    threads: threads.map(({ row }) => {
+    threads: threads.map(({ row, direct }) => {
       const piece = parts.get(row.id);
+      const snippet = snippetOf(piece?.messages ?? [], piece?.opening ?? null, row.title ?? '', corrected);
       return {
         id: row.id,
         agentId: row.agent_id,
         title: row.title ?? 'Без названия',
-        snippet: snippetOf(piece?.messages ?? [], piece?.opening ?? null, row.title ?? '', corrected),
+        // The search compared the title as a name and the words as messages; a stand-in title, nothing.
+        titleMarks: row.title === null ? [] : marksOf(row.title, words, direct ? 'direct' : 'name-typo'),
+        snippet,
+        snippetMarks: marksOf(snippet, corrected, direct ? 'direct' : 'message-typo'),
         projectId: row.project_id && seenIds.has(row.project_id) ? row.project_id : null,
         updatedAt: row.updated.toISOString(),
       };
     }),
-    projects: projects.map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
+    projects: projects.map(({ p, direct }) => ({ id: p.id, name: p.name, nameMarks: marksOf(p.name, words, direct ? 'direct' : 'name-typo'), threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
     files,
   };
 }

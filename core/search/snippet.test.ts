@@ -69,6 +69,16 @@ describe('the piece of text of a found conversation', () => {
     expect(snippetOf([], null, 'Пустой', w('пустой'))).toBe('');
   });
 
+  it('starts close before the word and cuts at the edges of words, not inside them', () => {
+    const text = `${'Длинное вступление без нужного слова. '.repeat(5)}Здесь арматура А500С лежит на складе. ${'Длинный хвост ответа агента. '.repeat(10)}`;
+    const piece = snippetOf([user(text)], null, 'Смета', w('арматура'));
+    expect(piece.indexOf('арматура')).toBeLessThanOrEqual(21);
+    expect(piece).toMatch(/^…(\S+ )+арматура/);
+    // The words at both cuts are whole.
+    const inner = piece.slice(1, -1);
+    expect(text).toContain(` ${inner} `);
+  });
+
   it('never cuts an emoji in half at the ends of the piece', () => {
     // Both ends of ±60 around the word fall between the two halves of an emoji.
     const text = `x${'😀'.repeat(100)} договор y${'😀'.repeat(100)}`;

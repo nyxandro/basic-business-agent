@@ -140,10 +140,15 @@ export type SearchScope = (typeof SEARCH_SCOPES)[number];
 // and the working files of the agent.
 export const DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.csv', '.txt'] as const;
 
+// What of a text the search found (spec, section 8.21): [start, end) in UTF-16 units of that very text, in
+// order and apart; the window marks them. Empty where nothing is marked (the lists before a query).
+export type TextMarks = [number, number][];
+
 export interface SearchFile {
   // From the files folder of the project, or of the person's conversations outside projects (projectId null).
   path: string;
   name: string;
+  nameMarks: TextMarks;
   projectId: string | null;
   modifiedAt: string;
   bytes: number;
@@ -158,8 +163,8 @@ export interface SearchFiles {
 }
 
 export interface SearchResponse {
-  projects: { id: string; name: string; threadCount: number; shared: boolean; ownerName: string | null }[];
-  threads: { id: string; agentId: string; title: string; snippet: string; projectId: string | null; updatedAt: string }[];
+  projects: { id: string; name: string; nameMarks: TextMarks; threadCount: number; shared: boolean; ownerName: string | null }[];
+  threads: { id: string; agentId: string; title: string; titleMarks: TextMarks; snippet: string; snippetMarks: TextMarks; projectId: string | null; updatedAt: string }[];
   files: SearchFiles;
 }
 

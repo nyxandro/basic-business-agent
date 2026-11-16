@@ -3,6 +3,7 @@ import type { SearchResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
+import { SNIPPET_RADIUS } from './snippet.ts';
 
 let t: TestApp;
 let olgaId: string;
@@ -53,7 +54,8 @@ describe('search', () => {
       ['assistant', [text('Вот что я реально умею. **Из инструментов:**\n1. **Заметки** — вести персональные заметки\n\n| Что | Где |\n|---|---|\n| Счета | `bills/` |')]],
     ]);
     const [found] = (await search('заметки')).threads;
-    expect(found!.snippet).toBe('Вот что я реально умею. Из инструментов: Заметки — вести персональные заметки Что Где Счета bills/');
+    // From 20 characters before the word, at the start of a word.
+    expect(found!.snippet).toBe('…Из инструментов: Заметки — вести персональные заметки Что Где Счета bills/');
   });
 
   it('shows the person’s first message when the word is only in the title', async () => {
@@ -90,7 +92,9 @@ describe('search', () => {
     await conversation(olgaId, 'Тендер другой', [['user', [text('Ещё тендер')]]]);
 
     const all = await search('тендер');
-    expect(all.projects).toEqual([{ id: project.id, name: 'Тендер ЖК Северный', threadCount: 1, shared: false, ownerName: null }]);
+    expect(all.projects).toEqual([{ id: project.id, name: 'Тендер ЖК Северный', nameMarks: [[0, 6]], threadCount: 1, shared: false, ownerName: null }]);
+    // Found with a typo: the word of the name within the allowed edits is marked.
+    expect((await search('тедер', '&scope=projects')).projects.map((p) => p.nameMarks)).toEqual([[[0, 6]]]);
     expect(all.threads).toHaveLength(2);
     expect((await search('тендер', '&scope=projects')).threads).toEqual([]);
     expect((await search('тендер', '&scope=threads')).projects).toEqual([]);
@@ -112,6 +116,31 @@ describe('search', () => {
     const found = (await search('договоры')).threads;
     expect(found.find((x) => x.id === inText)?.snippet).toBe('Пришлю по договору завтра');
     expect(found.find((x) => x.id === typo)?.snippet).toBe('Нужен догвор аренды');
+  });
+
+  it('says what of the title and the piece of text it found: the form, the Latin, the typo only where found by it', async () => {
+    const titled = await conversation(olgaId, 'Договор поставки', [['user', [text('Проверь условия')]]]);
+    const inText = await conversation(olgaId, 'Разное', [['user', [text('Пришлю по договору завтра')]]]);
+    const typo = await conversation(olgaId, 'Склад', [['user', [text('Нужен догвор аренды')]]]);
+    const marked = (t: string, marks: [number, number][]) => marks.map(([from, to]) => t.slice(from, to));
+    const found = (await search('договоры')).threads;
+    const of = (id: string) => found.find((x) => x.id === id)!;
+    expect(marked(of(titled).title, of(titled).titleMarks)).toEqual(['Договор']);
+    expect(marked(of(inText).snippet, of(inText).snippetMarks)).toEqual(['договор']);
+    expect(of(inText).titleMarks).toEqual([]);
+    expect(marked(of(typo).snippet, of(typo).snippetMarks)).toEqual(['догвор']);
+    const latin = (await search('dogovor')).threads.find((x) => x.id === titled)!;
+    expect(marked(latin.title, latin.titleMarks)).toEqual(['Договор']);
+  });
+
+  it('starts the piece of text close before the word, so a one-line row shows it', async () => {
+    const id = await conversation(olgaId, 'Длинный ответ', [['user', [text(`${'Вступление без нужного слова. '.repeat(6)}Здесь арматура А500С на складе. ${'Хвост. '.repeat(30)}`)]]]);
+    const found = (await search('арматура')).threads.find((x) => x.id === id)!;
+    const from = found.snippetMarks[0]![0];
+    expect(found.snippet.slice(from, from + 8)).toBe('арматура');
+    // Up to 20 characters before it and the «…».
+    expect(from).toBeLessThanOrEqual(21);
+    expect(found.snippet.length).toBeLessThanOrEqual(2 * SNIPPET_RADIUS + 2);
   });
 
   it('keeps finding a piece of a word, and finds project names by the same rules', async () => {

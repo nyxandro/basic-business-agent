@@ -188,6 +188,23 @@ describe('search over conversations and projects', () => {
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
   });
 
+  it('marks what of the names and the piece of text the search found', async () => {
+    const thread = { ...FOUND.threads[0]!, titleMarks: [[0, 7]], snippetMarks: [[1, 8], [90, 120]] };
+    const project = { id: 'p1', name: 'Тендер Северный', nameMarks: [[0, 6]], threadCount: 2, shared: false, ownerName: null };
+    server({ body: { files: { files: [{ ...KP, nameMarks: [[0, 2], [3, 8]] }], unreadable: [], more: false }, projects: [project], threads: [thread] } });
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.type(within(dialog).getByRole('textbox'), 'договор');
+    const row = await within(dialog).findByRole('button', { name: /Договор поставки/ });
+    const marks = (el: HTMLElement) => [...el.querySelectorAll('mark')].map((m) => m.textContent);
+    // A mark past the end of the text is left out, the rest is drawn.
+    expect(marks(row)).toEqual(['Договор', 'договор']);
+    expect(row.textContent).toContain('Договор поставки');
+    expect(row.textContent).toContain('…договор со Стройресурс на поставку…');
+    expect(marks(within(dialog).getByRole('button', { name: /Тендер Северный.*2 разговора/ }))).toEqual(['Тендер']);
+    expect(marks(within(dialog).getByRole('button', { name: /KP_Yelka_v2\.pdf/ }))).toEqual(['KP', 'Yelka']);
+  });
+
   it('keeps the newest answer when an older one comes later', async () => {
     let releaseOld: () => void = () => undefined;
     const s = server((call) =>

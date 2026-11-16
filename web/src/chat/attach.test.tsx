@@ -218,9 +218,12 @@ describe('dragging files onto the chat window (spec, section 8.9)', () => {
 
   it('does not let a file dropped beside the window open in the browser', async () => {
     await showChat();
-    const besideFiles = createEvent.drop(document.body, dragged([file('Счёт.pdf')]));
-    fireEvent(document.body, besideFiles);
-    expect(besideFiles.defaultPrevented).toBe(true);
+    // The guard is put on the window after the chat is drawn.
+    await waitFor(() => {
+      const besideFiles = createEvent.drop(document.body, dragged([file('Счёт.pdf')]));
+      fireEvent(document.body, besideFiles);
+      expect(besideFiles.defaultPrevented).toBe(true);
+    });
     // A dragged text keeps its usual way.
     const besideText = createEvent.drop(document.body, dragged([], ['text/plain']));
     fireEvent(document.body, besideText);

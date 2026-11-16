@@ -53,6 +53,10 @@ describe('files the person finds by name (spec, section 8.21)', () => {
   it('finds documents by Russian, Latin, the other layout and a typo, with their project or none', async () => {
     const [kp] = (await find(olgaId, 'кп ёлка')).files;
     expect(kp).toMatchObject({ name: 'KP_Yelka_v2.pdf', path: 'KP_Yelka_v2.pdf', projectId: tender, bytes: 1 });
+    // What of the name it was found by, for the window to mark.
+    expect(kp!.nameMarks.map(([from, to]) => kp!.name.slice(from, to))).toEqual(['KP', 'Yelka']);
+    const typo = (await find(olgaId, 'дговор')).files[0]!;
+    expect(typo.nameMarks.map(([from, to]) => typo.name.slice(from, to))).toEqual(['Договор']);
     expect(await names(olgaId, 'dogovor')).toEqual(['Договор поставки.docx']);
     expect((await find(olgaId, 'dogovor')).files[0]!.projectId).toBeNull();
     expect((await find(olgaId, ',.l;tn')).files.map((f) => f.path)).toEqual(['расчёты/Бюджет 2026.xlsx']);

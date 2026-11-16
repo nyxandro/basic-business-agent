@@ -12,6 +12,7 @@ import { logEvent } from '../server/log.ts';
 import { setImmediate as pause } from 'node:timers/promises';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
 import { filesRoot } from '../workspace/layout.ts';
+import { marksOf } from './marks.ts';
 import { matchNames } from './match-sql.ts';
 import type { WordVariants } from './variants.ts';
 
@@ -45,7 +46,7 @@ async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[
           capped = true;
           return false;
         }
-        found.push({ path: file.rel, name: basename(file.rel), projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.size, modifiedMs: file.modifiedMs });
+        found.push({ path: file.rel, name: basename(file.rel), nameMarks: [], projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.size, modifiedMs: file.modifiedMs });
         return true;
       });
     } catch (error) {
@@ -61,14 +62,17 @@ async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[
   return out;
 }
 
-const shown = (files: Listed[]): SearchFile[] => files.slice(0, MAX_FOUND_FILES).map(({ modifiedMs: _, ...file }) => file);
+const listed = ({ modifiedMs: _, ...file }: Listed): SearchFile => file;
+const shown = (files: Listed[]): SearchFile[] => files.slice(0, MAX_FOUND_FILES).map(listed);
 
-// Found directly first, then with a typo; newest first in each part.
+// Found directly first, then with a typo; newest first in each part; what of each name was found is marked.
 export async function searchFiles(deps: ProjectsDeps, client: pg.PoolClient, userId: string, words: WordVariants[], projects: ProjectDto[]): Promise<SearchFiles> {
   const { files, unreadable } = await collect(deps, userId, projects);
   const hits = await matchNames(client, files.map((f) => f.name), words, MAX_FOUND_FILES + 1);
   const ordered = hits.map((hit) => ({ file: files[hit.index]!, direct: hit.direct })).sort((a, b) => Number(b.direct) - Number(a.direct) || b.file.modifiedMs - a.file.modifiedMs);
-  return { files: shown(ordered.map((o) => o.file)), unreadable, more: ordered.length > MAX_FOUND_FILES };
+  // Marks only for the files shown: with a typo thousands of names may match.
+  const found = ordered.slice(0, MAX_FOUND_FILES).map((o) => ({ ...listed(o.file), nameMarks: marksOf(o.file.name, words, o.direct ? 'direct' : 'name-typo') }));
+  return { files: found, unreadable, more: ordered.length > MAX_FOUND_FILES };
 }
 
 // The tab «Файлы» before a query: the newest documents.

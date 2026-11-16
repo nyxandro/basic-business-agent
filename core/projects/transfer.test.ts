@@ -66,7 +66,7 @@ describe('projects of a removed employee', () => {
   it('search shows the colleague a shared project with its creator, and forgets it with the access', async () => {
     const p = await create(igor, 'Поставка бетона', [petrId]);
     const found = await json<SearchResponse>(await t.call('GET', `/app/api/search?q=${encodeURIComponent('бетон')}&scope=all`, { cookie: petr }));
-    expect(found.projects).toEqual([{ id: p.id, name: 'Поставка бетона', threadCount: 0, shared: true, ownerName: 'Игорь' }]);
+    expect(found.projects).toEqual([{ id: p.id, name: 'Поставка бетона', nameMarks: [[9, 14]], threadCount: 0, shared: true, ownerName: 'Игорь' }]);
     await t.call('PUT', `/app/api/projects/${p.id}/access`, { cookie: igor, body: { mode: 'private', departmentIds: [], userIds: [] } });
     expect((await json<SearchResponse>(await t.call('GET', `/app/api/search?q=${encodeURIComponent('бетон')}&scope=all`, { cookie: petr }))).projects).toEqual([]);
   });

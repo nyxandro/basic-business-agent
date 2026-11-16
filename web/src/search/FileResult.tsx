@@ -5,6 +5,7 @@ import { ru } from '../i18n/ru.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { dayLabel } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
+import { Marked } from './Marked.tsx';
 import styles from './search.module.css';
 
 // Where a file lies: its project («Без проекта» for the person's own folder) and the folder inside it, so two
@@ -24,7 +25,9 @@ export function FileResult({ file, projectName, wide, onOpen }: { file: SearchFi
       </span>
       <span className={styles.resultMain}>
         <span className={styles.resultHead}>
-          <span className={styles.resultTitle}>{file.name}</span>
+          <span className={styles.resultTitle}>
+            <Marked text={file.name} marks={file.nameMarks} />
+          </span>
           {wide ? <span className={styles.when}>{when}</span> : null}
         </span>
         <span className={styles.pill}>

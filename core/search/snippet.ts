@@ -1,11 +1,14 @@
-// The piece of text shown under a found conversation in «Поиск» (spec, section 8.13): ±60 characters
-// of what the person saw in the chat around a match. The person's own text is shown as typed; an
-// agent's answer as the chat draws its Markdown (visible-text.ts).
+// The piece of text shown under a found conversation in «Поиск» (spec, sections 8.13 and 8.21): 120
+// characters of what the person saw in the chat, from 20 before a match: the row is one line (some 45
+// characters on a phone), and a match further in would hide under its «…». The person's own text is shown as typed; an agent's answer
+// as the chat draws its Markdown (visible-text.ts).
 import { typoPieces } from './match-sql.ts';
 import { normalize, type WordVariants } from './variants.ts';
 import { visibleText } from './visible-text.ts';
 
 export const SNIPPET_RADIUS = 60;
+// Characters before the match; the rest of the piece goes after it.
+const BEFORE_MATCH = 20;
 // Raw characters on each side of a match that are parsed, rounded out to whole lines: parsing a whole
 // answer of 20 000 characters takes ~23 ms, for 50 results more than a second.
 const CONTEXT = 300;
@@ -103,12 +106,27 @@ const isLowSurrogate = (text: string, i: number) => {
   return code >= 0xdc00 && code <= 0xdfff;
 };
 
-// `back` characters before `at` and `ahead` from it; an emoji on an edge is kept whole.
+// How far a cut inside a word moves to the word's edge: «…еально умею» reads as a typo.
+const WORD_EDGE_REACH = 15;
+const inWord = (text: string, i: number) => i > 0 && i < text.length && /\S/.test(text[i - 1]!) && /\S/.test(text[i]!);
+
+// `back` characters before `at` and `ahead` from it, the ends moved out of the middle of a word (within
+// WORD_EDGE_REACH, never past the match); an emoji on an edge is kept whole.
 function cut(visible: Visible, at: number, back: number, ahead: number): string {
+  const text = visible.text;
   let start = Math.max(0, at - back);
-  let end = Math.min(visible.text.length, at + ahead);
-  if (start > 0 && isLowSurrogate(visible.text, start)) start -= 1;
-  if (end < visible.text.length && isLowSurrogate(visible.text, end)) end += 1;
+  let end = Math.min(text.length, at + ahead);
+  if (inWord(text, start)) {
+    const space = text.slice(start, Math.min(at, start + WORD_EDGE_REACH)).search(/\s/);
+    if (space >= 0) start += space + 1;
+  }
+  if (inWord(text, end)) {
+    const from = Math.max(at + 1, end - WORD_EDGE_REACH);
+    const space = text.slice(from, end).search(/\s\S*$/);
+    if (space >= 0) end = from + space;
+  }
+  if (start > 0 && isLowSurrogate(text, start)) start -= 1;
+  if (end < text.length && isLowSurrogate(text, end)) end += 1;
   return `${visible.before || start > 0 ? '…' : ''}${visible.text.slice(start, end).trim()}${visible.after || end < visible.text.length ? '…' : ''}`;
 }
 
@@ -143,7 +161,7 @@ export function snippetOf(messages: MessageText[], opening: string | null, title
       if (message.role === 'assistant' && ++parses > MAX_PARSES_PER_WORD) break;
       const visible = message.role === 'user' ? plain(message.text) : visibleOfAnswer(message.text, raw.at, raw.length);
       const found = locate(visible.text, word);
-      if (found !== null) return cut(visible, found.at, SNIPPET_RADIUS, SNIPPET_RADIUS);
+      if (found !== null) return cut(visible, found.at, BEFORE_MATCH, 2 * SNIPPET_RADIUS - BEFORE_MATCH);
     }
   }
   return opening === null ? '' : cut(plain(opening), 0, 0, 2 * SNIPPET_RADIUS);
