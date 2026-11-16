@@ -22,11 +22,17 @@ import type { Limiter } from './limiter.ts';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+// Pictures a person may send that are not given to the model as they are: not every provider takes them
+// (Groq does not list WebP and GIF, 17.11) — the agent turns them into PNG first.
+const OTHER_PICTURES: ReadonlySet<string> = new Set(['.webp', '.gif', '.bmp', '.tif', '.tiff']);
+const ARCHIVES: ReadonlySet<string> = new Set(['.zip']);
 export const VIEW_IMAGE_TOOL = 'view_image';
 // The chat-completions protocol of the gateway carries no images inside tool results: a picture or
 // raw bytes read by Mastra's read_file would go to the model as text and overflow its window.
 const RAW_ENCODINGS = new Set(['base64', 'binary', 'hex']);
 const NO_PICTURE_IN_READ_FILE = 'Это картинка: её содержимое через чтение файла не передаётся. Чтобы увидеть её, вызови view_image с этим путём.';
+const TURN_INTO_PNG = 'Эту картинку модель как есть не видит: сначала переведи её в PNG в рабочей папке (python3 -c "from PIL import Image; Image.open(\'ВХОД\').convert(\'RGB\').save(\'.renders/ВЫХОД.png\')"; у многостраничного TIFF — каждую страницу), затем открой PNG через view_image.';
+const UNPACK_ARCHIVE = 'Это архив: прочитать его как текст нельзя. Распакуй в рабочей папке: python3 -m zipfile -e АРХИВ.zip ПАПКА — и читай файлы из папки.';
 const NO_RAW_BYTES = 'Сырые байты файла в разговор не передаются. Картинку открой через view_image; PDF, Word, Excel и PowerPoint читай скиллами pdf, docx, xlsx и pptx.';
 
 // How the chat line names the tools the workspace and the skills give every agent (Mastra's own
@@ -134,7 +140,11 @@ function keepBytesOutOfReadFile({ workspaceToolName, input }: WorkspaceToolHookC
   if (workspaceToolName !== WORKSPACE_TOOLS.FILESYSTEM.READ_FILE) return;
   const { path, encoding } = (input ?? {}) as { path?: unknown; encoding?: unknown };
   if (typeof encoding === 'string' && RAW_ENCODINGS.has(encoding)) return { proceed: false, output: NO_RAW_BYTES };
-  if (typeof path === 'string' && IMAGE_TYPES[extname(path).toLowerCase()]) return { proceed: false, output: NO_PICTURE_IN_READ_FILE };
+  if (typeof path !== 'string') return;
+  const ext = extname(path).toLowerCase();
+  if (IMAGE_TYPES[ext]) return { proceed: false, output: NO_PICTURE_IN_READ_FILE };
+  if (OTHER_PICTURES.has(ext)) return { proceed: false, output: TURN_INTO_PNG };
+  if (ARCHIVES.has(ext)) return { proceed: false, output: UNPACK_ARCHIVE };
 }
 
 // A core tool: shows the model an image from the employee's folder (a scanned page, a photo).
@@ -163,7 +173,7 @@ type FilePart = { type: 'file'; data: string; mediaType: string };
 // reads it outside the sandbox, so a link the agent made to a file of the server is refused.
 function findPicture(dir: string, path: string): { real: string; mediaType: string } | string {
   const mediaType = IMAGE_TYPES[extname(path).toLowerCase()];
-  if (!mediaType) return 'Это не PNG или JPG';
+  if (!mediaType) return OTHER_PICTURES.has(extname(path).toLowerCase()) ? TURN_INTO_PNG : 'Это не PNG или JPG';
   let real: string | null;
   try {
     real = existingInside(dir, path);

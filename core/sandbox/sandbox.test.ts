@@ -339,6 +339,23 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     expect(lastToolOutput()).toContain('скиллами pdf, docx, xlsx и pptx');
     expect(lastToolOutput()).not.toContain('JVBERi0');
   });
+
+  it('tells the model how to open the pictures it cannot see as they are and an archive (request of the owner 17.11)', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    mkdirSync(join(dir, 'files'), { recursive: true });
+    writeFileSync(join(dir, 'files', 'скан.webp'), png(64));
+    writeFileSync(join(dir, 'files', 'архив.zip'), 'PK\u0003\u0004');
+    model.script(readFile({ path: 'files/скан.webp' }), { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('PNG');
+    expect(lastToolOutput()).toContain('view_image');
+    model.script({ toolCalls: [{ name: 'view_image', args: { path: 'files/скан.webp' } }] }, { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('переведи');
+    model.script(readFile({ path: 'files/архив.zip' }), { text: 'Ок.' });
+    await runAs('olga');
+    expect(lastToolOutput()).toContain('python3 -m zipfile -e');
+  });
 });
 
 describe('concurrency limit', () => {

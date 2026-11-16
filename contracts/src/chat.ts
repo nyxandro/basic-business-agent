@@ -34,7 +34,16 @@ export interface AgentListResponse {
 // Attachments of a conversation (spec, sections 7 and 8.18): what the skills read, and the size
 // limit. The old .doc, .xls and .ppt are turned into the new formats by the document skills.
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export const UPLOAD_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.csv', '.txt', '.png', '.jpg', '.jpeg'] as const;
+// What a person may attach (spec, section 8.9; the popular formats — request of the owner 17.11): what the
+// agent reads in its sandbox — documents through the skills and LibreOffice, text as it is, a mail as text,
+// an archive unpacked, pictures seen (PNG and JPG at once, the rest turned into PNG first). Not audio or
+// video (nothing reads them), not SVG (a picture that can run a script), not programs.
+export const UPLOAD_EXTENSIONS = [
+  '.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.odt', '.ods', '.odp', '.rtf',
+  '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.xml', '.html', '.htm', '.yaml', '.yml', '.log', '.eml',
+  '.zip',
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff',
+] as const;
 
 export interface UploadedFile {
   path: string;

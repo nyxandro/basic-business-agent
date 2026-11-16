@@ -132,17 +132,17 @@ describe('attaching several files (spec, section 8.9)', () => {
     const held = heldUploads();
     const { ex, uploads } = await showChat(held.route);
     const user = userEvent.setup({ applyAccept: false });
-    await user.upload(picker(), [file('a.zip'), file('b.pdf')]);
-    expect(shownError(ex).message).toBe('Не прикреплён «a.zip». Такой формат агент пока не читает. Подойдут PDF, Word, Excel, PowerPoint, CSV, TXT и картинки PNG или JPG.');
+    await user.upload(picker(), [file('a.exe'), file('b.pdf')]);
+    expect(shownError(ex).message).toBe('Не прикреплён «a.exe». Такой формат агент пока не читает. Подойдут документы, таблицы и презентации (Word, Excel, PowerPoint, PDF, OpenDocument, RTF), текст и разметка (TXT, Markdown, CSV, JSON, XML, HTML, YAML), письма EML, архивы ZIP и картинки (PNG, JPG, WebP, GIF, TIFF, BMP).');
     await user.upload(picker(), [file('c.exe'), file('d.pdf')]);
-    expect(shownError(ex).message).toContain('Не прикреплены «a.zip», «c.exe».');
+    expect(shownError(ex).message).toContain('Не прикреплены «a.exe», «c.exe».');
     await held.answerNext(1);
     await held.answerNext(2);
     await waitFor(() => expect(ex.addAttachment).toHaveBeenCalledTimes(2));
     expect(uploads()).toEqual(['b.pdf', 'd.pdf']);
     // A new batch after the queue emptied names only its own failures.
-    await user.upload(picker(), [file('e.zip')]);
-    expect(shownError(ex).message).toContain('Не прикреплён «e.zip».');
+    await user.upload(picker(), [file('e.exe')]);
+    expect(shownError(ex).message).toContain('Не прикреплён «e.exe».');
   });
 
   it('does not send the waiting files into a conversation that was left', async () => {
@@ -159,12 +159,12 @@ describe('attaching several files (spec, section 8.9)', () => {
 
   it('names the files that did not go and attaches the rest', async () => {
     const { ex, uploads } = await showChat((call) => (call.form!.file === 'Смета.xlsx' ? apiError('APP_INTERNAL', 'Сервер не ответил.', 500) : uploaded(call)));
-    await userEvent.setup({ applyAccept: false }).upload(picker(), [file('Счёт.pdf'), file('Архив.zip'), file('Видео.pdf', 21 * 1024 * 1024), file('Смета.xlsx'), file('Фото.png')]);
+    await userEvent.setup({ applyAccept: false }).upload(picker(), [file('Счёт.pdf'), file('Запись.mp4'), file('Видео.pdf', 21 * 1024 * 1024), file('Смета.xlsx'), file('Фото.png')]);
     await waitFor(() => expect(ex.addAttachment).toHaveBeenCalledTimes(2));
     // What cannot go is not sent at all.
     expect(uploads()).toEqual(['Счёт.pdf', 'Смета.xlsx', 'Фото.png']);
     const error = shownError(ex);
-    expect(error.message).toContain('«Архив.zip»');
+    expect(error.message).toContain('«Запись.mp4»');
     expect(error.message).toContain('«Видео.pdf»');
     expect(error.message).toContain('«Смета.xlsx»');
     expect(error.code).toBe('APP_UPLOAD_TYPE_UNSUPPORTED, APP_UPLOAD_TOO_LARGE, APP_INTERNAL');
@@ -256,24 +256,24 @@ describe('the error of files that did not go', () => {
   const failed = (name: string, code: string, message: string) => ({ name, error: new ApiRequestError({ code, message, status: 0 }) });
 
   it('names one file and says why', () => {
-    const error = attachFailure([failed('Архив.zip', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.')]);
-    expect(error.message).toBe('Не прикреплён «Архив.zip». Такой формат агент пока не читает.');
+    const error = attachFailure([failed('Запись.mp4', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.')]);
+    expect(error.message).toBe('Не прикреплён «Запись.mp4». Такой формат агент пока не читает.');
     expect(error.code).toBe('APP_UPLOAD_TYPE_UNSUPPORTED');
   });
 
   it('names several files with one reason once', () => {
-    const error = attachFailure([failed('a.zip', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.'), failed('b.exe', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.')]);
-    expect(error.message).toBe('Не прикреплены «a.zip», «b.exe». Такой формат агент пока не читает.');
+    const error = attachFailure([failed('a.mp4', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.'), failed('b.exe', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.')]);
+    expect(error.message).toBe('Не прикреплены «a.mp4», «b.exe». Такой формат агент пока не читает.');
     expect(error.code).toBe('APP_UPLOAD_TYPE_UNSUPPORTED');
   });
 
   it('gives each reason its files when the reasons differ', () => {
     const error = attachFailure([
-      failed('a.zip', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.'),
+      failed('a.mp4', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.'),
       failed('big.pdf', 'APP_UPLOAD_TOO_LARGE', 'Файл больше 20 МБ.'),
       failed('b.exe', 'APP_UPLOAD_TYPE_UNSUPPORTED', 'Такой формат агент пока не читает.'),
     ]);
-    expect(error.message).toBe('Не прикреплены 3 файла. «a.zip», «b.exe» — Такой формат агент пока не читает. «big.pdf» — Файл больше 20 МБ.');
+    expect(error.message).toBe('Не прикреплены 3 файла. «a.mp4», «b.exe» — Такой формат агент пока не читает. «big.pdf» — Файл больше 20 МБ.');
     expect(error.code).toBe('APP_UPLOAD_TYPE_UNSUPPORTED, APP_UPLOAD_TOO_LARGE');
   });
 });

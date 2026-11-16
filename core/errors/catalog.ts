@@ -90,7 +90,7 @@ export const ERROR_CATALOG = {
   APP_UPLOAD_TOO_LARGE: { status: 413, userMessage: 'Файл больше 20 МБ. Сожмите его или разделите на части.' },
   APP_UPLOAD_TYPE_UNSUPPORTED: {
     status: 415,
-    userMessage: 'Такой формат агент пока не читает. Подойдут PDF, Word, Excel, PowerPoint, CSV, TXT и картинки PNG или JPG.',
+    userMessage: 'Такой формат агент пока не читает. Подойдут документы, таблицы и презентации (Word, Excel, PowerPoint, PDF, OpenDocument, RTF), текст и разметка (TXT, Markdown, CSV, JSON, XML, HTML, YAML), письма EML, архивы ZIP и картинки (PNG, JPG, WebP, GIF, TIFF, BMP).',
   },
   APP_BACKGROUND_RUN_SKIPPED: { status: 409, userMessage: 'Запуск задачи пропущен: предыдущий запуск ещё ждёт вашего решения.' },
   APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },

@@ -39,6 +39,11 @@ describe('workspace layout', () => {
     const root = contextRoot(ws, 'olga', null);
     expect(saveFile(root, '../../etc/договор.pdf', new Uint8Array([1])).name).toBe('договор.pdf');
     expect(() => saveFile(root, 'script.sh', new Uint8Array([1]))).toThrow(/APP_UPLOAD_TYPE_UNSUPPORTED|extension/);
+    expect(() => saveFile(root, 'звонок.mp3', new Uint8Array([1]))).toThrow(/APP_UPLOAD_TYPE_UNSUPPORTED|extension/);
+    // The popular formats people send (request of the owner 17.11): text and markup, OpenDocument, mail, archives, pictures.
+    for (const name of ['Домовей рабочие часы.md', 'выгрузка.json', 'план.odt', 'письмо.eml', 'архив.zip', 'скан.tiff', 'фото.webp', 'отчёт.RTF']) {
+      expect(saveFile(root, name, new Uint8Array([1])).name).toBe(name);
+    }
     expect(() => saveFile(root, 'big.pdf', new Uint8Array(20 * 1024 * 1024 + 1))).toThrow(/bytes/);
   });
 
