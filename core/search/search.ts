@@ -6,10 +6,10 @@ import type { SearchResponse, SearchScope } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
+import { snippetOf, type MessageText } from './snippet.ts';
 
 export const MIN_QUERY = 2;
 const MAX_RESULTS = 50;
-const SNIPPET_RADIUS = 60;
 
 function words(q: string): string[] {
   return q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -20,26 +20,13 @@ function likeOf(word: string): string {
   return `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-// The piece of text around a match. Words already visible in the title tell nothing new, so the
-// piece is centred on a word found only in the messages when there is one.
-function snippetOf(body: string, title: string, terms: string[]): string {
-  const text = body.replace(/\s+/g, ' ');
-  const lower = text.toLowerCase();
-  const titled = title.toLowerCase();
-  const ordered = [...terms.filter((w) => !titled.includes(w)), ...terms.filter((w) => titled.includes(w))];
-  const at = ordered.map((w) => lower.indexOf(w)).find((i) => i >= 0);
-  if (at === undefined) return text.slice(0, SNIPPET_RADIUS * 2).trim();
-  const start = Math.max(0, at - SNIPPET_RADIUS);
-  const end = Math.min(text.length, at + SNIPPET_RADIUS);
-  return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
-}
-
 interface Row {
   id: string;
   title: string | null;
   agent_id: string;
   updated: Date;
-  body: string;
+  // Text parts in order, with who wrote them: the piece of text shows an answer without Markdown.
+  messages: MessageText[];
   project_id: string | null;
 }
 
@@ -58,7 +45,7 @@ async function searchThreads(db: Db, userId: string, terms: string[]): Promise<S
   // Candidates go newest first through the exact pass one by one (LATERAL), and the query stops at
   // the 50th match: a common word does not make it read every conversation of the person.
   const { rows } = await db.query<Row>(
-    `SELECT own.id, own.title, own.agent_id, own.updated, COALESCE(msg.body, '') AS body, own.project_id
+    `SELECT own.id, own.title, own.agent_id, own.updated, COALESCE(msg.messages, '[]'::jsonb) AS messages, own.project_id
        FROM (
          SELECT t.id, t.title, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
            FROM mastra.mastra_threads t
@@ -69,7 +56,8 @@ async function searchThreads(db: Db, userId: string, terms: string[]): Promise<S
           ORDER BY t."updatedAtZ" DESC, t.id DESC
        ) AS own
        CROSS JOIN LATERAL (
-         SELECT string_agg(part->>'text', E'\\n' ORDER BY m."createdAtZ") AS body
+         SELECT string_agg(part->>'text', E'\\n' ORDER BY m."createdAtZ") AS body,
+                jsonb_agg(jsonb_build_object('role', m.role, 'text', part->>'text') ORDER BY m."createdAtZ") AS messages
            FROM mastra.mastra_messages m
            CROSS JOIN LATERAL jsonb_array_elements(
              CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
@@ -85,7 +73,7 @@ async function searchThreads(db: Db, userId: string, terms: string[]): Promise<S
     id: r.id,
     agentId: r.agent_id,
     title: r.title ?? 'Без названия',
-    snippet: snippetOf(r.body, r.title ?? '', terms),
+    snippet: snippetOf(r.messages, r.title ?? '', terms),
     projectId: r.project_id,
     updatedAt: r.updated.toISOString(),
   }));

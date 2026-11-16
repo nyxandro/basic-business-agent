@@ -47,6 +47,15 @@ describe('search', () => {
     expect(found.threads[0]!.snippet.length).toBeLessThanOrEqual(130);
   });
 
+  it('shows the agent’s answer in the piece of text as the chat does, without Markdown', async () => {
+    await conversation(olgaId, 'Что ты умеешь', [
+      ['user', [text('Что ты умеешь?')]],
+      ['assistant', [text('Вот что я реально умею. **Из инструментов:**\n1. **Заметки** — вести персональные заметки\n\n| Что | Где |\n|---|---|\n| Счета | `bills/` |')]],
+    ]);
+    const [found] = (await search('заметки')).threads;
+    expect(found!.snippet).toBe('Вот что я реально умею. Из инструментов: Заметки — вести персональные заметки Что Где Счета bills/');
+  });
+
   it('reads only the text of the person and the agent: not tool results, not the service words of the stored format', async () => {
     await conversation(olgaId, 'Сделки', [
       ['user', [text('Покажи сделки')]],
