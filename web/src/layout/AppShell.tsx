@@ -4,7 +4,9 @@
 import type { AgentSummary, MyUsage, SearchScope } from '@bba/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useMatch, useNavigate, useOutletContext, useSearchParams } from 'react-router';
+import { availableSections } from '../admin/sections.ts';
 import { fetchAgents } from '../agents/api.ts';
+import { preloadAdminCode } from '../app/admin-code.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { SearchDialog } from '../search/SearchDialog.tsx';
@@ -92,6 +94,10 @@ export function AppShell() {
   const [search, setSearch] = useState<{ open: boolean; scope: SearchScope; opened: number }>({ open: false, scope: 'all', opened: 0 });
   const { state: agentsLoad, reload } = useLoad(fetchAgents, ['agents']);
   const { state: usageLoad } = useLoad(fetchMyUsage, ['me', 'usage']);
+  const hasAdmin = availableSections(useMe()).length > 0;
+  useEffect(() => {
+    if (hasAdmin) preloadAdminCode();
+  }, [hasAdmin]);
   // The layout sits above the chat route, so the agent and the project page come from the address itself.
   const agentId = useMatch('/agents/:agentId')?.params.agentId;
   const projectPageId = useMatch('/projects/:projectId')?.params.projectId;

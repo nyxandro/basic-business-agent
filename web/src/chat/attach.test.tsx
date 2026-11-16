@@ -208,9 +208,14 @@ describe('dragging files onto the chat window (spec, section 8.9)', () => {
 
   it('does nothing for a picture dragged from the page itself', async () => {
     const { window: chat } = await showChat();
-    fireEvent.dragStart(chat, dragged([]));
-    fireEvent.dragEnter(chat, dragged([file('картинка.png')]));
-    expect(screen.queryByText(DROP_HINT)).not.toBeInTheDocument();
+    // The window learns of drags started on the page once the chat is drawn.
+    await waitFor(() => {
+      fireEvent.dragStart(chat, dragged([]));
+      fireEvent.dragEnter(chat, dragged([file('картинка.png')]));
+      const hint = screen.queryByText(DROP_HINT);
+      if (hint) fireEvent.dragLeave(hint, dragged([]));
+      expect(hint).toBeNull();
+    });
     fireEvent.dragEnd(chat, dragged([]));
     fireEvent.dragEnter(chat, dragged([file('картинка.png')]));
     expect(await screen.findByText(DROP_HINT)).toBeInTheDocument();

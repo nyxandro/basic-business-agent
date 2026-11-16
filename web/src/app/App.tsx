@@ -1,10 +1,12 @@
 // Routes of the interface (spec, section 7). Public: sign-in and the password links. The admin
-// panel is a separate piece of code, loaded when it is opened.
+// panel is a separate piece of code, loaded in the background for those with rights (admin-code.ts).
 import { CopilotKit } from '@copilotkit/react-core';
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router';
 import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { ApprovalsPage } from '../approvals/ApprovalsPage.tsx';
+import { ArchivePage } from '../projects/ArchivePage.tsx';
+import { ProjectPage } from '../projects/ProjectPage.tsx';
 import { LoginPage } from '../auth/LoginPage.tsx';
 import { PasswordLinkPage } from '../auth/PasswordLinkPage.tsx';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
@@ -14,14 +16,13 @@ import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
+import { loadAdminCode } from './admin-code.ts';
 import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
 import { ConfirmProvider } from '../ui/Confirm.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
 import { COPILOT_OPTIONS } from './copilot.ts';
 
-const AdminRoutes = lazy(() => import('../admin/AdminRoutes.tsx'));
-const ProjectPage = lazy(() => import('../projects/ProjectPage.tsx').then((m) => ({ default: m.ProjectPage })));
-const ArchivePage = lazy(() => import('../projects/ArchivePage.tsx').then((m) => ({ default: m.ArchivePage })));
+const AdminRoutes = lazy(loadAdminCode);
 
 export function App() {
   return (
@@ -55,22 +56,8 @@ export function App() {
                 <Route element={<AppShell />}>
                   <Route index element={<Home />} />
                   <Route path="agents/:agentId" element={<ChatPage />} />
-                  <Route
-                    path="projects/archive"
-                    element={
-                      <Suspense fallback={<DelayedBar />}>
-                        <ArchivePage />
-                      </Suspense>
-                    }
-                  />
-                  <Route
-                    path="projects/:projectId"
-                    element={
-                      <Suspense fallback={<DelayedBar />}>
-                        <ProjectPage />
-                      </Suspense>
-                    }
-                  />
+                  <Route path="projects/archive" element={<ArchivePage />} />
+                  <Route path="projects/:projectId" element={<ProjectPage />} />
                   <Route path="approvals" element={<ApprovalsPage />} />
                   <Route path="settings">
                     <Route index element={<Navigate to="memory" replace />} />

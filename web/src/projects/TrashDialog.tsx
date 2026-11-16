@@ -13,12 +13,13 @@ import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { projectKeys } from './queries.ts';
 import { fetchTrash, restoreFromTrash, trashFileUrl } from './api.ts';
 import styles from './projects.module.css';
 
 function Trash({ projectId, readOnly, onRestored }: { projectId: string; readOnly: boolean; onRestored: () => void }) {
   const load = useCallback(() => fetchTrash(projectId), [projectId]);
-  const { state, reload } = useLoad(load, ['project', projectId, 'trash']);
+  const { state, reload } = useLoad(load, projectKeys.trash(projectId));
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();

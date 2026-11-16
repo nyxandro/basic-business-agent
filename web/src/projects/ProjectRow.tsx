@@ -17,6 +17,7 @@ import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { accessText } from './AccessPicker.tsx';
 import { updateProject } from './api.ts';
 import styles from './projects.module.css';
+import { usePrefetchProject } from './queries.ts';
 
 export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`;
 export const ARCHIVE_PATH = '/projects/archive';
@@ -30,6 +31,7 @@ export function sharedHint(project: ProjectDto): string {
 // `takeFocus` says once that the link takes the keyboard on being drawn (after «Закрепить»).
 export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; current: boolean; page: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
   const [menu, setMenu] = useState(false);
+  const prefetch = usePrefetchProject();
   const [editing, setEditing] = useState(false);
   // The link comes back after the field: it takes the keyboard when the field had it.
   const refocus = useRef(false);
@@ -62,6 +64,9 @@ export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPi
             }}
             to={projectPath(project.id)}
             onClick={onNavigate}
+            // Its data starts to load while the pointer or the keyboard is on it (spec, section 8.22).
+            onMouseEnter={() => prefetch(project.id)}
+            onFocus={() => prefetch(project.id)}
             className={cx(shell.item, shell.threadLink, styles.projectLink)}
             aria-current={page ? 'page' : undefined}
             aria-describedby={attributes['aria-describedby']}

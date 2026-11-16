@@ -14,6 +14,7 @@ import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { projectKeys } from './queries.ts';
 import { useToast } from '../ui/Toast.tsx';
 import { deleteProjectFile, fetchProjectFiles, fetchTrash, projectFileUrl, restoreFromTrash, uploadProjectFile } from './api.ts';
 import { TrashDialog } from './TrashDialog.tsx';
@@ -23,9 +24,9 @@ const TOO_LARGE = 'APP_UPLOAD_TOO_LARGE';
 
 export function ProjectFiles({ projectId, readOnly, shared }: { projectId: string; readOnly: boolean; shared: boolean }) {
   const load = useCallback(() => fetchProjectFiles(projectId), [projectId]);
-  const { state, reload } = useLoad(load, ['project', projectId, 'files']);
+  const { state, reload } = useLoad(load, projectKeys.files(projectId));
   const loadTrash = useCallback(() => fetchTrash(projectId), [projectId]);
-  const { state: trash, reload: reloadTrash } = useLoad(loadTrash, ['project', projectId, 'trash']);
+  const { state: trash, reload: reloadTrash } = useLoad(loadTrash, projectKeys.trash(projectId));
   const [trashOpen, setTrashOpen] = useState(false);
   const toast = useToast();
   const inTrash = trash.status === 'ready' ? trash.data.batches.reduce((n, b) => n + b.items.length, 0) : 0;

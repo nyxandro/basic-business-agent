@@ -44,6 +44,30 @@ describe('projects of conversations', () => {
     expect(await screen.findByRole('heading', { name: 'Новый тендер' })).toBeInTheDocument();
   });
 
+  it('loads a project while the pointer is over it, so the click opens it at once (spec, section 8.22)', async () => {
+    let answer: (() => void) | null = null;
+    const s = server();
+    renderApp('/agents/sales?thread=t1');
+    const link = await screen.findByRole('link', { name: 'Отчёты' });
+    const asked = (path: string) => s.calls.filter((c) => c.method === 'GET' && c.path === path).length;
+    fireEvent.mouseEnter(link);
+    await waitFor(() => expect(asked('/app/api/projects/p2')).toBe(1));
+    expect(asked('/app/api/projects/p2/files')).toBe(1);
+    expect(asked('/app/api/projects/p2/trash')).toBe(1);
+    expect(s.calls.some((c) => c.path === '/app/api/threads' && c.query.projectId === 'p2')).toBe(true);
+    // Another pass over it a moment later does not ask again.
+    fireEvent.mouseLeave(link);
+    fireEvent.mouseEnter(link);
+    fireEvent.focus(link);
+    expect(asked('/app/api/projects/p2')).toBe(1);
+    // The server is slow now: what was loaded over the link is shown at once on the click.
+    s.set('GET /app/api/projects/p2', () => new Promise((resolve) => (answer = () => resolve({ body: REPORTS }))));
+    await userEvent.setup().click(link);
+    expect(screen.getByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
+    expect(screen.getByText('Кратко')).toBeInTheDocument();
+    if (answer) (answer as () => void)();
+  });
+
   it('lists the projects without the number of their conversations (decision of the owner 15.11)', async () => {
     server();
     renderApp('/agents/sales?thread=t1');
@@ -139,8 +163,7 @@ describe('projects of conversations', () => {
       expect(panel()).toEqual(['Отчёты', 'Тендер Альфа']);
       await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p2', 'p1'] }));
       await userEvent.setup().click(screen.getByRole('link', { name: 'Отчёты' }));
-      // The project's page is a lazy part of the build: its first load in a test takes a while.
-      expect(await screen.findByRole('heading', { name: 'Отчёты' }, { timeout: 3000 })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
     });
 
     it('a list that loads while an order is being saved does not bring the old order back', async () => {
