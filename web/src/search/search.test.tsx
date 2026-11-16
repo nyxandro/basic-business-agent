@@ -8,7 +8,7 @@ import { renderApp } from '../test/render.tsx';
 const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const PROJECTS = [
   { id: 'p1', name: 'Тендер Северный', instructions: '', threadCount: 2, createdAt: '2026-11-10T08:00:00Z' },
-  { id: 'p2', name: 'Ключевые клиенты', instructions: '', threadCount: 1, createdAt: '2026-11-11T08:00:00Z' },
+  { id: 'p2', name: 'Ключевые клиенты', instructions: '', threadCount: 1, createdAt: '2026-11-11T08:00:00Z', role: 'member', owner: { id: 'u9', name: 'Игорь Петров' }, shared: true },
 ];
 const FOUND = {
   projects: [{ id: 'p1', name: 'Тендер Северный', threadCount: 2 }],
@@ -113,6 +113,58 @@ describe('search over conversations and projects', () => {
     s.set('GET /app/api/threads', { body: { threads: [], next: null } });
     await user.click(within(dialog).getByRole('button', { name: 'Повторить' }));
     expect(await within(dialog).findByText('Разговоров пока нет')).toBeInTheDocument();
+  });
+
+  it('shows all the person’s projects above all conversations on «Везде» before a query', async () => {
+    const s = server();
+    s.set('GET /app/api/threads', threadList);
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    // Text, not role queries, next to 30 conversations: naming every button is slow in jsdom.
+    const project = (await within(dialog).findByText('2 разговора')).closest('button')!;
+    expect(within(project).getByText('Тендер Северный')).toBeInTheDocument();
+    expect(within(within(dialog).getByText('1 разговор · Открыл(а): Игорь Петров').closest('button')!).getByText('Ключевые клиенты')).toBeInTheDocument();
+    const titles = await within(dialog).findAllByText(/^Тема \d+$/);
+    expect(titles).toHaveLength(30);
+    expect(project.compareDocumentPosition(titles[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Разговоры' }));
+    expect(within(dialog).queryByText('2 разговора')).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText(/^Тема \d+$/)).toHaveLength(30);
+    expect(searches(s)).toHaveLength(0);
+  });
+
+  it('lists all the person’s projects on «Проекты» before a query, in the panel’s order, and opens one', async () => {
+    const s = server();
+    s.set('GET /app/api/threads', threadList);
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
+    const rows = await within(dialog).findAllByRole('button', { name: /\d+ разговор/ });
+    expect(rows.map((row) => row.textContent)).toEqual(['Тендер Северный2 разговора', 'Ключевые клиенты1 разговор · Открыл(а): Игорь Петров']);
+    expect(within(dialog).queryByText(/^Тема \d+$/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Начните вводить/)).not.toBeInTheDocument();
+
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'В проекте' }), 'Тендер Северный');
+    expect(within(dialog).queryByRole('button', { name: /Ключевые клиенты/ })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /Тендер Северный.*2 разговора/ }));
+    expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
+    expect(searches(s)).toHaveLength(0);
+  });
+
+  it('on «Проекты» shows a list that did not load with a repeat and says when there are no projects', async () => {
+    const s = server();
+    renderApp('/agents/sales?thread=t1');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: /Продажи\. Выбрать агента/ });
+    s.set('GET /app/api/projects', apiError('APP_INTERNAL', 'Сервер сейчас не отвечает. Попробуйте позже.', 500));
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog', { name: 'Поиск' });
+    await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
+    expect(await within(dialog).findByText('Сервер сейчас не отвечает. Попробуйте позже.')).toBeInTheDocument();
+    s.set('GET /app/api/projects', { body: { projects: [] } });
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }));
+    expect(await within(dialog).findByText('Проектов пока нет')).toBeInTheDocument();
   });
 
   it('shows projects and conversations in groups, the count, and opens a conversation', async () => {

@@ -1,11 +1,13 @@
 // «Поиск» (spec, scenario 7; mockup): Ctrl+K or the button in the side panel. On a computer — a
 // window with «Везде / Разговоры / Проекты», «В проекте», groups and «Найдено: N»; on a phone —
 // the whole screen with project chips and «Отмена». A choice opens the conversation or the project.
-// Until a query is typed it lists all the person's conversations, newest first (AllThreads.tsx);
-// «Ещё» under «Недавние» opens it on «Разговоры». It starts afresh each time it opens (a new `key`).
-import type { ProjectDto, SearchScope } from '@bba/contracts';
+// Until a query is typed it lists all the person's projects (AllProjects.tsx) and conversations,
+// newest first (AllThreads.tsx), as the scope allows; «Ещё» under «Недавние» opens it on
+// «Разговоры». It starts afresh each time it opens (a new `key`).
+import type { SearchScope } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { threadPath } from '../layout/ThreadRow.tsx';
 import { fetchProjects } from '../projects/api.ts';
@@ -13,7 +15,9 @@ import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
+import { AllProjects, type ProjectsState } from './AllProjects.tsx';
 import { AllThreads } from './AllThreads.tsx';
+import { ProjectResult, projectPath } from './ProjectResult.tsx';
 import { useSearch, type SearchState } from './use-search.ts';
 import styles from './search.module.css';
 import { ThreadResult } from './ThreadResult.tsx';
@@ -32,10 +36,16 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function Results({ state, scope, projectId, wide, projectName, onRetry, onPick }: { state: SearchState; scope: SearchScope; projectId: string | null; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onPick: (path: string) => void }) {
+function Results({ state, projectsState, scope, projectId, wide, projectName, onRetry, onRetryProjects, onPick }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; projectId: string | null; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void }) {
   if (state.status === 'idle') {
-    if (scope === 'projects') return <p className={styles.hint}>{ru.search.start}</p>;
-    return <AllThreads key={projectId ?? ''} projectId={projectId} wide={wide} projectName={projectName} onPick={onPick} />;
+    const projects = scope === 'threads' ? null : <AllProjects state={projectsState} projectId={projectId} quiet={scope === 'all'} onRetry={onRetryProjects} onPick={onPick} />;
+    if (scope === 'projects') return projects;
+    return (
+      <>
+        {projects}
+        <AllThreads key={projectId ?? ''} projectId={projectId} wide={wide} projectName={projectName} onPick={onPick} />
+      </>
+    );
   }
   if (state.status === 'loading') {
     return (
@@ -68,19 +78,7 @@ function Results({ state, scope, projectId, wide, projectName, onRetry, onPick }
         <>
           <div className={styles.group}>{ru.search.projects}</div>
           {projects.map((p) => (
-            <button key={p.id} type="button" className={styles.result} onClick={() => onPick(`/projects/${encodeURIComponent(p.id)}`)}>
-              <span className={cx(styles.tile, styles.tileProject)}>
-                <Icon name={p.shared ? 'folderShared' : 'folder'} size={15} />
-              </span>
-              <span className={styles.resultMain}>
-                <span className={styles.resultTitle}>{p.name}</span>
-                <span className={styles.meta}>
-                  {ru.search.threadCount(p.threadCount)}
-                  {p.ownerName ? ` · ${ru.projects.openedBy(p.ownerName)}` : ''}
-                </span>
-              </span>
-              <Icon name="right" size={15} className={styles.chevron} />
-            </button>
+            <ProjectResult key={p.id} project={p} onOpen={() => onPick(projectPath(p.id))} />
           ))}
         </>
       ) : null}
@@ -106,30 +104,35 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
   const [q, setQ] = useState('');
   const [scope, setScope] = useState<SearchScope>(startScope);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [projectsFailed, setProjectsFailed] = useState(false);
+  const [projectsState, setProjectsState] = useState<ProjectsState>({ status: 'loading' });
+  const [projectsAttempt, setProjectsAttempt] = useState(0);
   const { state, retry } = useSearch(open ? q : '', scope, projectId);
   const navigate = useNavigate();
 
-  // The project filter lists the person's projects; without them the filter has only «Все проекты».
+  // The person's projects: the list before a query and the project filter; without them the
+  // filter has only «Все проекты». Loaded only while the window is open.
   useEffect(() => {
     if (!open) return;
     let current = true;
     fetchProjects().then(
       (r) => {
-        if (!current) return;
-        setProjects(r.projects);
-        setProjectsFailed(false);
+        if (current) setProjectsState({ status: 'ready', data: r.projects });
       },
       (error: unknown) => {
-        console.warn('projects for the search filter not loaded', error);
-        if (current) setProjectsFailed(true);
+        console.warn('projects for the search window not loaded', error);
+        if (current) setProjectsState({ status: 'error', error: asApiError(error) });
       },
     );
     return () => {
       current = false;
     };
-  }, [open]);
+  }, [open, projectsAttempt]);
+  const projects = projectsState.status === 'ready' ? projectsState.data : [];
+  const projectsFailed = projectsState.status === 'error';
+  const retryProjects = () => {
+    setProjectsState({ status: 'loading' });
+    setProjectsAttempt((n) => n + 1);
+  };
 
   const close = () => {
     setQ('');
@@ -191,7 +194,7 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
         </div>
       )}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">
-        <Results state={state} scope={scope} projectId={projectId} wide={wide} projectName={projectName} onRetry={retry} onPick={pick} />
+        <Results state={state} projectsState={projectsState} scope={scope} projectId={projectId} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} />
       </div>
       {wide && footer ? <div className={styles.footer}>{footer}</div> : null}
     </Modal>
