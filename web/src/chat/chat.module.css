@@ -1,10 +1,73 @@
 /* The conversation (mockup «Чат с агентом»): the feed in a 768 px column and the composer under it. */
 .view {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+}
+
+/* Files dragged over the chat window: the whole window is the place to drop them. */
+.drop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(3px);
+  animation: bba-fade 0.15s ease-out both;
+}
+
+/* The hint takes the drag itself: entering its parts is not leaving it. */
+.drop > * {
+  pointer-events: none;
+}
+
+.dropFrame {
+  position: absolute;
+  inset: 12px;
+  border: 2px dashed var(--acc-mid);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--acc-soft) 45%, transparent);
+}
+
+.dropCard {
+  position: relative;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  animation: bba-rise 0.25s var(--ease-rise) both;
+}
+
+.dropIcon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+}
+
+.dropTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropHint {
+  margin: 0;
+  text-wrap: balance;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .scroll {

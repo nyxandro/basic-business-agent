@@ -5,6 +5,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
+import type { WaitingFile } from './attach.ts';
 import { dissolve } from '../ui/dissolve.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { useChatExtras } from './chat-context.ts';
@@ -15,7 +16,7 @@ const GAP_CLOSES_AFTER_MS = 220;
 const SLIDE_MS = 320;
 const SLIDE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 
-export function Attachments({ uploading, voice }: { uploading: string | null; voice: ReactNode }) {
+export function Attachments({ uploading, voice }: { uploading: readonly WaitingFile[]; voice: ReactNode }) {
   const extras = useChatExtras();
   const row = useRef<HTMLDivElement>(null);
   // Where the row and its chips were right before a file left it.
@@ -39,7 +40,7 @@ export function Attachments({ uploading, voice }: { uploading: string | null; vo
     if (oldHeight !== undefined && oldHeight !== height) box.animate([{ height: `${oldHeight}px` }, { height: `${height}px` }], { duration: SLIDE_MS, easing: SLIDE_EASING });
   }, [extras.attachments]);
 
-  if (!uploading && extras.attachments.length === 0 && !voice) return null;
+  if (uploading.length === 0 && extras.attachments.length === 0 && !voice) return null;
 
   function remove(path: string, chip: HTMLElement | null) {
     if (!chip || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return extras.removeAttachment(path);
@@ -62,12 +63,12 @@ export function Attachments({ uploading, voice }: { uploading: string | null; vo
           <IconButton icon="x" size="sm" label={`${ru.chat.removeAttachment} ${f.name}`} onClick={(e) => remove(f.path, e.currentTarget.parentElement)} />
         </span>
       ))}
-      {uploading ? (
-        <span className={styles.chip} role="status">
+      {uploading.map((file) => (
+        <span key={file.id} className={styles.chip} role="status">
           <span className={styles.spin} />
-          <span className={styles.chipName}>{uploading}</span>
+          <span className={styles.chipName}>{ru.chat.uploadingName(file.name)}</span>
         </span>
-      ) : null}
+      ))}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 // The conversation window, put into CopilotChat's chat view slot: CopilotChat keeps the agent, the
 // thread, sending and stopping; this draws everything the person sees (mockup «Чат с агентом»):
-// the welcome, the feed, «Думает…», the confirmation card, the error and the input.
+// the welcome, the feed, «Думает…», the confirmation card, the error and the input. Files dragged
+// onto the window are attached as from the paperclip (FileDrop.tsx).
 // It also keeps the draft in the browser, tells the page when a turn ends and handles answers that
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
@@ -10,12 +11,14 @@ import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answer-failures.ts';
+import { useAttachQueue } from './attach.ts';
 import { AgentMark } from './AgentMark.tsx';
 import { AssistantTurn } from './AssistantMessage.tsx';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
+import { useFileDrop } from './FileDrop.tsx';
 import { withAttachments } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
@@ -114,6 +117,8 @@ export function ChatView(props: CopilotChatViewProps) {
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const uploads = useAttachQueue();
+  const drop = useFileDrop(uploads.attach);
 
   useEffect(() => {
     if (restored.current || !onInputChange) return;
@@ -195,7 +200,7 @@ export function ChatView(props: CopilotChatViewProps) {
 
   const empty = messages.length === 0;
   return (
-    <div className={styles.view}>
+    <div className={styles.view} data-chat-window onDragEnter={drop.onDragEnter}>
       <div
         ref={scroller}
         className={`${styles.scroll} scroll-thin`}
@@ -225,9 +230,19 @@ export function ChatView(props: CopilotChatViewProps) {
         <div className={styles.dockInner}>
           {bannerError ? <ErrorBanner error={bannerError} /> : null}
           {extras.composerNotice}
-          <Composer value={inputValue} onChange={change} onSend={() => send(inputValue)} {...(onStop ? { onStop } : {})} running={isRunning} extra={extras.composerExtra} />
+          <Composer
+            value={inputValue}
+            onChange={change}
+            onSend={() => send(inputValue)}
+            {...(onStop ? { onStop } : {})}
+            running={isRunning}
+            extra={extras.composerExtra}
+            uploading={uploads.waiting}
+            onAttach={uploads.attach}
+          />
         </div>
       </div>
+      {drop.overlay}
     </div>
   );
 }

@@ -1,11 +1,10 @@
-// The input (mockup): the text grows with what is typed; the paperclip adds files to the working
-// folder on the server (they go with the message as names); Enter sends, Shift+Enter breaks the
+// The input (mockup): the text grows with what is typed; the paperclip adds files — several at once —
+// to the working folder on the server (they go with the message as names; attach.ts); Enter sends, Shift+Enter breaks the
 // line; while the agent answers the round button stops it. The microphone (when the installation
 // has a recognition model) turns the input into the recording bar; the recognised text is added
 // to the field, or to the draft of this conversation if the person has left it meanwhile.
-import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ApiRequestError } from '../api/client.ts';
+import { UPLOAD_EXTENSIONS } from '@bba/contracts';
+import { useCallback, useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
@@ -13,8 +12,8 @@ import { Icon } from '../ui/Icon.tsx';
 import { canRecord } from '../voice/recorder.ts';
 import { useVoice } from '../voice/use-voice.ts';
 import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
-import { uploadFile } from './api.ts';
 import { Attachments } from './Attachments.tsx';
+import type { WaitingFile } from './attach.ts';
 import { useChatExtras } from './chat-context.ts';
 import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
@@ -69,12 +68,30 @@ function useDeliverText(agentId: string, threadId: string, value: string, onChan
   );
 }
 
-export function Composer({ value, onChange, onSend, onStop, running, extra }: { value: string; onChange: (v: string) => void; onSend: () => void; onStop?: () => void; running: boolean; extra?: ReactNode }) {
+export function Composer({
+  value,
+  onChange,
+  onSend,
+  onStop,
+  running,
+  extra,
+  uploading,
+  onAttach,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  onStop?: () => void;
+  running: boolean;
+  extra?: ReactNode;
+  // Files on their way up.
+  uploading: readonly WaitingFile[];
+  onAttach: (files: File[]) => void;
+}) {
   const extras = useChatExtras();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const ready = value.trim().length > 0 && !uploading;
+  const ready = value.trim().length > 0 && uploading.length === 0;
   const me = useMe();
   const deliver = useDeliverText(extras.agentId, extras.threadId, value, onChange);
   useDraftChanges(extras.agentId, extras.threadId, onChange);
@@ -88,23 +105,11 @@ export function Composer({ value, onChange, onSend, onStop, running, extra }: { 
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
 
-  async function upload(target: HTMLInputElement) {
-    const file = target.files?.[0];
-    // The same file can be chosen again after removing it.
+  function pick(target: HTMLInputElement) {
+    const files = [...(target.files ?? [])];
+    // The same files can be chosen again after removing them.
     target.value = '';
-    if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      extras.onUploadError(new ApiRequestError({ code: 'APP_UPLOAD_TOO_LARGE', message: ru.chat.tooLarge, status: 0 }));
-      return;
-    }
-    setUploading(file.name);
-    try {
-      extras.addAttachment(await uploadFile(extras.threadId, file));
-    } catch (error) {
-      extras.onUploadError(error);
-    } finally {
-      setUploading(null);
-    }
+    if (files.length > 0) onAttach(files);
   }
 
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -117,11 +122,11 @@ export function Composer({ value, onChange, onSend, onStop, running, extra }: { 
 
   return (
     <div className={styles.composer}>
-      <Attachments uploading={uploading ? ru.chat.uploadingName(uploading) : null} voice={voiceLine} />
+      <Attachments uploading={uploading} voice={voiceLine} />
       <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} />
       <div className={styles.composerRow}>
-        <input ref={fileInput} type="file" hidden accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => void upload(e.currentTarget)} />
-        <IconButton icon="clip" variant="outline" label={ru.chat.attach} onClick={() => fileInput.current?.click()} disabled={Boolean(uploading)} />
+        <input ref={fileInput} type="file" hidden multiple accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => pick(e.currentTarget)} />
+        <IconButton icon="clip" variant="outline" label={ru.chat.attach} onClick={() => fileInput.current?.click()} />
         {extra}
         <span className={styles.fill} />
         {me.voiceAvailable ? <MicButton supported={canRecord()} busy={voice.state.status === 'starting' || voice.state.status === 'transcribing'} onClick={voice.start} /> : null}
