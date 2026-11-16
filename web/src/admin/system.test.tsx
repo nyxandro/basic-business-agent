@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ME, mockServer } from '../test/fetch-mock.ts';
@@ -17,6 +17,36 @@ describe('«Маскирование»', () => {
     expect(within(seen).getByText('a.petrov@example.com')).toBeInTheDocument();
     expect(within(seen).getByText('[ТЕЛЕФОН_1]')).toBeInTheDocument();
     await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ kinds: ['passport', 'phone'] }));
+  });
+});
+
+describe('a form opened again (spec, section 8.22)', () => {
+  it('shows what was saved, not what was loaded before: a form is loaded anew at every opening', async () => {
+    let kinds = ['passport', 'phone', 'email'];
+    const s = mockServer({
+      'GET /app/api/me': { body: ADMIN },
+      'GET /app/api/admin/masking': () => ({ body: { kinds } }),
+      'PUT /app/api/admin/masking': (call) => {
+        kinds = (call.body as { kinds: string[] }).kinds;
+        return { body: { ok: true } };
+      },
+      'GET /app/api/admin/journal': { body: { entries: [], total: 0 } },
+    });
+    renderApp('/admin/masking');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('switch', { name: 'Электронная почта' }));
+    await waitFor(() => expect(s.calls.some((c) => c.method === 'PUT')).toBe(true));
+    const nav = screen.getByRole('navigation', { name: 'Разделы админки' });
+    await user.click(within(nav).getByRole('link', { name: 'Журнал действий' }));
+    // The server answers slowly now: a form from memory would show the state before the save meanwhile.
+    let answer: (() => void) | null = null;
+    s.set('GET /app/api/admin/masking', () => new Promise((resolve) => (answer = () => resolve({ body: { kinds } }))));
+    await user.click(within(nav).getByRole('link', { name: 'Маскирование' }));
+    await waitFor(() => expect(answer).not.toBeNull());
+    // Never the state before the save, not even for a moment: the next save would take it back.
+    expect(screen.queryByRole('switch', { name: 'Электронная почта' })).toBeNull();
+    act(() => (answer as unknown as () => void)());
+    expect(await screen.findByRole('switch', { name: 'Электронная почта' })).toHaveAttribute('aria-checked', 'false');
   });
 });
 

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { apiError, ME, mockServer, type MockCall, type Route } from '../test/fetch-mock.ts';
@@ -105,6 +105,38 @@ describe('search over conversations and projects', () => {
 
     await user.click(within(dialog).getByText('Тема 2').closest('button')!);
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
+  });
+
+  it('drops the pages loaded further when the first page comes anew from the server (spec, section 8.22)', async () => {
+    const s = server();
+    s.set('GET /app/api/threads', threadList);
+    renderApp('/agents/sales?thread=t1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Ещё' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Поиск' });
+    expect(await within(dialog).findAllByText(/^Тема \d+$/)).toHaveLength(30);
+    await user.keyboard('{Escape}');
+    // A new conversation comes first now, and the server gives the first page slowly.
+    const NEWEST = conversation('t99', 'Новый разговор', null);
+    let answer: (() => void) | null = null;
+    s.set('GET /app/api/threads', (call) => {
+      if (call.query.before) return threadList(call);
+      if (call.query.limit !== '30') return { body: { threads: [NEWEST, ...ALL.slice(0, 6)], next: 'cursor-7' } };
+      return new Promise((resolve) => (answer = () => resolve({ body: { threads: [NEWEST, ...ALL.slice(0, 29)], next: 'cursor-new' } })));
+    });
+    await user.click(screen.getByRole('button', { name: 'Ещё' }));
+    dialog = await screen.findByRole('dialog', { name: 'Поиск' });
+    // From memory at once, and more of it from the old place.
+    expect(within(dialog).getAllByText(/^Тема \d+$/)).toHaveLength(30);
+    await user.click(within(dialog).getByRole('button', { name: 'Показать ещё' }));
+    expect(await within(dialog).findByRole('button', { name: /Самый старый разговор/ })).toBeInTheDocument();
+    await waitFor(() => expect(answer).not.toBeNull());
+    act(() => (answer as unknown as () => void)());
+    // The new first page: the newest on top, «Тема 29» not lost, nothing twice, the rest from its own place.
+    expect(await within(dialog).findByRole('button', { name: /Новый разговор/ })).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/^Тема \d+$/)).toHaveLength(29);
+    expect(within(dialog).queryByRole('button', { name: /Самый старый разговор/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Показать ещё' })).toBeInTheDocument();
   });
 
   it('says when there are no conversations yet and shows a list that did not load with a repeat', async () => {

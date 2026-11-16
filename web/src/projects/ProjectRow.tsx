@@ -6,7 +6,7 @@
 import type { ProjectDto } from '@bba/contracts';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ru } from '../i18n/ru.ts';
 import { RenameField } from '../layout/RenameField.tsx';
@@ -17,7 +17,7 @@ import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { accessText } from './AccessPicker.tsx';
 import { updateProject } from './api.ts';
 import styles from './projects.module.css';
-import { usePrefetchProject } from './queries.ts';
+import { POINTER_REST_MS, usePrefetchProject } from './queries.ts';
 
 export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`;
 export const ARCHIVE_PATH = '/projects/archive';
@@ -32,6 +32,13 @@ export function sharedHint(project: ProjectDto): string {
 export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; current: boolean; page: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
   const [menu, setMenu] = useState(false);
   const prefetch = usePrefetchProject();
+  // The pointer that rests on the project, not one passing over the list, starts its loading.
+  const resting = useRef<number | null>(null);
+  const stopResting = () => {
+    if (resting.current !== null) window.clearTimeout(resting.current);
+    resting.current = null;
+  };
+  useEffect(() => stopResting, []);
   const [editing, setEditing] = useState(false);
   // The link comes back after the field: it takes the keyboard when the field had it.
   const refocus = useRef(false);
@@ -65,7 +72,11 @@ export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPi
             to={projectPath(project.id)}
             onClick={onNavigate}
             // Its data starts to load while the pointer or the keyboard is on it (spec, section 8.22).
-            onMouseEnter={() => prefetch(project.id)}
+            onMouseEnter={() => {
+              stopResting();
+              resting.current = window.setTimeout(() => prefetch(project.id), POINTER_REST_MS);
+            }}
+            onMouseLeave={stopResting}
             onFocus={() => prefetch(project.id)}
             className={cx(shell.item, shell.threadLink, styles.projectLink)}
             aria-current={page ? 'page' : undefined}

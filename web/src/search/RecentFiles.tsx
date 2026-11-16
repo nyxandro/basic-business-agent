@@ -7,17 +7,11 @@ import { useLoad } from '../ui/use-load.ts';
 import { fetchRecentFiles } from './api.ts';
 import { FilesGroup } from './FileResult.tsx';
 import styles from './search.module.css';
+import { DelayedBar } from '../ui/Loading.tsx';
 
 export function RecentFiles({ wide, projectName, onOpen }: { wide: boolean; projectName: (id: string | null) => string; onOpen: (file: SearchFile) => void }) {
   const { state, reload } = useLoad(fetchRecentFiles, ['files', 'recent']);
-  if (state.status === 'loading') {
-    return (
-      <p className={styles.hint} role="status">
-        <span className={styles.spin} />
-        {ru.search.loadingFiles}
-      </p>
-    );
-  }
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') {
     return (
       <div className={styles.error}>

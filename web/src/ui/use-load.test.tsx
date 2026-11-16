@@ -15,11 +15,9 @@ const Memory = ({ children }: { children: ReactNode }) => <QueryClientProvider c
 
 function Screen({ load, memoryKey }: { load: () => Promise<string>; memoryKey?: readonly unknown[] }) {
   const { state, reload } = useLoad(load, memoryKey);
-  if (state.status === 'loading') return <p>ждём</p>;
-  if (state.status === 'error') return <p>ошибка {state.error.code}</p>;
   return (
     <p>
-      {state.data}
+      {state.status === 'loading' ? 'ждём' : state.status === 'error' ? `ошибка ${state.error.code}` : state.data}
       <button type="button" onClick={reload}>
         заново
       </button>
@@ -151,6 +149,26 @@ describe('the memory of screens (spec, section 8.22)', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('asks anew when told to while the first load is on its way, and shows only the newer answer', async () => {
+    const { load, answers } = server();
+    render(
+      <Memory>
+        <Screen load={load} memoryKey={['threads', 'recent']} />
+      </Memory>,
+    );
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    // A conversation was made meanwhile: the list on its way does not have it.
+    act(() => screen.getByRole('button', { name: 'заново' }).click());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      answers[0]!.resolve('без нового разговора');
+      answers[1]!.resolve('с новым разговором');
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('с новым разговором')).toBeInTheDocument();
+    expect(screen.queryByText('без нового разговора')).not.toBeInTheDocument();
+  });
+
   it('keeps what is shown while asked again by «заново», and asks once for two screens of the same data', async () => {
     const { load, answers } = server();
     render(
@@ -167,6 +185,7 @@ describe('the memory of screens (spec, section 8.22)', () => {
     expect(await screen.findAllByText('Продажи')).toHaveLength(2);
     act(() => screen.getAllByRole('button', { name: 'заново' })[0]!.click());
     expect(screen.getAllByText('Продажи')).toHaveLength(2);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     await act(async () => {
       answers[1]!.resolve('Продажи и склад');
       await Promise.resolve();

@@ -15,6 +15,7 @@ import { useLoad } from '../ui/use-load.ts';
 import { fetchFileStatus, fileUrl } from './api.ts';
 import { placeOf } from './FileResult.tsx';
 import styles from './search.module.css';
+import { DelayedBar } from '../ui/Loading.tsx';
 
 const isPdf = (name: string) => name.toLowerCase().endsWith('.pdf');
 
@@ -33,12 +34,7 @@ export function FileDialog({ file, projectName, onClose }: { file: SearchFile; p
             <p className={styles.fileMeta}>{ru.search.fileMeta(placeOf(file, projectName), dayLabel(file.modifiedAt), fileSize(file.bytes))}</p>
           </div>
         </div>
-        {state.status === 'loading' ? (
-          <p className={styles.fileChecking} role="status">
-            <span className={styles.spin} />
-            {ru.search.checkingFile}
-          </p>
-        ) : null}
+        {state.status === 'loading' ? <DelayedBar /> : null}
         {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
         {state.status === 'ready' && state.data.state !== 'ok' ? <FileNote status={state.data} onRestored={reload} /> : null}
         <div className={styles.fileActions}>

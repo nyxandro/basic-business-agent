@@ -11,38 +11,48 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import styles from './search.module.css';
 import { ThreadResult } from './ThreadResult.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 
 interface Pages {
   threads: ThreadSummaryDto[];
   next: string | null;
 }
 
+// Pages loaded further, with the first page they continue: a first page loaded anew (shown from memory,
+// then from the server) drops them, or a conversation would be lost or shown twice.
+interface More extends Pages {
+  over: Pages;
+}
+
 export function AllThreads({ wide, projectName, onPick }: { wide: boolean; projectName: (id: string | null) => string; onPick: (path: string) => void }) {
   const first = useCallback(() => fetchThreadPage({ limit: THREAD_PAGE }), []);
   const { state, reload } = useLoad(first, ['threads', 'first-page']);
-  const [more, setMore] = useState<Pages | null>(null);
+  const [loadedMore, setMore] = useState<More | null>(null);
+  const firstPage = state.status === 'ready' ? state.data : null;
+  const more = loadedMore && loadedMore.over === firstPage ? loadedMore : null;
   const [moreError, setMoreError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);
   // The end of the list may come into view again before the page asked for has come.
   const asking = useRef(false);
   const end = useRef<HTMLButtonElement>(null);
-  const next = more ? more.next : state.status === 'ready' ? state.data.next : null;
+  const next = more ? more.next : firstPage ? firstPage.next : null;
 
   const showMore = useCallback(async () => {
-    if (!next || asking.current) return;
+    if (!next || !firstPage || asking.current) return;
+    const over = firstPage;
     asking.current = true;
     setBusy(true);
     setMoreError(null);
     try {
       const page = await fetchThreadPage({ limit: THREAD_PAGE, before: next });
-      setMore((prev) => ({ threads: [...(prev?.threads ?? []), ...page.threads], next: page.next }));
+      setMore((prev) => ({ over, threads: [...(prev && prev.over === over ? prev.threads : []), ...page.threads], next: page.next }));
     } catch (raw) {
       setMoreError(asApiError(raw));
     } finally {
       asking.current = false;
       setBusy(false);
     }
-  }, [next]);
+  }, [next, firstPage]);
 
   // A page that does not fill the window keeps the end in view: the next one is asked at once.
   useEffect(() => {
@@ -55,14 +65,7 @@ export function AllThreads({ wide, projectName, onPick }: { wide: boolean; proje
     return () => watcher.disconnect();
   }, [showMore, moreError]);
 
-  if (state.status === 'loading') {
-    return (
-      <p className={styles.hint} role="status">
-        <span className={styles.spin} />
-        {ru.search.loadingThreads}
-      </p>
-    );
-  }
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') {
     return (
       <div className={styles.error}>

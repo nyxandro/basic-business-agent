@@ -13,7 +13,8 @@ import styles from './approvals.module.css';
 
 function SheetBody({ onClose }: { onClose: () => void }) {
   const load = useCallback(() => fetchApprovals(), []);
-  const { state, reload } = useLoad(load, ['approvals']);
+  // «Да» and «Нет» act on what is shown: a question answered meanwhile must not come back from memory.
+  const { state, reload } = useLoad(load);
   return (
     <div>
       <div className={styles.sheetHead}>

@@ -85,7 +85,8 @@ function Stats({ month, defaultLimit }: { month: Month; defaultLimit: number | n
 export function LimitsPage() {
   const me = useMe();
   const load = useCallback(() => loadPage(me), [me]);
-  const { state, reload } = useLoad(load, ['admin', 'limits-page']);
+  // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
+  const { state, reload } = useLoad(load);
   const now = new Date();
   const monthTitle = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);

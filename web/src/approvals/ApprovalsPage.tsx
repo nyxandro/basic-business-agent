@@ -10,7 +10,8 @@ import { fetchApprovals } from './api.ts';
 import { ApprovalLists } from './ApprovalCards.tsx';
 
 export function ApprovalsPage() {
-  const { state, reload } = useLoad(fetchApprovals, ['approvals']);
+  // «Да» and «Нет» act on what is shown: a question answered meanwhile must not come back from memory.
+  const { state, reload } = useLoad(fetchApprovals);
   const { wide } = useShell();
   return (
     <PageFrame title={ru.approvals.title} lead={ru.approvals.lead}>

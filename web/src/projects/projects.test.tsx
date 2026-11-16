@@ -50,6 +50,12 @@ describe('projects of conversations', () => {
     renderApp('/agents/sales?thread=t1');
     const link = await screen.findByRole('link', { name: 'Отчёты' });
     const asked = (path: string) => s.calls.filter((c) => c.method === 'GET' && c.path === path).length;
+    // The pointer passing over another project loads nothing.
+    const passing = screen.getByRole('link', { name: 'Тендер Альфа' });
+    fireEvent.mouseEnter(passing);
+    fireEvent.mouseLeave(passing);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(asked('/app/api/projects/p1')).toBe(0);
     fireEvent.mouseEnter(link);
     await waitFor(() => expect(asked('/app/api/projects/p2')).toBe(1));
     expect(asked('/app/api/projects/p2/files')).toBe(1);

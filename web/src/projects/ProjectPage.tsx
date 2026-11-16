@@ -335,7 +335,9 @@ export function ProjectPage() {
           {archived ? <ArchivedBanner project={project} busy={busy} onBack={() => void unarchive()} onDelete={() => void removeForever()} /> : null}
           {actionError ? <ErrorBanner error={actionError} /> : null}
           {owner && !archived && !project.instructions && project.threadCount === 0 ? <p className={styles.lead}>{ru.projects.empty}</p> : null}
-          {owner && !archived ? <Instructions key={project.id} project={project} onSaved={update} /> : <InstructionsText project={project} />}
+          {/* The page may show the project from memory first: the server's instructions, when different,
+              start the field anew (spec, section 8.22). */}
+          {owner && !archived ? <Instructions key={`${project.id}:${project.instructions}`} project={project} onSaved={update} /> : <InstructionsText project={project} />}
           <ProjectFiles projectId={project.id} readOnly={archived} shared={project.shared} />
           <Threads project={project} agents={agents ?? []} />
           <AccessDialog

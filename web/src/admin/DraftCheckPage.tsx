@@ -24,7 +24,7 @@ const NO_SYSTEMS = { tools: {}, prefixes: {} };
 export function DraftCheckPage() {
   const { agentId } = useParams();
   if (!agentId) throw new Error('DraftCheckPage needs the :agentId route parameter');
-  const { state, reload } = useLoad(adminApi.agents, ['admin', 'agents']);
+  const { state, reload } = useLoad(adminApi.agents);
   const [threadId] = useState(() => crypto.randomUUID());
   const noop = useCallback(() => undefined, []);
   if (state.status === 'loading') return <DelayedBar />;

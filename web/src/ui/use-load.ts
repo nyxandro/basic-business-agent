@@ -4,8 +4,8 @@
 // names the data and everything the loader depends on — ['project', id]. Data without a key (a check of
 // a file, a link to set a password) is loaded anew at every opening; its loader must be stable
 // (useCallback): a new loader starts a new load.
-import { useQuery } from '@tanstack/react-query';
-import { useId, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 
 export type LoadState<T> = { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: ApiRequestError };
@@ -26,8 +26,9 @@ function useLoaderTurn(load: () => Promise<unknown>): number {
 export function useLoad<T>(load: () => Promise<T>, key?: readonly unknown[]): { state: LoadState<T>; reload: () => void } {
   const screen = useId();
   const turn = useLoaderTurn(load);
+  const queryKey = key ?? ['screen', screen, turn];
   const query = useQuery({
-    queryKey: key ?? ['screen', screen, turn],
+    queryKey,
     queryFn: load,
     // What only this screen loads, for this opening: nothing to remember.
     ...(key ? {} : { gcTime: 0 }),
@@ -38,6 +39,18 @@ export function useLoad<T>(load: () => Promise<T>, key?: readonly unknown[]): { 
     if (query.status === 'error') return { status: 'error', error: asApiError(query.error) };
     return { status: 'ready', data: query.data };
   }, [query.status, query.data, query.error]);
-  const { refetch } = query;
-  return { state, reload: () => void refetch() };
+  // «Заново» asks after the drawing (screens ask it while drawing, on a new refreshKey). An answer already
+  // on its way may predate what made the screen ask: it is dropped for a new one.
+  const memory = useQueryClient();
+  const latest = useRef({ memory, queryKey, refetch: query.refetch });
+  useLayoutEffect(() => {
+    latest.current = { memory, queryKey, refetch: query.refetch };
+  });
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (asked === 0) return;
+    const { memory: m, queryKey: k, refetch } = latest.current;
+    void m.cancelQueries({ queryKey: k, exact: true }).then(() => refetch());
+  }, [asked]);
+  return { state, reload: () => setAsked((n) => n + 1) };
 }

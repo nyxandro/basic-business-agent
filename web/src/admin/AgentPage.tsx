@@ -47,7 +47,8 @@ function tabOf(segment: string | undefined): AgentTab | null {
 // The prompt and the model come from their own address; the rest of the agent from the list.
 function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: AgentTab; onChanged: () => void }) {
   const load = useCallback(() => adminApi.prompt(agent.id), [agent.id]);
-  const { state, reload } = useLoad(load, ['admin', 'prompt', agent.id]);
+  // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
+  const { state, reload } = useLoad(load);
   // The prompt field is drawn anew only after «Опубликовать» or «Вернуть версию из файла», once
   // their fresh version has come: a saved draft, a new model or new starters keep the text being
   // typed in it.
@@ -111,7 +112,8 @@ function Head({ agent }: { agent: AdminAgent }) {
 export function AgentPage() {
   const { agentId, tab: segment } = useParams();
   if (!agentId) throw new Error('AgentPage needs the :agentId route parameter');
-  const { state, reload } = useLoad(adminApi.agents, ['admin', 'agents']);
+  // The settings and the mark of the agent are forms over this list: it is loaded anew at every opening.
+  const { state, reload } = useLoad(adminApi.agents);
   const tab = tabOf(segment);
   if (!tab) return <Navigate to={agentPath(agentId)} replace />;
   if (state.status === 'loading') return <DelayedBar />;

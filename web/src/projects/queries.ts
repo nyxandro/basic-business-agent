@@ -11,6 +11,8 @@ export const projectKeys = {
   trash: (id: string) => ['project', id, 'trash'] as const,
 };
 
+// How long the pointer rests on a project before its data starts to load: passing over the list loads nothing.
+export const POINTER_REST_MS = 150;
 // A project loaded this recently is not loaded again by the pointer passing over it once more.
 const LOADED_RECENTLY_MS = 10_000;
 

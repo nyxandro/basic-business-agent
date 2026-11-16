@@ -90,7 +90,8 @@ function Switches({ initial }: { initial: Kind[] }) {
 }
 
 export function MaskingSection() {
-  const { state, reload } = useLoad(adminApi.masking, ['admin', 'masking']);
+  // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
+  const { state, reload } = useLoad(adminApi.masking);
   return (
     <div className={section.stack}>
       <PageHead title="Маскирование" lead="Скрывать от модели. Модель видит заглушку вроде [ПОЧТА_1], а письма и таблицы получают настоящие данные. Картинки и сканы уходят в модель как есть." />

@@ -52,7 +52,8 @@ function ShowMarks({ initial }: { initial: InterfaceAdminState }) {
 }
 
 export function InterfaceSection() {
-  const { state, reload } = useLoad(adminApi.interfaceSettings, ['admin', 'interface']);
+  // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
+  const { state, reload } = useLoad(adminApi.interfaceSettings);
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title={t.title} lead={t.lead} />

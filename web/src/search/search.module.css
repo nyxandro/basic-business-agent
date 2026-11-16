@@ -370,15 +370,6 @@
   color: var(--muted);
 }
 
-.fileChecking {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .fileActions {
   display: flex;
   flex-wrap: wrap;

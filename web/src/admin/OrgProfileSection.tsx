@@ -59,7 +59,8 @@ function ProfileForm({ initial }: { initial: Profile }) {
 }
 
 export function OrgProfileSection() {
-  const { state, reload } = useLoad(adminApi.orgProfile, ['admin', 'org-profile']);
+  // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
+  const { state, reload } = useLoad(adminApi.orgProfile);
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title="Профиль организации" lead="Подставляется в промпт всех агентов." />

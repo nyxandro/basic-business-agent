@@ -8,19 +8,12 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import type { LoadState } from '../ui/use-load.ts';
 import { ProjectResult, projectPath, projectResultOf } from './ProjectResult.tsx';
 import styles from './search.module.css';
+import { DelayedBar } from '../ui/Loading.tsx';
 
 export type ProjectsState = LoadState<ProjectDto[]>;
 
 export function AllProjects({ state, quiet, onRetry, onPick }: { state: ProjectsState; quiet: boolean; onRetry: () => void; onPick: (path: string) => void }) {
-  if (state.status === 'loading') {
-    if (quiet) return null;
-    return (
-      <p className={styles.hint} role="status">
-        <span className={styles.spin} />
-        {ru.search.loadingProjects}
-      </p>
-    );
-  }
+  if (state.status === 'loading') return quiet ? null : <DelayedBar />;
   if (state.status === 'error') {
     return (
       <div className={styles.error}>
