@@ -107,15 +107,22 @@ export async function inSearch<T>(db: Db, work: (client: pg.PoolClient) => Promi
 }
 
 // Which of `names` match every word, and whether all of them directly: for project names and file names,
-// a few hundred or thousand short strings — no index needed.
-export async function matchNames(client: pg.PoolClient, names: string[], words: WordVariants[]): Promise<{ index: number; direct: boolean }[]> {
+// a few hundred or thousand short strings — no index needed. With `enough`, typos are looked for only when
+// fewer are found directly: they rank below and would not make the list.
+export async function matchNames(client: pg.PoolClient, names: string[], words: WordVariants[], enough = Infinity): Promise<{ index: number; direct: boolean }[]> {
   if (names.length === 0) return [];
+  const direct = await namesBy(client, names, words, false);
+  if (direct.length >= enough) return direct;
+  return namesBy(client, names, words, true);
+}
+
+async function namesBy(client: pg.PoolClient, names: string[], words: WordVariants[], typos: boolean): Promise<{ index: number; direct: boolean }[]> {
   const params = new SqlParams();
   const list = params.add(names);
   const name = 'x.name';
   const directs = words.map((w) => directCondition(name, w, params));
   const each = words.map((w, i) => {
-    const typo = typoCondition(name, w, params);
+    const typo = typos ? typoCondition(name, w, params) : null;
     return typo === null ? directs[i]! : `(${directs[i]} OR ${typo})`;
   });
   const { rows } = await client.query<{ index: number; direct: boolean }>(

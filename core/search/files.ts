@@ -60,7 +60,7 @@ const shown = (files: Listed[]): SearchFile[] => files.slice(0, MAX_FOUND_FILES)
 // Found directly first, then with a typo; newest first in each part.
 export async function searchFiles(deps: ProjectsDeps, client: pg.PoolClient, userId: string, words: WordVariants[], projects: ProjectDto[]): Promise<SearchFiles> {
   const { files, unreadable } = collect(deps, userId, projects);
-  const hits = await matchNames(client, files.map((f) => f.name), words);
+  const hits = await matchNames(client, files.map((f) => f.name), words, MAX_FOUND_FILES + 1);
   const ordered = hits.map((hit) => ({ file: files[hit.index]!, direct: hit.direct })).sort((a, b) => Number(b.direct) - Number(a.direct) || b.file.modifiedMs - a.file.modifiedMs);
   return { files: shown(ordered.map((o) => o.file)), unreadable, more: ordered.length > MAX_FOUND_FILES };
 }
