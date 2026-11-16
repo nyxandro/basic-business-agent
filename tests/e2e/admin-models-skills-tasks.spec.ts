@@ -20,7 +20,7 @@ test('«Пул аккаунтов подписки» shows the states and connec
   await expect(account('sales.gpt@example.com')).toContainText('Работает · последний успешный запрос');
   await expect(account('office.gpt@example.com')).toContainText('Охлаждение — ошибка 429, вернётся в');
   await expect(account('reserve.gpt@example.com')).toContainText('Нет запросов');
-  await expect(page.getByText('2 из 3 активны')).toBeVisible();
+  // The tile «2 из 3 активны» is gone (owner's list 16.11): the states are in the rows of the pool.
 
   await page.getByRole('button', { name: 'Добавить аккаунт' }).click();
   const dialog = page.getByRole('dialog', { name: 'Подключить аккаунт ChatGPT' });
@@ -34,7 +34,6 @@ test('«Пул аккаунтов подписки» shows the states and connec
   await site.close();
   await expect(page.getByText('Аккаунт подключён: new.gpt@example.com')).toBeVisible();
   await expect(account('new.gpt@example.com')).toContainText('Нет запросов');
-  await expect(page.getByText('3 из 4 активны')).toBeVisible();
 });
 
 test('«Скиллы» lists the system skills of documents without a switch, then the uploaded skill with its switch', async ({ browser }) => {
