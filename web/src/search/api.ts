@@ -2,8 +2,7 @@
 import type { SearchResponse, SearchScope } from '@bba/contracts';
 import { api } from '../api/client.ts';
 
-export function searchAll(q: string, scope: SearchScope, projectId: string | null): Promise<SearchResponse> {
+export function searchAll(q: string, scope: SearchScope): Promise<SearchResponse> {
   const params = new URLSearchParams({ q, scope });
-  if (projectId) params.set('projectId', projectId);
   return api<SearchResponse>('GET', `/app/api/search?${params.toString()}`);
 }

@@ -1,7 +1,6 @@
 // All the person's conversations in the window of «Поиск» while no query is typed (decision of the
 // owner 15.11; «Ещё» under «Недавние» opens it): newest first, the next page as soon as the end of the
-// list comes into view — «Показать ещё» does the same from the keyboard; «В проекте» keeps those of
-// one project. The parent gives a new `key` for another project: its pages start anew.
+// list comes into view — «Показать ещё» does the same from the keyboard.
 import type { ThreadSummaryDto } from '@bba/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
@@ -18,8 +17,8 @@ interface Pages {
   next: string | null;
 }
 
-export function AllThreads({ projectId, wide, projectName, onPick }: { projectId: string | null; wide: boolean; projectName: (id: string | null) => string; onPick: (path: string) => void }) {
-  const first = useCallback(() => fetchThreadPage({ limit: THREAD_PAGE, projectId }), [projectId]);
+export function AllThreads({ wide, projectName, onPick }: { wide: boolean; projectName: (id: string | null) => string; onPick: (path: string) => void }) {
+  const first = useCallback(() => fetchThreadPage({ limit: THREAD_PAGE }), []);
   const { state, reload } = useLoad(first);
   const [more, setMore] = useState<Pages | null>(null);
   const [moreError, setMoreError] = useState<ApiRequestError | null>(null);
@@ -35,7 +34,7 @@ export function AllThreads({ projectId, wide, projectName, onPick }: { projectId
     setBusy(true);
     setMoreError(null);
     try {
-      const page = await fetchThreadPage({ limit: THREAD_PAGE, before: next, projectId });
+      const page = await fetchThreadPage({ limit: THREAD_PAGE, before: next });
       setMore((prev) => ({ threads: [...(prev?.threads ?? []), ...page.threads], next: page.next }));
     } catch (raw) {
       setMoreError(asApiError(raw));
@@ -43,7 +42,7 @@ export function AllThreads({ projectId, wide, projectName, onPick }: { projectId
       asking.current = false;
       setBusy(false);
     }
-  }, [next, projectId]);
+  }, [next]);
 
   // A page that does not fill the window keeps the end in view: the next one is asked at once.
   useEffect(() => {

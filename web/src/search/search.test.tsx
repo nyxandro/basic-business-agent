@@ -40,9 +40,7 @@ const conversation = (id: string, title: string, projectId: string | null, unrea
 // 31 conversations: the panel asks 7, the window asks pages of 30; the last page is one, the oldest.
 const ALL = Array.from({ length: 30 }, (_, i) => conversation(`t${i}`, `Тема ${i}`, i === 0 ? 'p1' : null, i === 1));
 const OLDEST = conversation('t30', 'Самый старый разговор', null);
-const IN_P2 = conversation('t40', 'Звонок ключевому клиенту', 'p2');
 const threadList: Route = (call) => {
-  if (call.query.projectId === 'p2') return { body: { threads: [IN_P2], next: null } };
   if (call.query.before === 'cursor-30') return { body: { threads: [OLDEST], next: null } };
   const limit = Number(call.query.limit);
   return { body: { threads: ALL.slice(0, limit), next: `cursor-${limit}` } };
@@ -70,7 +68,7 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).getAllByText(/^Тема \d+$/)).toHaveLength(30);
   });
 
-  it('opens all conversations by «Ещё» in the panel: newest first, more further down, in a project', async () => {
+  it('opens all conversations by «Ещё» in the panel: newest first, more further down', async () => {
     const s = server();
     s.set('GET /app/api/threads', threadList);
     renderApp('/agents/sales?thread=t1');
@@ -90,18 +88,13 @@ describe('search over conversations and projects', () => {
     expect(lists(s).at(-1)?.query).toEqual({ limit: '30', before: 'cursor-30' });
     expect(within(dialog).queryByRole('button', { name: 'Показать ещё' })).not.toBeInTheDocument();
 
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'В проекте' }), 'Ключевые клиенты');
-    expect(await within(dialog).findByRole('button', { name: /Звонок ключевому клиенту/ })).toBeInTheDocument();
-    expect(within(dialog).queryByText(/^Тема \d+$/)).not.toBeInTheDocument();
-    expect(lists(s).at(-1)?.query).toEqual({ limit: '30', projectId: 'p2' });
-
     await user.type(within(dialog).getByRole('textbox'), 'договор');
     expect(await within(dialog).findByText('Найдено: 2')).toBeInTheDocument();
-    expect(searches(s).at(-1)?.query).toEqual({ q: 'договор', scope: 'threads', projectId: 'p2' });
+    expect(searches(s).at(-1)?.query).toEqual({ q: 'договор', scope: 'threads' });
     await user.clear(within(dialog).getByRole('textbox'));
-    expect(await within(dialog).findByRole('button', { name: /Звонок ключевому клиенту/ })).toBeInTheDocument();
+    expect(await within(dialog).findAllByText(/^Тема \d+$/)).toHaveLength(30);
 
-    await user.click(within(dialog).getByRole('button', { name: /Звонок ключевому клиенту/ }));
+    await user.click(within(dialog).getByText('Тема 2').closest('button')!);
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
   });
 
@@ -147,14 +140,12 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).queryByText(/^Тема \d+$/)).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/Начните вводить/)).not.toBeInTheDocument();
 
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'В проекте' }), 'Тендер Северный');
-    expect(within(dialog).queryByRole('button', { name: /Ключевые клиенты/ })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: /Тендер Северный.*2 разговора/ }));
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
     expect(searches(s)).toHaveLength(0);
   });
 
-  it('on «Проекты» shows a list that did not load with a repeat and says when there are no projects', async () => {
+  it('shows a project list that did not load with a repeat and says when there are no projects', async () => {
     const s = server();
     renderApp('/agents/sales?thread=t1');
     const user = userEvent.setup();
@@ -162,6 +153,9 @@ describe('search over conversations and projects', () => {
     s.set('GET /app/api/projects', apiError('APP_INTERNAL', 'Сервер сейчас не отвечает. Попробуйте позже.', 500));
     await user.keyboard('{Control>}k{/Control}');
     const dialog = await screen.findByRole('dialog', { name: 'Поиск' });
+    // «Везде» tells it above the conversations: there is no filter row to carry a note any more.
+    expect(await within(dialog).findByText('Список проектов не загрузился')).toBeInTheDocument();
+    expect(await within(dialog).findByText('Разговоров пока нет')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
     expect(await within(dialog).findByText('Сервер сейчас не отвечает. Попробуйте позже.')).toBeInTheDocument();
     s.set('GET /app/api/projects', { body: { projects: [] } });
@@ -204,18 +198,16 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).queryByText('Старый ответ')).not.toBeInTheDocument();
   });
 
-  it('says nothing was found and sends the filters', async () => {
+  it('says nothing was found and sends the scope', async () => {
     const s = server({ body: { projects: [], threads: [] } });
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
     await user.type(within(dialog).getByRole('textbox'), 'ромашка');
     expect(await within(dialog).findByText('Ничего не нашлось')).toBeInTheDocument();
-    expect(within(dialog).getByText('Попробуйте другие слова или выберите все проекты')).toBeInTheDocument();
+    expect(within(dialog).getByText('Попробуйте другие слова')).toBeInTheDocument();
     expect(within(dialog).getByText('Нет совпадений')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Разговоры' }));
-    await waitFor(() => expect(searches(s).at(-1)?.query.scope).toBe('threads'));
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'В проекте' }), 'Ключевые клиенты');
-    await waitFor(() => expect(searches(s).at(-1)?.query).toEqual({ q: 'ромашка', scope: 'threads', projectId: 'p2' }));
+    await waitFor(() => expect(searches(s).at(-1)?.query).toEqual({ q: 'ромашка', scope: 'threads' }));
   });
 
   it('shows a failed search with its code and a repeat', async () => {
@@ -230,7 +222,17 @@ describe('search over conversations and projects', () => {
     expect(await within(dialog).findByText('Найдено: 3')).toBeInTheDocument();
   });
 
-  it('opens from «Поиск» in the menu of a phone and closes by «Отмена»', async () => {
+  it('has no project filter: the projects are in the list itself (decision of the owner 16.11)', async () => {
+    server();
+    renderApp('/agents/sales?thread=t1');
+    const { dialog } = await open();
+    expect(await within(dialog).findByText('2 разговора')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('В проекте')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Все проекты')).not.toBeInTheDocument();
+  });
+
+  it('opens from «Поиск» in the menu of a phone without project chips and closes by «Отмена»', async () => {
     stubSystemTheme('light', PHONE_WIDTH);
     server();
     renderApp('/agents/sales?thread=t1');
@@ -238,6 +240,9 @@ describe('search over conversations and projects', () => {
     await user.click(await screen.findByRole('button', { name: 'Меню' }));
     await user.click(within(screen.getByRole('dialog', { name: 'Меню' })).getByRole('button', { name: 'Поиск' }));
     const dialog = await screen.findByRole('dialog', { name: 'Поиск' });
+    expect(await within(dialog).findByText('2 разговора')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('group', { name: 'В проекте' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Все проекты' })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
   });

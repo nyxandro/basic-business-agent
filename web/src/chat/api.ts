@@ -8,10 +8,9 @@ export const THREAD_PAGE = 30;
 
 // Conversations of all the person's agents, newest first, `limit` at a time; `before` continues
 // after a page, `projectId` keeps those of one project.
-export function fetchThreadPage(query: { limit: number; before?: string | null; projectId?: string | null }): Promise<ThreadPage> {
+export function fetchThreadPage(query: { limit: number; before?: string | null }): Promise<ThreadPage> {
   const params = new URLSearchParams({ limit: String(query.limit) });
   if (query.before) params.set('before', query.before);
-  if (query.projectId) params.set('projectId', query.projectId);
   return api<ThreadPage>('GET', `/app/api/threads?${params.toString()}`);
 }
 // «Скачать» of the file block: a file of the folder of the conversation (spec, section 8.18).

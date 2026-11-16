@@ -1,6 +1,7 @@
 // «Поиск» (spec, scenario 7; mockup): Ctrl+K or the button in the side panel. On a computer — a
-// window with «Везде / Разговоры / Проекты», «В проекте», groups and «Найдено: N»; on a phone —
-// the whole screen with project chips and «Отмена». A choice opens the conversation or the project.
+// window with «Везде / Разговоры / Проекты», groups and «Найдено: N»; on a phone — the whole screen
+// with «Отмена». No project filter: the projects are in the list itself (decision of the owner
+// 16.11). A choice opens the conversation or the project.
 // Until a query is typed it lists all the person's projects (AllProjects.tsx) and conversations,
 // newest first (AllThreads.tsx), as the scope allows; «Ещё» under «Недавние» opens it on
 // «Разговоры». It starts afresh each time it opens (a new `key`).
@@ -36,14 +37,14 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function Results({ state, projectsState, scope, projectId, wide, projectName, onRetry, onRetryProjects, onPick }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; projectId: string | null; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void }) {
+function Results({ state, projectsState, scope, wide, projectName, onRetry, onRetryProjects, onPick }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void }) {
   if (state.status === 'idle') {
-    const projects = scope === 'threads' ? null : <AllProjects state={projectsState} projectId={projectId} quiet={scope === 'all'} onRetry={onRetryProjects} onPick={onPick} />;
+    const projects = scope === 'threads' ? null : <AllProjects state={projectsState} quiet={scope === 'all'} onRetry={onRetryProjects} onPick={onPick} />;
     if (scope === 'projects') return projects;
     return (
       <>
         {projects}
-        <AllThreads key={projectId ?? ''} projectId={projectId} wide={wide} projectName={projectName} onPick={onPick} />
+        <AllThreads wide={wide} projectName={projectName} onPick={onPick} />
       </>
     );
   }
@@ -103,14 +104,13 @@ function count(state: SearchState, scope: SearchScope): string | null {
 export function SearchDialog({ open, startScope, wide, onClose }: { open: boolean; startScope: SearchScope; wide: boolean; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [scope, setScope] = useState<SearchScope>(startScope);
-  const [projectId, setProjectId] = useState<string | null>(null);
   const [projectsState, setProjectsState] = useState<ProjectsState>({ status: 'loading' });
   const [projectsAttempt, setProjectsAttempt] = useState(0);
-  const { state, retry } = useSearch(open ? q : '', scope, projectId);
+  const { state, retry } = useSearch(open ? q : '', scope);
   const navigate = useNavigate();
 
-  // The person's projects: the list before a query and the project filter; without them the
-  // filter has only «Все проекты». Loaded only while the window is open.
+  // The person's projects: the list before a query and the names on the conversations' rows.
+  // Loaded only while the window is open.
   useEffect(() => {
     if (!open) return;
     let current = true;
@@ -128,7 +128,6 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
     };
   }, [open, projectsAttempt]);
   const projects = projectsState.status === 'ready' ? projectsState.data : [];
-  const projectsFailed = projectsState.status === 'error';
   const retryProjects = () => {
     setProjectsState({ status: 'loading' });
     setProjectsAttempt((n) => n + 1);
@@ -166,35 +165,10 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
               {s.label}
             </Chip>
           ))}
-          <span className={styles.fill} />
-          {projectsFailed ? <span className={styles.filterProblem}>{ru.search.projectsFailed}</span> : null}
-          <label className={styles.selectLabel}>
-            {ru.search.inProject}
-            <select className={styles.select} value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
-              <option value="">{ru.search.allProjects}</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
-      ) : (
-        <div className={cx(styles.filters, styles.filtersPhone, 'scroll-thin')} aria-label={ru.search.inProject} role="group">
-          <Chip on={projectId === null} onClick={() => setProjectId(null)}>
-            {ru.search.allProjects}
-          </Chip>
-          {projects.map((p) => (
-            <Chip key={p.id} on={projectId === p.id} onClick={() => setProjectId(p.id)}>
-              {p.name}
-            </Chip>
-          ))}
-          {projectsFailed ? <span className={styles.filterProblem}>{ru.search.projectsFailed}</span> : null}
-        </div>
-      )}
+      ) : null}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">
-        <Results state={state} projectsState={projectsState} scope={scope} projectId={projectId} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} />
+        <Results state={state} projectsState={projectsState} scope={scope} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} />
       </div>
       {wide && footer ? <div className={styles.footer}>{footer}</div> : null}
     </Modal>

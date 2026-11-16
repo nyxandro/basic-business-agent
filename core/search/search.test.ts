@@ -65,7 +65,7 @@ describe('search', () => {
     expect((await search('1_%')).threads).toEqual([]);
   });
 
-  it('finds projects by name with their conversation count and filters conversations by project', async () => {
+  it('finds projects by name with their conversation count', async () => {
     const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Тендер ЖК Северный', access: { mode: 'private', departmentIds: [], userIds: [] } } })).json()) as { id: string };
     const inProject = await conversation(olgaId, 'Смета по тендеру', [['user', [text('Смета для тендера')]]]);
     await t.call('PUT', `/app/api/threads/${inProject}/project`, { cookie: olga, body: { projectId: project.id } });
@@ -76,8 +76,7 @@ describe('search', () => {
     expect(all.threads).toHaveLength(2);
     expect((await search('тендер', '&scope=projects')).threads).toEqual([]);
     expect((await search('тендер', '&scope=threads')).projects).toEqual([]);
-    const filtered = await search('тендер', `&projectId=${project.id}`);
-    expect(filtered.threads.map((x) => [x.id, x.projectId])).toEqual([[inProject, project.id]]);
+    expect(all.threads.find((x) => x.id === inProject)?.projectId).toBe(project.id);
   });
 
   it('refuses a query shorter than 2 characters', async () => {

@@ -43,8 +43,8 @@ interface Row {
   project_id: string | null;
 }
 
-async function searchThreads(db: Db, userId: string, terms: string[], projectId: string | null): Promise<SearchResponse['threads']> {
-  const params: unknown[] = [userId, projectId];
+async function searchThreads(db: Db, userId: string, terms: string[]): Promise<SearchResponse['threads']> {
+  const params: unknown[] = [userId];
   // Rough pass on the raw stored text (no JSON parsing): a conversation stays a candidate only if
   // every word occurs in its title or anywhere in its messages. The exact pass below reads only the
   // text parts of the candidates' messages.
@@ -65,7 +65,6 @@ async function searchThreads(db: Db, userId: string, terms: string[], projectId:
            LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
           WHERE t."resourceId" = $1
             AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
-            AND ($2::uuid IS NULL OR tp.project_id = $2::uuid)
             AND ${rough.join(' AND ')}
           ORDER BY t."updatedAtZ" DESC, t.id DESC
        ) AS own
@@ -92,23 +91,22 @@ async function searchThreads(db: Db, userId: string, terms: string[], projectId:
   }));
 }
 
-export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope; projectId: string | null }): Promise<SearchResponse> {
+export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope }): Promise<SearchResponse> {
   const terms = words(query.q);
   if (query.q.trim().length < MIN_QUERY || terms.length === 0) {
     throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
   const [seen, threads] = await Promise.all([
     listProjects(deps, userId).then((list) => list.projects),
-    query.scope === 'projects' ? [] : searchThreads(deps.db, userId, terms, query.projectId),
+    query.scope === 'projects' ? [] : searchThreads(deps.db, userId, terms),
   ]);
   const projects = query.scope === 'threads' ? [] : seen;
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
   const seenIds = new Set(seen.map((p) => p.id));
-  if (query.projectId && !seenIds.has(query.projectId)) return { projects: [], threads: [] };
   return {
     threads: threads.map((th) => (th.projectId && !seenIds.has(th.projectId) ? { ...th, projectId: null } : th)),
     projects: projects
-      .filter((p) => (!query.projectId || p.id === query.projectId) && terms.every((w) => p.name.toLowerCase().includes(w)))
+      .filter((p) => terms.every((w) => p.name.toLowerCase().includes(w)))
       .map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
   };
 }
