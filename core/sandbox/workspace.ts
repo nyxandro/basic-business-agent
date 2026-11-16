@@ -95,9 +95,10 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
       const dir = dirOf(requestContext);
       return limitedSandbox(sandboxOptions(deps.skillsVenv, dir, skillPathsOf(requestContext), isolation), deps.limiter);
     },
-    // A cached sandbox keeps the folders it was made with, so another set of skills is another sandbox.
+    // A cached sandbox keeps the folders it was made with, so another set of skills — or the same
+    // project with another creator (an employee removed, spec 8.20) — is another sandbox.
     sandboxCacheKey: ({ requestContext }) =>
-      `${requireContextValue(requestContext, REQUEST_KEYS.userId)}:${optionalContextValue(requestContext, REQUEST_KEYS.projectId) ?? ''}:${createHash('sha256').update(requireContextValue(requestContext, REQUEST_KEYS.skillPaths)).digest('hex').slice(0, 16)}`,
+      `${requireContextValue(requestContext, REQUEST_KEYS.userId)}:${optionalContextValue(requestContext, REQUEST_KEYS.projectId) ?? ''}:${optionalContextValue(requestContext, REQUEST_KEYS.projectOwnerId) ?? ''}:${createHash('sha256').update(requireContextValue(requestContext, REQUEST_KEYS.skillPaths)).digest('hex').slice(0, 16)}`,
     skills: ({ requestContext }) => skillPathsOf(requestContext),
     tools: {
       // Without media parts a picture or a PDF read with read_file is only described, not sent.

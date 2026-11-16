@@ -141,13 +141,27 @@ describe('who sees a project', () => {
     expect((await t.db.query("SELECT 1 FROM app.project_shares s JOIN app.projects p ON p.id = s.project_id WHERE lower(p.name) = 'занятое'")).rowCount).toBe(0);
   });
 
-  it('a blocked person stays in the list marked so, and cannot be added again', async () => {
+  // A blocked person stays in the list until the creator removes them, and does not stop other
+  // changes of it (independent review 16.11); a blocked person cannot be added anew.
+  it('a blocked person stays in the list marked so, does not stop changes of it, and cannot be added anew', async () => {
     id.oleg = await t.createUser({ email: 'oleg@example.com', name: 'Олег' });
+    id.ira = await t.createUser({ email: 'ira@example.com', name: 'Ира' });
     const p = await create('olga', 'С Олегом', { mode: 'list', departmentIds: [], userIds: [id.oleg] });
     await setUserBlocked(t.db, id.boss!, id.oleg, true);
+    await setUserBlocked(t.db, id.boss!, id.ira, true);
     expect((await json<ProjectDto>(await page('olga', p.id))).access?.people).toEqual([{ id: id.oleg, name: 'Олег', email: 'oleg@example.com', blocked: true }]);
-    expect((await share('olga', p.id, { mode: 'list', departmentIds: [], userIds: [id.oleg, id.petr!] })).status).toBe(400);
+    expect(await json<ProjectDto>(await share('olga', p.id, { mode: 'list', departmentIds: [], userIds: [id.oleg, id.petr!] }))).toMatchObject({ access: { mode: 'list', people: [{ name: 'Олег', blocked: true }, { name: 'Пётр Иванов' }] } });
+    expect((await share('olga', p.id, { mode: 'list', departmentIds: [], userIds: [id.oleg, id.petr!, id.ira] })).status).toBe(400);
     expect(await json<ProjectDto>(await share('olga', p.id, { mode: 'list', departmentIds: [], userIds: [id.petr!] }))).toMatchObject({ access: { mode: 'list', people: [{ name: 'Пётр Иванов' }] } });
+    // Removed from the list, a blocked person cannot come back to it.
+    expect((await share('olga', p.id, { mode: 'list', departmentIds: [], userIds: [id.oleg, id.petr!] })).status).toBe(400);
+  });
+
+  it('a name taken by an archived project says where it is', async () => {
+    const p = await create('olga', 'Старый тендер');
+    await t.db.query('UPDATE app.projects SET archived_at = now() WHERE id = $1', [p.id]);
+    const res = await t.call('POST', '/app/api/projects', { cookie: cookie.olga, body: { name: 'старый тендер', access: PRIVATE } });
+    expect(await errorOf(res)).toEqual({ code: 'APP_PROJECT_EXISTS', message: 'Проект «старый тендер» уже есть в архиве. Верните его из архива или выберите другое название.' });
   });
 });
 

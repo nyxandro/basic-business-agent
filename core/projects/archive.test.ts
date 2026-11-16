@@ -52,6 +52,13 @@ describe('the archive of projects', () => {
     expect(Date.parse(archive[0]!.deletableFrom) - Date.parse(archive[0]!.archivedAt)).toBe(30 * 86_400_000);
     expect((await json<{ projects: unknown[] }>(await t.call('GET', '/app/api/projects/archive', { cookie: petr }))).projects).toEqual([]);
     expect(await json<ThreadProjectResponse>(await t.call('GET', `/app/api/threads/${petrThread}/project`, { cookie: petr }))).toMatchObject({ projectId: null, lost: { reason: 'archived', canUnarchive: false } });
+    // The page of the archived project lists its creator's conversations in it.
+    const olgaThread = randomUUID();
+    await ensureThread(t.memory, { threadId: olgaThread, resourceId: olgaId, agentId: 'sales', kind: 'chat', title: 'Сметы' });
+    await t.db.query('INSERT INTO app.thread_projects (thread_id, user_id, project_id) VALUES ($1, $2, $3)', [olgaThread, olgaId, p.id]);
+    const inArchive = await t.call('GET', `/app/api/threads?projectId=${p.id}`, { cookie: olga });
+    expect(inArchive.status).toBe(200);
+    expect((await json<{ threads: { id: string }[] }>(inArchive)).threads.map((x) => x.id)).toEqual([olgaThread]);
 
     // Too early to remove for good.
     const early = await t.call('DELETE', `/app/api/projects/${p.id}`, { cookie: olga });

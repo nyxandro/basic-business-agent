@@ -208,6 +208,7 @@ export const ru = {
     trashEmpty: 'Корзина пуста. Удалённые файлы хранятся здесь 30 дней.',
     trashBy: (name: string | null) => (name ? `Удалил(а) ${name}` : 'Удалил сотрудник, которого больше нет'),
     trashByAgent: (name: string | null) => (name ? `Удалил агент в разговоре ${name}` : 'Удалил агент в разговоре сотрудника, которого больше нет'),
+    trashByAgentOverlapped: (name: string | null) => `${name ? `Удалил агент в разговоре ${name}` : 'Удалил агент'} — в это время в проекте шли и ответы других сотрудников`,
     trashRestoreAll: 'Вернуть все',
     trashRestore: 'Вернуть',
     trashUntil: (date: string) => `удалится ${date}`,

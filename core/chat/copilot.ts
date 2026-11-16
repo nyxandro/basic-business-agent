@@ -5,6 +5,7 @@
 import { MastraAgent } from '@ag-ui/mastra';
 import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime';
 import type { AbstractAgent } from '@ag-ui/client';
+import { finalize } from 'rxjs';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
@@ -13,7 +14,9 @@ export const COPILOT_BASE_PATH = '/app/api/copilotkit';
 
 export type CopilotRequestContext =
   // `onMessageDiscarded` learns the messages whose words a repeated model call dropped (spec, 9.1).
-  | { kind: 'run'; run: PreparedRun; onMessageDiscarded: (messageId: string) => void }
+  // `onAgentEnd` is told when the agent itself ends — finished, stopped or failed — which may be well
+  // after the browser went away: CopilotKit lets the run go on without it.
+  | { kind: 'run'; run: PreparedRun; onMessageDiscarded: (messageId: string) => void; onAgentEnd: () => void }
   // /info and connect: the agents open to the employee, without a conversation-bound context.
   | { kind: 'listing'; userId: string; agentIds: string[]; mode: 'published' | 'draft' };
 
@@ -33,20 +36,27 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
   const contexts = new WeakMap<Request, CopilotRequestContext>();
 
   // A listing never calls a model, so only a run is told about dropped messages.
-  async function agentFor(agentId: string, run: PreparedRun, onMessageDiscarded?: (messageId: string) => void): Promise<AbstractAgent> {
+  async function agentFor(agentId: string, run: PreparedRun, live?: { onMessageDiscarded: (messageId: string) => void; onAgentEnd: () => void }): Promise<AbstractAgent> {
     const agent = await resolveAgent(deps.editor, agentId, run.mode);
     const requestContext = requestContextFor(run);
-    if (onMessageDiscarded) requestContext.set(REQUEST_KEYS.messageDiscarded, onMessageDiscarded);
-    return new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext });
+    const mastraAgent = new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext });
+    if (!live) return mastraAgent;
+    requestContext.set(REQUEST_KEYS.messageDiscarded, live.onMessageDiscarded);
+    // A middleware survives the copy of the agent CopilotKit makes for a run; `finalize` fires once
+    // the agent's events end — completed, failed or unsubscribed by «Стоп».
+    return mastraAgent.use((input, next) => {
+      run.agentStarted = true;
+      return next.run(input).pipe(finalize(live.onAgentEnd));
+    });
   }
 
   const runtime = new CopilotRuntime({
     agents: async ({ request }) => {
       const ctx = contexts.get(request);
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
-      if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run, ctx.onMessageDiscarded) };
+      if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run, { onMessageDiscarded: ctx.onMessageDiscarded, onAgentEnd: ctx.onAgentEnd }) };
       const entries = await Promise.all(
-        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, projectOwnerId: null, lostProject: null, snapshot: null, models: null, skillPaths: [] })] as const),
+        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, projectOwnerId: null, lostProject: null, snapshot: null, agentStarted: false, models: null, skillPaths: [] })] as const),
       );
       return Object.fromEntries(entries);
     },

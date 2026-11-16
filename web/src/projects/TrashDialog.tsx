@@ -36,7 +36,7 @@ function Trash({ projectId, readOnly, onRestored }: { projectId: string; readOnl
       reload();
     }
   }
-  const author = (b: TrashBatchDto) => (b.via === 'agent' ? ru.projects.trashByAgent(b.deletedBy) : ru.projects.trashBy(b.deletedBy));
+  const author = (b: TrashBatchDto) => (b.via === 'page' ? ru.projects.trashBy(b.deletedBy) : b.overlapped ? ru.projects.trashByAgentOverlapped(b.deletedBy) : ru.projects.trashByAgent(b.deletedBy));
   return (
     <div className={styles.section}>
       <h2 className={styles.sectionTitle}>{ru.projects.trashTitle}</h2>

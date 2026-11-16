@@ -17,7 +17,7 @@ import { contextRoot, isFileInside, resolveInside, saveFile } from '../workspace
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
-import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, prepareRun, SAFE_THREAD_ID, type ChatDeps, type RunInput } from './run.ts';
+import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
@@ -133,7 +133,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       const naming = await startNaming(deps.naming, run, newMessageOf(input));
       // Messages whose shown words a repeated model call dropped, for the chat (spec, 9.1).
       const discarded: string[] = [];
-      const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId) });
+      const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId), onAgentEnd: () => settleRun(deps, run) });
       // The cancelled call shows the arguments as the model sent them (the database keeps a summary).
       const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
       const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));
@@ -146,6 +146,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       });
     } catch (error) {
       endRun(deps, run);
+      settleRun(deps, run);
       throw error;
     }
   });

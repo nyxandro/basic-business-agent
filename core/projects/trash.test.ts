@@ -2,7 +2,9 @@
 // lies there 30 days and comes back to its place; a file replaced by a new one leaves its previous
 // version; a trash item of an answer is one batch; the trash empties itself.
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ProjectDto, ThreadFileStatus, TrashBatchDto } from '@bba/contracts';
 import fc from 'fast-check';
@@ -251,5 +253,80 @@ describe('the trash of a project', () => {
       }),
       { numRuns: 60 },
     );
+  });
+});
+
+// The agent may swap a folder for a link to someone else's files or put a pipe in place of a file
+// (independent review 16.11): the trash never follows it, never hangs on it.
+describe('the trash against the agent’s tricks', () => {
+  it('brings a file back to the top of the project when its folder became a link elsewhere', async () => {
+    const p = await project('Ярлык при возврате');
+    put(p.files, 'sub/x.docx', 'X');
+    await t.call('DELETE', `/app/api/projects/${p.id}/file?path=${encodeURIComponent('sub/x.docx')}`, { cookie: olga });
+    const elsewhere = mkdtempSync(join(tmpdir(), 'bba-elsewhere-'));
+    rmSync(join(p.files, 'sub'), { recursive: true });
+    symlinkSync(elsewhere, join(p.files, 'sub'));
+    const [batch] = await trashOf(p.id);
+    expect((await json<{ restored: string[] }>(await restore(p.id, { batchId: batch!.id }))).restored).toEqual(['x.docx']);
+    expect(readFileSync(join(p.files, 'x.docx'), 'utf8')).toBe('X');
+    expect(readdirSync(elsewhere)).toEqual([]);
+    rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it('does not take files of a folder that is a link elsewhere, nor hang on a pipe', async () => {
+    const p = await project('Ярлык и канал');
+    const elsewhere = mkdtempSync(join(tmpdir(), 'bba-elsewhere-'));
+    writeFileSync(join(elsewhere, 'чужое.txt'), 'ЧУЖОЕ');
+    symlinkSync(elsewhere, join(p.files, 'чужая'));
+    put(p.files, 'свой.txt', 'С');
+    const snapshot = snapshotOf(p.id);
+    rmSync(join(p.files, 'чужая'));
+    // A pipe in place of the file: reading it would wait forever.
+    rmSync(join(p.files, 'свой.txt'));
+    execFileSync('mkfifo', [join(p.files, 'свой.txt')]);
+    await settleSnapshot(t.db, t.workspaceRoot, snapshot);
+    const items = (await trashOf(p.id)).flatMap((b) => b.items);
+    expect(items.map((i) => i.path)).toEqual(['свой.txt']);
+    expect(readFileSync(join(trashDir(t.workspaceRoot, olgaId, p.id), items[0]!.id), 'utf8')).toBe('С');
+    expect(readFileSync(join(elsewhere, 'чужое.txt'), 'utf8')).toBe('ЧУЖОЕ');
+    rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it('two answers at once: a previous version is kept once, and the rows say the answers overlapped', async () => {
+    const p = await project('Одновременно');
+    put(p.files, 'смета.xlsx', 'старая');
+    const first = snapshotOf(p.id);
+    const second = snapshotOf(p.id);
+    writeFileSync(join(p.files, 'смета.new'), 'новая');
+    renameSync(join(p.files, 'смета.new'), join(p.files, 'смета.xlsx'));
+    await settleSnapshot(t.db, t.workspaceRoot, first);
+    await settleSnapshot(t.db, t.workspaceRoot, second);
+    const batches = await trashOf(p.id);
+    expect(batches.flatMap((b) => b.items).map((i) => [i.path, i.kind])).toEqual([['смета.xlsx', 'previous_version']]);
+    expect(batches[0]!.overlapped).toBe(true);
+    // One answer alone: not overlapped.
+    put(p.files, 'один.txt', 'О');
+    const alone = snapshotOf(p.id);
+    rmSync(join(p.files, 'один.txt'));
+    await settleSnapshot(t.db, t.workspaceRoot, alone);
+    expect((await trashOf(p.id)).find((b) => b.id === alone.id)?.overlapped).toBe(false);
+  });
+
+  it('at the start gives a folder left with another person back to the creator, and reads a broken note', async () => {
+    const p = await project('Сбой передачи');
+    put(p.files, 'договор.pdf', 'Д');
+    // A removal of an employee stopped between moving the folder and writing it down.
+    const stray = join(t.workspaceRoot, petrId, 'projects', p.id);
+    mkdirSync(dirname(stray), { recursive: true });
+    renameSync(join(t.workspaceRoot, olgaId, 'projects', p.id), stray);
+    await recoverProjectFolders(t.db, t.workspaceRoot);
+    expect(readFileSync(join(p.files, 'договор.pdf'), 'utf8')).toBe('Д');
+    expect(existsSync(stray)).toBe(false);
+    // A snapshot whose note was written halfway: its removals still reach the trash.
+    const snapshot = snapshotOf(p.id);
+    writeFileSync(join(t.workspaceRoot, olgaId, 'projects', p.id, '.snapshots', `${snapshot.id}.json`), '{"userId":');
+    rmSync(join(p.files, 'договор.pdf'));
+    await recoverProjectFolders(t.db, t.workspaceRoot);
+    expect((await trashOf(p.id)).flatMap((b) => b.items).map((i) => i.path)).toEqual(['договор.pdf']);
   });
 });

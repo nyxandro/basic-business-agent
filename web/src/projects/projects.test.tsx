@@ -225,7 +225,7 @@ describe('projects of conversations', () => {
     expect(await screen.findByText('2 КБ')).toBeInTheDocument();
 
     s.set('GET /app/api/projects/p1/files', { body: { files: [] } });
-    s.set('GET /app/api/projects/p1/trash', { body: { batches: [{ id: 'b1', via: 'page', deletedBy: 'Ольга', deletedAt: '2026-11-16T08:00:00Z', items: [{ id: 'tr1', path: 'смета.xlsx', bytes: 2048, kind: 'deleted', expiresAt: '2026-12-16T08:00:00Z' }] }] } });
+    s.set('GET /app/api/projects/p1/trash', { body: { batches: [{ id: 'b1', via: 'page', deletedBy: 'Ольга', deletedAt: '2026-11-16T08:00:00Z', overlapped: false, items: [{ id: 'tr1', path: 'смета.xlsx', bytes: 2048, kind: 'deleted', expiresAt: '2026-12-16T08:00:00Z' }] }] } });
     await user.click(screen.getByRole('button', { name: 'Удалить смета.xlsx' }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(await screen.findByText(/Файлов пока нет/)).toBeInTheDocument();

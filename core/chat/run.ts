@@ -59,6 +59,9 @@ export interface PreparedRun {
   lostProject: RunProject['lostProject'];
   // Files of the project remembered before the answer: what it removes goes into the trash.
   snapshot: ProjectSnapshot | null;
+  // The agent's run has begun (core/chat/copilot.ts): its trash is settled when the agent itself ends,
+  // not when the browser goes away — CopilotKit lets the agent finish without the browser.
+  agentStarted: boolean;
   // The models of the run (core/models/resolve.ts); null where no model is called (agent listing).
   models: ModelChoice | null;
   // Folders of the skills the employee gets, fixed for the run.
@@ -78,18 +81,25 @@ const busyThreads = new Set<string>();
 // A draft check of a prompt never belongs to the admin's projects.
 const NO_PROJECT: RunProject = { projectId: null, projectOwnerId: null, lostProject: null };
 
-export function releaseThread(threadId: string): void {
+function releaseThread(threadId: string): void {
   busyThreads.delete(threadId);
 }
 
-// The answer ended, whatever way: the thread is free, and what it removed from its project goes into
-// the trash (spec, section 8.20). A failure of the trash is the server's to log, not the answer's.
-export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
-  releaseThread(run.threadId);
+// What the answer removed from its project goes into the trash (spec, section 8.20) — once, when the
+// agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the
+// server's to log, not the answer's; the snapshot is left for the start of the server then.
+export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
   if (!run.snapshot) return;
   const snapshot = run.snapshot;
   run.snapshot = null;
   void settleSnapshot(deps.db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: snapshot.projectId, error }));
+}
+
+// The browser's stream of the answer ended (done, closed tab, error). The thread is free; the trash
+// waits for the agent, unless the agent never began (the run was refused before it).
+export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+  releaseThread(run.threadId);
+  if (!run.agentStarted) settleRun(deps, run);
 }
 
 function threadBusy(threadId: string): AppError {
@@ -180,14 +190,22 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
   for (const pending of await pendingForThread(deps.db, run.userId, run.threadId)) {
     if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
     cancelled.push(pending);
-    const stream = await agent.declineToolCall({
-      runId: pending.runId,
-      toolCallId: pending.toolCallId,
-      reason: SUPERSEDED,
-      memory: { thread: run.threadId, resource: run.resourceId },
-      requestContext: requestContextFor({ ...run, ...(await runProjectOfWaitingAnswer(deps.db, pending.projectId)) }),
-    });
-    await stream.consumeStream();
+    // The waiting answer goes on in its own project: one other than the new message's gets its own
+    // snapshot, so what the agent removes after «отменено» reaches that project's trash too.
+    const waiting = await runProjectOfWaitingAnswer(deps.db, pending.projectId);
+    const other = waiting.projectId && waiting.projectOwnerId && waiting.projectId !== run.projectId ? takeSnapshot(deps.workspaceRoot, { projectId: waiting.projectId, ownerId: waiting.projectOwnerId, userId: run.userId, threadId: run.threadId }) : null;
+    try {
+      const stream = await agent.declineToolCall({
+        runId: pending.runId,
+        toolCallId: pending.toolCallId,
+        reason: SUPERSEDED,
+        memory: { thread: run.threadId, resource: run.resourceId },
+        requestContext: requestContextFor({ ...run, ...waiting, ...(other ? { snapshot: other } : {}) }),
+      });
+      await stream.consumeStream();
+    } finally {
+      if (other) await settleSnapshot(deps.db, deps.workspaceRoot, other).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: other.projectId, error }));
+    }
     await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
   }
   return cancelled;
@@ -198,7 +216,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
   // Working in a project shared to the person takes its «новое» off.

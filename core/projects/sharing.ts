@@ -16,9 +16,10 @@ const GONE = 'Некоторых отделов или сотрудников у
 // Signed-in people who may get a project: not blocked and not being removed.
 const ACTIVE_PERSON = `NOT EXISTS (SELECT 1 FROM app.user_profiles pr WHERE pr.user_id = u."id" AND (pr.blocked_at IS NOT NULL OR pr.deletion_started_at IS NOT NULL))`;
 
-// The departments and people of «Выбранным» must exist, the people must be active; the creator is
+// The departments and people of «Выбранным» must exist; people added now must be active — one already
+// in the list (`kept`) stays even when blocked since, until the creator removes them. The creator is
 // not in their own list. Another mode carries no lists: a list there is a mistake of the client.
-export async function checkAccess(db: Queryable, ownerId: string, input: ProjectAccessInput): Promise<CheckedAccess> {
+export async function checkAccess(db: Queryable, ownerId: string, input: ProjectAccessInput, kept: readonly string[] = []): Promise<CheckedAccess> {
   const departmentIds = [...new Set(input.departmentIds)];
   const userIds = [...new Set(input.userIds)];
   if (input.mode !== 'list') {
@@ -31,7 +32,7 @@ export async function checkAccess(db: Queryable, ownerId: string, input: Project
   }
   if (userIds.includes(ownerId)) throw appError('APP_VALIDATION_FAILED', 'the creator is in their own access list', { userMessage: 'Создатель видит проект и так — уберите себя из списка.' });
   const { rowCount: departments } = await db.query('SELECT 1 FROM app.departments WHERE id = ANY($1::uuid[])', [departmentIds]);
-  const { rowCount: people } = await db.query(`SELECT 1 FROM app."user" u WHERE u."id" = ANY($1) AND ${ACTIVE_PERSON}`, [userIds]);
+  const { rowCount: people } = await db.query(`SELECT 1 FROM app."user" u WHERE u."id" = ANY($1) AND (${ACTIVE_PERSON} OR u."id" = ANY($2))`, [userIds, [...kept]]);
   if (departments !== departmentIds.length || people !== userIds.length) throw appError('APP_VALIDATION_FAILED', 'unknown or inactive targets in an access list', { userMessage: GONE });
   return { mode: 'list', departmentIds, userIds };
 }

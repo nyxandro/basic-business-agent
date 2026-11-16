@@ -12,14 +12,20 @@ import { projectRoot } from '../workspace/layout.ts';
 import { NAME_MAX } from './projects.ts';
 
 // The administrator may have a project of the same name: the given one is named after its creator.
+// The name of the former creator in it is cut short, so each try differs in its number whatever its length.
+const OWNER_IN_NAME = 30;
+const NAME_TRIES = 1000;
+
 async function freeProjectName(db: Pick<Db, 'query'>, userId: string, name: string, formerOwner: string): Promise<string> {
   const taken = async (candidate: string) => ((await db.query('SELECT 1 FROM app.projects WHERE user_id = $1 AND lower(name) = lower($2)', [userId, candidate])).rowCount ?? 0) > 0;
   if (!(await taken(name))) return name;
-  for (let n = 1; ; n++) {
-    const suffix = n === 1 ? ` (${formerOwner})` : ` (${formerOwner}) (${n})`;
-    const candidate = `${name.slice(0, Math.max(1, NAME_MAX - suffix.length)).trimEnd()}${suffix}`.slice(0, NAME_MAX);
+  const owner = ` (${formerOwner.slice(0, OWNER_IN_NAME).trim()})`;
+  for (let n = 1; n <= NAME_TRIES; n++) {
+    const suffix = n === 1 ? owner : `${owner} (${n})`;
+    const candidate = `${name.slice(0, NAME_MAX - suffix.length).trimEnd()}${suffix}`;
     if (!(await taken(candidate))) return candidate;
   }
+  throw new Error(`no free name for project "${name}" of user ${userId} after ${NAME_TRIES} tries`);
 }
 
 export async function transferProjects(db: Db, workspaceRoot: string, fromUserId: string, toUserId: string): Promise<number> {

@@ -56,9 +56,11 @@ function checkInstructions(text: string): string {
   return text;
 }
 
-function nameTaken(error: unknown, name: string): AppError | null {
+async function nameTaken(db: Queryable, error: unknown, userId: string, name: string): Promise<AppError | null> {
   if ((error as { code?: string }).code !== UNIQUE_VIOLATION) return null;
-  return new AppError({ code: 'APP_PROJECT_EXISTS', message: `project name "${name}" is taken`, userMessage: `Проект «${name}» уже есть.`, status: 409, cause: error });
+  const { rows } = await db.query<{ archived: boolean }>('SELECT archived_at IS NOT NULL AS archived FROM app.projects WHERE user_id = $1 AND lower(name) = lower($2)', [userId, name]);
+  const userMessage = rows[0]?.archived ? `Проект «${name}» уже есть в архиве. Верните его из архива или выберите другое название.` : `Проект «${name}» уже есть.`;
+  return new AppError({ code: 'APP_PROJECT_EXISTS', message: `project name "${name}" is taken`, userMessage, status: 409, cause: error });
 }
 
 // Links of the person's existing conversations (a project removed for good leaves its link empty);
@@ -157,7 +159,7 @@ export async function createProject(deps: ProjectsDeps, userId: string, input: {
       await c.query(`INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, ${FIRST_UNPINNED}, false, now())`, [userId, id]);
     });
   } catch (error) {
-    throw nameTaken(error, clean) ?? error;
+    throw (await nameTaken(deps.db, error, userId, clean)) ?? error;
   }
   return projectDto(deps, userId, id);
 }
@@ -174,7 +176,7 @@ export async function updateProject(deps: ProjectsDeps, userId: string, projectI
     try {
       await deps.db.query('UPDATE app.projects SET name = COALESCE($2, name), instructions = COALESCE($3, instructions), updated_at = now() WHERE id = $1', [projectId, name, instructions]);
     } catch (error) {
-      throw nameTaken(error, name ?? '') ?? error;
+      throw (await nameTaken(deps.db, error, userId, name ?? '')) ?? error;
     }
   }
   if (change.pinned !== undefined) await pinProject(deps.db, userId, projectId, change.pinned);
@@ -204,7 +206,8 @@ export async function setProjectAccess(deps: ProjectsDeps, userId: string, proje
   requireOwner(found);
   requireActive(found);
   const access = await inTransaction(deps.db, async (c) => {
-    const checked = await checkAccess(c, userId, input);
+    const { rows } = await c.query<{ user_id: string }>('SELECT user_id FROM app.project_shares WHERE project_id = $1 AND user_id IS NOT NULL', [projectId]);
+    const checked = await checkAccess(c, userId, input, rows.map((r) => r.user_id));
     await writeAccess(c, projectId, checked);
     return checked;
   });
@@ -302,10 +305,12 @@ function cursorOf(t: ThreadSummaryDto): string {
 // conversation whose project the person no longer sees is shown without one.
 export async function listThreadPage(deps: ProjectsDeps, userId: string, query: { projectId?: string | null; agentId?: string; limit?: number; before?: string }): Promise<ThreadPage> {
   const limit = Math.min(Math.max(query.limit ?? THREAD_PAGE_DEFAULT, 1), THREAD_PAGE_MAX);
-  if (query.projectId) await visibleProject(deps.db, userId, query.projectId);
+  // The page of an archived project lists its creator's conversations in it too.
+  if (query.projectId) await visibleProject(deps.db, userId, query.projectId, 'owner');
   const threads = await listOwnThreads(deps.memory, userId);
   const links = await liveLinks(deps, userId, new Set(threads.map((t) => t.id)));
   const seen = new Set((await listedRows(deps.db, userId, 'p.archived_at IS NULL')).map((r) => r.id));
+  if (query.projectId) seen.add(query.projectId);
   const all = threads
     .map((t) => {
       const linked = links.get(t.id) ?? null;

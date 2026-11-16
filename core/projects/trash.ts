@@ -5,14 +5,16 @@
 // on the disk (no copying); after the answer, whatever left the folder goes from the snapshot into
 // the trash. A file the answer replaced by a new one leaves its previous version there; one the
 // agent's own tools are about to write over is copied into the snapshot first. 30 days later the
-// trash empties itself.
+// trash empties itself. The folder is the agent's to change at any moment, so it is read only through
+// core/workspace/held-folder.ts.
 import { randomUUID } from 'node:crypto';
-import { copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import type { TrashBatchDto, TrashRestore } from '@bba/contracts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
+import { copyOpened, inFolderOf, openRegular, sameContent, walkRegularFiles } from '../workspace/held-folder.ts';
 import { contextRoot, freeName, moveFileOutOf, projectRoot, removeFileInside, resolveInside } from '../workspace/layout.ts';
 
 export const TRASH_KEEP_DAYS = 30;
@@ -25,8 +27,9 @@ const PREVIOUS_VERSION = ' (прежняя версия)';
 export interface SnapshotRun {
   projectId: string;
   ownerId: string;
-  userId: string;
-  threadId: string;
+  // Null for a snapshot a stopped server left without a readable note of who ran it.
+  userId: string | null;
+  threadId: string | null;
 }
 
 export interface ProjectSnapshot extends SnapshotRun {
@@ -34,37 +37,35 @@ export interface ProjectSnapshot extends SnapshotRun {
 }
 
 interface Meta {
-  userId: string;
-  threadId: string;
+  userId: string | null;
+  threadId: string | null;
 }
 
 export const trashDir = (workspaceRoot: string, ownerId: string, projectId: string) => join(projectRoot(workspaceRoot, ownerId, projectId), TRASH);
 const snapshotsDir = (workspaceRoot: string, ownerId: string, projectId: string) => join(projectRoot(workspaceRoot, ownerId, projectId), SNAPSHOTS);
 const snapshotDir = (workspaceRoot: string, s: { ownerId: string; projectId: string; id: string }) => join(snapshotsDir(workspaceRoot, s.ownerId, s.projectId), s.id);
+const expiry = (from: Date) => new Date(from.getTime() + TRASH_KEEP_DAYS * DAY_MS);
 
 const isGone = (error: unknown) => ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '');
 
-// Regular files of a folder by their path from it. Hidden entries (".renders" of the skills, a
-// snapshot) are working files, not the person's: they are skipped, as in the file lists.
-function filesOf(dir: string, withHidden = false): Map<string, number> {
-  const out = new Map<string, number>();
-  const walk = (current: string) => {
-    let entries;
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch (error) {
-      if (isGone(error)) return;
-      throw error;
-    }
-    for (const entry of entries) {
-      if (!withHidden && entry.name.startsWith('.')) continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) out.set(relative(dir, full), lstatSync(full).ino);
-    }
-  };
-  walk(dir);
-  return out;
+// Answers running now in each project on this server: one that ran beside another cannot say for sure
+// whose removals it saw, and its rows say so.
+const running = new Map<string, Map<string, { overlapped: boolean }>>();
+
+function startRunning(projectId: string, id: string): void {
+  const runs = running.get(projectId) ?? new Map<string, { overlapped: boolean }>();
+  const overlapped = runs.size > 0;
+  if (overlapped) for (const run of runs.values()) run.overlapped = true;
+  runs.set(id, { overlapped });
+  running.set(projectId, runs);
+}
+
+function stopRunning(projectId: string, id: string): boolean {
+  const runs = running.get(projectId);
+  const overlapped = runs?.get(id)?.overlapped ?? false;
+  runs?.delete(id);
+  if (runs?.size === 0) running.delete(projectId);
+  return overlapped;
 }
 
 // Before an answer in a project: second links to its files, so a file the answer removes keeps its
@@ -75,21 +76,22 @@ export function takeSnapshot(workspaceRoot: string, run: SnapshotRun): ProjectSn
   const dir = snapshotDir(workspaceRoot, snapshot);
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}.json`, JSON.stringify({ userId: run.userId, threadId: run.threadId } satisfies Meta));
-  for (const path of filesOf(files).keys()) {
-    const link = join(dir, path);
+  walkRegularFiles(files, (file) => {
+    const link = join(dir, file.rel);
     mkdirSync(dirname(link), { recursive: true });
     try {
-      linkSync(join(files, path), link);
+      // The opened folder's entry itself: a link put there meanwhile is linked as a link, never followed.
+      linkSync(file.path, link);
     } catch (error) {
-      // Removed or replaced by a folder while the snapshot was taken: nothing to keep.
-      if (!isGone(error) && (error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+      if (!isGone(error)) throw error;
     }
-  }
+  });
+  startRunning(run.projectId, snapshot.id);
   return snapshot;
 }
 
-// The agent's own tools are about to write over these files: what the snapshot links to would change
-// in place, so the snapshot gets a copy of each first — once per answer.
+// The agent's own tools are about to write over these files in place: what the snapshot links to would
+// change with them, so the snapshot gets a copy of each first — once per answer.
 export function keepBeforeWrite(workspaceRoot: string, snapshot: Pick<ProjectSnapshot, 'ownerId' | 'projectId' | 'id'>, paths: string[]): void {
   const files = contextRoot(workspaceRoot, snapshot.ownerId, snapshot.projectId);
   const dir = snapshotDir(workspaceRoot, snapshot);
@@ -101,20 +103,24 @@ export function keepBeforeWrite(workspaceRoot: string, snapshot: Pick<ProjectSna
       continue; // A path out of the folder: the tool refuses it itself.
     }
     const kept = join(dir, rel);
-    const live = join(files, rel);
     const keptStat = lstatSync(kept, { throwIfNoEntry: false });
-    const liveStat = lstatSync(live, { throwIfNoEntry: false });
-    if (!keptStat?.isFile() || !liveStat?.isFile() || keptStat.ino !== liveStat.ino) continue;
-    const temp = `${kept}.copy-${randomUUID()}`;
-    copyFileSync(live, temp);
-    renameSync(temp, kept);
+    if (!keptStat?.isFile()) continue;
+    inFolderOf(files, rel, false, (folder, name) => {
+      const entry = join(folder, name);
+      const fd = openRegular(entry);
+      if (fd === null) return;
+      try {
+        // Copied already in this answer, or not the remembered file any more: nothing to keep.
+        if (lstatSync(entry).ino !== keptStat.ino) return;
+        const temp = `${kept}.copy-${randomUUID()}`;
+        copyOpened(fd, temp);
+        renameSync(temp, kept);
+      } finally {
+        closeSync(fd);
+      }
+    });
   }
 }
-
-const sameBytes = (a: string, b: string) => {
-  const [x, y] = [lstatSync(a), lstatSync(b)];
-  return x.size === y.size && readFileSync(a).equals(readFileSync(b));
-};
 
 // One project at a time: two answers in it end at once and see the same removed file.
 const settling = new Map<string, Promise<unknown>>();
@@ -125,55 +131,90 @@ function oneAtATime<T>(projectId: string, work: () => Promise<T>): Promise<T> {
   return next;
 }
 
+interface NewItem {
+  projectId: string;
+  path: string;
+  kind: 'deleted' | 'previous_version';
+  userId: string | null;
+  threadId: string | null;
+  batchId: string;
+  overlapped: boolean;
+}
+
+// The row first: a file moved and never written down would be taken for a stray one and removed. The
+// file failing to move takes its row back.
+async function addToTrash(db: Db, trash: string, kept: string, item: NewItem): Promise<void> {
+  const id = randomUUID();
+  const now = new Date();
+  await db.query(
+    `INSERT INTO app.project_trash (id, project_id, path, bytes, kind, via, deleted_by, thread_id, batch_id, deleted_at, expires_at, overlapped)
+     VALUES ($1, $2, $3, $4, $5, 'agent', (SELECT "id" FROM app."user" WHERE "id" = $6), $7, $8, $9, $10, $11)`,
+    [id, item.projectId, item.path, lstatSync(kept).size, item.kind, item.userId, item.threadId, item.batchId, now, expiry(now), item.overlapped],
+  );
+  mkdirSync(trash, { recursive: true });
+  try {
+    renameSync(kept, join(trash, id));
+  } catch (error) {
+    await db.query('DELETE FROM app.project_trash WHERE id = $1', [id]);
+    throw error;
+  }
+}
+
 // After the answer, whatever way it ended: what left the folder goes into the trash, a file replaced
 // by a new one leaves its previous version there. A project removed or given to another person
-// meanwhile leaves no folder here: one the agent's tools made again is removed (spec, F5).
+// meanwhile leaves no folder here: one the agent's tools made again is removed (spec, F5). A failure
+// leaves the rest of the snapshot for the start of the server.
 export function settleSnapshot(db: Db, workspaceRoot: string, snapshot: ProjectSnapshot): Promise<number> {
+  const overlapped = stopRunning(snapshot.projectId, snapshot.id);
   return oneAtATime(snapshot.projectId, async () => {
     const dir = snapshotDir(workspaceRoot, snapshot);
-    try {
-      const { rows } = await db.query<{ user_id: string }>('SELECT user_id FROM app.projects WHERE id = $1', [snapshot.projectId]);
-      if (rows[0]?.user_id !== snapshot.ownerId) {
-        rmSync(projectRoot(workspaceRoot, snapshot.ownerId, snapshot.projectId), { recursive: true, force: true });
-        return 0;
-      }
-      const files = contextRoot(workspaceRoot, snapshot.ownerId, snapshot.projectId);
-      const trash = trashDir(workspaceRoot, snapshot.ownerId, snapshot.projectId);
-      const live = filesOf(files, true);
-      const liveInodes = new Set(live.values());
-      const trashed = new Set(filesOf(trash, true).values());
-      const now = new Date();
-      let added = 0;
-      for (const [path, ino] of filesOf(dir, true)) {
-        const kept = join(dir, path);
-        const liveIno = live.get(path);
-        let kind: 'deleted' | 'previous_version';
-        if (liveIno !== undefined) {
-          // Still there: the same file, or a new one with the same bytes, is no news.
-          if (liveIno === ino || sameBytes(kept, join(files, path))) continue;
-          kind = 'previous_version';
-        } else {
-          // Moved or renamed in the folder, or already in the trash (another answer, the page).
-          if (liveInodes.has(ino) || trashed.has(ino)) continue;
-          kind = 'deleted';
-        }
-        const id = randomUUID();
-        const bytes = lstatSync(kept).size;
-        mkdirSync(trash, { recursive: true });
-        renameSync(kept, join(trash, id));
-        await db.query(
-          `INSERT INTO app.project_trash (id, project_id, path, bytes, kind, via, deleted_by, thread_id, batch_id, deleted_at, expires_at)
-           VALUES ($1, $2, $3, $4, $5, 'agent', (SELECT "id" FROM app."user" WHERE "id" = $6), $7, $8, $9, $10)`,
-          [id, snapshot.projectId, path, bytes, kind, snapshot.userId, snapshot.threadId, snapshot.id, now, new Date(now.getTime() + TRASH_KEEP_DAYS * DAY_MS)],
-        );
-        added++;
-      }
-      if (added > 0) logEvent('info', 'project_trash_added', { projectId: snapshot.projectId, userId: snapshot.userId, files: added });
-      return added;
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-      rmSync(`${dir}.json`, { force: true });
+    const { rows } = await db.query<{ user_id: string }>('SELECT user_id FROM app.projects WHERE id = $1', [snapshot.projectId]);
+    if (rows[0]?.user_id !== snapshot.ownerId) {
+      rmSync(projectRoot(workspaceRoot, snapshot.ownerId, snapshot.projectId), { recursive: true, force: true });
+      return 0;
     }
+    const files = contextRoot(workspaceRoot, snapshot.ownerId, snapshot.projectId);
+    const trash = trashDir(workspaceRoot, snapshot.ownerId, snapshot.projectId);
+    const kept = new Map<string, { ino: number; path: string }>();
+    walkRegularFiles(dir, (file) => kept.set(file.rel, { ino: file.ino, path: join(dir, file.rel) }), true);
+    // The folder as the answer left it: its files, and which remembered ones now hold other bytes.
+    const liveInodes = new Set<number>();
+    const livePaths = new Set<string>();
+    const changed = new Set<string>();
+    walkRegularFiles(
+      files,
+      (file) => {
+        liveInodes.add(file.ino);
+        livePaths.add(file.rel);
+        const before = kept.get(file.rel);
+        if (!before || before.ino === file.ino) return;
+        const now = openRegular(file.path);
+        const was = openRegular(before.path);
+        try {
+          if (now === null || was === null || !sameContent(now, was)) changed.add(file.rel);
+        } finally {
+          if (now !== null) closeSync(now);
+          if (was !== null) closeSync(was);
+        }
+      },
+      true,
+    );
+    const trashed = new Set<number>();
+    walkRegularFiles(trash, (file) => trashed.add(file.ino), true);
+    let added = 0;
+    for (const [path, { ino, path: keptPath }] of kept) {
+      // Moved or renamed in the folder, or already in the trash (another answer, the page).
+      if (liveInodes.has(ino) || trashed.has(ino)) continue;
+      // Still there with the same bytes: no news.
+      if (livePaths.has(path) && !changed.has(path)) continue;
+      await addToTrash(db, trash, keptPath, { projectId: snapshot.projectId, path, kind: livePaths.has(path) ? 'previous_version' : 'deleted', userId: snapshot.userId, threadId: snapshot.threadId, batchId: snapshot.id, overlapped });
+      trashed.add(ino);
+      added++;
+    }
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(`${dir}.json`, { force: true });
+    if (added > 0) logEvent('info', 'project_trash_added', { projectId: snapshot.projectId, userId: snapshot.userId, files: added, overlapped });
+    return added;
   });
 }
 
@@ -183,14 +224,25 @@ export async function trashFromPage(db: Db, workspaceRoot: string, project: { id
   const files = contextRoot(workspaceRoot, project.user_id, project.id);
   const rel = relative(files, resolveInside(files, path));
   const id = randomUUID();
-  const moved = moveFileOutOf(files, path, join(trashDir(workspaceRoot, project.user_id, project.id), id));
-  if (!moved) return removeFileInside(files, path) ? { trashId: null } : null;
   const now = new Date();
+  // The row first, so a file in the trash always has its row; no file to move takes the row back.
   await db.query(
-    `INSERT INTO app.project_trash (id, project_id, path, bytes, kind, via, deleted_by, thread_id, batch_id, deleted_at, expires_at)
-     VALUES ($1, $2, $3, $4, 'deleted', 'page', $5, NULL, $6, $7, $8)`,
-    [id, project.id, rel, moved.bytes, userId, randomUUID(), now, new Date(now.getTime() + TRASH_KEEP_DAYS * DAY_MS)],
+    `INSERT INTO app.project_trash (id, project_id, path, bytes, kind, via, deleted_by, thread_id, batch_id, deleted_at, expires_at, overlapped)
+     VALUES ($1, $2, $3, 0, 'deleted', 'page', $4, NULL, $5, $6, $7, false)`,
+    [id, project.id, rel, userId, randomUUID(), now, expiry(now)],
   );
+  let moved: { bytes: number } | null;
+  try {
+    moved = moveFileOutOf(files, path, join(trashDir(workspaceRoot, project.user_id, project.id), id));
+  } catch (error) {
+    await db.query('DELETE FROM app.project_trash WHERE id = $1', [id]);
+    throw error;
+  }
+  if (!moved) {
+    await db.query('DELETE FROM app.project_trash WHERE id = $1', [id]);
+    return removeFileInside(files, path) ? { trashId: null } : null;
+  }
+  await db.query('UPDATE app.project_trash SET bytes = $2 WHERE id = $1', [id, moved.bytes]);
   return { trashId: id };
 }
 
@@ -204,18 +256,19 @@ interface TrashRow {
   batch_id: string;
   deleted_at: Date;
   expires_at: Date;
+  overlapped: boolean;
 }
 
 export async function listTrash(db: Db, projectId: string): Promise<TrashBatchDto[]> {
   const { rows } = await db.query<TrashRow>(
-    `SELECT t.id, t.path, t.bytes, t.kind, t.via, u."name" AS deleted_by_name, t.batch_id, t.deleted_at, t.expires_at
+    `SELECT t.id, t.path, t.bytes, t.kind, t.via, u."name" AS deleted_by_name, t.batch_id, t.deleted_at, t.expires_at, t.overlapped
        FROM app.project_trash t LEFT JOIN app."user" u ON u."id" = t.deleted_by
       WHERE t.project_id = $1 ORDER BY t.deleted_at DESC, t.batch_id, t.path`,
     [projectId],
   );
   const batches = new Map<string, TrashBatchDto>();
   for (const r of rows) {
-    const batch = batches.get(r.batch_id) ?? { id: r.batch_id, via: r.via, deletedBy: r.deleted_by_name, deletedAt: r.deleted_at.toISOString(), items: [] };
+    const batch = batches.get(r.batch_id) ?? { id: r.batch_id, via: r.via, deletedBy: r.deleted_by_name, deletedAt: r.deleted_at.toISOString(), overlapped: r.overlapped, items: [] };
     batch.items.push({ id: r.id, path: r.path, bytes: Number(r.bytes), kind: r.kind, expiresAt: r.expires_at.toISOString() });
     batches.set(r.batch_id, batch);
   }
@@ -237,46 +290,47 @@ export async function trashItem(db: Db, projectId: string, trashId: string): Pro
   return rows[0] ?? null;
 }
 
-// Back to the place it was removed from (its folders made again); a taken name gets «(2)»; a previous
-// version comes back next to the file that replaced it. Returns the paths the files have now.
+// Back to the place it was removed from — its folders made again, none of them a link (the agent may
+// have put one there: then the file comes back to the top of the project); a taken name gets «(2)»;
+// a previous version comes back next to the file that replaced it. Each file on its own, so a failure
+// on one leaves the others where they got. Returns the paths the files have now.
 export async function restoreFromTrash(db: Db, workspaceRoot: string, project: { id: string; user_id: string }, what: TrashRestore): Promise<string[]> {
   const files = contextRoot(workspaceRoot, project.user_id, project.id);
   const trash = trashDir(workspaceRoot, project.user_id, project.id);
-  return inTransaction(db, async (c) => {
-    const { rows } = await c.query<{ id: string; path: string; kind: 'deleted' | 'previous_version' }>(
-      'ids' in what
-        ? 'SELECT id, path, kind FROM app.project_trash WHERE project_id = $1 AND id = ANY($2::uuid[]) ORDER BY path FOR UPDATE'
-        : 'SELECT id, path, kind FROM app.project_trash WHERE project_id = $1 AND batch_id = $2::uuid ORDER BY path FOR UPDATE',
-      [project.id, 'ids' in what ? what.ids : what.batchId],
-    );
-    if (rows.length === 0 || ('ids' in what && rows.length !== new Set(what.ids).size)) {
-      throw appError('APP_NOT_FOUND', `trash items of project ${project.id} are gone`, { userMessage: 'Этого файла в корзине уже нет. Список обновлён.' });
-    }
-    const restored: string[] = [];
-    for (const row of rows) {
-      const target = resolveInside(files, row.path);
-      const folder = dirname(target);
-      mkdirSync(folder, { recursive: true });
-      const wanted = row.kind === 'previous_version' ? `${basename(row.path, extname(row.path))}${PREVIOUS_VERSION}${extname(row.path)}` : basename(row.path);
-      const name = freeName(folder, wanted);
-      try {
-        renameSync(join(trash, row.id), join(folder, name));
-      } catch (error) {
-        // The file of the row is gone (a stopped purge): nothing to bring back, the row goes too.
-        if (!isGone(error)) throw error;
-        await c.query('DELETE FROM app.project_trash WHERE id = $1', [row.id]);
-        logEvent('warn', 'project_trash_file_missing', { projectId: project.id, trashId: row.id });
-        continue;
+  const { rows } = await db.query<{ id: string }>(
+    'ids' in what ? 'SELECT id FROM app.project_trash WHERE project_id = $1 AND id = ANY($2::uuid[]) ORDER BY path' : 'SELECT id FROM app.project_trash WHERE project_id = $1 AND batch_id = $2::uuid ORDER BY path',
+    [project.id, 'ids' in what ? what.ids : what.batchId],
+  );
+  if (rows.length === 0 || ('ids' in what && rows.length !== new Set(what.ids).size)) {
+    throw appError('APP_NOT_FOUND', `trash items of project ${project.id} are gone`, { userMessage: 'Этого файла в корзине уже нет. Список обновлён.' });
+  }
+  const restored: string[] = [];
+  for (const { id } of rows) {
+    const back = await inTransaction(db, async (c) => {
+      const { rows: locked } = await c.query<{ path: string; kind: 'deleted' | 'previous_version' }>('SELECT path, kind FROM app.project_trash WHERE id = $1 FOR UPDATE', [id]);
+      const row = locked[0];
+      if (!row) return null; // Brought back meanwhile by someone else.
+      await c.query('DELETE FROM app.project_trash WHERE id = $1', [id]);
+      const source = join(trash, id);
+      if (!existsSync(source)) {
+        logEvent('warn', 'project_trash_file_missing', { projectId: project.id, trashId: id });
+        return null;
       }
-      await c.query('DELETE FROM app.project_trash WHERE id = $1', [row.id]);
-      restored.push(relative(files, join(folder, name)));
-    }
-    return restored;
-  });
+      const wanted = row.kind === 'previous_version' ? `${basename(row.path, extname(row.path))}${PREVIOUS_VERSION}${extname(row.path)}` : basename(row.path);
+      const place = (prefix: string) => (folder: string) => {
+        const name = freeName(folder, wanted);
+        renameSync(source, join(folder, name));
+        return prefix ? `${prefix}/${name}` : name;
+      };
+      const prefix = dirname(row.path) === '.' ? '' : dirname(row.path);
+      return inFolderOf(files, row.path, true, place(prefix)) ?? inFolderOf(files, wanted, false, place(''));
+    });
+    if (back) restored.push(back);
+  }
+  return restored;
 }
 
-// Files older than 30 days leave the trash for good: the row first, then the file; a file of a trash
-// with no row (left by a stopped removal) goes too.
+// Files older than 30 days leave the trash for good: the row first, then the file.
 export async function purgeTrash(db: Db, workspaceRoot: string, now = new Date()): Promise<{ files: number; bytes: number }> {
   const { rows } = await db.query<{ id: string; project_id: string; user_id: string; bytes: string }>(
     `DELETE FROM app.project_trash t USING app.projects p WHERE p.id = t.project_id AND t.expires_at <= $1
@@ -292,9 +346,21 @@ export async function purgeTrash(db: Db, workspaceRoot: string, now = new Date()
   return { files: rows.length, bytes };
 }
 
+function readMeta(file: string): Meta {
+  try {
+    const meta = JSON.parse(readFileSync(file, 'utf8')) as Partial<Meta>;
+    return { userId: typeof meta.userId === 'string' ? meta.userId : null, threadId: typeof meta.threadId === 'string' ? meta.threadId : null };
+  } catch (error) {
+    // Written halfway when the server stopped: whose answer it was is unknown, its removals are kept.
+    logEvent('warn', 'project_snapshot_meta_unreadable', { file, error });
+    return { userId: null, threadId: null };
+  }
+}
+
 // At the start of the server: answers a stopped server left unfinished are settled from their
-// snapshots; folders of projects that are gone, or given to another person, are removed; files of a
-// trash with no row are removed.
+// snapshots; a folder of a project that is gone is removed; a folder found with another person than
+// the project's creator (a removal of an employee stopped halfway) goes to the creator when they have
+// none, and is a stray copy otherwise; files of a trash with no row are removed.
 export async function recoverProjectFolders(db: Db, workspaceRoot: string): Promise<void> {
   const { rows } = await db.query<{ id: string; user_id: string }>('SELECT id, user_id FROM app.projects');
   const owners = new Map(rows.map((r) => [r.id, r.user_id]));
@@ -305,16 +371,24 @@ export async function recoverProjectFolders(db: Db, workspaceRoot: string): Prom
     const projects = join(workspaceRoot, userId, 'projects');
     if (!existsSync(projects)) continue;
     for (const projectId of readdirSync(projects)) {
-      if (owners.get(projectId) !== userId) {
-        rmSync(join(projects, projectId), { recursive: true, force: true });
-        logEvent('warn', 'project_folder_removed', { projectId, userId });
+      const owner = owners.get(projectId);
+      if (owner !== userId) {
+        const home = owner ? projectRoot(workspaceRoot, owner, projectId) : null;
+        if (home && !existsSync(home)) {
+          mkdirSync(dirname(home), { recursive: true });
+          renameSync(join(projects, projectId), home);
+          logEvent('warn', 'project_folder_moved_to_creator', { projectId, from: userId, to: owner });
+        } else {
+          rmSync(join(projects, projectId), { recursive: true, force: true });
+          logEvent('warn', 'project_folder_removed', { projectId, userId });
+        }
         continue;
       }
       const snapshots = join(projects, projectId, SNAPSHOTS);
       for (const entry of existsSync(snapshots) ? readdirSync(snapshots) : []) {
         if (!entry.endsWith('.json')) continue;
-        const meta = JSON.parse(readFileSync(join(snapshots, entry), 'utf8')) as Meta;
-        await settleSnapshot(db, workspaceRoot, { id: entry.slice(0, -'.json'.length), projectId, ownerId: userId, userId: meta.userId, threadId: meta.threadId });
+        const meta = readMeta(join(snapshots, entry));
+        await settleSnapshot(db, workspaceRoot, { id: entry.slice(0, -'.json'.length), projectId, ownerId: userId, ...meta });
       }
       // A snapshot whose note of who ran it was never written: nothing to settle it for.
       for (const entry of existsSync(snapshots) ? readdirSync(snapshots) : []) rmSync(join(snapshots, entry), { recursive: true, force: true });

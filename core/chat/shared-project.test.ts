@@ -2,7 +2,7 @@
 // project's creator with the project's instructions; access closed in the middle of an answer does
 // not stop that answer; the next one works without the project and the agent is told why.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProjectDto, TrashBatchDto } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -158,5 +158,67 @@ describe('a colleague’s agent in a shared project', () => {
     const trash = async () => ((await (await t.call('GET', `/app/api/projects/${project.id}/trash`, { cookie: olga })).json()) as { batches: TrashBatchDto[] }).batches;
     for (let i = 0; i < 50 && (await trash()).length === 0; i++) await new Promise((r) => setTimeout(r, 50));
     expect(await trash()).toMatchObject([{ via: 'agent', deletedBy: 'Пётр Иванов', items: [{ path: 'смета.xlsx', kind: 'deleted' }] }]);
+  });
+  // CopilotKit lets the agent finish without the browser: what it removes after the tab is gone still
+  // reaches the trash (independent review 16.11).
+  it('what the agent removes after the browser went away still goes into the trash', async () => {
+    const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Обрыв', access: { mode: 'private', departmentIds: [], userIds: [] } } });
+    const project = (await created.json()) as ProjectDto;
+    writeFileSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), 'черновик.txt'), 'Ч');
+    const threadId = randomUUID();
+    await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } });
+    t.model.script(tool('execute_command', { command: 'sleep 1; rm черновик.txt' }), { text: 'Убрал.' });
+    const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
+      cookie: olga,
+      body: { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: 'Убери черновик' }], tools: [], context: [], state: {}, forwardedProps: {} },
+    });
+    // The tab is closed right after the answer began.
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    const trash = async () => ((await (await t.call('GET', `/app/api/projects/${project.id}/trash`, { cookie: olga })).json()) as { batches: TrashBatchDto[] }).batches;
+    for (let i = 0; i < 100 && (await trash()).length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    expect((await trash()).flatMap((b) => b.items.map((x) => x.path))).toEqual(['черновик.txt']);
+  });
+  // The whole chain, not a direct call: the agent's write_file over a file → the hook → the snapshot.
+  it('a file the agent writes over with its tool leaves its previous version in the trash', async () => {
+    const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Перезапись', access: { mode: 'private', departmentIds: [], userIds: [] } } });
+    const project = (await created.json()) as ProjectDto;
+    const folder = contextRoot(t.workspaceRoot, olgaId, project.id);
+    writeFileSync(join(folder, 'смета.txt'), 'СТАРАЯ СМЕТА');
+    const threadId = randomUUID();
+    await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } });
+    t.model.script(tool('read_file', { path: 'смета.txt' }), tool('write_file', { path: 'смета.txt', content: 'НОВАЯ СМЕТА', overwrite: true }), { text: 'Переписал.' });
+    expect(await run(olga, threadId, 'Перепиши смету')).toBe('Переписал.');
+    expect(readFileSync(join(folder, 'смета.txt'), 'utf8')).toBe('НОВАЯ СМЕТА');
+    const trash = async () => ((await (await t.call('GET', `/app/api/projects/${project.id}/trash`, { cookie: olga })).json()) as { batches: TrashBatchDto[] }).batches;
+    for (let i = 0; i < 50 && (await trash()).length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    const [item] = (await trash()).flatMap((b) => b.items);
+    expect(item).toMatchObject({ path: 'смета.txt', kind: 'previous_version' });
+    const trashFolder = join(t.workspaceRoot, olgaId, 'projects', project.id, 'trash');
+    expect(readFileSync(join(trashFolder, readdirSync(trashFolder)[0]!), 'utf8')).toBe('СТАРАЯ СМЕТА');
+  });
+
+  // The sandbox of a colleague is kept per project and its creator: a project given to the admin
+  // (its creator removed) gets a new one in its new folder (independent review 16.11).
+  it('a colleague’s commands work in a project given to the admin after its creator was removed', async () => {
+    const igorId = await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
+    const igor = await t.signIn('igor@example.com');
+    const ninaId = await t.createUser({ email: 'nina@example.com', name: 'Нина' });
+    const nina = await t.signIn('nina@example.com');
+    const created = await t.call('POST', '/app/api/projects', { cookie: nina, body: { name: 'Передача', access: { mode: 'list', departmentIds: [], userIds: [petrId] } } });
+    const project = (await created.json()) as ProjectDto;
+    writeFileSync(join(contextRoot(t.workspaceRoot, ninaId, project.id), 'план.txt'), 'П');
+    const threadId = randomUUID();
+    await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: petr, body: { projectId: project.id } });
+    let seen: FakeRequest | null = null;
+    t.model.script(tool('execute_command', { command: 'ls' }), (req) => ((seen = req), { text: 'Есть.' }));
+    await run(petr, threadId, 'Что в папке?');
+    expect(lastToolOutput(seen!)).toContain('план.txt');
+    expect((await t.call('DELETE', `/app/api/admin/users/${ninaId}`, { cookie: igor })).status).toBe(200);
+    expect(existsSync(join(t.workspaceRoot, igorId, 'projects', project.id, 'files', 'план.txt'))).toBe(true);
+    t.model.script(tool('execute_command', { command: 'ls' }), (req) => ((seen = req), { text: 'Всё ещё есть.' }));
+    await run(petr, threadId, 'А теперь?');
+    expect(lastToolOutput(seen!)).toContain('план.txt');
   });
 });

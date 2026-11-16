@@ -97,6 +97,8 @@ export interface TrashBatchDto {
   // Null once the person is removed from the installation.
   deletedBy: string | null;
   deletedAt: string;
+  // Other answers ran in the project at the same time: the removal may be any of theirs.
+  overlapped: boolean;
   items: TrashItemDto[];
 }
 

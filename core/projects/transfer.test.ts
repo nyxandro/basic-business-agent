@@ -70,4 +70,18 @@ describe('projects of a removed employee', () => {
     await t.call('PUT', `/app/api/projects/${p.id}/access`, { cookie: igor, body: { mode: 'private', departmentIds: [], userIds: [] } });
     expect((await json<SearchResponse>(await t.call('GET', `/app/api/search?q=${encodeURIComponent('бетон')}&scope=all`, { cookie: petr }))).projects).toEqual([]);
   });
+  it('names a given project after its former creator however long their name, without hanging', async () => {
+    const long = 'Константинопольский-Константинопольская Анна-Мария Владиславовна Длинноимённая';
+    const annaId = await t.createUser({ email: 'anna@example.com', name: long });
+    const anna = await t.signIn('anna@example.com');
+    const name = 'Тендер на строительство жилого комплекса «Северная звезда», очередь вторая и третья';
+    await create(igor, name.slice(0, 80));
+    await create(igor, `${name.slice(0, 80 - ` (${long.slice(0, 30).trim()})`.length).trimEnd()} (${long.slice(0, 30).trim()})`);
+    await create(anna, name.slice(0, 80));
+    expect((await t.call('DELETE', `/app/api/admin/users/${annaId}`, { cookie: igor })).status).toBe(200);
+    const names = (await json<ProjectListResponse>(await t.call('GET', '/app/api/projects', { cookie: igor }))).projects.map((p) => p.name);
+    const given = names.find((n) => n.endsWith('(2)'))!;
+    expect(given.length).toBeLessThanOrEqual(80);
+    expect(given).toContain('(Константинопольский-Константи');
+  });
 });
