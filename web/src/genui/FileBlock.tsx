@@ -22,7 +22,7 @@ function noteText(status: Exclude<ThreadFileStatus, { state: 'ok' }>): string {
 
 // «Скачать» asks first what it will find: a file removed from the folder is said so — from the
 // project's trash it can be downloaded or brought back (spec, section 8.20).
-function FileNote({ status, onRestored }: { status: Exclude<ThreadFileStatus, { state: 'ok' }>; onRestored: () => void }) {
+export function FileNote({ status, onRestored }: { status: Exclude<ThreadFileStatus, { state: 'ok' }>; onRestored: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (

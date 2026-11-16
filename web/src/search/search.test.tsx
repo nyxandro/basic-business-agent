@@ -11,7 +11,9 @@ const PROJECTS = [
   { id: 'p2', name: 'Ключевые клиенты', instructions: '', threadCount: 1, createdAt: '2026-11-11T08:00:00Z', role: 'member', owner: { id: 'u9', name: 'Игорь Петров' }, shared: true },
   { id: 'p3', name: 'Архив договоров', instructions: '', threadCount: 0, createdAt: '2026-11-12T08:00:00Z' },
 ];
+const NO_FILES = { files: [], unreadable: [], more: false };
 const FOUND = {
+  files: NO_FILES,
   projects: [{ id: 'p1', name: 'Тендер Северный', threadCount: 2 }],
   threads: [
     { id: 't7', agentId: 'sales', title: 'Договор поставки', snippet: '…договор со Стройресурс на поставку…', projectId: 'p1', updatedAt: new Date().toISOString() },
@@ -30,8 +32,15 @@ function server(search: Route = { body: FOUND }) {
     'GET /app/api/projects/p1': { body: PROJECTS[0] },
     'GET /app/api/projects/p1/files': { body: { files: [] } },
     'GET /app/api/search': search,
+    'GET /app/api/search/files': { body: RECENT },
+    'GET /app/api/files/status': { body: { state: 'ok' } },
   });
 }
+
+const KP = { path: 'KP_Yelka_v2.pdf', name: 'KP_Yelka_v2.pdf', projectId: 'p1', modifiedAt: new Date().toISOString(), bytes: 2048 };
+const CONTRACT = { path: 'Договор поставки.docx', name: 'Договор поставки.docx', projectId: null, modifiedAt: '2026-11-02T10:00:00Z', bytes: 18_432 };
+const WORKING_COPY = { ...CONTRACT, path: 'work/Договор поставки.docx', modifiedAt: '2026-11-01T10:00:00Z' };
+const RECENT = { files: [KP, CONTRACT, WORKING_COPY], unreadable: [], more: false };
 
 const searches = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/search');
 const lists = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/threads' && c.query.limit !== '7');
@@ -62,7 +71,7 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).getByRole('button', { name: 'Везде' })).toHaveAttribute('aria-pressed', 'true');
     // Text, not role queries, for long lists: naming 30 buttons is slow in jsdom on a busy machine.
     expect(await within(dialog).findAllByText(/^Тема \d+$/)).toHaveLength(30);
-    await user.type(within(dialog).getByRole('textbox', { name: 'Поиск по разговорам и проектам' }), 'д');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Поиск по разговорам, проектам и файлам' }), 'д');
     await new Promise((r) => setTimeout(r, 400));
     expect(searches(s)).toHaveLength(0);
     expect(within(dialog).getAllByText(/^Тема \d+$/)).toHaveLength(30);
@@ -183,8 +192,8 @@ describe('search over conversations and projects', () => {
     let releaseOld: () => void = () => undefined;
     const s = server((call) =>
       call.query.q === 'дог'
-        ? new Promise((resolve) => (releaseOld = () => resolve({ body: { projects: [], threads: [{ ...FOUND.threads[1]!, title: 'Старый ответ' }] } })))
-        : { body: { projects: [], threads: [{ ...FOUND.threads[0]!, title: 'Новый ответ' }] } },
+        ? new Promise((resolve) => (releaseOld = () => resolve({ body: { projects: [], files: NO_FILES, threads: [{ ...FOUND.threads[1]!, title: 'Старый ответ' }] } })))
+        : { body: { projects: [], files: NO_FILES, threads: [{ ...FOUND.threads[0]!, title: 'Новый ответ' }] } },
     );
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
@@ -199,7 +208,7 @@ describe('search over conversations and projects', () => {
   });
 
   it('says nothing was found and sends the scope', async () => {
-    const s = server({ body: { projects: [], threads: [] } });
+    const s = server({ body: { projects: [], threads: [], files: NO_FILES } });
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
     await user.type(within(dialog).getByRole('textbox'), 'ромашка');
@@ -232,6 +241,70 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).queryByText('Все проекты')).not.toBeInTheDocument();
   });
 
+  it('lists the newest documents on «Файлы» before a query; a document opens its window with «Скачать» and «Посмотреть»', async () => {
+    const s = server();
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Файлы' }));
+    const kp = await within(dialog).findByRole('button', { name: /KP_Yelka_v2\.pdf.*Тендер Северный/ });
+    // Two files of one name are told apart by the folder inside the project.
+    expect(within(dialog).getAllByRole('button', { name: /Договор поставки\.docx/ }).map((row) => row.textContent)).toEqual([expect.stringMatching(/Без проекта$/), expect.stringMatching(/Без проекта \/ work$/)]);
+    await user.click(kp);
+    const file = await screen.findByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
+    const download = await within(file).findByRole('link', { name: 'Скачать' });
+    expect(download).toHaveAttribute('href', '/app/api/projects/p1/file?path=KP_Yelka_v2.pdf');
+    expect(download).toHaveAttribute('download', 'KP_Yelka_v2.pdf');
+    const view = within(file).getByRole('link', { name: 'Посмотреть' });
+    expect(view).toHaveAttribute('href', '/app/api/projects/p1/file?path=KP_Yelka_v2.pdf&inline=1');
+    expect(view).toHaveAttribute('target', '_blank');
+    expect(within(file).getByText(/Тендер Северный · сегодня · 2 КБ/)).toBeInTheDocument();
+    expect(s.calls.find((c) => c.path === '/app/api/files/status')?.query).toEqual({ projectId: 'p1', path: 'KP_Yelka_v2.pdf' });
+    await user.click(within(file).getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'KP_Yelka_v2.pdf' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Поиск' })).toBeInTheDocument();
+
+    await user.click(within(dialog).getAllByRole('button', { name: /Договор поставки\.docx/ })[0]!);
+    const own = await screen.findByRole('dialog', { name: 'Договор поставки.docx' });
+    expect(await within(own).findByRole('link', { name: 'Скачать' })).toHaveAttribute('href', `/app/api/files/file?path=${encodeURIComponent('Договор поставки.docx')}`);
+    expect(within(own).queryByRole('link', { name: 'Посмотреть' })).not.toBeInTheDocument();
+  });
+
+  it('says in the window of a file that it was removed meanwhile', async () => {
+    const s = server();
+    s.set('GET /app/api/files/status', { body: { state: 'deleted', name: 'KP_Yelka_v2.pdf' } });
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Файлы' }));
+    await user.click(await within(dialog).findByRole('button', { name: /KP_Yelka_v2\.pdf/ }));
+    const file = await screen.findByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
+    expect(await within(file).findByText(/удалён/)).toBeInTheDocument();
+    expect(within(file).queryByRole('link', { name: 'Скачать' })).not.toBeInTheDocument();
+  });
+
+  it('shows found files in their group, says there are more, and names a project folder it could not read', async () => {
+    server({ body: { ...FOUND, files: { files: [KP], unreadable: [{ projectId: 'p2', name: 'Ключевые клиенты' }], more: true } } });
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.type(within(dialog).getByRole('textbox'), 'кп');
+    expect(await within(dialog).findByText('Найдено: 4')).toBeInTheDocument();
+    expect(within(dialog).getByText('Файлы', { selector: 'div' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /KP_Yelka_v2\.pdf/ })).toBeInTheDocument();
+    expect(within(dialog).getByText('Показаны первые 50 — уточните запрос')).toBeInTheDocument();
+    expect(within(dialog).getByText('Файлы проекта «Ключевые клиенты» сейчас не читаются')).toBeInTheDocument();
+  });
+
+  it('says on «Файлы» when there are none and shows a list that did not load with a repeat', async () => {
+    const s = server();
+    s.set('GET /app/api/search/files', apiError('APP_SEARCH_FAILED', 'Поиск сейчас не работает. Попробуйте ещё раз.', 500));
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Файлы' }));
+    expect(await within(dialog).findByText('Не удалось загрузить файлы')).toBeInTheDocument();
+    s.set('GET /app/api/search/files', { body: NO_FILES });
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }));
+    expect(await within(dialog).findByText('Файлов пока нет')).toBeInTheDocument();
+  });
+
   it('opens from «Поиск» in the menu of a phone without project chips and closes by «Отмена»', async () => {
     stubSystemTheme('light', PHONE_WIDTH);
     server();
@@ -242,6 +315,8 @@ describe('search over conversations and projects', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Поиск' });
     expect(await within(dialog).findByText('2 разговора')).toBeInTheDocument();
     expect(within(dialog).queryByRole('group', { name: 'В проекте' })).not.toBeInTheDocument();
+    // No tabs on a phone: found files are a group of the list.
+    expect(within(dialog).queryByRole('button', { name: 'Файлы' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Все проекты' })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();

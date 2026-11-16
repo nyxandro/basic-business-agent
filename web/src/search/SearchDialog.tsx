@@ -1,11 +1,13 @@
-// «Поиск» (spec, scenario 7; mockup): Ctrl+K or the button in the side panel. On a computer — a
-// window with «Везде / Разговоры / Проекты», groups and «Найдено: N»; on a phone — the whole screen
-// with «Отмена». No project filter: the projects are in the list itself (decision of the owner
-// 16.11). A choice opens the conversation or the project.
+// «Поиск» (spec, scenario 7, sections 8.13 and 8.21; mockup): Ctrl+K or the button in the side panel.
+// On a computer — a window with «Везде / Разговоры / Проекты / Файлы», groups and «Найдено: N»; on a
+// phone — the whole screen with «Отмена». No project filter: the projects are in the list itself
+// (decision of the owner 16.11). A conversation or a project opens in place; a document opens its
+// window over the search (FileDialog.tsx).
 // Until a query is typed it lists all the person's projects (AllProjects.tsx) and conversations,
-// newest first (AllThreads.tsx), as the scope allows; «Ещё» under «Недавние» opens it on
-// «Разговоры». It starts afresh each time it opens (a new `key`).
-import type { SearchScope } from '@bba/contracts';
+// newest first (AllThreads.tsx), as the scope allows, and on «Файлы» the newest documents
+// (RecentFiles.tsx); «Ещё» under «Недавние» opens it on «Разговоры». It starts afresh each time it
+// opens (a new `key`).
+import type { SearchFile, SearchScope } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { asApiError } from '../api/client.ts';
@@ -18,7 +20,10 @@ import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { AllProjects, type ProjectsState } from './AllProjects.tsx';
 import { AllThreads } from './AllThreads.tsx';
+import { FileDialog } from './FileDialog.tsx';
+import { FilesGroup } from './FileResult.tsx';
 import { ProjectResult, projectPath } from './ProjectResult.tsx';
+import { RecentFiles } from './RecentFiles.tsx';
 import { useSearch, type SearchState } from './use-search.ts';
 import styles from './search.module.css';
 import { ThreadResult } from './ThreadResult.tsx';
@@ -27,7 +32,10 @@ const SCOPES: { id: SearchScope; label: string }[] = [
   { id: 'all', label: ru.search.everywhere },
   { id: 'threads', label: ru.search.threads },
   { id: 'projects', label: ru.search.projects },
+  { id: 'files', label: ru.search.files },
 ];
+
+const NO_FILES = { files: [], unreadable: [], more: false };
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: string }) {
   return (
@@ -37,8 +45,9 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function Results({ state, projectsState, scope, wide, projectName, onRetry, onRetryProjects, onPick }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void }) {
+function Results({ state, projectsState, scope, wide, projectName, onRetry, onRetryProjects, onPick, onOpenFile }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void; onOpenFile: (file: SearchFile) => void }) {
   if (state.status === 'idle') {
+    if (scope === 'files') return <RecentFiles wide={wide} projectName={projectName} onOpen={onOpenFile} />;
     const projects = scope === 'threads' ? null : <AllProjects state={projectsState} quiet={scope === 'all'} onRetry={onRetryProjects} onPick={onPick} />;
     if (scope === 'projects') return projects;
     return (
@@ -63,9 +72,10 @@ function Results({ state, projectsState, scope, wide, projectName, onRetry, onRe
       </div>
     );
   }
-  const projects = scope === 'threads' ? [] : state.data.projects;
-  const threads = scope === 'projects' ? [] : state.data.threads;
-  if (projects.length + threads.length === 0) {
+  const projects = scope === 'all' || scope === 'projects' ? state.data.projects : [];
+  const threads = scope === 'all' || scope === 'threads' ? state.data.threads : [];
+  const files = scope === 'all' || scope === 'files' ? state.data.files : NO_FILES;
+  if (projects.length + threads.length + files.files.length + files.unreadable.length === 0) {
     return (
       <div className={styles.nothing}>
         <div className={styles.nothingTitle}>{ru.search.nothing}</div>
@@ -83,6 +93,7 @@ function Results({ state, projectsState, scope, wide, projectName, onRetry, onRe
           ))}
         </>
       ) : null}
+      <FilesGroup found={files} projectName={projectName} wide={wide} onOpen={onOpenFile} />
       {threads.length > 0 ? (
         <>
           <div className={styles.group}>{ru.search.threads}</div>
@@ -97,7 +108,8 @@ function Results({ state, projectsState, scope, wide, projectName, onRetry, onRe
 
 function count(state: SearchState, scope: SearchScope): string | null {
   if (state.status !== 'ready') return null;
-  const n = (scope === 'threads' ? 0 : state.data.projects.length) + (scope === 'projects' ? 0 : state.data.threads.length);
+  const shows = (part: SearchScope) => scope === 'all' || scope === part;
+  const n = (shows('projects') ? state.data.projects.length : 0) + (shows('threads') ? state.data.threads.length : 0) + (shows('files') ? state.data.files.files.length : 0);
   return n === 0 ? ru.search.noMatches : ru.search.found(n);
 }
 
@@ -106,6 +118,7 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
   const [scope, setScope] = useState<SearchScope>(startScope);
   const [projectsState, setProjectsState] = useState<ProjectsState>({ status: 'loading' });
   const [projectsAttempt, setProjectsAttempt] = useState(0);
+  const [openFile, setOpenFile] = useState<SearchFile | null>(null);
   const { state, retry } = useSearch(open ? q : '', scope);
   const navigate = useNavigate();
 
@@ -168,9 +181,10 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
         </div>
       ) : null}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">
-        <Results state={state} projectsState={projectsState} scope={scope} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} />
+        <Results state={state} projectsState={projectsState} scope={scope} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} onOpenFile={setOpenFile} />
       </div>
       {wide && footer ? <div className={styles.footer}>{footer}</div> : null}
+      {openFile ? <FileDialog file={openFile} projectName={projectName(openFile.projectId)} onClose={() => setOpenFile(null)} /> : null}
     </Modal>
   );
 }

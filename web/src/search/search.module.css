@@ -312,3 +312,68 @@
 .more:disabled {
   cursor: default;
 }
+
+/* What a list of files could not show (spec, section 8.21): more than 50, a folder that was not read. */
+.listNote {
+  margin: 4px 10px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The window of a found document. */
+.fileDialog {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fileHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fileTile {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--hover);
+}
+
+.fileText {
+  min-width: 0;
+}
+
+.fileName {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fileMeta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fileChecking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fileActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

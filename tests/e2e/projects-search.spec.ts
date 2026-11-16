@@ -25,13 +25,13 @@ test('the search finds one’s own conversation and never someone else’s', asy
   await expect(olga.getByRole('cell', { name: 'Поставка бетона' })).toBeVisible();
   await olga.keyboard.press('Control+k');
   const dialog = olga.getByRole('dialog', { name: 'Поиск' });
-  await dialog.getByRole('textbox', { name: 'Поиск по разговорам и проектам' }).fill('арматур');
+  await dialog.getByRole('textbox', { name: 'Поиск по разговорам, проектам и файлам' }).fill('арматур');
   await expect(dialog.getByRole('button', { name: /остатки арматуры/ })).toBeVisible();
   await expect(dialog.getByText(/Найдено: \d+/)).toBeVisible();
 
   const petr = await pageAs(browser, 'petr@example.com');
   await petr.getByRole('button', { name: 'Поиск' }).click();
   const theirs = petr.getByRole('dialog', { name: 'Поиск' });
-  await theirs.getByRole('textbox', { name: 'Поиск по разговорам и проектам' }).fill('арматур');
+  await theirs.getByRole('textbox', { name: 'Поиск по разговорам, проектам и файлам' }).fill('арматур');
   await expect(theirs.getByText('Ничего не нашлось')).toBeVisible();
 });
