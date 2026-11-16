@@ -15,6 +15,30 @@ import styles from './chat.module.css';
 const GAP_CLOSES_AFTER_MS = 220;
 const SLIDE_MS = 320;
 const SLIDE_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+// The end of a name cut in the middle stays: «Отчёт (2).docx» and «Отчёт.docx» are told apart when both
+// are longer than the row. It is the last word before the extension (after a space, «_» or «-») when
+// that word is short, otherwise its last letters.
+const NAME_TAIL_WORD = 12;
+const NAME_TAIL_LETTERS = 6;
+
+function tailStart(name: string): number {
+  const dot = name.lastIndexOf('.');
+  const stemEnd = dot > 0 ? dot : name.length;
+  const stem = name.slice(0, stemEnd);
+  const cut = Math.max(stem.lastIndexOf(' '), stem.lastIndexOf('_'), stem.lastIndexOf('-'));
+  return cut > 0 && stemEnd - cut <= NAME_TAIL_WORD ? cut : Math.max(0, stemEnd - NAME_TAIL_LETTERS);
+}
+
+// A name cut in the middle when it does not fit: its start shrinks to «…», its end stays.
+function FileName({ name }: { name: string }) {
+  const start = tailStart(name);
+  return (
+    <span className={styles.chipName} title={name}>
+      <span className={styles.chipNameHead}>{name.slice(0, start)}</span>
+      <span className={styles.chipNameTail}>{name.slice(start)}</span>
+    </span>
+  );
+}
 
 export function Attachments({ uploading, voice }: { uploading: readonly WaitingFile[]; voice: ReactNode }) {
   const extras = useChatExtras();
@@ -59,7 +83,7 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
       {extras.attachments.map((f) => (
         <span key={f.path} className={styles.chip}>
           <FileIcon name={f.name} />
-          <span className={styles.chipName}>{f.name}</span>
+          <FileName name={f.name} />
           <IconButton icon="x" size="sm" label={`${ru.chat.removeAttachment} ${f.name}`} onClick={(e) => remove(f.path, e.currentTarget.parentElement)} />
         </span>
       ))}

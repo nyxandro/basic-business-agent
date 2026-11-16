@@ -11,6 +11,7 @@ import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { apiError, ME, mockServer, type MockCall, type Reply } from '../test/fetch-mock.ts';
 import { ToastProvider } from '../ui/Toast.tsx';
 import { attachFailure } from './attach.ts';
+import { Attachments } from './Attachments.tsx';
 import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
 import { ChatView } from './ChatView.tsx';
 
@@ -275,5 +276,22 @@ describe('the error of files that did not go', () => {
     ]);
     expect(error.message).toBe('Не прикреплены 3 файла. «a.mp4», «b.exe» — Такой формат агент пока не читает. «big.pdf» — Файл больше 20 МБ.');
     expect(error.code).toBe('APP_UPLOAD_TYPE_UNSUPPORTED, APP_UPLOAD_TOO_LARGE');
+  });
+});
+
+describe('the name of an attached file (decision of the owner 17.11)', () => {
+  it('keeps the end of a long name — its last short word and the extension — so two alike names are told apart', () => {
+    const ex = { ...extras(), attachments: [{ name: 'ПРИМЕР_CV_Фамилия_Имя_Отчество (2).txt', path: 'a', bytes: 1 }, { name: 'ПРИМЕР_CV_Фамилия_Имя_Отчество.txt', path: 'b', bytes: 1 }, { name: 'Смета.xlsx', path: 'c', bytes: 1 }] };
+    render(
+      <ChatExtrasContext value={ex}>
+        <Attachments uploading={[]} voice={null} />
+      </ChatExtrasContext>,
+    );
+    const ends = ['ПРИМЕР_CV_Фамилия_Имя_Отчество (2).txt', 'ПРИМЕР_CV_Фамилия_Имя_Отчество.txt', 'Смета.xlsx'].map((name) => {
+      const chip = screen.getByTitle(name);
+      expect(chip).toHaveTextContent(name);
+      return chip.lastElementChild!.textContent;
+    });
+    expect(ends).toEqual([' (2).txt', '_Отчество.txt', 'Смета.xlsx']);
   });
 });

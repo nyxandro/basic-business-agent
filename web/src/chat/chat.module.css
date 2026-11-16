@@ -573,11 +573,14 @@
   gap: 6px;
 }
 
+/* As wide as its name: the files lie as they fit, a name is cut only when longer than the whole row
+   (decision of the owner 17.11). */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 260px;
+  max-width: 100%;
+  box-sizing: border-box;
   height: 30px;
   padding: 0 6px 0 10px;
   border-radius: 10px;
@@ -588,9 +591,29 @@
 }
 
 .chipName {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A file's name: the start gives way, the end with the extension stays. */
+.chipName:has(.chipNameHead) {
+  display: flex;
+  overflow: visible;
+}
+
+/* Spaces kept as they are: a name cut at a space would lose it at the joint. */
+.chipNameHead {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.chipNameTail {
+  flex: none;
+  white-space: pre;
 }
 
 .chipBad {
