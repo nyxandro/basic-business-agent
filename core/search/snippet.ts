@@ -1,6 +1,8 @@
 // The piece of text shown under a found conversation in «Поиск» (spec, section 8.13): ±60 characters
 // of what the person saw in the chat around a match. The person's own text is shown as typed; an
 // agent's answer as the chat draws its Markdown (visible-text.ts).
+import { typoPieces } from './match-sql.ts';
+import { normalize, type WordVariants } from './variants.ts';
 import { visibleText } from './visible-text.ts';
 
 export const SNIPPET_RADIUS = 60;
@@ -112,22 +114,34 @@ function cut(visible: Visible, at: number, back: number, ahead: number): string 
 
 const plain = (text: string): Visible => ({ text: text.replace(/\s+/g, ' ').trim(), before: false, after: false });
 
+// Where a word of the query is in a text: the first of the pieces the search found it by — the word, its
+// stem, Latin, the other layout, a word of the dictionary its typo means, two letters swapped (match-sql.ts).
+function locate(text: string, word: WordVariants): { at: number; length: number } | null {
+  const normal = normalize(text);
+  let best: { at: number; length: number } | null = null;
+  for (const piece of [...word.direct, ...typoPieces(word)]) {
+    const at = normal.indexOf(piece);
+    if (at >= 0 && (best === null || at < best.at)) best = { at, length: piece.length };
+  }
+  return best;
+}
+
 // `messages` are the conversation's text parts holding a word, in order; `opening` is its first words
 // (the person's first message), shown when the words are only in the title or in markup. Words
 // already visible in the title tell nothing new, so the piece is centred on a word found only in the
-// messages when there is one; `terms` are lower case.
-export function snippetOf(messages: MessageText[], opening: string | null, title: string, terms: string[]): string {
-  const titled = title.toLowerCase();
-  const ordered = [...terms.filter((w) => !titled.includes(w)), ...terms.filter((w) => titled.includes(w))];
+// messages when there is one.
+export function snippetOf(messages: MessageText[], opening: string | null, title: string, words: WordVariants[]): string {
+  const titled = (word: WordVariants) => locate(title, word) !== null;
+  const ordered = [...words.filter((w) => !titled(w)), ...words.filter(titled)];
   for (const word of ordered) {
     let parses = 0;
     for (const message of messages) {
-      const at = message.text.toLowerCase().indexOf(word);
-      if (at < 0) continue;
+      const raw = locate(message.text, word);
+      if (raw === null) continue;
       if (message.role === 'assistant' && ++parses > MAX_PARSES_PER_WORD) break;
-      const visible = message.role === 'user' ? plain(message.text) : visibleOfAnswer(message.text, at, word.length);
-      const found = visible.text.toLowerCase().indexOf(word);
-      if (found >= 0) return cut(visible, found, SNIPPET_RADIUS, SNIPPET_RADIUS);
+      const visible = message.role === 'user' ? plain(message.text) : visibleOfAnswer(message.text, raw.at, raw.length);
+      const found = locate(visible.text, word);
+      if (found !== null) return cut(visible, found.at, SNIPPET_RADIUS, SNIPPET_RADIUS);
     }
   }
   return opening === null ? '' : cut(plain(opening), 0, 0, 2 * SNIPPET_RADIUS);

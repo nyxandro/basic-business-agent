@@ -33,7 +33,7 @@ import { createMemory } from '../memory/memory.ts';
 import { createSkillsRuntime } from '../skills-admin/runtime.ts';
 import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { isAppError } from '../errors/app-error.ts';
-import { ensureMessageTextIndex } from '../search/text-index.ts';
+import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
 
@@ -75,9 +75,9 @@ async function main(): Promise<void> {
   const skills = createSkillsRuntime(skillsDeps);
   await skills.prepare();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });
-  // Mastra makes its tables here; the search index on its messages needs them (spec, section 8.21).
+  // Mastra makes its tables here; the search keeps the text of its messages by a trigger on them (8.21).
   await storage.init();
-  await ensureMessageTextIndex(db);
+  await ensureMessageTexts(db);
   const memory = createMemory(storage);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
   const sandbox = {

@@ -117,6 +117,7 @@ const MIN_STEM_LENGTH = 3;
 const CYRILLIC = /[\u0400-\u04ff]/;
 const LATIN = /[a-z]/;
 const WORD = /^[\p{L}\p{N}]+$/u;
+const LETTER = /\p{L}/u;
 
 export interface WordVariants {
   // The word as the search compares it: lower case, «ё» as «е».
@@ -125,9 +126,20 @@ export interface WordVariants {
   direct: string[];
   // Words compared with typos, each at least MIN_FUZZY_LENGTH long.
   fuzzy: string[];
+  // The word with two neighbouring letters swapped («договро» → «договор»): a typo that edits count as two.
+  swaps: string[];
+  // Words people have written that this one is a typo of (app.search_words; filled by correctionsOf).
+  corrections: string[];
 }
 
-const normalize = (text: string) => text.toLowerCase().replaceAll('ё', 'е');
+export const normalize = (text: string) => text.toLowerCase().replaceAll('ё', 'е');
+
+function swapsOf(word: string): string[] {
+  if ([...word].length < MIN_FUZZY_LENGTH) return [];
+  const letters = [...word];
+  const out = letters.slice(0, -1).map((_, i) => [...letters.slice(0, i), letters[i + 1], letters[i], ...letters.slice(i + 2)].join(''));
+  return [...new Set(out)].filter((s) => s !== word);
+}
 const words = (text: string) => text.split(/\s+/).filter(Boolean);
 
 // The query as if typed in the other layout: into Cyrillic when it has more Latin letters, otherwise into Latin.
@@ -203,8 +215,10 @@ export function buildVariants(query: string, stems: ReadonlyMap<string, string>)
     // With typos the word is compared in the other script too: by its first Latin form, or by the first
     // readings of a Latin word — the right one is often second (ICAO «kalkuliatsiia»).
     const otherScript = CYRILLIC.test(word) ? latinForms(word).slice(0, 1) : cyrillicOfLatin.slice(0, FUZZY_READINGS);
+    // A number or a code («250-7», «№12») is meant exactly: typos only in words with letters.
+    if (!LETTER.test(word)) return { word, direct: unique, fuzzy: [], swaps: [], corrections: [] };
     const fuzzy = [...new Set([word, layout, ...otherScript].filter((f): f is string => typeof f === 'string' && f.length >= MIN_FUZZY_LENGTH))];
-    return { word, direct: unique, fuzzy };
+    return { word, direct: unique, fuzzy, swaps: [...new Set([...swapsOf(word), ...(layout === null ? [] : swapsOf(layout))])], corrections: [] };
   });
 }
 

@@ -3,119 +3,130 @@
 // in this one module and its test runs on a real database: a Mastra upgrade that changes the
 // tables breaks the test, not the product silently.
 import type { SearchResponse, SearchScope } from '@bba/contracts';
-import type { Db } from '../db/pool.ts';
+import type pg from 'pg';
 import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
+import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
 import { snippetOf, type MessageText } from './snippet.ts';
+import { queryVariants, type WordVariants } from './variants.ts';
 
 export const MIN_QUERY = 2;
 const MAX_RESULTS = 50;
-
-function words(q: string): string[] {
-  return q.toLowerCase().split(/\s+/).filter(Boolean);
-}
-
-// ILIKE pattern of one word: % and _ the person typed are plain characters.
-function likeOf(word: string): string {
-  return `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-}
 
 interface Row {
   id: string;
   title: string | null;
   agent_id: string;
   updated: Date;
+  project_id: string | null;
+}
+
+interface PartsRow {
+  id: string;
   // Text parts holding a word, in order, with who wrote them: an answer is shown as the chat draws it.
   messages: MessageText[];
   // The person's first message: the piece of text when the words are only in the title or in markup.
   opening: string | null;
-  project_id: string | null;
 }
 
-async function searchThreads(db: Db, userId: string, terms: string[]): Promise<SearchResponse['threads']> {
-  const params: unknown[] = [userId];
-  // Rough pass on the raw stored text (no JSON parsing): a conversation stays a candidate only if
-  // every word occurs in its title or anywhere in its messages. The exact pass below reads only the
-  // text parts of the candidates' messages.
-  const rough: string[] = [];
-  const conditions = terms.map((w) => {
-    params.push(likeOf(w));
-    const n = params.length;
-    rough.push(`(t.title ILIKE $${n} ESCAPE '\\' OR EXISTS (SELECT 1 FROM mastra.mastra_messages r WHERE r.thread_id = t.id AND r.content ILIKE $${n} ESCAPE '\\'))`);
-    return `(own.title ILIKE $${n} ESCAPE '\\' OR COALESCE(msg.body, '') ILIKE $${n} ESCAPE '\\')`;
+// The text of a message as the search compares it — the expression of the index message_texts_search
+// (core/db/migrations/0023_message_texts.sql).
+const MESSAGE_TEXT = normalizedSql('mt.text');
+
+// The person's conversations where every word is in the title or in the text of the messages — directly
+// or with a typo. Messages holding a word are found through the index of their text (app.message_texts);
+// those found directly come first, newest first in each part (spec, 8.13 and 8.21). Typos are looked for
+// only when fewer than 50 are found directly: the others would not make the list.
+async function searchThreads(client: pg.PoolClient, userId: string, words: WordVariants[]): Promise<{ rows: { row: Row; direct: boolean }[]; words: WordVariants[] }> {
+  const direct = await threadsBy(client, userId, words, false);
+  if (direct.length >= MAX_RESULTS) return { rows: direct, words };
+  const corrected = await correctionsOf(client, words);
+  return { rows: await threadsBy(client, userId, corrected, true), words: corrected };
+}
+
+async function threadsBy(client: pg.PoolClient, userId: string, words: WordVariants[], typos: boolean): Promise<{ row: Row; direct: boolean }[]> {
+  const params = new SqlParams();
+  const user = params.add(userId);
+  const inMessages = (condition: string) => `SELECT mt.thread_id FROM app.message_texts mt WHERE mt.resource_id = ${user} AND ${condition}`;
+  const pieces: string[] = [];
+  const directs: string[] = [];
+  const each: string[] = [];
+  words.forEach((word, i) => {
+    pieces.push(`d${i} AS (${inMessages(directCondition(MESSAGE_TEXT, word, params))})`);
+    const direct = `(${directCondition('own.name', word, params)} OR own.id IN (SELECT thread_id FROM d${i}))`;
+    directs.push(direct);
+    const nameTypo = typos ? typoCondition('own.name', word, params) : null;
+    const typoInText = typos ? typoPieces(word) : [];
+    const typo = [nameTypo, typoInText.length > 0 ? `own.id IN (SELECT thread_id FROM t${i})` : null].filter((c): c is string => c !== null);
+    if (typoInText.length > 0) pieces.push(`t${i} AS (${inMessages(piecesCondition(MESSAGE_TEXT, typoInText, params))})`);
+    each.push(typo.length === 0 ? direct : `(${direct} OR ${typo.join(' OR ')})`);
   });
-  params.push(terms.map(likeOf));
-  const patterns = params.length;
-  // Candidates go newest first through the exact pass one by one (LATERAL), and the query stops at
-  // the 50th match: a common word does not make it read every conversation of the person. Only the
-  // found ones give their text for the piece — the parts holding a word, not the whole conversation.
-  const { rows } = await db.query<Row>(
-    `SELECT found.id, found.title, found.agent_id, found.updated, found.project_id,
-            COALESCE(parts.matching, '[]'::jsonb) AS messages, parts.opening
-       FROM (
-         SELECT own.id, own.title, own.agent_id, own.updated, own.project_id
-           FROM (
-             SELECT t.id, t.title, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
-               FROM mastra.mastra_threads t
-               LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
-              WHERE t."resourceId" = $1
-                AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
-                AND ${rough.join(' AND ')}
-              ORDER BY t."updatedAtZ" DESC, t.id DESC
-           ) AS own
-           CROSS JOIN LATERAL (
-             SELECT string_agg(part->>'text', E'\\n' ORDER BY m."createdAtZ") AS body
-               FROM mastra.mastra_messages m
-               CROSS JOIN LATERAL jsonb_array_elements(
-                 CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
-               ) AS part
-              WHERE m.thread_id = own.id AND m.role IN ('user', 'assistant') AND part->>'type' = 'text'
-           ) AS msg
-          WHERE ${conditions.join(' AND ')}
-          ORDER BY own.updated DESC, own.id DESC
-          LIMIT ${MAX_RESULTS}
-       ) AS found
-       CROSS JOIN LATERAL (
-         SELECT jsonb_agg(jsonb_build_object('role', t.role, 'text', t.text) ORDER BY t.at, t.n) FILTER (WHERE t.text ILIKE ANY ($${patterns}::text[])) AS matching,
-                (array_agg(t.text ORDER BY t.at, t.n) FILTER (WHERE t.role = 'user' AND btrim(t.text) <> ''))[1] AS opening
-           FROM (
-             SELECT m.role, m."createdAtZ" AS at, p.n, p.part->>'text' AS text
-               FROM mastra.mastra_messages m
-               CROSS JOIN LATERAL jsonb_array_elements(
-                 CASE WHEN left(m.content, 1) = '{' THEN COALESCE(m.content::jsonb -> 'parts', '[]'::jsonb) ELSE '[]'::jsonb END
-               ) WITH ORDINALITY AS p(part, n)
-              WHERE m.thread_id = found.id AND m.role IN ('user', 'assistant') AND p.part->>'type' = 'text' AND p.part->>'text' IS NOT NULL
-           ) AS t
-       ) AS parts
-      ORDER BY found.updated DESC, found.id DESC`,
-    params,
+  const { rows } = await client.query<Row & { direct: boolean }>(
+    `WITH own AS (
+       SELECT t.id, t.title, ${normalizedSql('t.title')} AS name, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
+         FROM mastra.mastra_threads t
+         LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = ${user}
+        WHERE t."resourceId" = ${user} AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
+     ), ${pieces.join(', ')}
+     SELECT own.id, own.title, own.agent_id, own.updated, own.project_id, (${directs.join(' AND ')}) AS direct
+       FROM own
+      WHERE ${each.join(' AND ')}
+      ORDER BY direct DESC, own.updated DESC, own.id DESC
+      LIMIT ${MAX_RESULTS}`,
+    params.values,
   );
-  return rows.map((r) => ({
-    id: r.id,
-    agentId: r.agent_id,
-    title: r.title ?? 'Без названия',
-    snippet: snippetOf(r.messages, r.opening, r.title ?? '', terms),
-    projectId: r.project_id,
-    updatedAt: r.updated.toISOString(),
-  }));
+  return rows.map(({ direct, ...row }) => ({ row, direct }));
+}
+
+// For the piece of text of each found conversation: its messages holding a word, and its first words.
+async function partsOf(client: pg.PoolClient, ids: string[], words: WordVariants[]): Promise<Map<string, PartsRow>> {
+  if (ids.length === 0) return new Map();
+  const params = new SqlParams();
+  const list = params.add(ids);
+  const holds = words.map((word) => piecesCondition(MESSAGE_TEXT, [...word.direct, ...typoPieces(word)], params));
+  const { rows } = await client.query<PartsRow>(
+    `SELECT found.id,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object('role', mt.role, 'text', mt.text) ORDER BY mt.created_at, mt.message_id)
+                        FROM app.message_texts mt WHERE mt.thread_id = found.id AND (${holds.join(' OR ')})), '[]'::jsonb) AS messages,
+            (SELECT mt.text FROM app.message_texts mt
+              WHERE mt.thread_id = found.id AND mt.role = 'user' AND btrim(mt.text) <> ''
+              ORDER BY mt.created_at, mt.message_id LIMIT 1) AS opening
+       FROM unnest(${list}::text[]) AS found(id)`,
+    params.values,
+  );
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope }): Promise<SearchResponse> {
-  const terms = words(query.q);
-  if (query.q.trim().length < MIN_QUERY || terms.length === 0) {
+  if (query.q.trim().length < MIN_QUERY) {
     throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
-  const [seen, threads] = await Promise.all([
-    listProjects(deps, userId).then((list) => list.projects),
-    query.scope === 'projects' ? [] : searchThreads(deps.db, userId, terms),
-  ]);
-  const projects = query.scope === 'threads' ? [] : seen;
+  const words = await queryVariants(deps.db, query.q);
+  const seen = (await listProjects(deps, userId)).projects;
+  const { threads, parts, projectHits, corrected } = await inSearch(deps.db, async (client) => {
+    const found = query.scope === 'projects' ? { rows: [], words } : await searchThreads(client, userId, words);
+    return {
+      threads: found.rows,
+      parts: await partsOf(client, found.rows.map((f) => f.row.id), found.words),
+      projectHits: query.scope === 'threads' ? [] : await matchNames(client, seen.map((p) => p.name), words),
+      corrected: found.words,
+    };
+  });
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
   const seenIds = new Set(seen.map((p) => p.id));
+  const projects = [...projectHits].sort((a, b) => Number(b.direct) - Number(a.direct)).map((hit) => seen[hit.index]!);
   return {
-    threads: threads.map((th) => (th.projectId && !seenIds.has(th.projectId) ? { ...th, projectId: null } : th)),
-    projects: projects
-      .filter((p) => terms.every((w) => p.name.toLowerCase().includes(w)))
-      .map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
+    threads: threads.map(({ row }) => {
+      const piece = parts.get(row.id);
+      return {
+        id: row.id,
+        agentId: row.agent_id,
+        title: row.title ?? 'Без названия',
+        snippet: snippetOf(piece?.messages ?? [], piece?.opening ?? null, row.title ?? '', corrected),
+        projectId: row.project_id && seenIds.has(row.project_id) ? row.project_id : null,
+        updatedAt: row.updated.toISOString(),
+      };
+    }),
+    projects: projects.map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
   };
 }

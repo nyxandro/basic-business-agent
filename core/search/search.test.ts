@@ -97,8 +97,66 @@ describe('search', () => {
     expect(all.threads.find((x) => x.id === inProject)?.projectId).toBe(project.id);
   });
 
+  it('finds a word in another form, in Latin, in the other layout and with a typo; typos below direct finds', async () => {
+    const titled = await conversation(olgaId, 'Договор поставки', [['user', [text('Проверь условия')]]]);
+    const inText = await conversation(olgaId, 'Разное', [['user', [text('Пришлю по договору завтра')]]]);
+    const typo = await conversation(olgaId, 'Склад', [['user', [text('Нужен догвор аренды')]]]);
+    await conversation(olgaId, 'Отчёт', [['user', [text('Цифры за октябрь')]]]);
+    const ids = async (q: string) => (await search(q)).threads.map((x) => x.id).filter((id) => [titled, inText, typo].includes(id));
+    expect(await ids('договоры')).toEqual([inText, titled, typo]);
+    expect(await ids('dogovor')).toEqual([inText, titled, typo]);
+    expect(await ids('ljujdjh')).toEqual([inText, titled, typo]);
+    // Only typos: newest first. «договро» is three edits from «догвор»: not found.
+    expect(await ids('дговор')).toEqual([typo, inText, titled]);
+    expect(await ids('договро')).toEqual([inText, titled]);
+    const found = (await search('договоры')).threads;
+    expect(found.find((x) => x.id === inText)?.snippet).toBe('Пришлю по договору завтра');
+    expect(found.find((x) => x.id === typo)?.snippet).toBe('Нужен догвор аренды');
+  });
+
+  it('keeps finding a piece of a word, and finds project names by the same rules', async () => {
+    await conversation(olgaId, 'Субподряд 2026', [['user', [text('Сроки')]]]);
+    expect((await search('подряд')).threads.map((x) => x.title)).toContain('Субподряд 2026');
+    await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Договоры 2026', access: { mode: 'private', departmentIds: [], userIds: [] } } });
+    expect((await search('dogovor')).projects.map((x) => x.name)).toContain('Договоры 2026');
+    expect((await search('дговоры')).projects.map((x) => x.name)).toContain('Договоры 2026');
+  });
+
   it('refuses a query shorter than 2 characters', async () => {
     expect((await t.call('GET', '/app/api/search?q=a', { cookie: olga })).status).toBe(400);
+  });
+
+  // Messages are heavy with tool results (24 KB on average in the development installation, 16.11): the
+  // piece of text of 50 found conversations must not read them all.
+  it('M3: answers within the limit when the found conversations are heavy with tool results', { timeout: 120_000 }, async () => {
+    const ivan = await t.createUser({ email: 'ivan@example.com', name: 'Иван' });
+    const cookie = await t.signIn('ivan@example.com');
+    const heavy = { type: 'tool-invocation' as const, toolInvocation: { state: 'result' as const, toolCallId: 'c', toolName: 'read_file', args: {}, result: { text: 'Строка ведомости материалов. '.repeat(700) } } };
+    for (let c = 0; c < 50; c++) {
+      const threadId = randomUUID();
+      await ensureThread(t.memory, { threadId, resourceId: ivan, agentId: 'sales', kind: 'chat', title: `Смета ${c}` });
+      await t.memory.saveMessages({
+        messages: Array.from({ length: 30 }, (_, i) => ({
+          id: randomUUID(),
+          threadId,
+          resourceId: ivan,
+          role: (i % 2 ? 'assistant' : 'user'),
+          createdAt: new Date(Date.now() + i),
+          content: { format: 2 as const, parts: i % 2 ? [heavy, text(i === 15 ? 'Арматура А500С по договору' : 'Готово')] : [text('Посчитай')] },
+        })),
+      });
+    }
+    await t.db.query('ANALYZE app.message_texts');
+    const timings: number[] = [];
+    for (const q of ['арматура', 'договор', 'арматуры договору']) {
+      const started = performance.now();
+      const res = await t.call('GET', `/app/api/search?q=${encodeURIComponent(q)}`, { cookie });
+      timings.push(performance.now() - started);
+      expect(res.status).toBe(200);
+      expect((await res.json() as SearchResponse).threads).toHaveLength(50);
+    }
+    console.log(`M3 heavy timings: ${timings.map(Math.round).join(', ')} ms`);
+    expect(Math.max(...timings)).toBeLessThan(800);
   });
 
   // M3 (14.11): 190–300 ms on 50 000 messages of one person — far more than a real person has.
@@ -121,8 +179,10 @@ describe('search', () => {
         })),
       });
     }
+    // As the database's background maintenance does for a table that grew: the plan needs its statistics.
+    await t.db.query('ANALYZE app.message_texts');
     const timings: number[] = [];
-    for (const q of ['бетон 250-7', 'договор', 'оплата 120-33']) {
+    for (const q of ['бетон 250-7', 'договор', 'оплата 120-33', 'дговор']) {
       const started = performance.now();
       const res = await t.call('GET', `/app/api/search?q=${encodeURIComponent(q)}`, { cookie });
       timings.push(performance.now() - started);

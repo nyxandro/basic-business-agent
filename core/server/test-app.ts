@@ -44,7 +44,7 @@ import { acceptInvite, createInvite } from '../auth/users.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase } from '../db/test-database.ts';
-import { ensureMessageTextIndex } from '../search/text-index.ts';
+import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createApp } from './app.ts';
 import type { AppEnv } from './http.ts';
 
@@ -201,7 +201,7 @@ export async function createTestApp(
   if (registry.pluginMigrations.length > 0) await migrate(database.url, undefined, registry.pluginMigrations);
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   await storage.init();
-  await ensureMessageTextIndex(db);
+  await ensureMessageTexts(db);
   const memory = createMemory(storage);
   // The test agents call the fake model directly, not through LiteLLM, with the header LiteLLM gets.
   const fakeGateway = {
