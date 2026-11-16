@@ -132,6 +132,44 @@ describe('models of «Нейросеть»', () => {
     expect([...(await deployments()).keys()].some((id) => id.startsWith(`${model.id}:`))).toBe(false);
   });
 
+  it('moves a model to another provider address once its keys work there; a bad address changes nothing', async () => {
+    const other = await startFakeModel({ host: '0.0.0.0', acceptKey: GOOD_KEY });
+    try {
+      const model = await create({ label: 'Переезд' });
+      const deployment = `${model.id}:${model.keys[0]!.id}`;
+      const fingerprint = (await deployments()).get(deployment)!.bba_fingerprint;
+      const put = (body: Record<string, unknown>) => t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: igor, body });
+
+      for (const apiBase of ['http://host.docker.internal:9/v1', 'не адрес']) {
+        const refused = await put({ apiBase });
+        expect((await errorCode(refused)).code).toBe(apiBase === 'не адрес' ? 'APP_VALIDATION_FAILED' : 'APP_MODEL_CHECK_FAILED');
+        expect((await deployments()).get(deployment)!.bba_fingerprint).toBe(fingerprint);
+      }
+      const listed = async () => (await json<ModelsResponse>(await t.call('GET', '/app/api/admin/models', { cookie: igor }))).models.find((m) => m.id === model.id)!;
+      expect((await listed()).apiBase).toBe(provider.dockerUrl);
+
+      const moved = await put({ apiBase: `  ${other.dockerUrl} ` });
+      expect(moved.status, await moved.clone().text()).toBe(200);
+      expect((await json<ModelDto>(moved)).apiBase).toBe(other.dockerUrl);
+      expect((await listed()).apiBase).toBe(other.dockerUrl);
+      expect((await deployments()).get(deployment)!.bba_fingerprint).not.toBe(fingerprint);
+      const audit = await t.db.query<{ details: { apiBase?: string } }>("SELECT details FROM app.admin_audit WHERE action = 'model.update' AND target = $1", [model.id]);
+      expect(audit.rows.at(-1)!.details.apiBase).toBe(other.dockerUrl);
+
+      // The employee's request now goes to the new address.
+      const agent = new Agent({ id: 'sales', name: 'sales', instructions: 'Ты помощник.', model: await t.gateway.modelConfig(model.id, igorId, 'sales') });
+      other.script({ text: 'Ответ с нового адреса' });
+      expect((await agent.generate('привет')).text).toBe('Ответ с нового адреса');
+    } finally {
+      await other.close();
+    }
+  });
+
+  it('a subscription model has no provider address to change', async () => {
+    const res = await t.call('PUT', '/app/api/admin/models/test-sub', { cookie: igor, body: { apiBase: provider.dockerUrl } });
+    expect((await errorCode(res)).code).toBe('APP_VALIDATION_FAILED');
+  });
+
   it('brings LiteLLM to our catalog at start: adds what is missing, removes its own extras, leaves others alone', async () => {
     const model = await create({ label: 'Сверка' });
     const id = `${model.id}:${model.keys[0]!.id}`;

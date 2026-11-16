@@ -77,7 +77,7 @@ function RowMenu({ row, onEdit, onChanged, onLink }: { row: Row; onEdit: (u: Adm
   return (
     <MenuAnchor>
       <IconButton icon="dots" label={label} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
-      <Menu open={open} onClose={() => setOpen(false)} label={label} width={230}>
+      <Menu open={open} onClose={() => setOpen(false)} label={label} width={230} floating>
         {row.kind === 'invite' ? (
           <MenuItem icon="x" danger onSelect={() => void act(() => adminApi.revokeInvite(row.invite.id), 'Приглашение отозвано')}>
             Отозвать приглашение

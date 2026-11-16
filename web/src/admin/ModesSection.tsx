@@ -59,7 +59,7 @@ function TaskMenu({ task, onEdit, onRuns, onChanged }: { task: AdminTask; onEdit
   return (
     <MenuAnchor>
       <IconButton icon="dots" label={label} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
-      <Menu open={open} onClose={() => setOpen(false)} label={label} width={230}>
+      <Menu open={open} onClose={() => setOpen(false)} label={label} width={230} floating>
         <MenuItem icon="edit" onSelect={() => (setOpen(false), onEdit())}>
           Изменить
         </MenuItem>

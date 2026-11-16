@@ -1,8 +1,11 @@
-/* «Скиллы» (mockup). */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
+/* «Скиллы» (mockup; owner's list 16.11): one skill under another, each as wide as the section. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .card {
@@ -52,10 +55,20 @@
   padding-left: 18px;
 }
 
+/* Two lines at most, cut with «…»: every skill takes the same height, whatever its description
+   (the system skills of Anthropic run to several hundred words). The whole text is in the hint. */
 .desc {
   margin: 0;
   font-size: 13px;
+  line-height: 1.45;
+  height: calc(2 * 1.45em);
   color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .meta {

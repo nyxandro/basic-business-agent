@@ -21,9 +21,11 @@ import { useThreadProject } from '../projects/use-thread-project.ts';
 import { LostProjectNotice } from '../projects/LostProjectNotice.tsx';
 import { deleteThread } from './api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
+import { RenameThreadDialog } from './RenameThreadDialog.tsx';
 
-function ThreadActions({ threadId, onDeleted }: { threadId: string; onDeleted: () => void }) {
+function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; onDeleted: () => void; onRenamed: () => void }) {
   const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -42,11 +44,30 @@ function ThreadActions({ threadId, onDeleted }: { threadId: string; onDeleted: (
     <MenuAnchor>
       <IconButton icon="dots" label={ru.shell.threadMenu} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
       <Menu open={open} onClose={() => setOpen(false)} label={ru.shell.threadMenu}>
+        <MenuItem
+          icon="edit"
+          onSelect={() => {
+            setOpen(false);
+            setRenaming(true);
+          }}
+        >
+          {ru.shell.rename}
+        </MenuItem>
         <MenuItem icon="trash" danger onSelect={() => void remove()}>
           {ru.chat.deleteThread}
         </MenuItem>
       </Menu>
       {error ? <ErrorBanner error={error} /> : null}
+      {renaming ? (
+        <RenameThreadDialog
+          threadId={threadId}
+          onClose={() => setRenaming(false)}
+          onRenamed={() => {
+            setRenaming(false);
+            onRenamed();
+          }}
+        />
+      ) : null}
     </MenuAnchor>
   );
 }
@@ -63,7 +84,7 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
   };
   return (
     <>
-      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} />} />
+      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} onRenamed={refreshThreads} />} />
       {me.modelsConfigured ? (
         <ChatPanel
           key={threadId}

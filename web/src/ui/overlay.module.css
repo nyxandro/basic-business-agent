@@ -94,6 +94,11 @@
   animation: bba-menu 0.22s var(--ease-out) both;
 }
 
+/* A menu of a table row in the top layer of the page (Menu.tsx): over the page, under dialogs. */
+.floating {
+  z-index: 45;
+}
+
 .top-start {
   left: 0;
   bottom: calc(100% + 8px);

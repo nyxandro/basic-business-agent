@@ -32,26 +32,8 @@
   animation: bba-pulse 1.6s infinite;
 }
 
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-
-.tile {
-  padding: 16px;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.tile:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px var(--shadow);
-}
-
-.tileValue {
-  margin-top: 4px;
-  font-size: 18px;
-  font-weight: 600;
+.gatewayRow {
+  display: flex;
 }
 
 .bad {
@@ -84,6 +66,11 @@
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
+}
+
+/* A long address of a provider breaks anywhere rather than widening the table. */
+.address {
+  overflow-wrap: anywhere;
 }
 
 td.mono {
@@ -243,10 +230,6 @@ td.mono {
 .phoneMain {
   flex: 1;
   min-width: 0;
-}
-
-.warn {
-  color: var(--warn);
 }
 
 /* «Пул аккаунтов подписки» (mockup). */

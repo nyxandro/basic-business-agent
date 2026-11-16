@@ -193,14 +193,16 @@
   transition: opacity 0.15s ease;
 }
 
+/* Only a keyboard focus keeps the dots: a mouse click, and dnd-kit giving the focus back to a
+   project after a drag, leave the focus on the link, and the dots would stay after the mouse left. */
 .threadRow:hover .threadMore,
-.threadRow:focus-within .threadMore,
+.threadRow:has(:focus-visible) .threadMore,
 .threadRowOpen .threadMore {
   opacity: 1;
 }
 
 .threadRow:hover .threadLink,
-.threadRow:focus-within .threadLink,
+.threadRow:has(:focus-visible) .threadLink,
 .threadRowOpen .threadLink {
   padding-right: 38px;
 }

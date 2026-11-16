@@ -64,7 +64,7 @@ function RoleHead({ role, onRename, onChanged }: { role: AdminRole; onRename: ()
       {role.builtin ? null : (
         <MenuAnchor>
           <IconButton icon="dots" size="sm" label={label} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
-          <Menu open={open} onClose={() => setOpen(false)} label={label} width={200}>
+          <Menu open={open} onClose={() => setOpen(false)} label={label} width={200} floating>
             <MenuItem
               icon="edit"
               onSelect={() => {

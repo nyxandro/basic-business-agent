@@ -237,6 +237,22 @@ describe('renaming a conversation', () => {
     expect(found.threads.map((x) => x.id)).toContain(a);
   });
 
+  it('gives the name of one’s own conversation for the rename window; someone else’s or an unknown one is not found', async () => {
+    const threadId = randomUUID();
+    await run(olga, 'sales', threadId, 'Разговор для окна');
+    const own = await t.call('GET', `/app/api/threads/${threadId}`, { cookie: olga });
+    expect(own.status).toBe(200);
+    expect(await own.json()).toEqual({ thread: { id: threadId, title: 'Разговор для окна' } });
+    for (const [cookie, id] of [
+      [igor, threadId],
+      [olga, randomUUID()],
+    ] as const) {
+      const missing = await t.call('GET', `/app/api/threads/${id}`, { cookie });
+      expect(missing.status).toBe(404);
+      expect(((await missing.json()) as { error: { code: string } }).error.code).toBe('APP_NOT_FOUND');
+    }
+  });
+
   it('refuses someone else’s or an unknown conversation, and an empty or too long name', async () => {
     const threadId = randomUUID();
     await run(olga, 'sales', threadId, 'Разговор Ольги');

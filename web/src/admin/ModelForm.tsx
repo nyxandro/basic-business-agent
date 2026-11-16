@@ -2,8 +2,9 @@
 // its name, «провайдер/модель» as LiteLLM names it, an address for a non-standard provider, the key
 // and the prices in roubles. «Проверить и сохранить» checks the key at the provider first:
 // «Проверяю ключ…» → «Ключ подошёл». A chat model may come through «Подписка ChatGPT» instead: no
-// key and no prices, the accounts of the pool answer. Editing changes the name, «Видит картинки»
-// and the prices. The longest answer of a chat model comes from the gateway; only when the gateway
+// key and no prices, the accounts of the pool answer. Editing changes the name, «Видит картинки»,
+// the prices and the provider's address (owner's list 16.11) — a new address is checked with the
+// model's keys first, so the button says «Проверить и сохранить» then. The longest answer of a chat model comes from the gateway; only when the gateway
 // does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) the form asks for it (spec, section 8.19).
 import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
@@ -85,6 +86,9 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const effective: Prices = transcription ? { ...prices, image: prices.image || '0' } : prices;
   // Stays once asked: the server's error goes away with the next attempt.
   const askLimit = !editing && !subscription && !transcription && (limitAsked || error?.code === LIMIT_REQUIRED);
+  // Empty — the provider's standard address.
+  const address = apiBase.trim() || null;
+  const moved = editing && !subscription && address !== model.apiBase;
 
   // The limit was asked for that model: the gateway may know another one, so the server decides again.
   function changeProviderModel(value: string) {
@@ -107,13 +111,13 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
     if (askLimit) setLimitAsked(true);
     if (maxOutputTokens === 'invalid' || (askLimit && maxOutputTokens === null)) return setProblem(INVALID_LIMIT);
     if (editing) {
-      const ok = await run(() => adminApi.updateModel(model.id, { label: label.trim(), vision: transcription ? false : vision, ...(subscription ? {} : { prices: tokenPrices, pricePerMinute }) }));
-      if (ok) onSaved();
+      const change = { label: label.trim(), vision: transcription ? false : vision, ...(subscription ? {} : { prices: tokenPrices, pricePerMinute }), ...(moved ? { apiBase: address } : {}) };
+      if (await run(() => adminApi.updateModel(model.id, change), moved ? 'Ключ подошёл' : undefined)) onSaved();
       return;
     }
     const input: ModelCreate = subscription
       ? { kind: 'chat', label: label.trim(), connection: 'chatgpt', providerModel: providerModel.trim(), vision }
-      : { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: apiBase.trim() || null, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim(), maxOutputTokens };
+      : { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: address, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim(), maxOutputTokens };
     if (await run(() => adminApi.createModel(input), subscription ? 'Модель добавлена' : 'Ключ подошёл')) onSaved();
   }
 
@@ -158,14 +162,17 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
           <Input mono required disabled={editing} value={providerModel} onChange={(e) => changeProviderModel(e.target.value)} placeholder={subscription ? 'chatgpt/gpt-5.4' : 'openai/gpt-4.1-mini'} />
         </Field>
       </div>
-      {editing || subscription ? null : (
+      {subscription ? null : (
         <div className={section.row}>
-          <Field label="Адрес провайдера (если не стандартный)">
+          <Field label="Адрес провайдера (если не стандартный)" hint={editing ? 'Новый адрес проверяется ключами модели.' : undefined}>
             <Input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="https://…" />
           </Field>
-          <Field label="Ключ">
-            <Input type="password" autoComplete="off" required value={key} onChange={(e) => setKey(e.target.value)} />
-          </Field>
+          {/* An added model's keys are changed in «Ключи». */}
+          {editing ? null : (
+            <Field label="Ключ">
+              <Input type="password" autoComplete="off" required value={key} onChange={(e) => setKey(e.target.value)} />
+            </Field>
+          )}
         </div>
       )}
       {askLimit ? (
@@ -226,7 +233,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
       <div className={section.formActions}>
         <Button onClick={onClose}>Отмена</Button>
         <Button type="submit" variant="primary" disabled={busy}>
-          {editing || subscription ? 'Сохранить' : busy ? 'Проверяю ключ…' : 'Проверить и сохранить'}
+          {(editing && !moved) || subscription ? 'Сохранить' : busy ? 'Проверяю ключ…' : 'Проверить и сохранить'}
         </Button>
       </div>
     </form>

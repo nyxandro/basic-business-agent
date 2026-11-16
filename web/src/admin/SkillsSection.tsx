@@ -1,6 +1,6 @@
-// «Скиллы» (spec, scenario 10; mockup): methods for the agents as `.skill` files — a card each with
-// what it does, who has it and a switch; «Добавить скилл», a new version over the old one, who has
-// it, removal after a question. Scripts run in the sandbox without network. The system skills of the
+// «Скиллы» (spec, scenario 10; mockup; owner's list 16.11): methods for the agents as `.skill` files —
+// a list, one card under another, each with what it does (two lines at most), who has it and a
+// switch; «Добавить скилл», a new version over the old one, who has it, removal after a question. Scripts run in the sandbox without network. The system skills of the
 // core (section 8.18) come first: built in, always on for everyone — no switch and no actions.
 import type { AdminDepartment, AdminPerson, SkillAccess, SkillDto, SkillsSandbox } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
@@ -55,7 +55,9 @@ function SystemSkillCard({ skill, who }: { skill: SkillDto; who: string }) {
           </div>
         </div>
       </div>
-      <p className={styles.desc}>{skill.description}</p>
+      <p className={styles.desc} title={skill.description}>
+        {skill.description}
+      </p>
       <div className={styles.meta}>
         <span className={section.sub}>{ru.admin.skills.who}</span> <span className={styles.who}>{who}</span>
       </div>
@@ -135,7 +137,9 @@ function SkillCard({ skill, who, onAccess, onChanged }: { skill: SkillDto; who: 
           if (next) void act(() => adminApi.replaceSkill(skill.name, next), 'Скилл заменён');
         }}
       />
-      <p className={styles.desc}>{skill.description}</p>
+      <p className={styles.desc} title={skill.description}>
+        {skill.description}
+      </p>
       <div className={styles.meta}>
         <span className={section.sub}>{ru.admin.skills.who}</span> <span className={styles.who}>{who}</span>
       </div>
@@ -176,15 +180,17 @@ export function SkillsSection() {
   return (
     <div className={section.stack}>
       {head}
-      <div className={styles.grid}>
-        {skills.map((s) =>
-          s.system ? (
-            <SystemSkillCard key={s.name} skill={s} who={accessText(s.access, departments, users)} />
-          ) : (
-            <SkillCard key={s.name} skill={s} who={accessText(s.access, departments, users)} onAccess={() => setAccessOf(s.name)} onChanged={reload} />
-          ),
-        )}
-      </div>
+      <ul className={styles.list} aria-label="Скиллы">
+        {skills.map((s) => (
+          <li key={s.name}>
+            {s.system ? (
+              <SystemSkillCard skill={s} who={accessText(s.access, departments, users)} />
+            ) : (
+              <SkillCard skill={s} who={accessText(s.access, departments, users)} onAccess={() => setAccessOf(s.name)} onChanged={reload} />
+            )}
+          </li>
+        ))}
+      </ul>
       {own.length === 0 ? (
         <Card>
           <EmptyState title={ru.admin.skills.noOwnTitle} text={ru.admin.skills.noOwnText} />

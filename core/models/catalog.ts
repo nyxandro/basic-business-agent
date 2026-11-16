@@ -81,6 +81,13 @@ function cleanLabel(label: string): string {
   return clean;
 }
 
+// The provider's address of a model on a key; empty — the provider's standard address.
+function cleanApiBase(value: string | null): string | null {
+  const apiBase = value?.trim() || null;
+  if (apiBase !== null && !URL.canParse(apiBase)) throw invalid(`api base "${apiBase}"`, 'Адрес провайдера — ссылка вида https://…');
+  return apiBase;
+}
+
 function cleanKey(key: string): string {
   const clean = key.trim();
   if (clean.length < KEY_TAIL + 1 || clean.length > KEY_MAX || /\s/.test(clean)) throw invalid('provider key is empty or malformed', 'Вставьте ключ провайдера целиком, без пробелов.');
@@ -203,8 +210,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     const label = cleanLabel(input.label);
     const providerModel = input.providerModel.trim();
     if (!PROVIDER_MODEL.test(providerModel)) throw invalid(`provider model "${providerModel}"`, 'Укажите провайдера и модель через косую черту, например openai/gpt-4.1-mini.');
-    const apiBase = input.apiBase?.trim() || null;
-    if (apiBase !== null && !URL.canParse(apiBase)) throw invalid(`api base "${apiBase}"`, 'Адрес провайдера — ссылка вида https://…');
+    const apiBase = cleanApiBase(input.apiBase);
     const { prices, perMinute } = checkPrices(input.kind, input.prices, input.pricePerMinute);
     const key = cleanKey(input.key);
     // Before the provider is called: a model without a known limit waits for the admin's number.
@@ -307,18 +313,27 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
           if (row.connection !== 'api_key') throw invalid(`model ${modelId} is a subscription`, 'У модели подписки нет цен.');
           ({ prices, perMinute } = checkPrices(row.kind, change.prices === undefined ? prices : change.prices, change.pricePerMinute === undefined ? perMinute : change.pricePerMinute));
         }
-        // The label and «Видит картинки» are ours only; LiteLLM learns of switching and prices.
-        if (pricesChanged || enabled !== row.enabled) {
+        let apiBase = row.api_base;
+        if (change.apiBase !== undefined) {
+          if (row.connection !== 'api_key') throw invalid(`model ${modelId} is a subscription`, 'У модели подписки нет адреса провайдера: её запросы идут через аккаунты ChatGPT.');
+          apiBase = cleanApiBase(change.apiBase);
+        }
+        const moved = apiBase !== row.api_base;
+        // The label and «Видит картинки» are ours only; LiteLLM learns of switching, prices and the address.
+        if (pricesChanged || enabled !== row.enabled || moved) {
           const state = await syncState();
-          await apply({ ...state, models: state.models.map((m) => (m.id === modelId ? { ...m, enabled, prices, pricePerMinute: perMinute } : m)) });
+          // Every key of the model must work at the new address before LiteLLM goes there: a wrong
+          // address would otherwise break the model for everyone at the next answer.
+          if (moved) for (const k of state.keys.filter((key) => key.modelId === modelId)) await checkKey({ providerModel: row.provider_model, apiBase, kind: row.kind }, k.secret);
+          await apply({ ...state, models: state.models.map((m) => (m.id === modelId ? { ...m, enabled, prices, pricePerMinute: perMinute, apiBase } : m)) });
         }
         await inTransaction(db, async (c) => {
           await c.query(
             `UPDATE app.models SET label = $2, vision = $3, enabled = $4, price_input = $5, price_output = $6, price_cache_read = $7, price_cache_write = $8,
-                    price_reasoning = $9, price_image = $10, price_per_minute = $11, updated_at = now() WHERE id = $1`,
-            [modelId, label, vision, enabled, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute],
+                    price_reasoning = $9, price_image = $10, price_per_minute = $11, api_base = $12, updated_at = now() WHERE id = $1`,
+            [modelId, label, vision, enabled, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, apiBase],
           );
-          await writeAudit(c, { actorUserId, action: 'model.update', target: modelId, details: { ...change } });
+          await writeAudit(c, { actorUserId, action: 'model.update', target: modelId, details: { ...change, ...(change.apiBase !== undefined ? { apiBase } : {}) } });
         });
         return dtoOf(modelId);
       }),

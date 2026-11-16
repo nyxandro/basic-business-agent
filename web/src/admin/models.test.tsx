@@ -30,15 +30,20 @@ async function fillNewModel(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('«Нейросеть»', () => {
-  it('shows the gateway, the organisation’s choice and the catalog with roles and prices', async () => {
+  it('shows the gateway between the lead and the catalog, and the catalog with roles and prices — without the tiles of the choice', async () => {
     server();
     renderApp('/admin/models');
-    expect(await screen.findByText(/Шлюз работает/)).toBeInTheDocument();
+    const gateway = await screen.findByText(/Шлюз работает/);
+    const lead = screen.getByText(/Модели, их ключи и цены/);
+    const catalog = screen.getByRole('heading', { name: 'Каталог моделей' });
+    expect(lead.compareDocumentPosition(gateway) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(gateway.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const row = screen.getByRole('switch', { name: 'GigaChat 2 Max' }).closest('tr')!;
     expect(within(row).getByText('Основная')).toBeInTheDocument();
     expect(within(row).getByText('ключ организации · …a1b2')).toBeInTheDocument();
     expect(within(row).getByText('120')).toBeInTheDocument();
-    expect(screen.getByText('Без запасной', { selector: 'div' })).toBeInTheDocument();
+    // The four tiles are gone (owner's list 16.11).
+    for (const tile of ['При сбое переключаться на', 'Распознавание речи', 'Без запасной']) expect(screen.queryByText(tile, { selector: 'div' })).not.toBeInTheDocument();
   });
 
   it('checks the key before adding a model: «Проверяю ключ…» → «Ключ подошёл»', async () => {
@@ -169,5 +174,76 @@ describe('«Нейросеть»', () => {
     renderApp('/admin/models');
     await userEvent.setup().click(await screen.findByRole('switch', { name: 'YandexGPT 5 Pro' }));
     await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/admin/models/yagpt')?.body).toEqual({ enabled: false }));
+  });
+});
+
+describe('editing a model (owner\'s list 16.11)', () => {
+  const MOVED = { ...GIGA, apiBase: 'https://gigachat.example.com/v1' };
+
+  async function edit(user: ReturnType<typeof userEvent.setup>, label: string) {
+    await user.click(await screen.findByRole('button', { name: `Действия: ${label}` }));
+    await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
+    return screen.getByRole('dialog', { name: label });
+  }
+
+  it('shows the provider address in the catalog and in «Изменить», and sends a new one to be checked with the keys', async () => {
+    const s = server([MOVED]);
+    let answer: (r: Reply) => void = () => undefined;
+    s.set('PUT /app/api/admin/models/gigachat', () => new Promise<Reply>((resolve) => (answer = resolve)));
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const row = (await screen.findByRole('switch', { name: 'GigaChat 2 Max' })).closest('tr')!;
+    expect(within(row).getByText('https://gigachat.example.com/v1')).toBeInTheDocument();
+
+    const dialog = await edit(user, 'GigaChat 2 Max');
+    const address = within(dialog).getByLabelText('Адрес провайдера (если не стандартный)');
+    expect(address).toHaveValue('https://gigachat.example.com/v1');
+    // The keys are changed in «Ключи», not here.
+    expect(within(dialog).queryByLabelText('Ключ')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+    await user.clear(address);
+    await user.type(address, 'https://gc.example.org/api/v1');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(within(dialog).getByRole('button', { name: 'Проверяю ключ…' })).toBeDisabled();
+    expect(s.calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ label: 'GigaChat 2 Max', apiBase: 'https://gc.example.org/api/v1' });
+    answer({ body: { ...GIGA, apiBase: 'https://gc.example.org/api/v1' } });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'GigaChat 2 Max' })).not.toBeInTheDocument());
+  });
+
+  it('an emptied address means the standard one; an unchanged address is not sent', async () => {
+    const s = server([MOVED]);
+    s.set('PUT /app/api/admin/models/gigachat', { body: GIGA });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    let dialog = await edit(user, 'GigaChat 2 Max');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(s.calls.filter((c) => c.method === 'PUT').at(-1)?.body).not.toHaveProperty('apiBase');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    dialog = await edit(user, 'GigaChat 2 Max');
+    await user.clear(within(dialog).getByLabelText('Адрес провайдера (если не стандартный)'));
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(s.calls.filter((c) => c.method === 'PUT').at(-1)?.body).toMatchObject({ apiBase: null });
+  });
+
+  it('keeps the form and says why when the keys do not work at the new address', async () => {
+    const s = server([MOVED]);
+    s.set('PUT /app/api/admin/models/gigachat', apiError('APP_MODEL_CHECK_FAILED', 'Провайдер не ответил. Попробуйте ещё раз.', 400));
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await edit(user, 'GigaChat 2 Max');
+    const address = within(dialog).getByLabelText('Адрес провайдера (если не стандартный)');
+    await user.clear(address);
+    await user.type(address, 'https://wrong.example.org/v1');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await within(dialog).findByText(/Провайдер не ответил/)).toBeInTheDocument();
+    expect(address).toHaveValue('https://wrong.example.org/v1');
+  });
+
+  it('a subscription model has no provider address', async () => {
+    server([{ ...GIGA, id: 'm-sub', label: 'GPT по подписке', connection: 'chatgpt', providerModel: 'chatgpt/gpt-5.4', prices: null, keys: [] }]);
+    renderApp('/admin/models');
+    const dialog = await edit(userEvent.setup(), 'GPT по подписке');
+    expect(within(dialog).queryByLabelText('Адрес провайдера (если не стандартный)')).not.toBeInTheDocument();
   });
 });

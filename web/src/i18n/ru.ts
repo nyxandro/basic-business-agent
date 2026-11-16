@@ -71,6 +71,7 @@ export const ru = {
     threadMenu: 'Действия с разговором',
     threadMenuOf: (title: string) => `Действия с разговором «${title}»`,
     rename: 'Переименовать',
+    remove: 'Удалить',
     threadName: 'Название разговора',
     saveName: 'Сохранить название',
     noAgents: 'Вам пока не назначены агенты. Обратитесь к администратору.',
@@ -235,6 +236,11 @@ export const ru = {
     deleteThread: 'Удалить разговор',
     deleteConfirm: 'Удалить этот разговор? Его нельзя будет восстановить.',
     threadDeleted: 'Разговор удалён',
+    renameThread: 'Переименовать разговор',
+    renameSave: 'Сохранить',
+    renameCancel: 'Отмена',
+    threadRenamed: 'Название сохранено',
+    renameNotStarted: 'Разговор ещё не начат: название появится после первого сообщения.',
     unread: 'новое',
     noAgent: 'У вас нет доступа к этому агенту. Если он нужен для работы, обратитесь к администратору.',
     greeting: (name: string) => (name ? `Чем помочь, ${name}?` : 'Чем помочь?'),
@@ -391,6 +397,8 @@ export const ru = {
   },
   genui: {
     broken: 'Не удалось показать данные',
+    // After the option's label, for screen readers: «Бета, выбрано».
+    chosen: ', выбрано',
     preparing: 'Готовлю…',
     required: 'Заполните это поле.',
     notNumber: 'Нужно число.',

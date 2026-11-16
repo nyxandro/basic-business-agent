@@ -44,6 +44,9 @@ export type ModelCreate = z.infer<typeof modelCreateSchema>;
 
 export const modelUpdateSchema = z.object({
   label: z.string().optional(),
+  // A model on a key only; null or empty — the provider's standard address. Checked with the
+  // model's keys before LiteLLM moves.
+  apiBase: z.string().nullable().optional(),
   vision: z.boolean().optional(),
   enabled: z.boolean().optional(),
   prices: tokenPricesInputSchema.nullable().optional(),

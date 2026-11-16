@@ -1,7 +1,7 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
 import { basename, relative } from 'node:path';
-import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus } from '@bba/contracts';
+import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -166,6 +166,17 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     // Only the mark: Mastra merges it under a row lock and keeps the name (spec, 8.16).
     if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, metadata: { unread: false } });
     return c.json({ thread: { id: thread.id, title: thread.title, agentId: thread.metadata?.agentId }, messages: toHistory(messages as never) });
+  });
+
+  // The name of one's own conversation for «Переименовать» in its header (spec, 8.16). Unlike
+  // …/messages it reads nothing else and leaves the mark «новое» as it is.
+  app.get('/app/api/threads/:threadId', async (c) => {
+    const thread = await deps.memory.getThreadById({ threadId: c.req.param('threadId') });
+    if (!thread || thread.resourceId !== access(c).userId) {
+      throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign or unknown thread', userMessage: 'Разговор не найден.', status: 404 });
+    }
+    const body: ThreadNameResponse = { thread: { id: thread.id, title: thread.title ?? '' } };
+    return c.json(body);
   });
 
   // The person names their own conversation; the model never names it after that (spec, 8.16).

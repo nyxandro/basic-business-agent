@@ -1,10 +1,12 @@
-import { cardBlockSchema, chartBlockSchema, modelTableBlockSchema, type ChoiceBlock, type FormBlock } from '@bba/contracts';
+import { cardBlockSchema, chartBlockSchema, modelTableBlockSchema, withAttachments, type ChoiceBlock, type FormBlock } from '@bba/contracts';
+import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
 import { ChartBlockView, pieSlices } from './ChartBlock.tsx';
+import { answerOf } from './answer.ts';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
 import { FileCall } from './FileBlock.tsx';
 import { FormBlockView } from './FormBlock.tsx';
@@ -83,11 +85,33 @@ describe('choice and form', () => {
 
   it('answers a choice with the label and is inactive once answered', async () => {
     const onAnswer = vi.fn();
-    const { rerender } = render(<ChoiceBlockView block={CHOICE} answered={false} onAnswer={onAnswer} />);
+    const { rerender } = render(<ChoiceBlockView block={CHOICE} answer={null} onAnswer={onAnswer} />);
+    expect(screen.queryByText(', выбрано')).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Бета' }));
     expect(onAnswer).toHaveBeenCalledWith('Бета');
-    rerender(<ChoiceBlockView block={CHOICE} answered onAnswer={onAnswer} />);
+    rerender(<ChoiceBlockView block={CHOICE} answer="Бета" onAnswer={onAnswer} />);
     expect(screen.getByRole('button', { name: 'Альфа' })).toBeDisabled();
+  });
+
+  // Owner's list 16.11: the option the person took is set apart by colour and a tick.
+  it('marks the option that was chosen, and none when the person answered in their own words', () => {
+    const { rerender } = render(<ChoiceBlockView block={CHOICE} answer="Бета" onAnswer={() => undefined} />);
+    const chosen = screen.getByRole('button', { name: 'Бета, выбрано' });
+    expect(chosen).toHaveAttribute('data-chosen', 'true');
+    expect(screen.getByRole('button', { name: 'Альфа' })).not.toHaveAttribute('data-chosen');
+    rerender(<ChoiceBlockView block={CHOICE} answer="Лучше напишу Гамме" onAnswer={() => undefined} />);
+    expect(screen.queryByText(', выбрано')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Бета' })).toBeDisabled();
+  });
+
+  it('finds the answer to a choice: the first message of the person after it, without the files block', () => {
+    const call: Message = { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'ask_choice', arguments: '{}' } }] };
+    const before: Message = { id: 'u0', role: 'user', content: 'Кому написать письмо?' };
+    expect(answerOf([before, call], 'c1')).toBeNull();
+    expect(answerOf([before, call, { id: 't1', role: 'tool', toolCallId: 'c1', content: '{}' }], 'c1')).toBeNull();
+    const reply: Message = { id: 'u1', role: 'user', content: [{ type: 'text', text: withAttachments(' Бета ', [{ name: 'смета.xlsx', path: 'files/смета.xlsx' }]) }] };
+    expect(answerOf([before, call, reply, { id: 'u2', role: 'user', content: 'Альфа' }], 'c1')).toBe('Бета');
+    expect(answerOf([before, call, reply], 'other')).toBeNull();
   });
 
   it('keeps errors next to the fields and sends the answers as one message', async () => {

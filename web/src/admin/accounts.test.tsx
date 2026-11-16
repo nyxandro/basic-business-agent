@@ -26,7 +26,7 @@ function server(accounts: object[] = [WORKS, COOLING, REVOKED, SILENT]) {
 }
 
 describe('«Пул аккаунтов подписки»', () => {
-  it('shows every account with its state and today’s tokens; the tile counts the active ones', async () => {
+  it('shows every account with its state and today’s tokens', async () => {
     server();
     renderApp('/admin/models');
     const pool = await screen.findByRole('list', { name: 'Аккаунты подписки' });
@@ -36,8 +36,6 @@ describe('«Пул аккаунтов подписки»', () => {
     expect(within(row('busy.gpt@example.com')).getByText('Охлаждение — ошибка 429, вернётся в 14:32')).toBeInTheDocument();
     expect(within(row('old.gpt@example.com')).getByText('Ошибка доступа — войдите заново')).toBeInTheDocument();
     expect(within(row('new.gpt@example.com')).getByText('Нет запросов')).toBeInTheDocument();
-    expect(screen.getByText('2 из 4 активны')).toBeInTheDocument();
-    expect(screen.getByText('один в охлаждении, один — ошибка доступа')).toBeInTheDocument();
     expect(screen.getAllByText('пул из 4 аккаунтов').length).toBeGreaterThan(0);
   });
 

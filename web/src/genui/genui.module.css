@@ -201,6 +201,18 @@
   cursor: default;
 }
 
+/* The option the person took (owner's list 16.11): in the accent colour with a tick, not faded. */
+.option.optionChosen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-weight: 500;
+  opacity: 1;
+}
+
 .form {
   padding: 14px 16px;
   display: flex;

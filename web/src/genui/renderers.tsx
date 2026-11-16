@@ -7,6 +7,7 @@ import { ToolRow } from '../chat/ToolRow.tsx';
 import { BrokenData } from './BrokenData.tsx';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, Preparing, type CallProps } from './CatalogBlock.tsx';
+import { answerOf } from './answer.ts';
 import { ChoiceBlockView } from './ChoiceBlock.tsx';
 import { FileCall } from './FileBlock.tsx';
 import { useChatExtras } from '../chat/chat-context.ts';
@@ -20,11 +21,10 @@ const ChartBlockView = lazy(() => import('./ChartBlock.tsx').then((m) => ({ defa
 const anyArgs = z.record(z.string(), z.unknown());
 
 // A choice or a form answers with an ordinary message of the person, after which it is inactive.
-function useAnswer(toolCallId: string): { answered: boolean; send: (text: string) => void } {
+function useAnswer(toolCallId: string): { answer: string | null; send: (text: string) => void } {
   const { agent } = useAgent();
   const { copilotkit } = useCopilotKit();
-  const index = agent.messages.findIndex((m) => m.role === 'assistant' && (m.toolCalls ?? []).some((c) => c.id === toolCallId));
-  const answered = index >= 0 && agent.messages.slice(index + 1).some((m) => m.role === 'user');
+  const answer = answerOf(agent.messages, toolCallId);
   const send = useCallback(
     (text: string) => {
       agent.addMessage({ id: crypto.randomUUID(), role: 'user', content: text });
@@ -32,23 +32,23 @@ function useAnswer(toolCallId: string): { answered: boolean; send: (text: string
     },
     [agent, copilotkit],
   );
-  return { answered, send };
+  return { answer, send };
 }
 
 function Choice({ call }: { call: CallProps }) {
-  const { answered, send } = useAnswer(call.toolCallId);
+  const { answer, send } = useAnswer(call.toolCallId);
   const parsed = choiceBlockSchema.safeParse(call.parameters);
   if (call.status === 'inProgress') return <Preparing />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
-  return <ChoiceBlockView block={parsed.data} answered={answered} onAnswer={send} />;
+  return <ChoiceBlockView block={parsed.data} answer={answer} onAnswer={send} />;
 }
 
 function Form({ call }: { call: CallProps }) {
-  const { answered, send } = useAnswer(call.toolCallId);
+  const { answer, send } = useAnswer(call.toolCallId);
   const parsed = formBlockSchema.safeParse(call.parameters);
   if (call.status === 'inProgress') return <Preparing />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
-  return <FormBlockView block={parsed.data} answered={answered} onAnswer={send} />;
+  return <FormBlockView block={parsed.data} answered={answer !== null} onAnswer={send} />;
 }
 
 // The file block needs the conversation: «Скачать» takes the file from its folder.

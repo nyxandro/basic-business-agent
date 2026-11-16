@@ -79,6 +79,9 @@ export interface RenameThreadResponse {
   thread: { id: string; title: string };
 }
 
+// GET /app/api/threads/:threadId — the name of one's own conversation for «Переименовать» in the chat.
+export type ThreadNameResponse = RenameThreadResponse;
+
 // Without `toolCallIds` the message goes; with them only those calls go (a broken step whose first
 // call hangs on the message of an earlier step) and the message stays.
 export const messageDiscardedSchema = z.object({ messageId: z.string().min(1), toolCallIds: z.array(z.string().min(1)).min(1).optional() });

@@ -1,6 +1,7 @@
-// «Нейросеть» (spec, scenario 9; mockup): the state of the model gateway, the organisation's
-// choice at a glance, the catalog of models with prices in roubles and a switch each, their keys,
-// the pool of ChatGPT accounts and the parameters. Everything goes to LiteLLM; our database is the
+// «Нейросеть» (spec, scenario 9; mockup; owner's list 16.11): the state of the model gateway, the
+// catalog of models with prices in roubles and a switch each, their keys, the pool of ChatGPT
+// accounts and the parameters. The tiles of the organisation's choice are gone (owner's list 16.11):
+// the roles stand in the catalog, the choice — in «Параметры». Everything goes to LiteLLM; our database is the
 // source of truth.
 import type { ChatGptAccountDto, ModelDto, ModelSettings, ModelsResponse } from '@bba/contracts';
 import { useState } from 'react';
@@ -59,40 +60,6 @@ function Gateway({ gateway }: { gateway: ModelsResponse['gateway'] }) {
   );
 }
 
-const countOf = (n: number) => (n === 1 ? 'один' : String(n));
-
-// «Аккаунты подписки: 2 из 3 активны» and what is wrong with the rest.
-function poolTile(accounts: ChatGptAccountDto[]): { value: string; sub: string; tone: 'warn' | 'bad' | null } {
-  if (accounts.length === 0) return { value: 'Не подключены', sub: 'подписка не используется', tone: null };
-  const cooling = accounts.filter((a) => a.state === 'cooldown').length;
-  const refused = accounts.filter((a) => a.state === 'auth_error').length;
-  const issues = [cooling ? `${countOf(cooling)} в охлаждении` : null, refused ? `${countOf(refused)} — ошибка доступа` : null].filter(Boolean).join(', ');
-  return { value: `${accounts.length - cooling - refused} из ${accounts.length} активны`, sub: issues || 'все в работе', tone: refused ? 'bad' : cooling ? 'warn' : null };
-}
-
-function Summary({ data }: { data: ModelsResponse }) {
-  const label = (id: string | null) => data.models.find((m) => m.id === id)?.label ?? null;
-  const primary = data.models.find((m) => m.id === data.settings.primaryModelId);
-  const pool = poolTile(data.accounts);
-  const tiles = [
-    { title: 'Основная модель', value: primary?.label ?? 'Не выбрана', sub: primary ? connection(primary, data.accounts) : 'агенты не отвечают', tone: primary ? null : 'bad' },
-    { title: 'При сбое переключаться на', value: label(data.settings.fallbackModelId) ?? 'Без запасной', sub: data.settings.fallbackModelId ? 'автоматически' : 'сбой основной — ошибка в чате', tone: null },
-    { title: 'Распознавание речи', value: label(data.settings.transcriptionModelId) ?? 'Нет', sub: data.settings.transcriptionModelId ? 'микрофон в чате' : 'микрофон скрыт', tone: null },
-    { title: 'Аккаунты подписки', value: pool.value, sub: pool.sub, tone: pool.tone },
-  ];
-  return (
-    <div className={`${styles.tiles} rise`}>
-      {tiles.map((t) => (
-        <Card key={t.title} className={styles.tile}>
-          <div className={section.sub}>{t.title}</div>
-          <div className={styles.tileValue}>{t.value}</div>
-          <div className={cx(section.sub, t.tone === 'bad' && styles.bad, t.tone === 'warn' && styles.warn)}>{t.sub}</div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
 function RowMenu({ model, onEdit, onKeys, onChanged }: { model: ModelDto; onEdit: () => void; onKeys: () => void; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const confirm = useConfirm();
@@ -101,7 +68,7 @@ function RowMenu({ model, onEdit, onKeys, onChanged }: { model: ModelDto; onEdit
   return (
     <MenuAnchor>
       <IconButton icon="dots" label={label} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} />
-      <Menu open={open} onClose={() => setOpen(false)} label={label} width={220}>
+      <Menu open={open} onClose={() => setOpen(false)} label={label} width={220} floating>
         <MenuItem icon="edit" onSelect={() => (setOpen(false), onEdit())}>
           Изменить
         </MenuItem>
@@ -161,6 +128,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
                 <div className={styles.phoneMain}>
                   <div className={styles.modelName}>{m.label}</div>
                   <div className={section.sub}>{connection(m, data.accounts)}</div>
+                  {m.apiBase ? <div className={cx(styles.mono, styles.address)}>{m.apiBase}</div> : null}
                 </div>
                 {r ? <Pill tone={r.tone}>{r.text}</Pill> : null}
                 <Switch size="lg" checked={m.enabled} label={m.label} onChange={(on) => void toggle(m, on)} />
@@ -200,6 +168,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
                       {m.vision ? <span className={section.sub}> · видит картинки</span> : null}
                     </div>
                     <div className={styles.mono}>{m.providerModel}</div>
+                    {m.apiBase ? <div className={cx(styles.mono, styles.address)}>{m.apiBase}</div> : null}
                   </td>
                   <td className={styles.muted}>{connection(m, data.accounts)}</td>
                   <td className={cx(numCell, styles.mono)}>{m.pricePerMinute !== null ? `${money(m.pricePerMinute)} за мин` : m.prices ? money(m.prices.input) : '0'}</td>
@@ -251,8 +220,11 @@ export function ModelsSection() {
   const data = state.data;
   return (
     <div className={section.stack}>
-      <PageHead title="Нейросеть" lead={lead} actions={<Gateway gateway={data.gateway} />} />
-      <Summary data={data} />
+      <PageHead title="Нейросеть" lead={lead} />
+      {/* Between the lead and the catalog (owner's list 16.11): the state of the gateway the catalog goes to. */}
+      <div className={styles.gatewayRow}>
+        <Gateway gateway={data.gateway} />
+      </div>
       <Catalog data={data} onChanged={reload} />
       <div className={styles.columns}>
         <AccountsPool accounts={data.accounts} onChanged={reload} />
