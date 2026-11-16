@@ -39,6 +39,7 @@ export interface HeldFile {
   rel: string;
   ino: number;
   size: number;
+  modifiedMs: number;
   // Reaches the file through its opened folder: valid only inside the visit.
   path: string;
 }
@@ -71,7 +72,7 @@ export function walkRegularFiles(root: string, visit: (file: HeldFile) => void, 
         }
       } else if (entry.isFile()) {
         const stat = lstatSync(path, { throwIfNoEntry: false });
-        if (stat?.isFile()) visit({ rel, ino: stat.ino, size: stat.size, path });
+        if (stat?.isFile()) visit({ rel, ino: stat.ino, size: stat.size, modifiedMs: stat.mtimeMs, path });
       }
     }
   };

@@ -131,13 +131,36 @@ export interface ThreadPage {
   next: string | null;
 }
 
-// GET /app/api/search (spec, sections 8.13 and 8.20): projects the person sees and their own conversations.
-export const SEARCH_SCOPES = ['all', 'threads', 'projects'] as const;
+// GET /app/api/search (spec, sections 8.13, 8.20 and 8.21): projects the person sees, their own
+// conversations and the documents of their folder and of the projects they see.
+export const SEARCH_SCOPES = ['all', 'threads', 'projects', 'files'] as const;
 export type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+// What the search finds by name among files (decision of the owner 16.11): documents, without pictures
+// and the working files of the agent.
+export const DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt', '.csv', '.txt'] as const;
+
+export interface SearchFile {
+  // From the files folder of the project, or of the person's conversations outside projects (projectId null).
+  path: string;
+  name: string;
+  projectId: string | null;
+  modifiedAt: string;
+  bytes: number;
+}
+
+// GET /app/api/search/files gives the newest; the search, those found. `unreadable` — folders the server
+// could not read (the project's name, null for the person's own folder); `more` — more than shown.
+export interface SearchFiles {
+  files: SearchFile[];
+  unreadable: { projectId: string | null; name: string | null }[];
+  more: boolean;
+}
 
 export interface SearchResponse {
   projects: { id: string; name: string; threadCount: number; shared: boolean; ownerName: string | null }[];
   threads: { id: string; agentId: string; title: string; snippet: string; projectId: string | null; updatedAt: string }[];
+  files: SearchFiles;
 }
 
 // Result of a tool call the person declined (or cancelled by writing a new message instead of

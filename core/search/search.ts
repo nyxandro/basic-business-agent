@@ -7,10 +7,12 @@ import type pg from 'pg';
 import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
+import { searchFiles } from './files.ts';
 import { snippetOf, type MessageText } from './snippet.ts';
 import { queryVariants, type WordVariants } from './variants.ts';
 
 export const MIN_QUERY = 2;
+const NO_FILES: SearchResponse['files'] = { files: [], unreadable: [], more: false };
 const MAX_RESULTS = 50;
 
 interface Row {
@@ -103,13 +105,14 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
   }
   const words = await queryVariants(deps.db, query.q);
   const seen = (await listProjects(deps, userId)).projects;
-  const { threads, parts, projectHits, corrected } = await inSearch(deps.db, async (client) => {
-    const found = query.scope === 'projects' ? { rows: [], words } : await searchThreads(client, userId, words);
+  const { threads, parts, projectHits, corrected, files } = await inSearch(deps.db, async (client) => {
+    const found = query.scope === 'all' || query.scope === 'threads' ? await searchThreads(client, userId, words) : { rows: [], words };
     return {
       threads: found.rows,
       parts: await partsOf(client, found.rows.map((f) => f.row.id), found.words),
-      projectHits: query.scope === 'threads' ? [] : await matchNames(client, seen.map((p) => p.name), words),
+      projectHits: query.scope === 'all' || query.scope === 'projects' ? await matchNames(client, seen.map((p) => p.name), words) : [],
       corrected: found.words,
+      files: query.scope === 'all' || query.scope === 'files' ? await searchFiles(deps, client, userId, words, seen) : NO_FILES,
     };
   });
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
@@ -128,5 +131,6 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
       };
     }),
     projects: projects.map((p) => ({ id: p.id, name: p.name, threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),
+    files,
   };
 }

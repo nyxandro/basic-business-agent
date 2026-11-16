@@ -28,9 +28,15 @@ export function projectRoot(workspaceRoot: string, userId: string, projectId: st
   return join(userRoot(workspaceRoot, userId), 'projects', projectId);
 }
 
+// Where the files folder of a project (`userId` — its creator) or of the person's conversations outside
+// projects is; not made — reading it, a missing folder is just no files.
+export function filesRoot(workspaceRoot: string, userId: string, projectId: string | null): string {
+  return projectId ? join(projectRoot(workspaceRoot, userId, projectId), FILES) : join(userRoot(workspaceRoot, userId), FILES);
+}
+
 // The files folder a conversation works in; created on first use.
 export function contextRoot(workspaceRoot: string, userId: string, projectId: string | null): string {
-  const dir = projectId ? join(projectRoot(workspaceRoot, userId, projectId), FILES) : join(userRoot(workspaceRoot, userId), FILES);
+  const dir = filesRoot(workspaceRoot, userId, projectId);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
