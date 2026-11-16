@@ -567,10 +567,13 @@
   flex: 1;
 }
 
+/* Many files do not push the input off a phone's screen: past a third of its height the files scroll. */
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 30dvh;
+  overflow-y: auto;
 }
 
 /* As wide as its name: the files lie as they fit, a name is cut only when longer than the whole row
@@ -590,7 +593,15 @@
   font-size: 13px;
 }
 
+/* The end of a row the layout chose (chip-rows.ts): the next chip starts the next row. */
+.chipBreak {
+  flex-basis: 100%;
+  height: 0;
+}
+
 .chipName {
+  /* A stretched chip keeps its cross at its right end. */
+  flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
