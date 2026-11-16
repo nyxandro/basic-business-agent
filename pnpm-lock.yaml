@@ -56,6 +56,9 @@ importers:
       hono:
         specifier: 4.13.18
         version: 4.13.18
+      iuliia:
+        specifier: 0.8.2
+        version: 0.8.2
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -2793,6 +2796,9 @@ packages:
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
+
+  iuliia@0.8.2:
+    resolution: {integrity: sha512-HZL695HLLhdTuh3zZ30bhC7hfNo2w2h4qGgJPhsBMtnARDw8uEEK13MFPD6RPhHZX1FlbMcbRO4AC4JZiDUF3A==}
 
   jose@5.10.0:
     resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
@@ -6864,6 +6870,8 @@ snapshots:
   is-unicode-supported@2.1.0: {}
 
   isexe@2.0.0: {}
+
+  iuliia@0.8.2: {}
 
   jose@5.10.0: {}
 
