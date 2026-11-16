@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button.tsx';
 import { Collapse } from './Collapse.tsx';
+import { DelayedBar, SLOW_LOAD_MS } from './Loading.tsx';
 import { Modal } from './Modal.tsx';
 import { Switch } from './Switch.tsx';
 import { THEME_STORAGE_KEY } from './theme/theme.ts';
@@ -152,6 +153,26 @@ describe('collapse', () => {
       expect(screen.queryByText('Что спросили и что нашли')).not.toBeInTheDocument();
     } finally {
       Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    }
+  });
+});
+
+describe('waiting (spec, section 8.22)', () => {
+  it('shows nothing while the wait is short and a thin line at the top only after a second', () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<DelayedBar />);
+      act(() => {
+        vi.advanceTimersByTime(SLOW_LOAD_MS - 1);
+      });
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByRole('progressbar', { name: 'Загрузка…' })).toBeInTheDocument();
+      unmount();
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Sheet } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchApprovals } from './api.ts';
@@ -21,7 +21,7 @@ function SheetBody({ onClose }: { onClose: () => void }) {
         <IconButton icon="x" label={ru.approvals.close} onClick={onClose} />
       </div>
       <p className={styles.sheetLead}>{ru.approvals.leadShort}</p>
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner title={ru.approvals.loadFailed} error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <ApprovalLists data={state.data} compact onNavigate={onClose} /> : null}
     </div>

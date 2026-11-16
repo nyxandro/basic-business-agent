@@ -6,7 +6,7 @@ import { Card, EmptyState } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { dateTime, rub } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { numCell, Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
@@ -47,7 +47,7 @@ export function UsageSection() {
           ))}
         </div>
       </div>
-      {state.status === 'loading' ? <Skeleton rows={3} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' && state.data.rows.length === 0 ? <EmptyState title="За этот период расходов нет" /> : null}
       {state.status === 'ready' && state.data.rows.length > 0 ? (

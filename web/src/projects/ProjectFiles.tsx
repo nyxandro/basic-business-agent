@@ -12,7 +12,7 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { fileSize } from '../ui/format.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { useToast } from '../ui/Toast.tsx';
 import { deleteProjectFile, fetchProjectFiles, fetchTrash, projectFileUrl, restoreFromTrash, uploadProjectFile } from './api.ts';
@@ -112,7 +112,7 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
         }}
       />
       {error ? <ErrorBanner error={error} /> : null}
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? (
         <ul className={styles.rows}>

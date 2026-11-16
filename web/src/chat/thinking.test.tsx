@@ -68,6 +68,29 @@ async function showChat(messages: Message[], running: boolean) {
 
 const thinking = () => screen.queryByRole('status', { name: 'Думает…' });
 
+describe('a conversation opening (spec, section 8.22)', () => {
+  it('shows no «Загружаю разговор…» while it connects: nothing, then the line after a second', async () => {
+    mockServer({ 'GET /app/api/me': { body: ME } });
+    render(
+      <MemoryRouter>
+        <SessionProvider>
+          <ToastProvider>
+            <RequireAuth>
+              <ChatExtrasContext value={extras()}>
+                <ChatView messages={[]} isRunning={false} isConnecting />
+              </ChatExtrasContext>
+            </RequireAuth>
+          </ToastProvider>
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('textbox', { name: 'Сообщение агенту' });
+    expect(screen.queryByText('Загружаю разговор…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(await screen.findByRole('progressbar', {}, { timeout: 2000 })).toBeInTheDocument();
+  });
+});
+
 describe('«Думает…» while the agent works', () => {
   it('stays while the model reasons before its first words', async () => {
     await showChat([QUESTION, REASONING], true);

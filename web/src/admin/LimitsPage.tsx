@@ -7,7 +7,7 @@ import { useMe } from '../auth/session.tsx';
 import { Card, PageHead, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dayMonth, rub } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi, type DailySpend } from './api.ts';
 import { monthStart, today } from './dates.ts';
@@ -91,7 +91,7 @@ export function LimitsPage() {
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const lead = `${monthTitle[0]!.toUpperCase()}${monthTitle.slice(1).replace(' г.', '')}. Лимиты срабатывают до вызова модели, сброс ${dayMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`)}.`;
   const head = <PageHead title="Лимиты и расходы" lead={lead} />;
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { month, limits } = state.data;
   return (

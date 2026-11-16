@@ -8,7 +8,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button } from '../ui/Button.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
@@ -66,7 +66,7 @@ export function RenameThreadDialog({ threadId, onClose, onRenamed }: { threadId:
     <Modal open onClose={onClose} label={ru.chat.renameThread} narrow>
       <div className={styles.dialog}>
         <h2 className={styles.dialogTitle}>{ru.chat.renameThread}</h2>
-        {state.status === 'loading' ? <Skeleton rows={1} /> : null}
+        {state.status === 'loading' ? <DelayedBar /> : null}
         {state.status === 'error' && state.error.code === NOT_FOUND ? (
           <>
             <Notice>{ru.chat.renameNotStarted}</Notice>

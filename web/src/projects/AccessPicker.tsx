@@ -9,7 +9,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Input } from '../ui/Field.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchColleagues, fetchDepartments } from './api.ts';
@@ -127,7 +127,7 @@ export function AccessPicker({ value, onChange, closing }: { value: AccessDraft;
         <>
           <div className={styles.accessPart}>
             <span className={styles.accessLabel}>{ru.projects.departments}</span>
-            {state.status === 'loading' ? <Skeleton rows={1} /> : null}
+            {state.status === 'loading' ? <DelayedBar /> : null}
             {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
             {state.status === 'ready' && state.data.departments.length === 0 ? <p className={styles.empty}>{ru.projects.noDepartments}</p> : null}
             {state.status === 'ready' && state.data.departments.length > 0 ? (

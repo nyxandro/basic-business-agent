@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
@@ -94,7 +94,7 @@ export function MaskingSection() {
   return (
     <div className={section.stack}>
       <PageHead title="Маскирование" lead="Скрывать от модели. Модель видит заглушку вроде [ПОЧТА_1], а письма и таблицы получают настоящие данные. Картинки и сканы уходят в модель как есть." />
-      {state.status === 'loading' ? <Skeleton rows={4} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <Switches initial={state.data.kinds as Kind[]} /> : null}
     </div>

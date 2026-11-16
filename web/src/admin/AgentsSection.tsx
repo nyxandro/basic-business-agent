@@ -8,7 +8,7 @@ import { ru } from '../i18n/ru.ts';
 import { Card, EmptyState, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { chatMarkOf } from './AgentMarkEditor.tsx';
 import { agentPath } from './AgentPage.tsx';
@@ -26,7 +26,7 @@ async function load() {
 export function AgentsSection() {
   const { state, reload } = useLoad(load, ['admin', 'agents-page']);
   const head = <PageHead title={t.title} lead={t.lead} />;
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { agents, missingAgents, stopped } = state.data;
   return (

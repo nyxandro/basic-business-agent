@@ -5,12 +5,14 @@
   overflow-y: auto;
 }
 
+/* A page comes in softly instead of blinking in (spec, section 8.22). */
 .page {
   width: 100%;
   box-sizing: border-box;
   max-width: 820px;
   margin: 0 auto;
   padding: 36px 24px 48px;
+  animation: bba-fade 0.18s ease-out both;
 }
 
 .body {

@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router';
 import { fetchThreadPage } from '../chat/api.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import styles from './shell.module.css';
 import { threadPath, ThreadRow } from './ThreadRow.tsx';
@@ -45,7 +45,7 @@ export function RecentThreads({
     reload();
   }
 
-  if (state.status === 'loading') return <Skeleton rows={4} />;
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner title={ru.shell.recentFailed} error={state.error} onRetry={reload} />;
   // A name saved by hand shows at once, and over a list loaded before the server had it.
   const threads = state.data.threads.map((t) => ({ ...t, title: names[t.id] ?? t.title }));

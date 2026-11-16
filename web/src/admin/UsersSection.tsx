@@ -11,7 +11,7 @@ import { Avatar, Card, EmptyState, PageHead, Pill, Progress } from '../ui/Displa
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { SearchInput, Select } from '../ui/Field.tsx';
 import { dateTime, plural, rub } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
@@ -164,7 +164,7 @@ export function UsersSection() {
       }
     />
   );
-  if (state.status === 'loading') return <div className={styles.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={styles.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={styles.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { users, roles, departments, invites, spend } = state.data;
   const roleName = new Map(roles.map((r) => [r.id, r.name]));

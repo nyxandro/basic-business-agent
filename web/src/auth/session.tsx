@@ -6,7 +6,7 @@ import { Navigate, useLocation } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { newScreenMemory } from '../ui/screen-memory.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { fetchMe, signOut as callSignOut } from './api.ts';
 
 const HTTP_UNAUTHORIZED = 401;
@@ -98,7 +98,7 @@ export function useMe(): MeResponse {
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { session, refresh } = useSession();
   const location = useLocation();
-  if (session.status === 'loading') return <Skeleton rows={3} />;
+  if (session.status === 'loading') return <DelayedBar />;
   if (session.status === 'error') return <ErrorBanner error={session.error} onRetry={() => void refresh()} />;
   if (session.status === 'signed-out') {
     const next = encodeURIComponent(location.pathname + location.search);

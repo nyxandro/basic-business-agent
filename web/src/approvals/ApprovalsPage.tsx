@@ -4,7 +4,7 @@ import { ru } from '../i18n/ru.ts';
 import { useShell } from '../layout/AppShell.tsx';
 import { PageFrame } from '../layout/PageFrame.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchApprovals } from './api.ts';
 import { ApprovalLists } from './ApprovalCards.tsx';
@@ -14,7 +14,7 @@ export function ApprovalsPage() {
   const { wide } = useShell();
   return (
     <PageFrame title={ru.approvals.title} lead={ru.approvals.lead}>
-      {state.status === 'loading' ? <Skeleton rows={3} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner title={ru.approvals.loadFailed} error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? (
         <div>

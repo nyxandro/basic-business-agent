@@ -14,7 +14,7 @@ import { Card } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { fullDate } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { deleteProject, fetchArchive, unarchiveProject } from './api.ts';
@@ -68,7 +68,7 @@ export function ArchivePage() {
           </div>
           {error ? <ErrorBanner error={error} /> : null}
           <Card className={styles.section}>
-            {state.status === 'loading' ? <Skeleton rows={3} /> : null}
+            {state.status === 'loading' ? <DelayedBar /> : null}
             {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
             {state.status === 'ready' && state.data.projects.length === 0 ? <p className={styles.empty}>{ru.projects.archiveEmpty}</p> : null}
             {state.status === 'ready' && state.data.projects.length > 0 ? (

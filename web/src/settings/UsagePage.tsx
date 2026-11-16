@@ -5,7 +5,7 @@ import { PageFrame } from '../layout/PageFrame.tsx';
 import { Card, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dayMonth, monthName, rub, thousands } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchMyUsage } from './api.ts';
 import styles from './settings.module.css';
@@ -19,7 +19,7 @@ export function UsagePage() {
   const { state, reload } = useLoad(fetchMyUsage, ['me', 'usage']);
   return (
     <PageFrame title={ru.settings.usage} lead={ru.usage.lead}>
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <Usage data={state.data} /> : null}
     </PageFrame>

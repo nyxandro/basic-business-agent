@@ -12,7 +12,7 @@ import { EmptyInstallation } from '../layout/EmptyInstallation.tsx';
 import { rememberAgent, useShell } from '../layout/AppShell.tsx';
 import { IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
@@ -111,7 +111,7 @@ export function ChatPage() {
 
   if (!agentId) throw new Error('ChatPage needs the :agentId route parameter');
   if (!threadId) return <Navigate to={`?thread=${crypto.randomUUID()}`} replace state={location.state as unknown} />;
-  if (!agents) return <Skeleton rows={4} />;
+  if (!agents) return <DelayedBar />;
   const agent = agents.find((a) => a.id === agentId);
   // A link to an agent the person does not have opens an available one, with a line why.
   if (!agent) return <Navigate to="/" replace state={{ agentUnavailable: true }} />;

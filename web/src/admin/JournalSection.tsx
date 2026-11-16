@@ -7,7 +7,7 @@ import { Card, EmptyState, PageHead, Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { dateTime } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
@@ -98,7 +98,7 @@ export function JournalSection() {
           />
         </Field>
       </div>
-      {state.status === 'loading' ? <Skeleton rows={4} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' && state.data.entries.length === 0 ? (
         <Card>

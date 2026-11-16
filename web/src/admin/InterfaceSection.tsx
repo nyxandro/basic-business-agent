@@ -10,7 +10,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
@@ -56,7 +56,7 @@ export function InterfaceSection() {
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title={t.title} lead={t.lead} />
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <ShowMarks initial={state.data} /> : null}
     </div>

@@ -12,7 +12,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { AgentInstructions } from './AgentInstructions.tsx';
 import { AgentMarkEditor, chatMarkOf } from './AgentMarkEditor.tsx';
@@ -60,7 +60,7 @@ function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: Age
     setEdition((n) => n + 1);
   }, [data]);
   // Hidden, not gone, on another section: the prompt or the starters being typed wait there.
-  if (state.status === 'loading') return tab === 'mark' ? null : <Skeleton rows={6} />;
+  if (state.status === 'loading') return tab === 'mark' ? null : <DelayedBar />;
   if (state.status === 'error') return tab === 'mark' ? null : <ErrorBanner error={state.error} onRetry={reload} />;
   const changed = () => {
     reload();
@@ -114,7 +114,7 @@ export function AgentPage() {
   const { state, reload } = useLoad(adminApi.agents, ['admin', 'agents']);
   const tab = tabOf(segment);
   if (!tab) return <Navigate to={agentPath(agentId)} replace />;
-  if (state.status === 'loading') return <Skeleton rows={6} />;
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
   const agent = state.data.agents.find((a) => a.id === agentId);
   if (!agent) {

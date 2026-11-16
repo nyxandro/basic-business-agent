@@ -10,6 +10,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answer-failures.ts';
 import { useAttachQueue } from './attach.ts';
 import { AgentMark } from './AgentMark.tsx';
@@ -210,12 +211,8 @@ export function ChatView(props: CopilotChatViewProps) {
         }}
       >
         <div className={styles.feed}>
-          {empty && isConnecting ? (
-            <div className={styles.connecting} role="status">
-              <span className={styles.spin} />
-              {ru.chat.connecting}
-            </div>
-          ) : null}
+          {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
+          {empty && isConnecting ? <DelayedBar /> : null}
           {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
           <Feed messages={messages} running={isRunning} failures={failures} />
           {extras.interrupt ? (

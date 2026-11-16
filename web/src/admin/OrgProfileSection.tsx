@@ -5,7 +5,7 @@ import { Button, cx } from '../ui/Button.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input, TextArea } from '../ui/Field.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
 import styles from './org.module.css';
@@ -63,7 +63,7 @@ export function OrgProfileSection() {
   return (
     <div className={cx(section.stack, styles.page)}>
       <PageHead title="Профиль организации" lead="Подставляется в промпт всех агентов." />
-      {state.status === 'loading' ? <Skeleton rows={4} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <ProfileForm initial={state.data} /> : null}
     </div>

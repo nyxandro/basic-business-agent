@@ -8,7 +8,7 @@ import { Card, EmptyState, IconTile, PageHead, initials } from '../ui/Display.ts
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { plural } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
@@ -141,7 +141,7 @@ export function DepartmentsSection() {
       }
     />
   );
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={3} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const users = new Map(state.data.users.map((u) => [u.id, u]));
   const people = state.data.users.map((u) => ({ id: u.id, label: u.name }));

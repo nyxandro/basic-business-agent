@@ -11,7 +11,7 @@ import { cx, IconButton } from '../ui/Button.tsx';
 import { Avatar, initials } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { MenuAnchor } from '../ui/Menu.tsx';
 import { LimitMeter } from './LimitMeter.tsx';
 import { useNotifications } from './notifications.tsx';
@@ -89,7 +89,7 @@ function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asShee
 }
 
 function AgentList({ agents, currentAgentId, onNavigate }: Pick<SidebarProps, 'agents' | 'currentAgentId' | 'onNavigate'>) {
-  if (agents.status === 'loading') return <Skeleton rows={2} />;
+  if (agents.status === 'loading') return <DelayedBar />;
   if (agents.status === 'error') return <ErrorBanner title={ru.agents.loadFailed} error={agents.error} onRetry={agents.retry} />;
   if (agents.agents.length === 0) return <p className={styles.empty}>{ru.shell.noAgents}</p>;
   return agents.agents.map((a) => (

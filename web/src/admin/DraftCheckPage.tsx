@@ -10,7 +10,7 @@ import { agentPath } from './AgentPage.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import styles from './agents.module.css';
 import { adminApi } from './api.ts';
@@ -27,7 +27,7 @@ export function DraftCheckPage() {
   const { state, reload } = useLoad(adminApi.agents, ['admin', 'agents']);
   const [threadId] = useState(() => crypto.randomUUID());
   const noop = useCallback(() => undefined, []);
-  if (state.status === 'loading') return <Skeleton rows={3} />;
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
   const agent = state.data.agents.find((a) => a.id === agentId);
   if (!agent) return <Notice>Этот агент больше не доступен.</Notice>;

@@ -9,7 +9,7 @@ import { Button, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { dateTime, fileSize, fullDate } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
@@ -41,7 +41,7 @@ function Trash({ projectId, readOnly, onRestored }: { projectId: string; readOnl
     <div className={styles.section}>
       <h2 className={styles.sectionTitle}>{ru.projects.trashTitle}</h2>
       {error ? <ErrorBanner error={error} /> : null}
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' && state.data.batches.length === 0 ? <p className={styles.empty}>{ru.projects.trashEmpty}</p> : null}
       {state.status === 'ready'

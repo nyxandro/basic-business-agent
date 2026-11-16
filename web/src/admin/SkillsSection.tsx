@@ -9,7 +9,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, IconTile, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dateTime, fileSize } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { Switch } from '../ui/Switch.tsx';
@@ -172,7 +172,7 @@ export function SkillsSection() {
       }
     />
   );
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { skills, sandbox, departments, users } = state.data;
   const editing = skills.find((s) => s.name === accessOf && !s.system) ?? null;

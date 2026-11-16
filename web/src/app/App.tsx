@@ -13,7 +13,7 @@ import { AppShell, Home } from '../layout/AppShell.tsx';
 import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
 import { ConfirmProvider } from '../ui/Confirm.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
@@ -47,7 +47,7 @@ export function App() {
                 <Route
                   path="admin/*"
                   element={
-                    <Suspense fallback={<Skeleton rows={4} />}>
+                    <Suspense fallback={<DelayedBar />}>
                       <AdminRoutes />
                     </Suspense>
                   }
@@ -58,7 +58,7 @@ export function App() {
                   <Route
                     path="projects/archive"
                     element={
-                      <Suspense fallback={<Skeleton rows={4} />}>
+                      <Suspense fallback={<DelayedBar />}>
                         <ArchivePage />
                       </Suspense>
                     }
@@ -66,7 +66,7 @@ export function App() {
                   <Route
                     path="projects/:projectId"
                     element={
-                      <Suspense fallback={<Skeleton rows={4} />}>
+                      <Suspense fallback={<DelayedBar />}>
                         <ProjectPage />
                       </Suspense>
                     }

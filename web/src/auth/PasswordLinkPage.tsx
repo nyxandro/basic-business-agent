@@ -8,7 +8,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { acceptPasswordLink, readPasswordLink, signIn, type PasswordLinkKind } from './api.ts';
 import { AuthFrame } from './AuthFrame.tsx';
@@ -59,7 +59,7 @@ export function PasswordLinkPage({ kind }: { kind: PasswordLinkKind }) {
 
   return (
     <AuthFrame title={texts.title} lead={state.status === 'ready' ? texts.lead(state.data) : undefined}>
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? (
         <div className={styles.form}>
           <ErrorBanner error={state.error} />

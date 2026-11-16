@@ -11,7 +11,7 @@ import { Card, EmptyState, IconTile, Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { dateTime } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { disconnect, fetchConnections, saveStaticConnection, startOAuth } from './api.ts';
 import styles from './settings.module.css';
@@ -124,7 +124,7 @@ export function ConnectionsPage() {
   const { state, reload } = useLoad(fetchConnections, ['me', 'connections']);
   return (
     <PageFrame title={ru.settings.connections} lead={ru.connections.lead}>
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? (
         <>

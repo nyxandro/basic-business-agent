@@ -276,15 +276,6 @@
   animation-delay: 0.3s;
 }
 
-.connecting {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 80px 0;
-  color: var(--muted);
-}
-
 /* The line of a tool call. */
 .tool {
   display: flex;

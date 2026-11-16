@@ -4,7 +4,7 @@
 import type { AdminConnection } from '@bba/contracts';
 import { Card, EmptyState, PageHead, Pill, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
 import section from './section.module.css';
@@ -65,7 +65,7 @@ export function ConnectionsSection() {
   return (
     <div className={section.stack}>
       <PageHead title="Подключения" lead="Каждый сотрудник подключает системы сам, и агент работает там с его правами." />
-      {load.status === 'loading' ? <Skeleton rows={3} /> : null}
+      {load.status === 'loading' ? <DelayedBar /> : null}
       {load.status === 'error' ? <ErrorBanner error={load.error} onRetry={reload} /> : null}
       {load.status === 'ready' && load.data.connections.length === 0 ? (
         <Card>

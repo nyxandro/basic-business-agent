@@ -9,7 +9,7 @@ import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { Table } from '../ui/Table.tsx';
@@ -134,7 +134,7 @@ export function RolesSection() {
       }
     />
   );
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   // Marks change in place at once; a failed save puts the mark back. The superadmin goes first and
   // the employee last, as in the mockup.

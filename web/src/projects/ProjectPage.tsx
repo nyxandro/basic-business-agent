@@ -18,7 +18,7 @@ import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Input, TextArea } from '../ui/Field.tsx';
 import { dateTime, fullDate } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
@@ -163,7 +163,7 @@ function Threads({ project, agents }: { project: ProjectDto; agents: AgentSummar
         {canStart ? <NewThread projectId={project.id} agents={agents} /> : null}
       </div>
       {project.shared ? <p className={styles.empty}>{ru.projects.ownThreadsHint}</p> : null}
-      {state.status === 'loading' ? <Skeleton rows={2} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' && state.data.threads.length === 0 ? <p className={styles.empty}>{ru.projects.noThreads}</p> : null}
       {state.status === 'ready' && state.data.threads.length > 0 ? (
@@ -257,7 +257,7 @@ export function ProjectPage() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  if (state.status === 'loading') return <Skeleton rows={4} />;
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') {
     return state.error.code === 'APP_NOT_FOUND' ? <Notice>{ru.projects.notFound}</Notice> : <ErrorBanner title={ru.projects.loadFailed} error={state.error} onRetry={reload} />;
   }

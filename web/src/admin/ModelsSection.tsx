@@ -10,7 +10,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dateTime, plural } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { numCell, Table } from '../ui/Table.tsx';
@@ -215,7 +215,7 @@ function Catalog({ data, onChanged }: { data: ModelsResponse; onChanged: () => v
 export function ModelsSection() {
   const { state, reload } = useLoad(adminApi.models, ['admin', 'models']);
   const lead = 'Модели, их ключи и цены, правила обращения к ним. Все запросы идут через шлюз LiteLLM: учёт и лимиты в рублях.';
-  if (state.status === 'loading') return <div className={section.stack}><PageHead title="Нейросеть" lead={lead} /><Skeleton rows={5} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}><PageHead title="Нейросеть" lead={lead} /><DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}><PageHead title="Нейросеть" lead={lead} /><ErrorBanner error={state.error} onRetry={reload} /></div>;
   const data = state.data;
   return (

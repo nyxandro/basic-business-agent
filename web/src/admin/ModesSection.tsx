@@ -8,7 +8,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, IconTile, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon, type IconName } from '../ui/Icon.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { Table } from '../ui/Table.tsx';
@@ -103,7 +103,7 @@ export function ModesSection() {
   const [runsOf, setRunsOf] = useState<AdminTask | null>(null);
   const { error, run } = useAction();
   const head = <PageHead title="Режимы работы" lead="Агент отвечает в чате и работает по расписанию: у каждого сотрудника области — от его имени, с его доступами." />;
-  if (state.status === 'loading') return <div className={section.stack}>{head}<Skeleton rows={4} /></div>;
+  if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { tasks, agents, departments, users } = state.data;
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;

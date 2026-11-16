@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 import { Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dateTime } from '../ui/format.ts';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
@@ -18,7 +18,7 @@ const TONES: Record<string, Tone> = { done: 'ok', 'awaiting-approval': 'accent',
 function RunsBody({ task }: { task: AdminTask }) {
   const load = useCallback(() => adminApi.taskRuns(task.id), [task.id]);
   const { state, reload } = useLoad(load);
-  if (state.status === 'loading') return <Skeleton rows={3} />;
+  if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
   if (!state.data.fireAt) return <p className={section.note}>Задача ещё не запускалась.</p>;
   return (

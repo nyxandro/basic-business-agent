@@ -259,7 +259,6 @@ export const ru = {
     message: 'Сообщение агенту',
     send: 'Отправить',
     stop: 'Остановить ответ',
-    connecting: 'Загружаю разговор…',
     thinking: 'Думает…',
     readOnly: 'только чтение',
     found: (n: number) => `${n} найдено`,

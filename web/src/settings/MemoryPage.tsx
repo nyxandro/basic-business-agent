@@ -8,7 +8,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { TextArea } from '../ui/Field.tsx';
-import { Skeleton } from '../ui/Loading.tsx';
+import { DelayedBar } from '../ui/Loading.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchMemory, forgetMemory, saveMemory } from './api.ts';
@@ -43,7 +43,7 @@ export function MemoryPage() {
 
   return (
     <PageFrame title={ru.settings.memory} lead={ru.memory.hint}>
-      {state.status === 'loading' ? <Skeleton rows={3} /> : null}
+      {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {error ? <ErrorBanner error={error} /> : null}
       {state.status === 'ready' ? (
