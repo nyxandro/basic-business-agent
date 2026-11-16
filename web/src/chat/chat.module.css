@@ -567,13 +567,30 @@
   flex: 1;
 }
 
-/* Many files do not push the input off a phone's screen: past a third of its height the files scroll. */
+/* Many files do not push the input off the screen: past nearly half of its height (a third on a phone) the
+   files scroll — up and down only; while the chips move there is no scroll bar at all. */
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  max-height: 30dvh;
+  /* Rows apart by the chips' own margins: the breaks between rows (lines of no height) add no gap, so a
+     row that folds away leaves none behind. */
+  gap: 0 6px;
+  max-height: 45dvh;
+  overflow-x: hidden;
   overflow-y: auto;
+  /* The room of the scroll bar is kept: its coming and going must not change the width the rows are laid
+     out for (that laid everything out anew mid-way, 17.11). */
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 859px) {
+  .chips {
+    max-height: 30dvh;
+  }
+}
+
+.chips[data-moving] {
+  overflow-y: hidden;
 }
 
 /* As wide as its name: the files lie as they fit, a name is cut only when longer than the whole row
@@ -584,6 +601,9 @@
   gap: 6px;
   max-width: 100%;
   box-sizing: border-box;
+  margin-block: 3px;
+  /* A file come fades in where it lies. */
+  animation: bba-fade 0.2s ease-out both;
   height: 30px;
   padding: 0 6px 0 10px;
   border-radius: 10px;

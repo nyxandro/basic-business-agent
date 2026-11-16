@@ -60,27 +60,75 @@ export function chipRows(chips: readonly ChipSize[], width: number, gap: number)
   return ends;
 }
 
-// The width each chip starts from in its row. The browser breaks rows by these, so a row whose names are
-// cut gets its chips narrowed beforehand — each by its share of what it may give — to fit the row
-// exactly; a row with room keeps the whole names and is stretched by the browser.
+// The width of each chip. A row whose names must give is narrowed — each chip by its share of what it
+// may give; every row but the last is then stretched to the full width exactly, each chip by its share;
+// the last row keeps its chips as they are. Whole pixels: no row is a pixel wider than the box.
 export function chipWidths(chips: readonly ChipSize[], ends: readonly number[], width: number, gap: number): number[] {
   const widths: number[] = [];
   let from = 0;
-  for (const end of ends) {
+  ends.forEach((end, r) => {
     const row = chips.slice(from, end + 1);
     const room = width - gap * (row.length - 1);
     const natural = row.reduce((sum, c) => sum + c.natural, 0);
     const give = row.reduce((sum, c) => sum + (c.natural - c.min), 0);
     const over = natural - room;
-    for (const chip of row) {
-      if (row.length === 1) widths.push(Math.min(chip.natural, width));
-      else if (over <= 0 || give === 0) widths.push(chip.natural);
-      // Whole pixels down: the row never comes out a pixel wider than the box.
-      else widths.push(Math.max(chip.min, Math.floor(chip.natural - (over * (chip.natural - chip.min)) / give)));
-    }
+    const planned = row.map((chip) => {
+      if (row.length === 1) return Math.min(chip.natural, width);
+      if (over <= 0 || give === 0) return chip.natural;
+      return Math.max(chip.min, Math.floor(chip.natural - (over * (chip.natural - chip.min)) / give));
+    });
+    if (r < ends.length - 1) {
+      const total = planned.reduce((sum, w) => sum + w, 0);
+      const extra = room - total;
+      const grown = planned.map((w) => w + Math.floor((extra * w) / total));
+      // The pixels the rounding left go to the last chips of the row.
+      for (let left = room - grown.reduce((sum, w) => sum + w, 0), k = grown.length - 1; left > 0; left--, k = (k - 1 + grown.length) % grown.length) grown[k]! += 1;
+      widths.push(...grown);
+    } else widths.push(...planned);
     from = end + 1;
-  }
+  });
   return widths;
+}
+
+// The rows of the files as they change (the files by their ids, in order), so the chips on the screen
+// move as little as they can: a file gone leaves its row with the rest and the other rows as they were;
+// a file come in the place of one gone (an upload became its file) takes its place; files come at the
+// end are laid out with the last row only. With nothing before (or another width) — anew.
+export function stableRows(before: readonly (readonly string[])[] | null, ids: readonly string[], sizes: ReadonlyMap<string, ChipSize>, width: number, gap: number): string[][] {
+  const sizeOf = (id: string) => {
+    const size = sizes.get(id);
+    if (!size) throw new Error(`chip ${id} was not measured`);
+    return size;
+  };
+  const anew = (list: readonly string[]) => {
+    const ends = chipRows(list.map(sizeOf), width, gap);
+    return ends.map((end, r) => list.slice(r === 0 ? 0 : ends[r - 1]! + 1, end + 1));
+  };
+  if (!before) return anew(ids);
+  const present = new Set(ids);
+  const known = new Set(before.flat());
+  const rows: string[][] = [];
+  let next = 0;
+  for (const row of before) {
+    const kept: string[] = [];
+    for (const id of row) {
+      if (next >= ids.length) break;
+      if (ids[next] === id) kept.push(ids[next++]!);
+      else if (!present.has(id) && !known.has(ids[next]!)) kept.push(ids[next++]!);
+      // Gone, nothing in its place.
+      else if (!present.has(id)) continue;
+      // The same files in another order: anew.
+      else return anew(ids);
+    }
+    if (kept.length > 0) rows.push(kept);
+  }
+  const fresh = ids.slice(next);
+  if (fresh.some((id) => known.has(id))) return anew(ids);
+  // A file that took another's place may not fit its row: from that row on, anew.
+  const tight = rows.findIndex((row) => row.length > 1 && row.reduce((sum, id) => sum + sizeOf(id).min, 0) + gap * (row.length - 1) > width);
+  if (tight >= 0) return [...rows.slice(0, tight), ...anew([...rows.slice(tight).flat(), ...fresh])];
+  if (fresh.length === 0) return rows;
+  return [...rows.slice(0, -1), ...anew([...(rows.at(-1) ?? []), ...fresh])];
 }
 
 // The cost of a way to lay the chips: what chipRows makes least (for tests and comparisons).
