@@ -127,8 +127,8 @@ describe('files the person finds by name (spec, section 8.21)', () => {
     }
   });
 
-  // M4 (16.11): 10 000 documents in 50 folders.
-  it('M4: finds among 10 000 documents in 50 folders within the limit', { timeout: 120_000 }, async () => {
+  // M5 (16.11): 10 000 documents in 50 folders.
+  it('M5: finds among 10 000 documents in 50 folders within the limit', { timeout: 120_000 }, async () => {
     const lena = await t.createUser({ email: 'lena@example.com', name: 'Лена' });
     const cookie = await t.signIn('lena@example.com');
     const words = ['смета', 'договор', 'акт', 'счёт', 'отчёт', 'накладная', 'КП', 'спецификация', 'график', 'расчёт'];
@@ -148,7 +148,7 @@ describe('files the person finds by name (spec, section 8.21)', () => {
       await find(lena, q);
       timings.push(performance.now() - started);
     }
-    console.log(`M4 timings: cold ${Math.round(performance.now() - cold - timings.reduce((a, b) => a + b, 0))}, then ${timings.map(Math.round).join(', ')} ms`);
+    console.log(`M5 timings: cold ${Math.round(performance.now() - cold - timings.reduce((a, b) => a + b, 0))}, then ${timings.map(Math.round).join(', ')} ms`);
     // The bound guards against a slowdown, as M3's: alone 128–164 ms (16.11); the full parallel `pnpm test`
     // loads the machine several times over.
     expect(Math.max(...timings)).toBeLessThan(800);
