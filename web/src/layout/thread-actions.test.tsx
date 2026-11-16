@@ -102,6 +102,29 @@ describe('the header of a conversation: three dots', () => {
     expect(await screen.findByRole('link', { name: 'Сделки за ноябрь' })).toBeInTheDocument();
   });
 
+  it('a name from the header wins over one given earlier in «Недавние»', async () => {
+    const s = server();
+    s.set('PATCH /app/api/threads/t1', (call) => ({ body: { thread: { id: 't1', title: (call.body as { title: string }).title } } }));
+    s.set('GET /app/api/threads/t1', { body: { thread: { id: 't1', title: 'Сделки за октябрь' } } });
+    renderApp('/agents/sales?thread=t1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+    const inline = screen.getByRole('textbox', { name: 'Название разговора' });
+    await user.clear(inline);
+    await user.type(inline, 'Сделки за октябрь{Enter}');
+    expect(await screen.findByRole('link', { name: 'Сделки за октябрь' })).toBeInTheDocument();
+
+    s.set('GET /app/api/threads', { body: { threads: [thread('t1', 'Сделки за ноябрь'), thread('t2', 'Смета склада')], next: null } });
+    await user.click(screen.getByRole('button', { name: 'Действия с разговором' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+    const field = await within(await screen.findByRole('dialog', { name: 'Переименовать разговор' })).findByRole('textbox', { name: 'Название разговора' });
+    await user.clear(field);
+    await user.type(field, 'Сделки за ноябрь{Enter}');
+    expect(await screen.findByRole('link', { name: 'Сделки за ноябрь' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Сделки за октябрь' })).not.toBeInTheDocument();
+  });
+
   it('a conversation not started yet has no name to change: the window says so', async () => {
     server();
     renderApp('/agents/sales?thread=new-one');

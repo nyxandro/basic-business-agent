@@ -1,3 +1,4 @@
+import type { PromptState } from '@bba/contracts';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -131,6 +132,37 @@ describe('the page of an agent', () => {
     expect(await screen.findByRole('radiogroup', { name: 'Значок агента' })).toBeInTheDocument();
     await user.click(within(tabs()).getByRole('link', { name: 'Инструкции' }));
     expect(await screen.findByRole('textbox', { name: 'Промпт агента' })).toHaveValue('Ты агент продаж. Отвечай кратко.');
+  });
+
+  it('keeps the text typed after «Сохранить черновик» when the model changes, and shows the fresh version after publishing', async () => {
+    let state: PromptState = { ...PROMPT, allowedModels: [{ id: 'gigachat', label: 'GigaChat 2 Max' }] };
+    const s = server(state);
+    s.set('GET /app/api/admin/agents/sales/prompt', () => ({ body: state }));
+    s.set('PUT /app/api/admin/agents/sales/prompt/draft', (call) => {
+      state = { ...state, draftInstructions: (call.body as { text: string }).text, draftVersionId: 'v2', draftBy: 'Игорь' };
+      return { body: { draftVersionId: 'v2' } };
+    });
+    s.set('PUT /app/api/admin/agents/sales/model', (call) => ((state = { ...state, modelId: (call.body as { modelId: string }).modelId }), { body: { ok: true } }));
+    s.set('POST /app/api/admin/agents/sales/prompt/publish', () => {
+      state = { ...state, publishedInstructions: 'Опубликованный промпт.', draftInstructions: null, draftVersionId: null, publishedAt: '2026-11-16T10:00:00Z' };
+      return { body: { ok: true } };
+    });
+    renderApp('/admin/agents/sales');
+    const user = userEvent.setup();
+    const field = await screen.findByRole('textbox', { name: 'Промпт агента' });
+    await user.type(field, ' Отвечай кратко.');
+    await user.click(screen.getByRole('button', { name: 'Сохранить черновик' }));
+    await screen.findByText('Черновик сохранён');
+    await user.type(field, ' И вежливо.');
+    await user.click(within(tabs()).getByRole('link', { name: 'Настройки' }));
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Модель агента' }), 'GigaChat 2 Max');
+    await waitFor(() => expect(s.calls.filter((c) => c.path.endsWith('/prompt')).length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Модель агента' })).toHaveValue('gigachat'));
+    await user.click(within(tabs()).getByRole('link', { name: 'Инструкции' }));
+    expect(await screen.findByRole('textbox', { name: 'Промпт агента' })).toHaveValue('Ты агент продаж. Отвечай кратко. И вежливо.');
+
+    await user.click(screen.getByRole('button', { name: 'Опубликовать' }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Промпт агента' })).toHaveValue('Опубликованный промпт.'));
   });
 
   it('says an agent is gone from the installation and leads back to the list', async () => {

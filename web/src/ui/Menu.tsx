@@ -51,10 +51,23 @@ export function Menu({ open, onClose, label, placement = 'bottom-end', children,
       const anchor = anchorOf();
       if (anchor && !anchor.contains(target) && !box.current?.contains(target)) close();
     };
+    const buttonOf = () => anchorOf()?.querySelector<HTMLElement>('button') ?? null;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      // The keyboard went into a floating menu: it comes back to the button.
-      if (floating && box.current?.contains(document.activeElement)) anchorOf()?.querySelector<HTMLElement>('button')?.focus();
+      const inside = floating && box.current?.contains(document.activeElement);
+      if (event.key === 'Escape') {
+        // The keyboard went into a floating menu: it comes back to the button.
+        if (inside) buttonOf()?.focus();
+        close();
+        return;
+      }
+      // A floating menu lies at the end of the page: Tab past its last item (Shift+Tab before its
+      // first) goes on from its button, as if the menu stood next to it, and the menu closes.
+      if (event.key !== 'Tab' || !inside) return;
+      const items = [...(box.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])];
+      const edge = event.shiftKey ? items[0] : items.at(-1);
+      if (document.activeElement !== edge) return;
+      if (event.shiftKey) event.preventDefault();
+      buttonOf()?.focus();
       close();
     };
     document.addEventListener('mousedown', onDown);
@@ -82,10 +95,19 @@ export function Menu({ open, onClose, label, placement = 'bottom-end', children,
     };
   }, [open, floating, placement]);
 
-  // In the menu's order of the page the keyboard would never reach a floating menu: it starts on its first item.
+  // In the menu's order of the page the keyboard would never reach a floating menu: it starts on its
+  // first item — once the menu stands in its place: the browser does not focus a hidden element.
+  const placed = place !== null;
+  const focused = useRef(false);
   useEffect(() => {
-    if (open && floating) box.current?.querySelector<HTMLElement>('button')?.focus();
-  }, [open, floating]);
+    if (!open || !floating) {
+      focused.current = false;
+      return;
+    }
+    if (!placed || focused.current) return;
+    focused.current = true;
+    box.current?.querySelector<HTMLElement>('button')?.focus();
+  }, [open, floating, placed]);
 
   if (!open) return null;
   if (!floating) {

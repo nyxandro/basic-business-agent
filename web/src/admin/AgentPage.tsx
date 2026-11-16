@@ -4,8 +4,8 @@
 // empty chat), «Значок» (an icon or a picture). Every section has its own address, so «Назад» of the
 // browser and a link lead to it. One route serves them all and every section stays mounted while
 // hidden: a prompt or starters typed and not saved survive a look at another section.
-import type { AdminAgent } from '@bba/contracts';
-import { useCallback } from 'react';
+import type { AdminAgent, PromptState } from '@bba/contracts';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router';
 import { AgentMarkView } from '../chat/AgentMark.tsx';
 import { ru } from '../i18n/ru.ts';
@@ -48,6 +48,17 @@ function tabOf(segment: string | undefined): AgentTab | null {
 function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: AgentTab; onChanged: () => void }) {
   const load = useCallback(() => adminApi.prompt(agent.id), [agent.id]);
   const { state, reload } = useLoad(load);
+  // The prompt field is drawn anew only after «Опубликовать» or «Вернуть версию из файла», once
+  // their fresh version has come: a saved draft, a new model or new starters keep the text being
+  // typed in it.
+  const [edition, setEdition] = useState(0);
+  const awaiting = useRef<PromptState | null>(null);
+  const data = state.status === 'ready' ? state.data : null;
+  useEffect(() => {
+    if (!awaiting.current || !data || data === awaiting.current) return;
+    awaiting.current = null;
+    setEdition((n) => n + 1);
+  }, [data]);
   // Hidden, not gone, on another section: the prompt or the starters being typed wait there.
   if (state.status === 'loading') return tab === 'mark' ? null : <Skeleton rows={6} />;
   if (state.status === 'error') return tab === 'mark' ? null : <ErrorBanner error={state.error} onRetry={reload} />;
@@ -55,12 +66,14 @@ function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: Age
     reload();
     onChanged();
   };
+  const published = () => {
+    awaiting.current = state.data;
+    changed();
+  };
   return (
     <>
-      {/* A new key after publish or revert: the field shows the fresh version. A new model or
-          starters keep the editor, so an unsaved edit of the prompt stays. */}
       <div hidden={tab !== 'instructions'}>
-        <AgentInstructions key={`${state.data.publishedAt ?? 'file'}:${state.data.draftVersionId ?? ''}`} state={state.data} onChanged={changed} />
+        <AgentInstructions key={edition} state={state.data} onChanged={published} />
       </div>
       <div hidden={tab !== 'settings'}>
         <AgentSettings agent={agent} state={state.data} onChanged={changed} />

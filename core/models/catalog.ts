@@ -44,7 +44,8 @@ export interface CatalogDeps {
 export interface ModelCatalog {
   list(): Promise<ModelsResponse>;
   create(actorUserId: string, input: ModelCreate): Promise<ModelDto>;
-  update(actorUserId: string, modelId: string, change: ModelUpdate): Promise<ModelDto>;
+  // Moving a model to another provider address sends its stored keys there: the superadmin only.
+  update(actor: { userId: string; isSuperadmin: boolean }, modelId: string, change: ModelUpdate): Promise<ModelDto>;
   remove(actorUserId: string, modelId: string): Promise<void>;
   addKey(actorUserId: string, modelId: string, key: string): Promise<ModelKeyDto>;
   removeKey(actorUserId: string, modelId: string, keyId: string): Promise<void>;
@@ -81,10 +82,12 @@ function cleanLabel(label: string): string {
   return clean;
 }
 
-// The provider's address of a model on a key; empty — the provider's standard address.
+// The provider's address of a model on a key; empty — the provider's standard address. Only http(s):
+// LiteLLM sends the keys there.
+const API_BASE_PROTOCOLS = new Set(['http:', 'https:']);
 function cleanApiBase(value: string | null): string | null {
   const apiBase = value?.trim() || null;
-  if (apiBase !== null && !URL.canParse(apiBase)) throw invalid(`api base "${apiBase}"`, 'Адрес провайдера — ссылка вида https://…');
+  if (apiBase !== null && !(URL.canParse(apiBase) && API_BASE_PROTOCOLS.has(new URL(apiBase).protocol))) throw invalid(`api base "${apiBase}"`, 'Адрес провайдера — ссылка вида https://…');
   return apiBase;
 }
 
@@ -296,7 +299,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
 
     create: (actorUserId, input) => serial(() => (input.connection === 'chatgpt' ? createSubscription(actorUserId, input) : createOnKey(actorUserId, input))),
 
-    update: (actorUserId, modelId, change) =>
+    update: ({ userId: actorUserId, isSuperadmin }, modelId, change) =>
       serial(async () => {
         const row = await modelRow(modelId);
         const label = change.label === undefined ? row.label : cleanLabel(change.label);
@@ -319,6 +322,12 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
           apiBase = cleanApiBase(change.apiBase);
         }
         const moved = apiBase !== row.api_base;
+        // The keys of a model are never shown to anyone; a new address would receive them all.
+        if (moved && !isSuperadmin) {
+          throw appError('APP_ADMIN_FORBIDDEN', `model ${modelId}: only a superadmin moves a model to another address`, {
+            userMessage: 'Адрес провайдера меняет только суперадминистратор: на новый адрес уходят ключи модели.',
+          });
+        }
         // The label and «Видит картинки» are ours only; LiteLLM learns of switching, prices and the address.
         if (pricesChanged || enabled !== row.enabled || moved) {
           const state = await syncState();

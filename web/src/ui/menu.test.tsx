@@ -4,7 +4,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Menu, MenuAnchor, MenuItem } from './Menu.tsx';
 
 const VIEW_HEIGHT = 800;
@@ -80,16 +80,43 @@ describe('a floating menu', () => {
     expect(onPick).toHaveBeenCalledOnce();
   });
 
-  it('takes the keyboard to its first item and gives it back to the button on Esc', async () => {
+  it('takes the keyboard to its first item once it stands in its place, and gives it back to the button on Esc', async () => {
     render(<RowMenu onPick={() => undefined} />);
+    const user = userEvent.setup();
+    const button = screen.getByRole('button', { name: 'Действия' });
+    place(button, 100);
+    // A real browser refuses to focus a hidden element (jsdom does not): the focus must come after placing.
+    const seen: string[] = [];
+    const onFocus = (event: FocusEvent) => {
+      const menu = (event.target as HTMLElement).closest<HTMLElement>('[role="menu"]');
+      if (menu) seen.push(menu.style.visibility || 'visible');
+    };
+    document.addEventListener('focusin', onFocus);
+    onTestFinished(() => document.removeEventListener('focusin', onFocus));
+    button.focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('menuitem', { name: 'Изменить' })).toHaveFocus();
+    expect(seen).toEqual(['visible']);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(button).toHaveFocus();
+  });
+
+  it('closes when the keyboard goes past its last item, and goes on from its button', async () => {
+    render(
+      <>
+        <RowMenu onPick={() => undefined} />
+        <button type="button">Дальше</button>
+      </>,
+    );
     const user = userEvent.setup();
     const button = screen.getByRole('button', { name: 'Действия' });
     place(button, 100);
     button.focus();
     await user.keyboard('{Enter}');
     expect(screen.getByRole('menuitem', { name: 'Изменить' })).toHaveFocus();
-    await user.keyboard('{Escape}');
+    await user.tab();
     expect(screen.queryByRole('menu')).toBeNull();
-    expect(button).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Дальше' })).toHaveFocus();
   });
 });

@@ -134,8 +134,9 @@ describe('models of «Нейросеть»', () => {
 
   it('moves a model to another provider address once its keys work there; a bad address changes nothing', async () => {
     const other = await startFakeModel({ host: '0.0.0.0', acceptKey: GOOD_KEY });
+    let created: ModelDto | null = null;
     try {
-      const model = await create({ label: 'Переезд' });
+      const model = (created = await create({ label: 'Переезд' }));
       const deployment = `${model.id}:${model.keys[0]!.id}`;
       const fingerprint = (await deployments()).get(deployment)!.bba_fingerprint;
       const put = (body: Record<string, unknown>) => t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: igor, body });
@@ -160,6 +161,35 @@ describe('models of «Нейросеть»', () => {
       const agent = new Agent({ id: 'sales', name: 'sales', instructions: 'Ты помощник.', model: await t.gateway.modelConfig(model.id, igorId, 'sales') });
       other.script({ text: 'Ответ с нового адреса' });
       expect((await agent.generate('привет')).text).toBe('Ответ с нового адреса');
+    } finally {
+      // The shared test LiteLLM must not keep a deployment at the port of a stopped provider: another
+      // test file may start its own provider on that port.
+      if (created) await t.call('DELETE', `/app/api/admin/models/${created.id}`, { cookie: igor });
+      await other.close();
+    }
+  });
+
+  it('lets only the superadmin move a model: the keys go to the new address; any address is http(s)', async () => {
+    const other = await startFakeModel({ host: '0.0.0.0', acceptKey: GOOD_KEY });
+    try {
+      const role = (await t.db.query<{ id: string }>(`INSERT INTO app.roles (name, permissions) VALUES ('Модели', '["models"]') RETURNING id`)).rows[0]!.id;
+      await t.createUser({ email: 'models.admin@example.com', roleIds: [role] });
+      const admin = await t.signIn('models.admin@example.com');
+      const model = await create({ label: 'Не переезжает' });
+      const refused = await t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: admin, body: { apiBase: other.dockerUrl } });
+      expect(refused.status).toBe(403);
+      expect(await errorCode(refused)).toMatchObject({ code: 'APP_ADMIN_FORBIDDEN', message: 'Адрес провайдера меняет только суперадминистратор: на новый адрес уходят ключи модели.' });
+      // Not one key went to the address the person chose.
+      expect(other.requests).toHaveLength(0);
+      // The same address again is no move: the rest of the form saves.
+      const same = await t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: admin, body: { label: 'Не переезжает, но названа', apiBase: provider.dockerUrl } });
+      expect(same.status, await same.clone().text()).toBe(200);
+
+      for (const apiBase of ['file:///etc/passwd', 'ftp://example.com/v1']) {
+        const bad = await t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: igor, body: { apiBase } });
+        expect(await errorCode(bad)).toMatchObject({ code: 'APP_VALIDATION_FAILED', message: 'Адрес провайдера — ссылка вида https://…' });
+      }
+      expect(other.requests).toHaveLength(0);
     } finally {
       await other.close();
     }

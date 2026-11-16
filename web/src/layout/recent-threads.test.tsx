@@ -18,7 +18,7 @@ const list = (refreshKey: number, onShowAll = () => undefined) => (
   <MemoryRouter>
     <ToastProvider>
       <ConfirmProvider>
-        <RecentThreads refreshKey={refreshKey} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onDeleted={() => undefined} />
+        <RecentThreads refreshKey={refreshKey} names={{}} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onRenamed={() => undefined} onDeleted={() => undefined} />
       </ConfirmProvider>
     </ToastProvider>
   </MemoryRouter>

@@ -25,7 +25,8 @@ export function registerModelRoutes(app: Hono<AppEnv>, catalog: ModelCatalog, ac
 
   app.put('/app/api/admin/models/:id', models, async (c) => {
     const change = await parseJson(c, modelUpdateSchema);
-    return c.json(await catalog.update(access(c).userId, c.req.param('id'), change));
+    const a = access(c);
+    return c.json(await catalog.update({ userId: a.userId, isSuperadmin: a.isSuperadmin }, c.req.param('id'), change));
   });
 
   app.delete('/app/api/admin/models/:id', models, async (c) => {

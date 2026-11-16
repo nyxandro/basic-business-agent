@@ -17,13 +17,28 @@ import { threadPath, ThreadRow } from './ThreadRow.tsx';
 // How many of the newest conversations the panel shows (decision of the owner 15.11).
 export const RECENT_SHOWN = 7;
 
-// `onDeleted` tells the panel that a conversation went (a project page lists its conversations too).
-export function RecentThreads({ refreshKey, currentThreadId, onNavigate, onShowAll, onDeleted }: { refreshKey: number; currentThreadId: string | null; onNavigate: () => void; onShowAll: () => void; onDeleted: () => void }) {
+// `names` — names given by hand in this tab (here or in the header of the conversation), kept by the
+// frame; `onDeleted` tells the panel that a conversation went (a project page lists its conversations too).
+export function RecentThreads({
+  refreshKey,
+  names,
+  currentThreadId,
+  onNavigate,
+  onShowAll,
+  onRenamed,
+  onDeleted,
+}: {
+  refreshKey: number;
+  names: Readonly<Record<string, string>>;
+  currentThreadId: string | null;
+  onNavigate: () => void;
+  onShowAll: () => void;
+  onRenamed: (threadId: string, title: string) => void;
+  onDeleted: () => void;
+}) {
   const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN }), []);
   const { state, reload } = useLoad(first);
   const navigate = useNavigate();
-  // Names saved here: shown at once, and over a list loaded before the server had them.
-  const [renamed, setRenamed] = useState<Record<string, string>>({});
   const [seenKey, setSeenKey] = useState(refreshKey);
   if (seenKey !== refreshKey) {
     setSeenKey(refreshKey);
@@ -32,7 +47,8 @@ export function RecentThreads({ refreshKey, currentThreadId, onNavigate, onShowA
 
   if (state.status === 'loading') return <Skeleton rows={4} />;
   if (state.status === 'error') return <ErrorBanner title={ru.shell.recentFailed} error={state.error} onRetry={reload} />;
-  const threads = state.data.threads.map((t) => ({ ...t, title: renamed[t.id] ?? t.title }));
+  // A name saved by hand shows at once, and over a list loaded before the server had it.
+  const threads = state.data.threads.map((t) => ({ ...t, title: names[t.id] ?? t.title }));
   if (threads.length === 0) return <p className={styles.empty}>{ru.shell.recentEmpty}</p>;
   return (
     <>
@@ -42,7 +58,7 @@ export function RecentThreads({ refreshKey, currentThreadId, onNavigate, onShowA
           thread={t}
           current={t.id === currentThreadId}
           onNavigate={onNavigate}
-          onRenamed={(title) => setRenamed((prev) => ({ ...prev, [t.id]: title }))}
+          onRenamed={(title) => onRenamed(t.id, title)}
           onDeleted={() => {
             // The open conversation is gone: a new one with the same agent takes its place.
             if (t.id === currentThreadId) void navigate(threadPath({ agentId: t.agentId, id: crypto.randomUUID() }), { replace: true });

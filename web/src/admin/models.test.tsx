@@ -10,9 +10,9 @@ const GIGA = { id: 'gigachat', kind: 'chat', label: 'GigaChat 2 Max', connection
 const TEXT_ONLY = { ...GIGA, id: 'yagpt', label: 'YandexGPT 5 Pro', providerModel: 'yandex/yandexgpt-5-pro', vision: false, keys: [{ id: 'k-00000002', last4: 'c3d4', createdAt: '2026-11-10T08:00:00Z' }] };
 const SETTINGS = { primaryModelId: 'gigachat', fallbackModelId: null, transcriptionModelId: null, agentsChooseModel: false };
 
-function server(models: object[] = [GIGA, TEXT_ONLY]) {
+function server(models: object[] = [GIGA, TEXT_ONLY], me: object = ADMIN) {
   return mockServer({
-    'GET /app/api/me': { body: ADMIN },
+    'GET /app/api/me': { body: me },
     'GET /app/api/admin/models': { body: { models, settings: SETTINGS, accounts: [], gateway: { reachable: true, checkedAt: '2026-11-14T08:00:00Z', pendingModelIds: [] } } },
   });
 }
@@ -179,6 +179,8 @@ describe('«Нейросеть»', () => {
 
 describe('editing a model (owner\'s list 16.11)', () => {
   const MOVED = { ...GIGA, apiBase: 'https://gigachat.example.com/v1' };
+  // A new address receives the model's keys: only the superadmin moves a model.
+  const SUPERADMIN = { ...ADMIN, isSuperadmin: true };
 
   async function edit(user: ReturnType<typeof userEvent.setup>, label: string) {
     await user.click(await screen.findByRole('button', { name: `Действия: ${label}` }));
@@ -187,7 +189,7 @@ describe('editing a model (owner\'s list 16.11)', () => {
   }
 
   it('shows the provider address in the catalog and in «Изменить», and sends a new one to be checked with the keys', async () => {
-    const s = server([MOVED]);
+    const s = server([MOVED], SUPERADMIN);
     let answer: (r: Reply) => void = () => undefined;
     s.set('PUT /app/api/admin/models/gigachat', () => new Promise<Reply>((resolve) => (answer = resolve)));
     renderApp('/admin/models');
@@ -211,7 +213,7 @@ describe('editing a model (owner\'s list 16.11)', () => {
   });
 
   it('an emptied address means the standard one; an unchanged address is not sent', async () => {
-    const s = server([MOVED]);
+    const s = server([MOVED], SUPERADMIN);
     s.set('PUT /app/api/admin/models/gigachat', { body: GIGA });
     renderApp('/admin/models');
     const user = userEvent.setup();
@@ -227,7 +229,7 @@ describe('editing a model (owner\'s list 16.11)', () => {
   });
 
   it('keeps the form and says why when the keys do not work at the new address', async () => {
-    const s = server([MOVED]);
+    const s = server([MOVED], SUPERADMIN);
     s.set('PUT /app/api/admin/models/gigachat', apiError('APP_MODEL_CHECK_FAILED', 'Провайдер не ответил. Попробуйте ещё раз.', 400));
     renderApp('/admin/models');
     const user = userEvent.setup();
@@ -238,6 +240,20 @@ describe('editing a model (owner\'s list 16.11)', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
     expect(await within(dialog).findByText(/Провайдер не ответил/)).toBeInTheDocument();
     expect(address).toHaveValue('https://wrong.example.org/v1');
+  });
+
+  it('shows the address to another admin of «Нейросеть» but leaves its change to the superadmin', async () => {
+    const s = server([MOVED]);
+    s.set('PUT /app/api/admin/models/gigachat', { body: MOVED });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await edit(user, 'GigaChat 2 Max');
+    const address = within(dialog).getByLabelText('Адрес провайдера (если не стандартный)');
+    expect(address).toHaveValue('https://gigachat.example.com/v1');
+    expect(address).toBeDisabled();
+    expect(within(dialog).getByText('Адрес меняет только суперадминистратор: на новый адрес уходят ключи модели.')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(s.calls.find((c) => c.method === 'PUT')?.body).not.toHaveProperty('apiBase');
   });
 
   it('a subscription model has no provider address', async () => {

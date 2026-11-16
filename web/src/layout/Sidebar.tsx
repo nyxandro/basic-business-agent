@@ -29,6 +29,10 @@ export interface SidebarProps {
   currentThreadId: string | null;
   // Bumped after a run: the recent list loads again.
   threadsKey: number;
+  // Names given by hand in this tab — in «Недавние» or in the header of the conversation — over a
+  // list loaded before the server had them.
+  threadNames: Readonly<Record<string, string>>;
+  onThreadNamed: (threadId: string, title: string) => void;
   // Bumped when a project changes: «Проекты» load again.
   projectsKey: number;
   chatProjectId: string | null;
@@ -124,7 +128,7 @@ export function Sidebar(props: SidebarProps) {
       <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
-      <RecentThreads refreshKey={props.threadsKey} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onDeleted={props.onProjectsChanged} />
+      <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />
 
       <div className={styles.spacer} />
       <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />

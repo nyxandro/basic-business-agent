@@ -4,10 +4,12 @@
 // «Проверяю ключ…» → «Ключ подошёл». A chat model may come through «Подписка ChatGPT» instead: no
 // key and no prices, the accounts of the pool answer. Editing changes the name, «Видит картинки»,
 // the prices and the provider's address (owner's list 16.11) — a new address is checked with the
-// model's keys first, so the button says «Проверить и сохранить» then. The longest answer of a chat model comes from the gateway; only when the gateway
+// model's keys first, so the button says «Проверить и сохранить» then. The keys go to the new
+// address, so only the superadmin may change it; others see it. The longest answer of a chat model comes from the gateway; only when the gateway
 // does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) the form asks for it (spec, section 8.19).
 import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
+import { useMe } from '../auth/session.tsx';
 import { Button, cx } from '../ui/Button.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
@@ -65,6 +67,7 @@ function Chips<V extends string>({ label, value, options, onChange, disabled }: 
 
 function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; onClose: () => void; onSaved: () => void }) {
   const editing = model !== null;
+  const mayMove = useMe().isSuperadmin;
   const [kind, setKind] = useState<ModelKind>(model?.kind ?? 'chat');
   const [conn, setConn] = useState<ModelConnection>(model?.connection ?? 'api_key');
   const [label, setLabel] = useState(model?.label ?? '');
@@ -164,8 +167,8 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
       </div>
       {subscription ? null : (
         <div className={section.row}>
-          <Field label="Адрес провайдера (если не стандартный)" hint={editing ? 'Новый адрес проверяется ключами модели.' : undefined}>
-            <Input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="https://…" />
+          <Field label="Адрес провайдера (если не стандартный)" hint={editing ? (mayMove ? 'Новый адрес проверяется ключами модели.' : 'Адрес меняет только суперадминистратор: на новый адрес уходят ключи модели.') : undefined}>
+            <Input value={apiBase} disabled={editing && !mayMove} onChange={(e) => setApiBase(e.target.value)} placeholder="https://…" />
           </Field>
           {/* An added model's keys are changed in «Ключи». */}
           {editing ? null : (

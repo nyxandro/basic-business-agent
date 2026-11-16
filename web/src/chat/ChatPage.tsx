@@ -23,7 +23,7 @@ import { deleteThread } from './api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
 import { RenameThreadDialog } from './RenameThreadDialog.tsx';
 
-function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; onDeleted: () => void; onRenamed: () => void }) {
+function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; onDeleted: () => void; onRenamed: (title: string) => void }) {
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
@@ -62,9 +62,9 @@ function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; o
         <RenameThreadDialog
           threadId={threadId}
           onClose={() => setRenaming(false)}
-          onRenamed={() => {
+          onRenamed={(title) => {
             setRenaming(false);
-            onRenamed();
+            onRenamed(title);
           }}
         />
       ) : null}
@@ -74,7 +74,7 @@ function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; o
 
 function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents: AgentSummary[]; threadId: string }) {
   const me = useMe();
-  const { wide, openMenu, refreshThreads } = useShell();
+  const { wide, openMenu, refreshThreads, nameThread } = useShell();
   const navigate = useNavigate();
   const project = useThreadProject(threadId);
   useEffect(() => rememberAgent(agent.id), [agent.id]);
@@ -84,7 +84,7 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
   };
   return (
     <>
-      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} onRenamed={refreshThreads} />} />
+      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} onRenamed={(title) => (nameThread(threadId, title), refreshThreads())} />} />
       {me.modelsConfigured ? (
         <ChatPanel
           key={threadId}
