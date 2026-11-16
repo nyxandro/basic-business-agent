@@ -5,6 +5,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, MIGRATIONS_DIR } from './migrate.ts';
+import { PNG_2X2 } from '../interface-settings/test-pictures.ts';
 import { createTestDatabase, type TestDatabase } from './test-database.ts';
 
 const EXPECTED_TABLES = [
@@ -14,7 +15,7 @@ const EXPECTED_TABLES = [
   'model_keys', 'connector_credentials', 'usage_events', 'background_tasks', 'approval_requests',
   'action_journal', 'agent_overrides', 'admin_audit', 'masking_settings', 'masking_map', 'schema_migrations', 'oauth_states',
   'projects', 'thread_projects', 'project_shares', 'project_places', 'project_trash', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs',
-  'chatgpt_accounts', 'chatgpt_logins', 'account_events', 'interface_settings',
+  'chatgpt_accounts', 'chatgpt_logins', 'account_events', 'interface_settings', 'agent_marks',
 ];
 
 async function query<T extends pg.QueryResultRow>(url: string, sql: string, params: unknown[] = []): Promise<T[]> {
@@ -37,7 +38,7 @@ describe('migrate', () => {
   });
 
   it('creates every table of the installation and is idempotent', async () => {
-    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql']);
+    expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
@@ -92,7 +93,7 @@ describe('migrate', () => {
       for (const name of ['read-documents', 'note-taking']) {
         await query(stage.url, `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope) VALUES ('${name}', 't', 'd', '\\x00', '${'a'.repeat(64)}', 1, '[]', false, 'org')`);
       }
-      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql']);
+      expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql']);
       expect(await query(stage.url, 'SELECT name FROM app.skills')).toEqual([{ name: 'note-taking' }]);
       expect(await query(stage.url, `SELECT actor_user_id, action, target FROM app.admin_audit`)).toEqual([{ actor_user_id: null, action: 'skill.delete', target: 'read-documents' }]);
     } finally {
@@ -114,7 +115,7 @@ describe('migrate', () => {
          VALUES ('m-onkey', 'chat', 'Qwen', 'api_key', 'groq/qwen/qwen3.8-27b', true, 1, 1, 1, 1, 1, 0)`,
       );
       await query(stage.url, `INSERT INTO app.models (id, kind, label, connection, provider_model, vision) VALUES ('m-sub', 'chat', 'GPT', 'chatgpt', 'chatgpt/gpt-5.4', true)`);
-      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql']);
+      expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql']);
       expect(await query(stage.url, 'SELECT id, max_output_tokens FROM app.models ORDER BY id')).toEqual([
         { id: 'm-onkey', max_output_tokens: null },
         { id: 'm-sub', max_output_tokens: null },
@@ -170,7 +171,7 @@ describe('migrate', () => {
            ('00000000-0000-4000-8000-000000000001', 'u1', 'Альфа', 2, false), ('00000000-0000-4000-8000-000000000002', 'u1', 'Бета', 1, true)`,
       );
       await query(stage.url, `INSERT INTO app.thread_projects (thread_id, user_id, project_id) VALUES ('t1', 'u1', '00000000-0000-4000-8000-000000000001')`);
-      expect(await migrate(stage.url)).toEqual(['0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql']);
+      expect(await migrate(stage.url)).toEqual(['0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql']);
       expect(await query(stage.url, 'SELECT name, access, archived_at FROM app.projects ORDER BY name')).toEqual([
         { name: 'Альфа', access: 'private', archived_at: null },
         { name: 'Бета', access: 'private', archived_at: null },
@@ -188,6 +189,68 @@ describe('migrate', () => {
       rmSync(before, { recursive: true, force: true });
       await stage.drop();
     }
+  });
+
+  // 0020: the mark of the installation goes to each agent (spec, section 8.17; owner's decision 16.11).
+  describe('moving the mark of the installation to the agents', () => {
+    async function before0020(setup: (url: string) => Promise<void>, check: (url: string) => Promise<void>) {
+      const stage = await createTestDatabase();
+      const dir = mkdtempSync(join(tmpdir(), 'bba-migrations-'));
+      try {
+        for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f < '0020')) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+        await migrate(stage.url, dir);
+        // An agent seen by a department and one with an edited prompt; one seen nowhere is unknown here.
+        await query(stage.url, `INSERT INTO app.departments (id, name) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Продажи')`);
+        await query(stage.url, `INSERT INTO app.department_agents (department_id, agent_id) VALUES ('00000000-0000-4000-8000-0000000000d1', 'sales')`);
+        await query(stage.url, `INSERT INTO app.agent_overrides (agent_id, starters) VALUES ('assistant', '{Привет}')`);
+        await setup(stage.url);
+        expect(await migrate(stage.url)).toEqual(['0020_agent_marks.sql']);
+        await check(stage.url);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+        await stage.drop();
+      }
+    }
+
+    it('gives the chosen picture to every agent the database knows of, keeping the chat as it was', async () => {
+      await before0020(
+        async (url) => {
+          await query(url, `UPDATE app.interface_settings SET agent_mark = 'image', agent_icon = 'bot', agent_image = $1, agent_image_type = 'image/png', agent_image_sha256 = $2, updated_by = 'u1'`, [PNG_2X2, 'a'.repeat(64)]);
+        },
+        async (url) => {
+          expect(await query(url, 'SELECT agent_id, kind, icon, image, image_type, image_sha256, updated_by FROM app.agent_marks ORDER BY agent_id')).toEqual(
+            ['assistant', 'sales'].map((agent_id) => ({ agent_id, kind: 'image', icon: 'bot', image: PNG_2X2, image_type: 'image/png', image_sha256: 'a'.repeat(64), updated_by: 'u1' })),
+          );
+          expect(await query(url, 'SELECT * FROM app.interface_settings')).toEqual([{ id: true, show_agent_mark: true, updated_by: 'u1', updated_at: expect.any(Date) }]);
+        },
+      );
+    });
+
+    it('turns «Без значка» into the switch off, the last icon staying with the agents', async () => {
+      await before0020(
+        async (url) => {
+          await query(url, `UPDATE app.interface_settings SET agent_mark = 'none', agent_icon = 'star'`);
+        },
+        async (url) => {
+          expect(await query(url, 'SELECT agent_id, kind, icon, image FROM app.agent_marks ORDER BY agent_id')).toEqual([
+            { agent_id: 'assistant', kind: 'icon', icon: 'star', image: null },
+            { agent_id: 'sales', kind: 'icon', icon: 'star', image: null },
+          ]);
+          expect(await query(url, 'SELECT show_agent_mark FROM app.interface_settings')).toEqual([{ show_agent_mark: false }]);
+        },
+      );
+    });
+
+    it('leaves the spark of a new installation without rows', async () => {
+      await before0020(
+        () => Promise.resolve(),
+        async (url) => {
+          expect(await query(url, 'SELECT agent_id FROM app.agent_marks')).toEqual([]);
+          expect(await query(url, 'SELECT show_agent_mark FROM app.interface_settings')).toEqual([{ show_agent_mark: true }]);
+          await expect(query(url, `INSERT INTO app.agent_marks (agent_id, kind, icon) VALUES ('sales', 'image', 'spark')`)).rejects.toThrow(/check/);
+        },
+      );
+    });
   });
 
   it('keeps journals append-only', async () => {

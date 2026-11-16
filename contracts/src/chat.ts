@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AgentMark } from './interface.ts';
 
 // Agents open to the person (GET /app/api/agents): what the chat list shows on its cards.
 // What the confirmation card shows: the name of the action and the labels of its fields, taken
@@ -16,6 +17,8 @@ export interface AgentSummary {
   description: string;
   // The admin's starter questions when set, otherwise the passport's.
   starters: string[];
+  // Its mark next to its words in the chat (spec, section 8.17), shown while «Интерфейс» allows.
+  mark: AgentMark;
   // Actions of the agent and of its sub-agents by tool name; tools of connected systems appear
   // once they were listed for someone.
   actions: Record<string, ActionDescription>;

@@ -1,6 +1,6 @@
-// The agent's mark inside a conversation (spec, section 8.17): next to its words, its «думает…» and
-// its question «Да/Нет», by the setting of «Интерфейс»; with «Без значка» — at none of them, and the
-// words, the dots and the question are still there.
+// The agent's mark inside a conversation (spec, section 8.17): the conversation's agent's own mark
+// next to its words, its «думает…» and its question «Да/Нет»; with the marks turned off in
+// «Интерфейс» — at none of them, and the words, the dots and the question are still there.
 import type { AgentMark } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
@@ -21,13 +21,13 @@ vi.mock('@copilotkit/react-core', async (original) => ({
 }));
 
 const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } };
-const PICTURE_URL = '/app/api/interface/agent-image?v=0123456789ab';
+const PICTURE_URL = '/app/api/agents/sales/image?v=0123456789ab';
 const QUESTION: Message = { id: 'u1', role: 'user', content: 'Сколько сделок за неделю?' };
 const ANSWER: Message = { id: 'a1', role: 'assistant', content: 'Двенадцать сделок.' };
 
-function extras(interrupt: ReactElement | null): ChatExtras {
+function extras(mark: AgentMark, interrupt: ReactElement | null): ChatExtras {
   return {
-    agent: AGENT,
+    agent: { ...AGENT, mark },
     agentId: 'sales',
     threadId: 't1',
     attachments: [],
@@ -50,14 +50,14 @@ function extras(interrupt: ReactElement | null): ChatExtras {
 }
 
 // Each place is the only words of the agent on the screen: the marks found are the marks of that place.
-async function showChat(agentMark: AgentMark, { messages, running = false, interrupt = null }: { messages: Message[]; running?: boolean; interrupt?: ReactElement | null }) {
-  mockServer({ 'GET /app/api/me': { body: { ...ME, interface: { agentMark } } } });
+async function showChat([mark, showAgentMark]: Setting, { messages, running = false, interrupt = null }: { messages: Message[]; running?: boolean; interrupt?: ReactElement | null }) {
+  mockServer({ 'GET /app/api/me': { body: { ...ME, interface: { showAgentMark } } } });
   render(
     <MemoryRouter>
       <SessionProvider>
         <ToastProvider>
           <RequireAuth>
-            <ChatExtrasContext value={extras(interrupt)}>
+            <ChatExtrasContext value={extras(mark, interrupt)}>
               <ChatView messages={messages} isRunning={running} />
             </ChatExtrasContext>
           </RequireAuth>
@@ -77,15 +77,17 @@ function marksIn(place: ParentNode): string[] {
   );
 }
 
-const SETTINGS: [string, AgentMark, string[]][] = [
-  ['the chosen icon', { kind: 'icon', icon: 'bot' }, ['icon bot']],
-  ['the admin’s picture', { kind: 'image', url: PICTURE_URL }, [`picture ${PICTURE_URL}`]],
-  ['nothing with «Без значка»', { kind: 'none' }, []],
+// The agent's own mark and the switch of «Интерфейс».
+type Setting = [AgentMark, boolean];
+const SETTINGS: [string, Setting, string[]][] = [
+  ['its icon', [{ kind: 'icon', icon: 'bot' }, true], ['icon bot']],
+  ['its picture', [{ kind: 'image', url: PICTURE_URL }, true], [`picture ${PICTURE_URL}`]],
+  ['nothing with the marks turned off', [{ kind: 'image', url: PICTURE_URL }, false], []],
 ];
 
-describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, agentMark, expected) => {
+describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, setting, expected) => {
   it('next to its words', async () => {
-    await showChat(agentMark, { messages: [QUESTION, ANSWER] });
+    await showChat(setting, { messages: [QUESTION, ANSWER] });
     // The answer is drawn word by word, each word in an element of its own.
     const words = document.querySelector('[data-streaming-markdown-root]')!;
     expect(words).toHaveTextContent('Двенадцать сделок.');
@@ -94,14 +96,14 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, agentM
   });
 
   it('next to its «думает…»', async () => {
-    await showChat(agentMark, { messages: [QUESTION], running: true });
+    await showChat(setting, { messages: [QUESTION], running: true });
     const thinking = screen.getByRole('status', { name: 'Думает…' });
     expect(marksIn(thinking)).toEqual(expected);
     expect(marksIn(document)).toEqual(expected);
   });
 
   it('next to its question «Да/Нет»', async () => {
-    await showChat(agentMark, { messages: [QUESTION], interrupt: <p>Подтвердите действие</p> });
+    await showChat(setting, { messages: [QUESTION], interrupt: <p>Подтвердите действие</p> });
     expect(marksIn(rowOf(screen.getByText('Подтвердите действие')))).toEqual(expected);
     expect(marksIn(document)).toEqual(expected);
   });

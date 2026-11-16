@@ -15,6 +15,7 @@ import type { ConnectionManager } from '../../connections/manager.ts';
 import type { Db } from '../../db/pool.ts';
 import { getPromptState, publishDraft, revertToFile, saveDraft, setAgentModel, type EditorDeps } from '../../editor/prompts.ts';
 import { appError } from '../../errors/catalog.ts';
+import { agentMarks, DEFAULT_MARK } from '../../interface-settings/agent-marks.ts';
 import type { Registry } from '../../loader/registry.ts';
 import { getMaskingKinds, setMaskingKinds } from '../../masking/settings.ts';
 import type { ModelGateway } from '../../models/gateway.ts';
@@ -66,6 +67,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
       'SELECT agent_id, model_id, starters, published_version_id FROM app.agent_overrides',
     );
     const override = new Map(own.rows.map((r) => [r.agent_id, r]));
+    const marks = await agentMarks(db);
     const known = deps.registry.ids();
     return c.json({
       agents: deps.registry.agents.map((a) => {
@@ -79,6 +81,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
           starters: o?.starters ?? a.passport.starters,
           startersCustom: o?.starters !== null && o?.starters !== undefined,
           promptChanged: Boolean(o?.published_version_id),
+          mark: marks.get(a.passport.id) ?? DEFAULT_MARK,
         };
       }),
       // Departments still pointing at agents removed from the installation (spec, section 10).

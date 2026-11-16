@@ -5,6 +5,8 @@ import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { COPILOT_OPTIONS } from '../app/copilot.ts';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
+import { chatMarkOf } from './AgentMarkEditor.tsx';
+import { agentPath } from './AgentPage.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -35,15 +37,15 @@ export function DraftCheckPage() {
         title={`Проверка черновика: ${agent.name}`}
         lead="Отвечает сохранённый черновик промпта. Расход идёт на вас, у проверки своя память."
         actions={
-          <Link to="/admin/agents" className={styles.check}>
+          <Link to={agentPath(agent.id)} className={styles.check}>
             <Icon name="back" size={16} />
-            Вернуться к агентам
+            Вернуться к агенту
           </Link>
         }
       />
       <Card className={styles.checkChat}>
         <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
-          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} />
+          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, mark: chatMarkOf(agent.mark), actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} />
         </CopilotKit>
       </Card>
     </div>

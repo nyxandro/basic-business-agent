@@ -5,8 +5,8 @@ import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const AGENTS = [
-  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
-  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
 ];
 const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
 const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, pinned: false, createdAt: '2026-11-11T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };

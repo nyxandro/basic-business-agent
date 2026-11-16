@@ -12,6 +12,7 @@ import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { useTheme } from '../ui/theme/ThemeProvider.tsx';
 import styles from './admin.module.css';
+import { agentPageKey } from './AgentPage.tsx';
 import { availableSections, canOpen, sectionByPath, type SectionDef } from './sections.ts';
 
 export const FORBIDDEN_STATE = { adminForbidden: true } as const;
@@ -116,8 +117,8 @@ export function AdminLayout() {
     <div className={styles.shell}>
       {wide ? <Side sections={sections} /> : <PhoneTop sections={sections} />}
       <main className={cx(styles.main, 'scroll-thin')}>
-        {/* A new section starts from its top. */}
-        <div key={pathname} className={styles.content}>
+        {/* A new section starts from its top; the sections of one agent are one page. */}
+        <div key={agentPageKey(pathname)} className={styles.content}>
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

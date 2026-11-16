@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Permission } from './auth.ts';
+import type { AgentMarkAdminState } from './interface.ts';
 
 const rub = z.number().min(0).nullable();
 const tokens = z.number().int().positive().nullable();
@@ -119,6 +120,8 @@ export interface AdminAgent {
   startersCustom: boolean;
   // A version of the prompt edited in the admin panel is in use.
   promptChanged: boolean;
+  // «Значок» of the agent (spec, section 8.17).
+  mark: AgentMarkAdminState;
 }
 
 export interface AdminAgentsResponse {

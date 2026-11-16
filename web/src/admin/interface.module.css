@@ -1,6 +1,37 @@
-/* «Интерфейс»: the agent's mark — the choice, the sample in both themes, «Сохранить». */
+/* «Интерфейс» — the switch of the marks — and «Значок» on the page of an agent: the choice, the
+   sample in both themes, «Сохранить». */
 .page {
   max-width: 720px;
+}
+
+.showCard {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.showRow {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.showText {
+  flex: 1;
+  min-width: 0;
+}
+
+.showTitle {
+  font-weight: 600;
+}
+
+.showLink {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acc-text);
 }
 
 .body {

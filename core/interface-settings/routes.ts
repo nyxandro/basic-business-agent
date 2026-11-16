@@ -1,48 +1,62 @@
-// «Интерфейс» in the admin panel (spec, section 8.17, section 17.5). Changing it needs the
-// "interface" right; the agent's picture is served to every signed-in employee.
-import { AGENT_IMAGE_MAX_BYTES, interfaceFormSchema } from '@bba/contracts';
+// The look of the chat (spec, section 8.17, section 17.5): «Интерфейс» — whether the chat shows the
+// marks of the agents (right «Интерфейс»); the mark of an agent — on its page in «Агенты и промпты»
+// (right «Агенты»). An agent's picture is served to whoever has the agent or may set it up.
+import { AGENT_IMAGE_MAX_BYTES, agentMarkFormSchema, interfaceSettingsSchema } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import type { Registry } from '../loader/registry.ts';
 import { MULTIPART_OVERHEAD_BYTES } from '../projects/routes.ts';
 import { requirePermission } from '../server/guards.ts';
-import { access, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { agentImage, agentMarks, DEFAULT_MARK, imageVersion, saveAgentMark } from './agent-marks.ts';
 import { checkAgentImage, imageTooLarge } from './image.ts';
-import { AGENT_IMAGE_PATH, agentImage, imageVersion, interfaceAdminState, saveInterfaceSettings } from './store.ts';
+import { interfaceAdminState, saveInterfaceSettings } from './store.ts';
 
 const CACHE_FOR_GOOD = 'private, max-age=31536000, immutable';
 
-export function registerInterfaceRoutes(app: Hono<AppEnv>, deps: { db: Db }): void {
-  const right = requirePermission('interface');
+export function registerInterfaceRoutes(app: Hono<AppEnv>, deps: { db: Db; registry: Pick<Registry, 'get'> }): void {
+  const interfaceRight = requirePermission('interface');
 
-  app.get('/app/api/admin/interface', right, async (c) => c.json(await interfaceAdminState(deps.db)));
+  app.get('/app/api/admin/interface', interfaceRight, async (c) => c.json(await interfaceAdminState(deps.db)));
+  app.put('/app/api/admin/interface', interfaceRight, async (c) => {
+    await saveInterfaceSettings(deps.db, access(c).userId, await parseJson(c, interfaceSettingsSchema));
+    return c.json(await interfaceAdminState(deps.db));
+  });
 
   app.put(
-    '/app/api/admin/interface',
-    right,
+    '/app/api/admin/agents/:id/mark',
+    requirePermission('agents'),
     // Counts the bytes even without Content-Length, before the form is read into memory.
     bodyLimit({
       maxSize: AGENT_IMAGE_MAX_BYTES + MULTIPART_OVERHEAD_BYTES,
       onError: () => {
-        throw imageTooLarge('interface form over the limit');
+        throw imageTooLarge('agent mark form over the limit');
       },
     }),
     async (c) => {
+      const agentId = c.req.param('id');
+      if (!deps.registry.get(agentId)) throw appError('APP_NOT_FOUND', `agent ${agentId} is not loaded`);
       const fields = await c.req.parseBody();
-      const parsed = interfaceFormSchema.safeParse({ agentMark: fields.agentMark, agentIcon: fields.agentIcon });
-      if (!parsed.success) throw appError('APP_VALIDATION_FAILED', `bad interface form: ${parsed.error.message}`);
+      const parsed = agentMarkFormSchema.safeParse({ kind: fields.kind, icon: fields.icon });
+      if (!parsed.success) throw appError('APP_VALIDATION_FAILED', `bad agent mark form: ${parsed.error.message}`);
       const file = fields.image;
       if (file !== undefined && !(file instanceof File)) throw appError('APP_VALIDATION_FAILED', 'image field is not a file', { userMessage: 'Картинка не получена. Выберите её ещё раз.' });
       const image = file ? checkAgentImage(new Uint8Array(await file.arrayBuffer())) : null;
-      await saveInterfaceSettings(deps.db, access(c).userId, { ...parsed.data, image });
-      return c.json(await interfaceAdminState(deps.db));
+      await saveAgentMark(deps.db, access(c).userId, agentId, { ...parsed.data, image });
+      return c.json((await agentMarks(deps.db)).get(agentId) ?? DEFAULT_MARK);
     },
   );
 
-  app.get(AGENT_IMAGE_PATH, async (c) => {
-    const image = await agentImage(deps.db);
-    if (!image) throw appError('APP_NOT_FOUND', 'no agent image');
+  // The address agentImagePath() gives.
+  app.get('/app/api/agents/:id/image', async (c) => {
+    const a = access(c);
+    const agentId = c.req.param('id');
+    // Like the agent itself: hidden from whoever neither has it nor sets agents up.
+    if (!a.isSuperadmin && !a.agentIds.has(agentId) && !a.permissions.has('agents')) throw appError('APP_NOT_FOUND', `agent ${agentId} is not open to the person`);
+    const image = await agentImage(deps.db, agentId);
+    if (!image) throw appError('APP_NOT_FOUND', `agent ${agentId} has no picture`);
     // An address of an older picture, left in an open tab, still gets the current one, but the
     // browser must not keep it under that address for good.
     const current = c.req.query('v') === imageVersion(image.sha256);

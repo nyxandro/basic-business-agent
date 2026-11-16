@@ -1,6 +1,7 @@
-// The agent's mark of «Интерфейс» (spec, section 8.17) in a browser: a phone photo stored sideways
-// becomes an upright picture next to the agent's words for every employee; «Без значка» leaves only
-// the words. The installation gets its spark back at the end: scenarios share one stand.
+// The agent's own mark (spec, section 8.17; decision of the owner 16.11) in a browser: a phone photo
+// stored sideways, set in «Значок» on the agent's page, becomes an upright picture next to that
+// agent's words for every employee; the switch of «Интерфейс» turned off leaves only the words. The
+// installation gets its spark and its switch back at the end: scenarios share one stand.
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { newConversation, openAgent, pageAs, say } from './helpers.ts';
@@ -38,19 +39,31 @@ async function topAndBottom(picture: Locator): Promise<{ top: string; bottom: st
 }
 
 // Waits for the server's answer: the notice of an earlier save may still be on the screen.
-async function save(admin: Page): Promise<void> {
-  const saved = admin.waitForResponse((r) => r.url().endsWith('/app/api/admin/interface') && r.request().method() === 'PUT');
+async function saveMark(admin: Page): Promise<void> {
+  const saved = admin.waitForResponse((r) => r.url().endsWith('/app/api/admin/agents/sales/mark') && r.request().method() === 'PUT');
   await admin.getByRole('button', { name: 'Сохранить' }).click();
   expect((await saved).status()).toBe(200);
 }
 
-test('the admin’s phone photo stands upright next to the agent’s words; «Без значка» leaves only the words', async ({ browser }) => {
-  const admin = await pageAs(browser, 'igor@example.com');
+async function showMarks(admin: Page, on: boolean): Promise<void> {
   await admin.goto('/admin/interface');
+  const show = admin.getByRole('switch', { name: 'Показывать значок агента в чате' });
+  if ((await show.getAttribute('aria-checked')) === String(on)) return;
+  const saved = admin.waitForResponse((r) => r.url().endsWith('/app/api/admin/interface') && r.request().method() === 'PUT');
+  await show.click();
+  expect((await saved).status()).toBe(200);
+  await expect(show).toHaveAttribute('aria-checked', String(on));
+}
+
+test('the admin’s phone photo of an agent stands upright next to its words; the switch of «Интерфейс» leaves only the words', async ({ browser }) => {
+  const admin = await pageAs(browser, 'igor@example.com');
+  await admin.goto('/admin/agents');
+  await admin.getByRole('list', { name: 'Агенты' }).getByRole('link', { name: /^Продажи/ }).click();
+  await admin.getByRole('navigation', { name: 'Разделы агента' }).getByRole('link', { name: 'Значок' }).click();
   await admin.getByRole('radio', { name: 'Своя картинка' }).click();
   await admin.getByLabel('Файл картинки').setInputFiles(PHOTO);
   await expect(admin.getByRole('img', { name: 'Выбранная картинка' })).toBeVisible();
-  await save(admin);
+  await saveMark(admin);
 
   try {
     const page = await pageAs(browser, 'olga@example.com');
@@ -69,15 +82,16 @@ test('the admin’s phone photo stands upright next to the agent’s words; «Б
     await expect(page.getByText(/Вы написали: «привет/)).toBeVisible();
     await expect(page.locator('[data-agent-mark="image"] img')).toHaveCount(1);
 
-    await admin.getByRole('radio', { name: 'Без значка' }).click();
-    await save(admin);
+    await showMarks(admin, false);
     await page.reload();
     await expect(page.getByText(/Вы написали: «привет/)).toBeVisible();
     await expect(page.locator('[data-agent-mark]')).toHaveCount(0);
   } finally {
+    await showMarks(admin, true);
+    await admin.goto('/admin/agents/sales/mark');
     await admin.getByRole('radio', { name: 'Иконка' }).click();
     await admin.getByRole('radio', { name: 'Искра' }).click();
-    await save(admin);
+    await saveMark(admin);
     await admin.close();
   }
 });

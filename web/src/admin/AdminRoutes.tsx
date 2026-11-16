@@ -2,6 +2,7 @@
 // never download its code.
 import { Route, Routes } from 'react-router';
 import { AdminIndex, AdminLayout, RequireSection } from './AdminLayout.tsx';
+import { AgentPage } from './AgentPage.tsx';
 import { AgentsSection } from './AgentsSection.tsx';
 import { ConnectionsSection } from './ConnectionsSection.tsx';
 import { DepartmentsSection } from './DepartmentsSection.tsx';
@@ -30,6 +31,8 @@ export default function AdminRoutes() {
         <Route path="limits" element={<RequireSection path="limits"><LimitsPage /></RequireSection>} />
         <Route path="skills" element={<RequireSection path="skills"><SkillsSection /></RequireSection>} />
         <Route path="agents" element={<RequireSection path="agents"><AgentsSection /></RequireSection>} />
+        {/* One route for the sections of an agent: switching them keeps the page and its unsaved edits. */}
+        <Route path="agents/:agentId/:tab?" element={<RequireSection path="agents"><AgentPage /></RequireSection>} />
         <Route path="agents/:agentId/check" element={<RequireSection path="agents"><DraftCheckPage /></RequireSection>} />
         <Route path="org-profile" element={<RequireSection path="org-profile"><OrgProfileSection /></RequireSection>} />
         <Route path="masking" element={<RequireSection path="masking"><MaskingSection /></RequireSection>} />

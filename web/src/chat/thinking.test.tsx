@@ -17,7 +17,7 @@ vi.mock('@copilotkit/react-core', async (original) => ({
   useRenderToolCall: () => () => null,
 }));
 
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
 const QUESTION: Message = { id: 'u1', role: 'user', content: 'Улучши моё резюме' };
 const CALL: Message = { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'view_image', arguments: '{}' } }] };
 const RESULT: Message = { id: 'r1', role: 'tool', toolCallId: 'c1', content: '{"ok":true}' };

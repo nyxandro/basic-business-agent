@@ -7,8 +7,8 @@ import { renderApp } from '../test/render.tsx';
 import { LAST_AGENT_KEY } from './AppShell.tsx';
 
 const AGENTS = [
-  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
-  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
 ];
 const USAGE = { month: { spentRub: 1740, limitRub: 3000, resetsOn: '2026-12-01' }, daily: null };
 const THREADS = {

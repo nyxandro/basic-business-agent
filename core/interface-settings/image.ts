@@ -35,8 +35,8 @@ export function imageTypeOf(bytes: Uint8Array): AgentImageType | null {
 }
 
 const FORMAT_MESSAGE = 'Не получилось открыть картинку. Нужен PNG, JPEG или WebP — сохраните её в одном из этих форматов и выберите снова.';
-const SIZE_MESSAGE = `Картинка больше ${AGENT_IMAGE_MAX_BYTES / 1024} КБ. Выберите её на странице «Интерфейс» ещё раз — браузер уменьшит её сам.`;
-const SIDE_MESSAGE = `Картинка больше ${AGENT_IMAGE_SIDE_PX}×${AGENT_IMAGE_SIDE_PX} точек. Выберите её на странице «Интерфейс» ещё раз — браузер уменьшит её сам.`;
+const SIZE_MESSAGE = `Картинка больше ${AGENT_IMAGE_MAX_BYTES / 1024} КБ. Выберите её в разделе «Значок» агента ещё раз — браузер уменьшит её сам.`;
+const SIDE_MESSAGE = `Картинка больше ${AGENT_IMAGE_SIDE_PX}×${AGENT_IMAGE_SIDE_PX} точек. Выберите её в разделе «Значок» агента ещё раз — браузер уменьшит её сам.`;
 
 export function imageTooLarge(message: string): AppError {
   return new AppError({ code: 'APP_AGENT_IMAGE_INVALID', message, userMessage: SIZE_MESSAGE, status: 413 });

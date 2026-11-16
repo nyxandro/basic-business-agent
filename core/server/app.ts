@@ -80,7 +80,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
   registerModelRoutes(app, deps.models, deps.accounts);
   registerSkillRoutes(app, deps.skills);
-  registerInterfaceRoutes(app, { db: deps.db });
+  registerInterfaceRoutes(app, { db: deps.db, registry: deps.chat.registry });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;
 }

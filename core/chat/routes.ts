@@ -9,6 +9,7 @@ import { agentActions, subagentCalls } from '../approvals/describe.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
+import { agentMarks, chatMark, DEFAULT_MARK } from '../interface-settings/agent-marks.ts';
 import { threadProjectState, type ThreadProjectState } from '../projects/access.ts';
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
@@ -65,6 +66,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const a = access(c);
     const { rows } = await deps.db.query<{ agent_id: string; starters: string[] }>('SELECT agent_id, starters FROM app.agent_overrides WHERE starters IS NOT NULL');
     const ownStarters = new Map(rows.map((r) => [r.agent_id, r.starters]));
+    const marks = await agentMarks(deps.db);
     const seen = deps.connections.actionsSeen();
     const agents = deps.registry.agents
       .filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id))
@@ -73,6 +75,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         name: rt.passport.name,
         description: rt.passport.description,
         starters: ownStarters.get(rt.passport.id) ?? rt.passport.starters,
+        mark: chatMark(marks.get(rt.passport.id) ?? DEFAULT_MARK),
         actions: {
           ...WORKSPACE_ACTIONS,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),

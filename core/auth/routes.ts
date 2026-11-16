@@ -9,7 +9,7 @@ import { acceptInvite, acceptPasswordReset, findInvite, findPasswordReset } from
 import { recognitionModel } from '../voice/transcribe.ts';
 import { orgName } from '../admin/org-profile.ts';
 import { modelsConfigured } from '../models/resolve.ts';
-import { agentMark } from '../interface-settings/store.ts';
+import { interfaceAdminState } from '../interface-settings/store.ts';
 
 const SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
 const HTTP_TOO_MANY_REQUESTS = 429;
@@ -57,7 +57,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>, deps: { db: Db; auth: Auth
       organisation: { name: await orgName(deps.db) },
       departmentNames: (await deps.db.query<{ name: string }>('SELECT d.name FROM app.department_members m JOIN app.departments d ON d.id = m.department_id WHERE m.user_id = $1 ORDER BY d.name', [a.userId])).rows.map((r) => r.name),
       modelsConfigured: await modelsConfigured(deps.db),
-      interface: { agentMark: await agentMark(deps.db) },
+      interface: { showAgentMark: (await interfaceAdminState(deps.db)).showAgentMark },
     };
     return c.json(body);
   });

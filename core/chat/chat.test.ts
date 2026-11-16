@@ -77,6 +77,8 @@ describe('chat', () => {
         name: 'Продажи',
         description: 'Тестовый агент Продажи',
         starters: ['Покажи мои сделки'],
+        // Its own mark (spec, section 8.17): the spark until an admin sets another.
+        mark: { kind: 'icon', icon: 'spark' },
         actions: {
           // The workspace's own tools are named in words too, not mastra_workspace_read_file.
           ...WORKSPACE_ACTIONS,
