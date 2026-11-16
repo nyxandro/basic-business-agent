@@ -108,7 +108,8 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
 
   app.get('/app/api/projects/:id/file', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
-    return fileDownload(folderOf(project), c.req.query('path') ?? '', 'Файл не найден.');
+    const path = c.req.query('path') ?? '';
+    return fileDownload(folderOf(project), path, 'Файл не найден.', undefined, c.req.query('inline') === '1');
   });
 
   // «Удалить» of the page: into the project's trash (spec, section 8.20).

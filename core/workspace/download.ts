@@ -1,6 +1,7 @@
-// A file of an employee's folder as a download (spec, sections 8.9 and 8.18): «Файлы проекта» and the
-// file block of the chat. Always an attachment with the type from the extension and `nosniff`, so a
-// file the agent wrote (HTML, SVG) is saved, never opened as a page of our address.
+// A file of an employee's folder as a download (spec, sections 8.9, 8.18 and 8.21): «Файлы проекта», the
+// file block of the chat and the search. An attachment with the type from the extension and `nosniff`, so a
+// file the agent wrote (HTML, SVG) is saved, never opened as a page of our address; only a PDF may be shown
+// in place («Посмотреть»): the browser opens it in its own viewer.
 import { createReadStream } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { Readable } from 'node:stream';
@@ -28,7 +29,7 @@ const OTHER = 'application/octet-stream';
 // `missing`: what the person reads when there is no such file (it was removed, or the folder changed).
 // `name`: the name the person gets — by default the one in the folder (a link inside it keeps its own
 // name); a file of the trash lies under its id and is given under the name it had.
-export function fileDownload(dir: string, path: string, missing: string, name: string = basename(resolveInside(dir, path))): Response {
+export function fileDownload(dir: string, path: string, missing: string, name: string = basename(resolveInside(dir, path)), inline = false): Response {
   const file = openFileInside(dir, path);
   if (!file) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
   // Streamed from the opened file: a big file does not fill the memory of the server.
@@ -37,7 +38,7 @@ export function fileDownload(dir: string, path: string, missing: string, name: s
     headers: {
       'content-length': String(file.size),
       'content-type': CONTENT_TYPES[extname(name).toLowerCase()] ?? OTHER,
-      'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'content-disposition': `${inline && extname(name).toLowerCase() === '.pdf' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`,
       'x-content-type-options': 'nosniff',
     },
   });

@@ -112,6 +112,9 @@ export type ThreadFileStatus =
   | { state: 'deleted'; name: string }
   | { state: 'lost'; name: string; projectName: string; reason: LostProjectReason };
 
+// GET /app/api/files/status: a file the search found (spec, section 8.21) — there, in the project's trash, or gone.
+export type SearchFileStatus = Exclude<ThreadFileStatus, { state: 'lost' }>;
+
 // GET /app/api/projects/archive: the creator's archived projects (spec, section 8.20). A project is
 // removed for good only from the archive and not before `deletableFrom`.
 export interface ArchivedProjectDto {
