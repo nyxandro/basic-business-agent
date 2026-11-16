@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -90,6 +90,24 @@ describe('modal', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
+  });
+});
+
+describe('modal under a double click', () => {
+  // A double click on a row that opens a dialog: its second click lands on the scrim of the new dialog
+  // (a found file, section 8.21) — the dialog stays; a single click on the scrim closes it.
+  it('closes on a single click of the scrim, not on the second click of a double one', () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} label="Файл">
+        <p>Окно файла</p>
+      </Modal>,
+    );
+    const scrim = document.querySelector('[aria-hidden="true"]') as HTMLButtonElement;
+    fireEvent.click(scrim, { detail: 2 });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(scrim, { detail: 1 });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

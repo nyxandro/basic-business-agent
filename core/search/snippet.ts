@@ -119,10 +119,12 @@ const plain = (text: string): Visible => ({ text: text.replace(/\s+/g, ' ').trim
 function locate(text: string, word: WordVariants): { at: number; length: number } | null {
   const normal = normalize(text);
   let best: { at: number; length: number } | null = null;
-  for (const piece of [...word.direct, ...typoPieces(word)]) {
-    const at = normal.indexOf(piece);
+  const take = (at: number, piece: string) => {
     if (at >= 0 && (best === null || at < best.at)) best = { at, length: piece.length };
-  }
+  };
+  for (const piece of [...word.direct, ...typoPieces(word)]) take(normal.indexOf(piece), piece);
+  // A short piece counts only at the start of a word, as in the search (match-sql.ts, startOf).
+  for (const piece of word.starts) take(normal.search(new RegExp(`(?<![0-9a-zа-я])${piece.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&')}`)), piece);
   return best;
 }
 

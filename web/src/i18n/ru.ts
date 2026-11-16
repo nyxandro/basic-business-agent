@@ -116,7 +116,7 @@ export const ru = {
     filesEmpty: 'Файлов пока нет',
     filesFailed: 'Не удалось загрузить файлы',
     firstFifty: 'Показаны первые 50 — уточните запрос',
-    unreadable: (project: string | null) => (project === null ? 'Ваши файлы вне проектов сейчас не читаются' : `Файлы проекта «${project}» сейчас не читаются`),
+    unreadable: (project: string | null) => `${project === null ? 'Ваши файлы вне проектов' : `Файлы проекта «${project}»`} сейчас не открываются. Сообщите администратору.`,
     fileMeta: (place: string, day: string, size: string) => `${place} · ${day} · ${size}`,
     checkingFile: 'Проверяю файл…',
     view: 'Посмотреть',

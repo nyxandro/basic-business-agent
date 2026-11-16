@@ -20,7 +20,7 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps):
   app.get('/app/api/search/files', async (c) => {
     const userId = access(c).userId;
     try {
-      return c.json<SearchFiles>(recentFiles(deps, userId, (await listProjects(deps, userId)).projects));
+      return c.json<SearchFiles>(await recentFiles(deps, userId, (await listProjects(deps, userId)).projects));
     } catch (error) {
       logEvent('error', 'search_files_failed', { code: 'APP_SEARCH_FAILED', userId, error });
       throw appError('APP_SEARCH_FAILED', 'recent files failed', { cause: error });

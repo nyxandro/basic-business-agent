@@ -122,8 +122,12 @@ describe('search', () => {
     expect((await search('дговоры')).projects.map((x) => x.name)).toContain('Договоры 2026');
   });
 
-  it('refuses a query shorter than 2 characters', async () => {
+  it('refuses a query shorter than 2 characters, of one-letter words only, or too long', async () => {
     expect((await t.call('GET', '/app/api/search?q=a', { cookie: olga })).status).toBe(400);
+    expect((await t.call('GET', `/app/api/search?q=${encodeURIComponent('с и')}`, { cookie: olga })).status).toBe(400);
+    const long = await t.call('GET', `/app/api/search?q=${encodeURIComponent('слово '.repeat(11))}`, { cookie: olga });
+    expect(long.status).toBe(400);
+    expect(await long.text()).toContain('Запрос слишком длинный');
   });
 
   // Messages are heavy with tool results (24 KB on average in the development installation, 16.11): the

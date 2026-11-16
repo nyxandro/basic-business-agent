@@ -281,6 +281,30 @@ describe('search over conversations and projects', () => {
     expect(within(file).queryByRole('link', { name: 'Скачать' })).not.toBeInTheDocument();
   });
 
+  it('offers a file removed into the project trash from there, shows a failed check with a repeat, and Esc closes only the file', async () => {
+    const s = server();
+    s.set('GET /app/api/files/status', { body: { state: 'trash', name: 'KP_Yelka_v2.pdf', projectId: 'p1', trashId: 'tr1', expiresAt: '2026-12-16T10:00:00Z' } });
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Файлы' }));
+    await user.click(await within(dialog).findByRole('button', { name: /KP_Yelka_v2\.pdf/ }));
+    const file = await screen.findByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
+    expect(await within(file).findByText(/в корзине проекта до/)).toBeInTheDocument();
+    expect(within(file).getByRole('link', { name: /Скачать из корзины/ })).toHaveAttribute('href', '/app/api/projects/p1/trash/tr1/file');
+    expect(within(file).queryByRole('link', { name: 'Скачать' })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'KP_Yelka_v2.pdf' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Поиск' })).toBeInTheDocument();
+
+    s.set('GET /app/api/files/status', apiError('APP_NOT_FOUND', 'Проект не найден.', 404));
+    await user.click(within(dialog).getByRole('button', { name: /KP_Yelka_v2\.pdf/ }));
+    const failed = await screen.findByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
+    expect(await within(failed).findByText('Проект не найден.')).toBeInTheDocument();
+    s.set('GET /app/api/files/status', { body: { state: 'ok' } });
+    await user.click(within(failed).getByRole('button', { name: 'Повторить' }));
+    expect(await within(failed).findByRole('link', { name: 'Скачать' })).toBeInTheDocument();
+  });
+
   it('shows found files in their group, says there are more, and names a project folder it could not read', async () => {
     server({ body: { ...FOUND, files: { files: [KP], unreadable: [{ projectId: 'p2', name: 'Ключевые клиенты' }], more: true } } });
     renderApp('/agents/sales?thread=t1');
@@ -290,7 +314,7 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).getByText('Файлы', { selector: 'div' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /KP_Yelka_v2\.pdf/ })).toBeInTheDocument();
     expect(within(dialog).getByText('Показаны первые 50 — уточните запрос')).toBeInTheDocument();
-    expect(within(dialog).getByText('Файлы проекта «Ключевые клиенты» сейчас не читаются')).toBeInTheDocument();
+    expect(within(dialog).getByText('Файлы проекта «Ключевые клиенты» сейчас не открываются. Сообщите администратору.')).toBeInTheDocument();
   });
 
   it('says on «Файлы» when there are none and shows a list that did not load with a repeat', async () => {

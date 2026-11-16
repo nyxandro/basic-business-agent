@@ -34,8 +34,15 @@ export class SqlParams {
 
 export const normalizedSql = (expr: string) => `replace(lower(coalesce(${expr}, '')), 'ё', 'е')`;
 
+// A regular expression of a piece at the start of a word: what is not a letter or a digit before it, or nothing.
+export function startOf(piece: string): string {
+  return `(^|[^0-9a-zа-я])${piece.replace(/[\\^$.|?*+()[\]{}]/g, (c) => `\\${c}`)}`;
+}
+
 export function directCondition(expr: string, word: WordVariants, params: SqlParams): string {
-  return `(${word.direct.map((piece) => `${expr} ILIKE ${params.add(likeOf(piece))}`).join(' OR ')})`;
+  const anywhere = word.direct.map((piece) => `${expr} ILIKE ${params.add(likeOf(piece))}`);
+  const atStart = word.starts.map((piece) => `${expr} ~ ${params.add(startOf(piece))}`);
+  return `(${[...anywhere, ...atStart].join(' OR ')})`;
 }
 
 // A typo in a message: the words of the dictionary it means, or two neighbouring letters swapped.

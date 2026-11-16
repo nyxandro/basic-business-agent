@@ -42,8 +42,21 @@ describe('variants of a word of the query (spec, section 8.21)', () => {
     const [dogovor] = buildVariants('dogovor', new Map());
     expect(dogovor!.direct).toContain('договор');
     const [kp] = buildVariants('кп', new Map());
-    expect(kp!.direct).toEqual(expect.arrayContaining(['кп', 'kp']));
+    // A short word: itself anywhere, its Latin only at the start of a word, no other layout («rg»), no typos.
+    expect(kp!.direct).toEqual(['кп']);
+    expect(kp!.starts).toContain('kp');
+    expect([...kp!.direct, ...kp!.starts]).not.toContain('rg');
     expect(kp!.fuzzy).toEqual([]);
+  });
+
+  it('gives no typos to numbers and codes, does not search one letter, reads «ё» typed in the other layout as «е»', () => {
+    for (const code of ['250-7', 'кп-12', 'а500с', '№12']) {
+      const [v] = buildVariants(code, new Map());
+      expect(v!.fuzzy).toEqual([]);
+      expect(v!.swaps).toEqual([]);
+    }
+    expect(buildVariants('договор с ромашкой', new Map()).map((v) => v.word)).toEqual(['договор', 'ромашкой']);
+    expect(buildVariants('`krf', new Map())[0]!.direct).toContain('елка');
   });
 
   it('adds the stem of a Russian word and its Latin forms', () => {
@@ -74,7 +87,7 @@ describe('variants of a word of the query (spec, section 8.21)', () => {
         const [v] = buildVariants(typed, new Map());
         for (const written of forms) {
           if (known(word, typed, written)) continue;
-          const direct = v!.direct.some((d) => written.includes(d) && d.length >= Math.min(4, written.length));
+          const direct = v!.direct.some((d) => written.includes(d) && d.length >= Math.min(4, written.length)) || v!.starts.some((d) => written.startsWith(d));
           const typo = v!.fuzzy.some((f) => edits(f, written) <= typoRoom(written));
           expect(direct || typo, `«${typed}» does not find «${written}» (${word}): ${v!.direct.join(', ')}`).toBe(true);
         }
@@ -95,7 +108,7 @@ describe('variants of a word of the query (spec, section 8.21)', () => {
   it('loses no word of any query and never fails on it', () => {
     fc.assert(
       fc.property(query, (q) => {
-        const words = q.toLowerCase().replaceAll('ё', 'е').split(/\s+/).filter(Boolean);
+        const words = q.toLowerCase().replaceAll('ё', 'е').split(/\s+/).filter((w) => [...w].length >= 2);
         const variants = buildVariants(q, new Map());
         expect(variants.map((v) => v.word)).toEqual(words);
         for (const v of variants) {
@@ -125,6 +138,7 @@ describe('stems from the dictionary of the database', () => {
     const [dogovory, smeta, kp] = await queryVariants(db, 'договоры смета kp');
     expect(dogovory!.direct).toContain('договор');
     expect(smeta!.direct).toContain('смет');
-    expect(kp!.direct).toEqual(expect.arrayContaining(['kp', 'кп']));
+    expect(kp!.direct).toEqual(['kp']);
+    expect(kp!.starts).toContain('кп');
   });
 });

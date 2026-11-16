@@ -1,12 +1,15 @@
 // Files the person finds by name (spec, section 8.21): the documents of their own folder and of the projects
 // they see, not archived. Read from the folders at every search, as «Файлы проекта» are: the agent writes into
 // a folder directly, so a list kept elsewhere would lag behind it. Folders are walked without following links
-// (held-folder.ts); the names are compared in the database by the same rules as titles (match-sql.ts).
+// (held-folder.ts), one at a time with a pause between them, so the server answers others meanwhile (a walk
+// of 10 000 files held it ~0.1 s; walking with promises took four times longer, 16.11); the names are compared
+// in the database by the same rules as titles (match-sql.ts).
 import { basename, extname } from 'node:path';
 import { DOCUMENT_EXTENSIONS, type ProjectDto, type SearchFile, type SearchFiles } from '@bba/contracts';
 import type pg from 'pg';
 import type { ProjectsDeps } from '../projects/projects.ts';
 import { logEvent } from '../server/log.ts';
+import { setImmediate as pause } from 'node:timers/promises';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
 import { filesRoot } from '../workspace/layout.ts';
 import { matchNames } from './match-sql.ts';
@@ -27,20 +30,23 @@ interface Collected {
 }
 
 // `projects` — what the person sees (listProjects): never an archived one, never someone's own folder.
-function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Collected {
+async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<Collected> {
   const folders = [{ project: null, root: filesRoot(deps.workspaceRoot, userId, null) }, ...projects.map((p) => ({ project: p, root: filesRoot(deps.workspaceRoot, p.owner.id, p.id) }))];
   const out: Collected = { files: [], unreadable: [] };
   for (const { project, root } of folders) {
     const found: Listed[] = [];
     let capped = false;
     try {
+      await pause();
       walkRegularFiles(root, (file) => {
-        if (!DOCUMENTS.has(extname(file.rel).toLowerCase())) return;
+        if (!DOCUMENTS.has(extname(file.rel).toLowerCase())) return true;
+        // The walk stops at the limit: a folder of tens of thousands of files is not read to its end.
         if (found.length >= MAX_FOLDER_DOCUMENTS) {
           capped = true;
-          return;
+          return false;
         }
         found.push({ path: file.rel, name: basename(file.rel), projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.size, modifiedMs: file.modifiedMs });
+        return true;
       });
     } catch (error) {
       // A folder the agent shut (chmod) or a failing disk: its files are left out and the person is told;
@@ -59,15 +65,15 @@ const shown = (files: Listed[]): SearchFile[] => files.slice(0, MAX_FOUND_FILES)
 
 // Found directly first, then with a typo; newest first in each part.
 export async function searchFiles(deps: ProjectsDeps, client: pg.PoolClient, userId: string, words: WordVariants[], projects: ProjectDto[]): Promise<SearchFiles> {
-  const { files, unreadable } = collect(deps, userId, projects);
+  const { files, unreadable } = await collect(deps, userId, projects);
   const hits = await matchNames(client, files.map((f) => f.name), words, MAX_FOUND_FILES + 1);
   const ordered = hits.map((hit) => ({ file: files[hit.index]!, direct: hit.direct })).sort((a, b) => Number(b.direct) - Number(a.direct) || b.file.modifiedMs - a.file.modifiedMs);
   return { files: shown(ordered.map((o) => o.file)), unreadable, more: ordered.length > MAX_FOUND_FILES };
 }
 
 // The tab «Файлы» before a query: the newest documents.
-export function recentFiles(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): SearchFiles {
-  const { files, unreadable } = collect(deps, userId, projects);
+export async function recentFiles(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<SearchFiles> {
+  const { files, unreadable } = await collect(deps, userId, projects);
   const ordered = [...files].sort((a, b) => b.modifiedMs - a.modifiedMs);
   return { files: shown(ordered), unreadable, more: ordered.length > MAX_FOUND_FILES };
 }

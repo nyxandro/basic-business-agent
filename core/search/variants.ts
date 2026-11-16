@@ -112,18 +112,23 @@ const MAX_DIRECT = 24;
 const FUZZY_READINGS = 3;
 // Shorter words are compared without typos: «кп» would otherwise find everything.
 export const MIN_FUZZY_LENGTH = 4;
+// A word of one letter («с», «и») is not searched: it is in every text and no index serves it (8.13).
+export const MIN_WORD_LENGTH = 2;
 const MIN_STEM_LENGTH = 3;
 
 const CYRILLIC = /[\u0400-\u04ff]/;
 const LATIN = /[a-z]/;
 const WORD = /^[\p{L}\p{N}]+$/u;
-const LETTER = /\p{L}/u;
+const LETTERS = /^\p{L}+$/u;
 
 export interface WordVariants {
   // The word as the search compares it: lower case, «ё» as «е».
   word: string;
-  // Pieces of text that mean this word; the word itself first.
+  // Pieces of text that mean this word, found anywhere in a word; the word itself first.
   direct: string[];
+  // Pieces derived from a short word — its Latin, its reading back, its stem («кп» → «kp»): found only at
+  // the start of a word, or «kp» would find «Margin» and «ip» every «zip».
+  starts: string[];
   // Words compared with typos, each at least MIN_FUZZY_LENGTH long.
   fuzzy: string[];
   // The word with two neighbouring letters swapped («договро» → «договор»): a typo that edits count as two.
@@ -187,13 +192,21 @@ export function cyrillicCandidates(word: string): string[] {
   return [...new Set(out)].slice(0, MAX_CANDIDATES);
 }
 
+// The words of a query that are searched, each with the same word typed in the other layout (or null).
+function queryWords(query: string): { word: string; other: string | null }[] {
+  const text = normalize(query);
+  // The switch keeps the spaces: the n-th word of one is the n-th word of the other.
+  const switched = words(normalize(switchLayout(text)));
+  return words(text)
+    .map((word, i) => ({ word, other: switched[i] ?? null }))
+    .filter(({ word }) => [...word].length >= MIN_WORD_LENGTH);
+}
+
 // The variants of every word of a query; `stems` — the dictionary's stem of a Russian word, when it has one.
 export function buildVariants(query: string, stems: ReadonlyMap<string, string>): WordVariants[] {
-  const text = normalize(query);
-  const switched = words(switchLayout(text));
-  return words(text).map((word, i) => {
-    const other = switched[i];
-    const layout = other !== undefined && other !== word && WORD.test(other) ? other : null;
+  return queryWords(query).map(({ word, other }) => {
+    // The other layout of a short word is noise: «кп» typed in it is «rg».
+    const layout = other !== null && other !== word && WORD.test(other) && [...word].length >= MIN_FUZZY_LENGTH ? other : null;
     // A word typed in the wrong layout is meant as it reads in the other one: no transliteration of it.
     const typed = [word, stems.get(word)].filter((b): b is string => b !== undefined);
     const layouts = layout === null ? [] : [layout, stems.get(layout)].filter((b): b is string => b !== undefined);
@@ -211,21 +224,22 @@ export function buildVariants(query: string, stems: ReadonlyMap<string, string>)
     direct.push(...layouts);
     // Latin by one system finds Latin by another through the Cyrillic it means.
     for (const candidate of cyrillicOfLatin) direct.push(...latinForms(candidate));
-    const unique = [...new Set(direct)].filter((d) => d === word || d.length >= 2).slice(0, MAX_DIRECT);
+    const unique = [...new Set(direct)].filter((d) => d === word || [...d].length >= MIN_WORD_LENGTH).slice(0, MAX_DIRECT);
+    const anywhere = unique.filter((d) => d === word || [...d].length >= MIN_FUZZY_LENGTH);
+    const starts = unique.filter((d) => !anywhere.includes(d));
     // With typos the word is compared in the other script too: by its first Latin form, or by the first
     // readings of a Latin word — the right one is often second (ICAO «kalkuliatsiia»).
     const otherScript = CYRILLIC.test(word) ? latinForms(word).slice(0, 1) : cyrillicOfLatin.slice(0, FUZZY_READINGS);
-    // A number or a code («250-7», «№12») is meant exactly: typos only in words with letters.
-    if (!LETTER.test(word)) return { word, direct: unique, fuzzy: [], swaps: [], corrections: [] };
+    // A number or a code («250-7», «КП-12», «А500С») is meant exactly: typos only in words of letters.
+    if (!LETTERS.test(word)) return { word, direct: anywhere, starts, fuzzy: [], swaps: [], corrections: [] };
     const fuzzy = [...new Set([word, layout, ...otherScript].filter((f): f is string => typeof f === 'string' && f.length >= MIN_FUZZY_LENGTH))];
-    return { word, direct: unique, fuzzy, swaps: [...new Set([...swapsOf(word), ...(layout === null ? [] : swapsOf(layout))])], corrections: [] };
+    return { word, direct: anywhere, starts, fuzzy, swaps: [...new Set([...swapsOf(word), ...(layout === null ? [] : swapsOf(layout))])], corrections: [] };
   });
 }
 
 // buildVariants with the stems of the Russian words from the database's dictionary (russian_stem).
 export async function queryVariants(db: Db, query: string): Promise<WordVariants[]> {
-  const text = normalize(query);
-  const candidates = [...new Set([...words(text), ...words(switchLayout(text))])].filter((w) => CYRILLIC.test(w));
+  const candidates = [...new Set(queryWords(query).flatMap(({ word, other }) => (other === null ? [word] : [word, other])))].filter((w) => CYRILLIC.test(w));
   const stems = new Map<string, string>();
   if (candidates.length > 0) {
     const { rows } = await db.query<{ word: string; stem: string | null }>(`SELECT w AS word, (ts_lexize('russian_stem', w))[1] AS stem FROM unnest($1::text[]) AS w`, [candidates]);

@@ -12,6 +12,9 @@ import { snippetOf, type MessageText } from './snippet.ts';
 import { queryVariants, type WordVariants } from './variants.ts';
 
 export const MIN_QUERY = 2;
+// A pasted paragraph is not a query: each word is a dozen conditions on every title, name and message.
+export const MAX_QUERY_LENGTH = 200;
+export const MAX_QUERY_WORDS = 10;
 const NO_FILES: SearchResponse['files'] = { files: [], unreadable: [], more: false };
 const MAX_RESULTS = 50;
 
@@ -85,7 +88,11 @@ async function partsOf(client: pg.PoolClient, ids: string[], words: WordVariants
   if (ids.length === 0) return new Map();
   const params = new SqlParams();
   const list = params.add(ids);
-  const holds = words.map((word) => piecesCondition(MESSAGE_TEXT, [...word.direct, ...typoPieces(word)], params));
+  const holds = words.map((word) => {
+    const typo = typoPieces(word);
+    const direct = directCondition(MESSAGE_TEXT, word, params);
+    return typo.length === 0 ? direct : `(${direct} OR ${piecesCondition(MESSAGE_TEXT, typo, params)})`;
+  });
   const { rows } = await client.query<PartsRow>(
     `SELECT found.id,
             COALESCE((SELECT jsonb_agg(jsonb_build_object('role', mt.role, 'text', mt.text) ORDER BY mt.created_at, mt.message_id)
@@ -103,7 +110,14 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
   if (query.q.trim().length < MIN_QUERY) {
     throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
+  if (query.q.length > MAX_QUERY_LENGTH || query.q.trim().split(/\s+/).length > MAX_QUERY_WORDS) {
+    throw appError('APP_VALIDATION_FAILED', `search query of ${query.q.length} characters is too long`, {
+      userMessage: `Запрос слишком длинный: оставьте до ${MAX_QUERY_WORDS} слов и ${MAX_QUERY_LENGTH} знаков.`,
+    });
+  }
   const words = await queryVariants(deps.db, query.q);
+  // Only one-letter words («с», «и»): nothing to search by.
+  if (words.length === 0) throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" has no word of two letters`, { userMessage: `Введите хотя бы одно слово из ${MIN_QUERY} букв.` });
   const seen = (await listProjects(deps, userId)).projects;
   const { threads, parts, projectHits, corrected, files } = await inSearch(deps.db, async (client) => {
     const found = query.scope === 'all' || query.scope === 'threads' ? await searchThreads(client, userId, words) : { rows: [], words };

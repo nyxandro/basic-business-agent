@@ -45,8 +45,8 @@ export interface HeldFile {
 }
 
 // Every regular file of `root`, its folders entered without following links. Hidden entries (".renders"
-// of the skills, the snapshots) are skipped unless `hidden`.
-export function walkRegularFiles(root: string, visit: (file: HeldFile) => void, hidden = false): void {
+// of the skills, the snapshots) are skipped unless `hidden`. `visit` returning false stops the walk.
+export function walkRegularFiles(root: string, visit: (file: HeldFile) => unknown, hidden = false): void {
   let real: string;
   try {
     real = realpathSync(root);
@@ -57,8 +57,10 @@ export function walkRegularFiles(root: string, visit: (file: HeldFile) => void, 
   }
   const top = hold(real);
   if (!top) return;
+  let stopped = false;
   const walk = (held: Held, prefix: string) => {
     for (const entry of readdirSync(held.path, { withFileTypes: true })) {
+      if (stopped) return;
       if (!hidden && entry.name.startsWith('.')) continue;
       const path = join(held.path, entry.name);
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -72,7 +74,7 @@ export function walkRegularFiles(root: string, visit: (file: HeldFile) => void, 
         }
       } else if (entry.isFile()) {
         const stat = lstatSync(path, { throwIfNoEntry: false });
-        if (stat?.isFile()) visit({ rel, ino: stat.ino, size: stat.size, modifiedMs: stat.mtimeMs, path });
+        if (stat?.isFile() && visit({ rel, ino: stat.ino, size: stat.size, modifiedMs: stat.mtimeMs, path }) === false) stopped = true;
       }
     }
   };

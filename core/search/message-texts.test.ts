@@ -57,6 +57,36 @@ describe('the text people saw in messages, kept for the search (spec, section 8.
     expect(await kept('gone')).toBeUndefined();
   });
 
+  it('keeps only words of letters: phones and tax numbers stay out of the dictionary', async () => {
+    await save(message('Телефон 89991234567, ИНН 7701234567, счёт А500'));
+    expect(await known('телефон', 'инн', '89991234567', '7701234567', 'счет', 'а500')).toEqual(['инн', 'счет', 'телефон']);
+  });
+
+  it('builds the dictionary anew at the start: words of removed messages go', async () => {
+    const id = await save(message('Конфиденциальнофамилия'));
+    expect(await known('конфиденциальнофамилия')).toEqual(['конфиденциальнофамилия']);
+    await t.db.query('DELETE FROM mastra.mastra_messages WHERE id = $1', [id]);
+    await ensureMessageTexts(t.db);
+    expect(await known('конфиденциальнофамилия')).toEqual([]);
+  });
+
+  it('saves the message whatever fails in keeping its text or its words, and a failure with words keeps the new text', async () => {
+    await t.db.query(`ALTER TABLE app.search_words ADD CONSTRAINT test_no_word CHECK (word <> 'сбойслова')`);
+    await t.db.query(`ALTER TABLE app.message_texts ADD CONSTRAINT test_no_text CHECK (text NOT LIKE '%сбойтекста%')`);
+    try {
+      const words = await save(message('Первый вариант'));
+      await t.db.query('UPDATE mastra.mastra_messages SET content = $2 WHERE id = $1', [words, message('Второй вариант сбойслова')]);
+      expect((await kept(words))?.text).toBe('Второй вариант сбойслова');
+      const text = await save(message('Тут сбойтекста'));
+      const { rows } = await t.db.query('SELECT 1 FROM mastra.mastra_messages WHERE id = $1', [text]);
+      expect(rows).toHaveLength(1);
+      expect(await kept(text)).toBeUndefined();
+    } finally {
+      await t.db.query('ALTER TABLE app.search_words DROP CONSTRAINT test_no_word');
+      await t.db.query('ALTER TABLE app.message_texts DROP CONSTRAINT test_no_text');
+    }
+  });
+
   it('finds by a piece and by a typo through the index, not by reading every row', async () => {
     const client = await t.db.connect();
     try {
