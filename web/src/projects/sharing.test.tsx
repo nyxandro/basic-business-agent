@@ -10,7 +10,7 @@ import { ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
-const OWN = { id: 'p1', name: 'Мой проект', instructions: '', threadCount: 0, pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u1', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
+const OWN = { id: 'p1', name: 'Мой проект', instructions: '', threadCount: 0, lastActiveAt: '2026-11-10T08:00:00Z', pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u1', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
 const SHARED = { ...OWN, id: 'p2', name: 'Тендер Игоря', instructions: 'Заказчик — ООО Пример.', role: 'member' as const, owner: { id: 'u9', name: 'Игорь Петров' }, shared: true, unseen: true, access: null };
 const DEPARTMENTS = [
   { id: 'd1', name: 'Отдел продаж', members: 8 },

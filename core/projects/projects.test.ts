@@ -177,6 +177,38 @@ describe('projects', () => {
     expect((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: petr }))).projects.map((p) => p.id)).toContain(someoneElses);
   });
 
+  // The project picker of the input sorts by it («по недавности»).
+  it('says when the person last worked in each project: their latest conversation, else when the project appeared for them', async () => {
+    const listOf = async (cookie: string) => new Map((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie }))).projects.map((p) => [p.id, p]));
+    const older = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Давний проект', access: { mode: 'list', departmentIds: [], userIds: [petrId] } } }));
+    const newer = await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Свежий проект', access: PRIVATE } }));
+    let olgas = await listOf(olga);
+    expect(olgas.get(older.id)!.lastActiveAt).toBe(older.createdAt);
+    expect(olgas.get(newer.id)!.lastActiveAt).toBe(newer.createdAt);
+
+    const talk = randomUUID();
+    await t.call('PUT', `/app/api/threads/${talk}/project`, { cookie: olga, body: { projectId: older.id } });
+    await ensureThread(t.memory, { threadId: talk, resourceId: olgaId, agentId: 'sales', kind: 'chat', title: 'Смета' });
+    // Two conversations: the project takes the later one, whichever its link comes first.
+    const later = randomUUID();
+    await t.call('PUT', `/app/api/threads/${later}/project`, { cookie: olga, body: { projectId: older.id } });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await ensureThread(t.memory, { threadId: later, resourceId: olgaId, agentId: 'sales', kind: 'chat', title: 'Счёт' });
+    const [inOlder, earlier] = (await json<ThreadPage>(await t.call('GET', `/app/api/threads?projectId=${older.id}`, { cookie: olga }))).threads;
+    expect([inOlder!.id, earlier!.id]).toEqual([later, talk]);
+    olgas = await listOf(olga);
+    expect(olgas.get(older.id)!.lastActiveAt).toBe(inOlder!.updatedAt);
+    expect(olgas.get(older.id)!.lastActiveAt > olgas.get(newer.id)!.lastActiveAt).toBe(true);
+
+    // A colleague's conversations are not the person's work: Пётр has the project from when it appeared
+    // for him — its creation until he opens it, then that moment.
+    let petrs = await listOf(petr);
+    expect(petrs.get(older.id)!.lastActiveAt).toBe(older.createdAt);
+    await t.call('GET', `/app/api/projects/${older.id}`, { cookie: petr });
+    petrs = await listOf(petr);
+    expect(petrs.get(older.id)!.lastActiveAt > inOlder!.updatedAt).toBe(true);
+  });
+
   it('lists conversations of all agents newest first, page by page', async () => {
     const lena = await t.createUser({ email: 'lena@example.com', name: 'Лена' });
     const cookie = await t.signIn('lena@example.com');

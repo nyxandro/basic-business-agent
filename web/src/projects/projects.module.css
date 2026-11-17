@@ -78,6 +78,38 @@
   color: var(--muted);
 }
 
+/* The menu of the chip (ProjectPicker.tsx): the title or the search, with the order button on the right. */
+.pickerHead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.pickerHead > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.pickerSearch input {
+  height: 34px;
+  font-size: 13px;
+}
+
+/* Five rows and half of the sixth: more than five projects scroll, and the cut row shows there are more. */
+.pickerList {
+  max-height: 209px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pickerEmpty {
+  margin: 0;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* The chip of the conversation's project in the input. */
 .chip {
   min-width: 0;

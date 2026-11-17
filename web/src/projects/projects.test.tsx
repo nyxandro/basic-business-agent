@@ -3,13 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
+import { PICKER_SORT_KEY } from './picker.ts';
 
 const AGENTS = [
   { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
   { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
 ];
-const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
-const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, pinned: false, createdAt: '2026-11-11T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
+const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, lastActiveAt: '2026-11-10T08:00:00Z', pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
+const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, lastActiveAt: '2026-11-16T08:00:00Z', pinned: false, createdAt: '2026-11-11T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
 
 function server(extra: Record<string, Parameters<typeof mockServer>[0][string]> = {}) {
   return mockServer({
@@ -370,6 +371,92 @@ describe('projects of conversations', () => {
     await user.click(await screen.findByRole('menuitemradio', { name: /Отчёты/ }));
     expect(await screen.findByRole('button', { name: 'Отчёты', expanded: false })).toBeInTheDocument();
     expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ projectId: 'p2' });
+  });
+
+  // The picker of the chip (owner 17.11): more than 5 projects scroll, with a small button that switches
+  // the order between «недавние» and «по алфавиту»; more than 20 get a search line at the top.
+  describe('the project picker of the input', () => {
+    const at = (day: number) => new Date(Date.UTC(2026, 10, day, 8)).toISOString();
+    const named = (name: string, day: number, id = name) => ({ ...TENDER, id, name, lastActiveAt: at(day) });
+    async function openPicker(projects: ReturnType<typeof named>[]) {
+      const s = server({
+        'GET /app/api/projects': { body: { projects, archivedCount: 0 } },
+        'GET /app/api/threads/t1/project': { body: { projectId: null, lost: null } },
+        'PUT /app/api/threads/t1/project': { body: { ok: true } },
+      });
+      renderApp('/agents/sales?thread=t1');
+      const user = userEvent.setup();
+      const chip = await screen.findByRole('button', { name: 'Проект разговора: Без проекта' });
+      await user.click(chip);
+      const menu = await screen.findByRole('menu', { name: 'Проект разговора' });
+      await within(menu).findByRole('menuitemradio', { name: projects[0]!.name });
+      return { s, user, chip, menu };
+    }
+    // The projects of the menu in their order, without «Без проекта».
+    const listed = (menu: HTMLElement) => within(menu).getAllByRole('menuitemradio').map((item) => item.textContent).filter((name) => name !== 'Без проекта');
+
+    it('five projects go most recent first, a colleague\'s new one above all, without the order button or the search', async () => {
+      // «По алфавиту» chosen when there were more: without the button it could not be switched back.
+      localStorage.setItem(PICKER_SORT_KEY, 'name');
+      const { menu } = await openPicker([named('Бюджет', 3), named('Акты', 9), { ...named('Общий от Игоря', 1), unseen: true }, named('Сверка', 7), named('Договоры', 5)]);
+      expect(listed(menu)).toEqual(['Общий от Игоря', 'Акты', 'Сверка', 'Договоры', 'Бюджет']);
+      expect(within(menu).queryByRole('button', { name: /^Порядок/ })).not.toBeInTheDocument();
+      expect(within(menu).queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('from six projects the small button switches to alphabetical, and the choice stays for the next opening', async () => {
+      const six = [named('Проект 10', 2), named('бюджет', 6), named('Акты', 1), named('Проект 9', 4), named('Ёлка', 5), named('Сверка', 3)];
+      const { user, chip, menu } = await openPicker(six);
+      expect(listed(menu)).toEqual(['бюджет', 'Ёлка', 'Проект 9', 'Сверка', 'Проект 10', 'Акты']);
+      expect(within(menu).queryByRole('searchbox')).not.toBeInTheDocument();
+      await user.click(within(menu).getByRole('button', { name: 'Порядок: сначала недавние' }));
+      expect(listed(menu)).toEqual(['Акты', 'бюджет', 'Ёлка', 'Проект 9', 'Проект 10', 'Сверка']);
+      expect(within(menu).getByRole('button', { name: 'Порядок: по алфавиту' })).toBeInTheDocument();
+      await user.click(chip);
+      await user.click(chip);
+      expect(listed(await screen.findByRole('menu', { name: 'Проект разговора' }))).toEqual(['Акты', 'бюджет', 'Ёлка', 'Проект 9', 'Проект 10', 'Сверка']);
+    });
+
+    it('from 21 projects the search at the top narrows the list as typed, ё like е, and Enter picks the first one left', async () => {
+      const many = Array.from({ length: 20 }, (_, i) => named(`Проект ${i + 1}`, i + 1, `m${i + 1}`));
+      const { s, user, menu } = await openPicker([...many, named('Счёт Семёнову', 25, 'bill')]);
+      const search = within(menu).getByRole('searchbox', { name: 'Найти проект' });
+      expect(search).toHaveFocus();
+      expect(within(menu).getByRole('button', { name: 'Порядок: сначала недавние' })).toBeInTheDocument();
+      // Nothing typed yet: Enter does not move the conversation into the first project.
+      await user.keyboard('{Enter}');
+      expect(s.calls.some((c) => c.method === 'PUT')).toBe(false);
+      expect(menu).toBeInTheDocument();
+      await user.type(search, 'семен');
+      expect(listed(menu)).toEqual(['Счёт Семёнову']);
+      await user.clear(search);
+      await user.type(search, 'ПРОЕКТ 2');
+      expect(listed(menu)).toEqual(['Проект 20', 'Проект 2']);
+      // «Без проекта» is not a project: it stays above whatever the search leaves.
+      expect(within(menu).getByRole('menuitemradio', { name: 'Без проекта' })).toBeInTheDocument();
+      await user.type(search, 'Ъ');
+      expect(listed(menu)).toEqual([]);
+      expect(within(menu).getByText('Нет совпадений')).toBeInTheDocument();
+      await user.type(search, '{Backspace}{Enter}');
+      await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ projectId: 'm20' }));
+      // The keyboard stays at the chip, not at the start of the page.
+      await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-haspopup', 'menu'));
+    });
+
+    it('Esc closes the menu and puts the keyboard back on the chip', async () => {
+      const { user, chip, menu } = await openPicker(Array.from({ length: 21 }, (_, i) => named(`Проект ${i + 1}`, i + 1, `m${i + 1}`)));
+      await user.type(within(menu).getByRole('searchbox', { name: 'Найти проект' }), 'про');
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('menu', { name: 'Проект разговора' })).not.toBeInTheDocument();
+      expect(chip).toHaveFocus();
+    });
+
+    it('a touch screen does not get the cursor in the search: its keyboard would cover the list', async () => {
+      const system = window.matchMedia.bind(window);
+      vi.stubGlobal('matchMedia', (query: string) => (query === '(pointer: fine)' ? { ...system(query), matches: false } : system(query)));
+      const { menu } = await openPicker(Array.from({ length: 21 }, (_, i) => named(`Проект ${i + 1}`, i + 1, `m${i + 1}`)));
+      expect(within(menu).getByRole('searchbox', { name: 'Найти проект' })).not.toHaveFocus();
+    });
   });
 
   // A project is archived, not removed (decision of the owner 16.11): «Вернуть» in the notice.

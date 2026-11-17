@@ -33,6 +33,10 @@ export interface ProjectDto {
   instructions: string;
   // The person's own conversations in the project: the others' are theirs alone.
   threadCount: number;
+  // When the person last worked in the project: their latest conversation in it; before any — the
+  // latest of its creation and the person's first opening of it. The project picker of the input sorts
+  // by it, a colleague's project not opened yet («новое», `unseen`) going first.
+  lastActiveAt: string;
   pinned: boolean;
   createdAt: string;
   role: 'owner' | 'member';

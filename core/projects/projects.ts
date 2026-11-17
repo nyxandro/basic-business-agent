@@ -82,13 +82,31 @@ async function liveLinks(deps: ProjectsDeps, userId: string, ownThreadIds: Reado
   return live;
 }
 
-async function threadCounts(deps: ProjectsDeps, userId: string): Promise<Map<string, number>> {
+// The person's own conversations in each project: how many, and when the latest one was updated.
+interface ThreadStats {
+  count: number;
+  lastAt: Date;
+}
+
+async function threadStats(deps: ProjectsDeps, userId: string): Promise<Map<string, ThreadStats>> {
   const threads = await listOwnThreads(deps.memory, userId);
-  const counts = new Map<string, number>();
-  for (const projectId of (await liveLinks(deps, userId, new Set(threads.map((t) => t.id)))).values()) {
-    if (projectId) counts.set(projectId, (counts.get(projectId) ?? 0) + 1);
+  const updated = new Map(threads.map((t) => [t.id, new Date(t.updatedAt)]));
+  const stats = new Map<string, ThreadStats>();
+  for (const [threadId, projectId] of await liveLinks(deps, userId, new Set(updated.keys()))) {
+    if (!projectId) continue;
+    const at = updated.get(threadId)!;
+    const known = stats.get(projectId);
+    stats.set(projectId, known ? { count: known.count + 1, lastAt: known.lastAt > at ? known.lastAt : at } : { count: 1, lastAt: at });
   }
-  return counts;
+  return stats;
+}
+
+// When the person last worked in the project (the picker of the input sorts by it): their latest
+// conversation in it; before that, the latest of the project's creation and the person's first opening
+// of it (a colleague's project not opened yet is «новое»: the picker puts it first by itself).
+function lastActive(row: ListedRow, threads: ThreadStats | undefined): string {
+  const times = [row.created_at, row.seen_at, threads?.lastAt].filter((at): at is Date => at instanceof Date);
+  return new Date(Math.max(...times.map((at) => at.getTime()))).toISOString();
 }
 
 async function listedRows(db: Queryable, userId: string, where: string, params: unknown[] = []): Promise<ListedRow[]> {
@@ -104,13 +122,14 @@ async function listedRows(db: Queryable, userId: string, where: string, params: 
   return rows;
 }
 
-async function toDto(db: Queryable, userId: string, row: ListedRow, threadCount: number): Promise<ProjectDto> {
+async function toDto(db: Queryable, userId: string, row: ListedRow, threads: ThreadStats | undefined): Promise<ProjectDto> {
   const role: ProjectRole = row.user_id === userId ? 'owner' : 'member';
   return {
     id: row.id,
     name: row.name,
     instructions: row.instructions,
-    threadCount,
+    threadCount: threads?.count ?? 0,
+    lastActiveAt: lastActive(row, threads),
     pinned: row.pinned,
     createdAt: row.created_at.toISOString(),
     role,
@@ -125,10 +144,10 @@ async function toDto(db: Queryable, userId: string, row: ListedRow, threadCount:
 }
 
 export async function listProjects(deps: ProjectsDeps, userId: string): Promise<ProjectListResponse> {
-  const counts = await threadCounts(deps, userId);
+  const stats = await threadStats(deps, userId);
   const rows = await listedRows(deps.db, userId, 'p.archived_at IS NULL');
   const { rows: archived } = await deps.db.query<{ n: number }>('SELECT count(*)::int AS n FROM app.projects WHERE user_id = $1 AND archived_at IS NOT NULL', [userId]);
-  return { projects: await Promise.all(rows.map((r) => toDto(deps.db, userId, r, counts.get(r.id) ?? 0))), archivedCount: archived[0]!.n };
+  return { projects: await Promise.all(rows.map((r) => toDto(deps.db, userId, r, stats.get(r.id)))), archivedCount: archived[0]!.n };
 }
 
 // One project as its page shows it: the creator also gets an archived one, for reading.
@@ -136,7 +155,7 @@ export async function projectDto(deps: ProjectsDeps, userId: string, projectId: 
   await visibleProject(deps.db, userId, projectId, 'owner');
   const [row] = await listedRows(deps.db, userId, 'p.id = $2 AND (p.archived_at IS NULL OR p.user_id = $1)', [projectId]);
   if (!row) throw new Error(`project ${projectId} was seen and is gone`);
-  return toDto(deps.db, userId, row, (await threadCounts(deps, userId)).get(projectId) ?? 0);
+  return toDto(deps.db, userId, row, (await threadStats(deps, userId)).get(projectId));
 }
 
 // Opening the project's page or working in it takes «новое» off.

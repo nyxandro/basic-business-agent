@@ -216,6 +216,8 @@ const PATHS = {
     </>
   ),
   logout: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />,
+  // «A» over «Z» and an arrow down: by name.
+  sortName: <path d="M4 11l2.5-7 2.5 7M5 8.6h3M4 14h5l-5 6h5M17 4v16M13.5 16.5L17 20l3.5-3.5" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
