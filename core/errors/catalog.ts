@@ -96,6 +96,12 @@ export const ERROR_CATALOG = {
   APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },
   APP_APPROVAL_EXPIRED: { status: 410, userMessage: 'Истекло: действие не выполнено. Если оно ещё нужно, запустите задачу снова.' },
   APP_APPROVAL_DECIDED: { status: 409, userMessage: 'По этому действию решение уже принято.' },
+  APP_MEMORY_FULL: { status: 409, userMessage: 'Память заполнена. Удалите устаревшие записи и попробуйте снова.' },
+  APP_MEMORY_ENTRY_TOO_LONG: { status: 400, userMessage: 'Запись — не длиннее 400 знаков.' },
+  APP_MEMORY_ENTRY_NOT_FOUND: { status: 404, userMessage: 'Этой записи уже нет: её удалили.' },
+  APP_MEMORY_DUPLICATE: { status: 409, userMessage: 'Такая запись уже есть.' },
+  APP_MEMORY_CONFLICT: { status: 409, userMessage: 'Запись изменили, пока вы её правили.' },
+  APP_MEMORY_SAVE_FAILED: { status: 500, userMessage: 'Не удалось сохранить запись. Попробуйте ещё раз.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;
