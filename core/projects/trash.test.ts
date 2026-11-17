@@ -140,7 +140,7 @@ describe('the trash of a project', () => {
     const items = (await trashOf(p.id)).flatMap((b) => b.items);
     const old = items.find((i) => i.path === 'старый.txt')!;
     await t.db.query("UPDATE app.project_trash SET deleted_at = now() - interval '31 days', expires_at = now() - interval '1 day' WHERE id = $1", [old.id]);
-    const purged = await purgeTrash(t.db, t.workspaceRoot);
+    const purged = await purgeTrash(t.db, t.storage);
     expect(purged.files).toBeGreaterThanOrEqual(1);
     expect((await trashOf(p.id)).flatMap((b) => b.items).map((i) => i.path)).toEqual(['свежий.txt']);
     expect(existsSync(join(trashDir(t.workspaceRoot, olgaId, p.id), old.id))).toBe(false);

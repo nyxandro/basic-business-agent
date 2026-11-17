@@ -11,7 +11,8 @@ import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { listOwnThreads } from '../memory/memory.ts';
 import { logEvent } from '../server/log.ts';
-import { contextRoot, listFiles, removeProjectFolder } from '../workspace/layout.ts';
+import { projectArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';
 import { checkAccess, describeAccess, writeAccess } from './sharing.ts';
 
@@ -27,6 +28,8 @@ export interface ProjectsDeps {
   db: Db;
   memory: Memory;
   workspaceRoot: string;
+  // Where the files are kept (spec, section 8.23).
+  storage: FileStorage;
 }
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
@@ -269,14 +272,17 @@ export async function listArchive(deps: ProjectsDeps, userId: string): Promise<A
     `SELECT p.id, p.name, p.archived_at, ${SHARED} AS shared FROM app.projects p WHERE p.user_id = $1 AND p.archived_at IS NOT NULL ORDER BY p.archived_at DESC, p.id`,
     [userId],
   );
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    archivedAt: r.archived_at.toISOString(),
-    deletableFrom: new Date(r.archived_at.getTime() + PROJECT_ARCHIVE_DAYS * DAY_MS).toISOString(),
-    files: listFiles(contextRoot(deps.workspaceRoot, userId, r.id)).length,
-    shared: r.shared,
-  }));
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      name: r.name,
+      archivedAt: r.archived_at.toISOString(),
+      deletableFrom: new Date(r.archived_at.getTime() + PROJECT_ARCHIVE_DAYS * DAY_MS).toISOString(),
+      // From the list of the bucket while the project has no copy on the disk (spec, section 8.23).
+      files: (await deps.storage.list(projectArea(r.id, userId))).length,
+      shared: r.shared,
+    })),
+  );
 }
 
 // Removed for good — only from the archive, and not before PROJECT_ARCHIVE_DAYS there. The creator's
@@ -296,7 +302,7 @@ export async function deleteProject(deps: ProjectsDeps, userId: string, projectI
     await c.query('DELETE FROM app.thread_projects WHERE project_id = $1 AND user_id = $2', [projectId, project.user_id]);
     await c.query('DELETE FROM app.projects WHERE id = $1', [projectId]);
   });
-  removeProjectFolder(deps.workspaceRoot, project.user_id, projectId);
+  await deps.storage.drop(projectArea(projectId, project.user_id));
 }
 
 // Puts a conversation into a project the person sees (or out of any). The conversation may not

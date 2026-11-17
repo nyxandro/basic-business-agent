@@ -26,6 +26,7 @@ export const SECTIONS: SectionDef[] = [
   { path: 'journal', label: 'Журнал действий', icon: 'list', group: 'Система', rights: ['journal'] },
   { path: 'org-profile', label: 'Профиль организации', icon: 'org', group: 'Система', rights: ['org_profile'] },
   { path: 'interface', label: 'Интерфейс', icon: 'sliders', group: 'Система', rights: ['interface'] },
+  { path: 'storage', label: 'Хранилище файлов', icon: 'db', group: 'Система', rights: ['storage'] },
 ];
 
 // Names of rights in the role editor; the document rights are reserved for the knowledge base.
@@ -43,6 +44,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   models: 'Нейросеть',
   skills: 'Скиллы',
   interface: 'Интерфейс',
+  storage: 'Хранилище файлов',
   'documents.org.manage': 'Документы организации',
   'documents.department.manage': 'Документы отдела',
 };

@@ -4,6 +4,9 @@ import type {
   AgentMarkAdminState,
   AgentMarkKind,
   InterfaceAdminState,
+  StorageConnectInput,
+  StorageKeysInput,
+  StorageStatus,
   AdminAgentsResponse,
   AdminConnectionsResponse,
   AdminDepartment,
@@ -124,6 +127,10 @@ export const adminApi = {
   orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),
   saveOrgProfile: (body: OrgProfile) => api<Ok>('PUT', `${A}/org-profile`, body),
   interfaceSettings: () => api<InterfaceAdminState>('GET', `${A}/interface`),
+  storage: () => api<StorageStatus>('GET', `${A}/storage`),
+  connectStorage: (input: StorageConnectInput) => api<StorageStatus>('POST', `${A}/storage`, input),
+  storageKeys: (input: StorageKeysInput) => api<StorageStatus>('PUT', `${A}/storage/keys`, input),
+  disconnectStorage: () => api<StorageStatus>('DELETE', `${A}/storage`),
   saveInterface: (settings: InterfaceAdminState) => api<InterfaceAdminState>('PUT', `${A}/interface`, settings),
   // «Значок» of an agent. The picture goes only when a new one was chosen; the one kept on the server stays otherwise.
   saveAgentMark: (agentId: string, { kind, icon, image }: { kind: AgentMarkKind; icon: AgentIcon; image: Blob | null }) => {

@@ -11,6 +11,7 @@ import { trashedAt } from '../projects/trash.ts';
 import { logEvent } from '../server/log.ts';
 import { access, type AppEnv } from '../server/http.ts';
 import { fileDownload } from '../workspace/download.ts';
+import { areaOf, userArea } from '../storage/areas.ts';
 import { filesRoot, isFileInside, resolveInside } from '../workspace/layout.ts';
 import { recentFiles } from './files.ts';
 
@@ -36,15 +37,28 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps):
     const project = projectId ? requireActive(await visibleProject(deps.db, userId, projectId)) : null;
     const folder = filesRoot(deps.workspaceRoot, project?.user_id ?? userId, project?.id ?? null);
     const name = basename(resolveInside(folder, path));
-    if (isFileInside(folder, path)) return c.json<SearchFileStatus>({ state: 'ok' });
+    // The folder is on the disk for the check (an S3 bucket keeps the files, spec section 8.23).
+    const release = await deps.storage.hold(areaOf(userId, project), 'read');
+    let present: boolean;
+    try {
+      present = isFileInside(folder, path);
+    } finally {
+      await release();
+    }
+    if (present) return c.json<SearchFileStatus>({ state: 'ok' });
     const trashed = project ? await trashedAt(deps.db, project.id, relative(folder, resolveInside(folder, path))) : null;
     if (project && trashed) return c.json<SearchFileStatus>({ state: 'trash', name, projectId: project.id, trashId: trashed.id, expiresAt: trashed.expiresAt.toISOString() });
     return c.json<SearchFileStatus>({ state: 'deleted', name });
   });
 
   // A file of the person's conversations outside projects: only their own folder.
-  app.get('/app/api/files/file', (c) => {
+  app.get('/app/api/files/file', async (c) => {
     const userId = access(c).userId;
-    return fileDownload(filesRoot(deps.workspaceRoot, userId, null), c.req.query('path') ?? '', 'Файл не найден.', undefined, c.req.query('inline') === '1');
+    const release = await deps.storage.hold(userArea(userId), 'read');
+    try {
+      return fileDownload(filesRoot(deps.workspaceRoot, userId, null), c.req.query('path') ?? '', 'Файл не найден.', undefined, c.req.query('inline') === '1');
+    } finally {
+      await release();
+    }
   });
 }

@@ -45,6 +45,8 @@ import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase } from '../db/test-database.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
+import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
+import type { ObjectStore, S3Config } from '../storage/object-store.ts';
 import { createApp } from './app.ts';
 import type { AppEnv } from './http.ts';
 
@@ -71,6 +73,8 @@ export interface TestApp {
   registry: Registry;
   background: BackgroundService;
   workspaceRoot: string;
+  // Where the files are kept: the disk, or a fake bucket the test connects (spec, section 8.23).
+  storage: FileStorage;
   // Mastra memory of the conversations: tests create threads directly.
   memory: Memory;
   // Unpacked skills of this test installation.
@@ -148,6 +152,9 @@ export async function createTestApp(
     // The agents get the employee's folder and the bubblewrap sandbox of an installation (the browser
     // stand: an agent makes a document there and shows it with «Скачать», spec section 8.18).
     sandbox?: boolean;
+    // How long an unused copy of a folder stays when files are in a bucket (KEEP_COPY_MS in an installation).
+    keepCopyMs?: number;
+    connectStore?: (config: S3Config) => ObjectStore;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -212,6 +219,8 @@ export async function createTestApp(
   const skillsDir = mkdtempSync(join(tmpdir(), 'bba-test-skills-'));
   const skillsDeps = { db, skillsDir, systemSkills: SYSTEM_SKILLS };
   const skills = createSkillsRuntime(skillsDeps);
+  const files = createFileStorage({ db, box, workspaceRoot, keepCopyMs: opts.keepCopyMs ?? KEEP_COPY_MS, ...(opts.connectStore ? { connectStore: opts.connectStore } : {}) });
+  await files.start();
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({
@@ -231,11 +240,11 @@ export async function createTestApp(
       : {}),
   });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills, workspaceRoot });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills, workspaceRoot, storage: files });
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });
@@ -250,7 +259,7 @@ export async function createTestApp(
       };
   const accounts = createChatGptAccounts({ db, box, writer, auth: chatgptAuth, authDir: chatgptAuthDir, timezone: 'Europe/Moscow' });
   const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow' });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow', storage: files });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -285,6 +294,7 @@ export async function createTestApp(
     registry,
     background,
     workspaceRoot,
+    storage: files,
     memory,
     skillsDir,
     skillsDeps,
@@ -307,6 +317,7 @@ export async function createTestApp(
     },
     async close() {
       background.stop();
+      files.stop();
       // Deployments this test database put into the shared test LiteLLM leave with it.
       await reconcile(litellm, teamId, []);
       // The login files of this database's accounts; other test files share the gateway's folder.

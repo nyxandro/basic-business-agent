@@ -28,6 +28,8 @@ import { registerSearchRoutes } from '../search/routes.ts';
 import { registerVoiceRoutes } from '../voice/routes.ts';
 import { registerSkillRoutes } from '../skills-admin/routes.ts';
 import { registerInterfaceRoutes } from '../interface-settings/routes.ts';
+import type { FileStorage } from '../storage/engine.ts';
+import { registerStorageRoutes } from '../storage/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
@@ -46,6 +48,8 @@ export interface ServerDeps {
   chat: ChatDeps & { copilot: CopilotHandler };
   background: BackgroundService;
   timezone: string;
+  // Where the files of conversations and projects are kept (spec, section 8.23).
+  storage: FileStorage;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -66,13 +70,13 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
     db: deps.db,
     publicUrl: deps.publicUrl,
     gateway: deps.gateway,
-    deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot },
+    deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage },
   });
   registerRoleRoutes(app, deps);
   registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts });
   registerConnectionRoutes(app, deps);
   registerChatRoutes(app, deps.chat);
-  const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot };
+  const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
   registerProjectRoutes(app, projects);
   registerSearchRoutes(app, projects);
   registerFileSearchRoutes(app, projects);
@@ -83,6 +87,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerModelRoutes(app, deps.models, deps.accounts);
   registerSkillRoutes(app, deps.skills);
   registerInterfaceRoutes(app, { db: deps.db, registry: deps.chat.registry });
+  registerStorageRoutes(app, { db: deps.db, storage: deps.storage });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;
 }

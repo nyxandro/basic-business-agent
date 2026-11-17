@@ -14,7 +14,7 @@ let petrId: string;
 let olga: string;
 let tender: string;
 
-const deps = () => ({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot });
+const deps = () => ({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot, storage: t.storage });
 function put(root: string, path: string, minutesAgo = 0): void {
   const full = join(root, path);
   mkdirSync(dirname(full), { recursive: true });

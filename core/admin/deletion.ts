@@ -10,6 +10,8 @@ import { appError } from '../errors/catalog.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { transferProjects } from '../projects/transfer.ts';
 import { deleteUserWorkspace } from '../workspace/layout.ts';
+import { userArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { logEvent } from '../server/log.ts';
 
 const SUPERADMIN_LOCK_KEY = 74_010_002;
@@ -19,6 +21,8 @@ export interface DeletionDeps {
   memory: Memory;
   gateway: Pick<ModelGateway, 'forgetUser'>;
   workspaceRoot: string;
+  // Where the files are kept (spec, section 8.23): the person's files go from the bucket too.
+  storage: Pick<FileStorage, 'drop' | 'exclusive'>;
 }
 
 async function startDeletion(db: Db, actorUserId: string, userId: string): Promise<void> {
@@ -65,8 +69,14 @@ export async function deleteEmployee(deps: DeletionDeps, actorUserId: string, us
     ],
     ['memory', () => deps.memory.updateWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId, workingMemory: '' })],
     // Their projects go to the administrator who removes them (spec, section 8.20), before their folder goes.
-    ['projects', () => transferProjects(deps.db, deps.workspaceRoot, userId, actorUserId)],
-    ['workspace', () => Promise.resolve(deleteUserWorkspace(deps.workspaceRoot, userId))],
+    ['projects', () => transferProjects(deps.db, deps.storage, deps.workspaceRoot, userId, actorUserId)],
+    [
+      'workspace',
+      async () => {
+        await deps.storage.drop(userArea(userId));
+        deleteUserWorkspace(deps.workspaceRoot, userId);
+      },
+    ],
     ['account', () => deps.db.query('DELETE FROM app."user" WHERE "id" = $1', [userId])],
   ];
   for (const [name, run] of steps) {

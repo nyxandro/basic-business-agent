@@ -10,8 +10,7 @@ import type pg from 'pg';
 import type { ProjectsDeps } from '../projects/projects.ts';
 import { logEvent } from '../server/log.ts';
 import { setImmediate as pause } from 'node:timers/promises';
-import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { filesRoot } from '../workspace/layout.ts';
+import { projectArea, userArea } from '../storage/areas.ts';
 import { marksOf } from './marks.ts';
 import { matchNames } from './match-sql.ts';
 import type { WordVariants } from './variants.ts';
@@ -32,21 +31,22 @@ interface Collected {
 
 // `projects` — what the person sees (listProjects): never an archived one, never someone's own folder.
 async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<Collected> {
-  const folders = [{ project: null, root: filesRoot(deps.workspaceRoot, userId, null) }, ...projects.map((p) => ({ project: p, root: filesRoot(deps.workspaceRoot, p.owner.id, p.id) }))];
+  const folders = [{ project: null, area: userArea(userId) }, ...projects.map((p) => ({ project: p, area: projectArea(p.id, p.owner.id) }))];
   const out: Collected = { files: [], unreadable: [] };
-  for (const { project, root } of folders) {
+  for (const { project, area } of folders) {
     const found: Listed[] = [];
     let capped = false;
     try {
       await pause();
-      walkRegularFiles(root, (file) => {
+      // From the folder, or from the list of the bucket while the folder has no copy on the disk (8.23).
+      await deps.storage.walkFiles(area, (file) => {
         if (!DOCUMENTS.has(extname(file.rel).toLowerCase())) return true;
         // The walk stops at the limit: a folder of tens of thousands of files is not read to its end.
         if (found.length >= MAX_FOLDER_DOCUMENTS) {
           capped = true;
           return false;
         }
-        found.push({ path: file.rel, name: basename(file.rel), nameMarks: [], projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.size, modifiedMs: file.modifiedMs });
+        found.push({ path: file.rel, name: basename(file.rel), nameMarks: [], projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.bytes, modifiedMs: file.modifiedMs });
         return true;
       });
     } catch (error) {

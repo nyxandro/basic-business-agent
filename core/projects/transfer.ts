@@ -9,6 +9,8 @@ import { writeAudit } from '../audit/audit.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { logEvent } from '../server/log.ts';
 import { projectRoot } from '../workspace/layout.ts';
+import { projectArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { NAME_MAX } from './projects.ts';
 
 // The administrator may have a project of the same name: the given one is named after its creator.
@@ -28,7 +30,7 @@ async function freeProjectName(db: Pick<Db, 'query'>, userId: string, name: stri
   throw new Error(`no free name for project "${name}" of user ${userId} after ${NAME_TRIES} tries`);
 }
 
-export async function transferProjects(db: Db, workspaceRoot: string, fromUserId: string, toUserId: string): Promise<number> {
+export async function transferProjects(db: Db, storage: Pick<FileStorage, 'exclusive'>, workspaceRoot: string, fromUserId: string, toUserId: string): Promise<number> {
   const { rows: former } = await db.query<{ name: string }>('SELECT "name" FROM app."user" WHERE "id" = $1', [fromUserId]);
   const formerOwner = former[0]?.name ?? fromUserId;
   const { rows } = await db.query<{ id: string; name: string }>('SELECT id, name FROM app.projects WHERE user_id = $1 ORDER BY created_at', [fromUserId]);
@@ -37,12 +39,15 @@ export async function transferProjects(db: Db, workspaceRoot: string, fromUserId
     // there would go with it.
     const from = projectRoot(workspaceRoot, fromUserId, project.id);
     const to = projectRoot(workspaceRoot, toUserId, project.id);
-    const moved = existsSync(from);
-    if (moved) {
+    // Nothing makes or removes a copy of the project meanwhile (spec, section 8.23); in the bucket the
+    // project is found by its id alone, so only a copy on the disk moves.
+    const moved = await storage.exclusive(projectArea(project.id, fromUserId), () => {
+      if (!existsSync(from)) return false;
       if (existsSync(to)) throw new Error(`project folder ${to} is already there`);
       mkdirSync(dirname(to), { recursive: true });
       renameSync(from, to);
-    }
+      return true;
+    });
     try {
       await inTransaction(db, async (c) => {
         const name = await freeProjectName(c, toUserId, project.name, formerOwner);

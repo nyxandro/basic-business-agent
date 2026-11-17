@@ -23,6 +23,8 @@ import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels } from '../models/resolve.ts';
 import { runProjectOf, runProjectOfWaitingAnswer } from '../projects/access.ts';
 import { settleSnapshot, takeSnapshot } from '../projects/trash.ts';
+import { projectArea, userArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
@@ -64,6 +66,8 @@ export interface BackgroundDeps {
   skills: Pick<SkillsRuntime, 'skillsFor'>;
   // Employees' folders: what a run removes from a project goes into its trash (spec, section 8.20).
   workspaceRoot: string;
+  // Where the files are kept: a run holds its folder (spec, section 8.23).
+  storage: Pick<FileStorage, 'hold'>;
 }
 
 export interface BackgroundService {
@@ -134,18 +138,24 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     return rc;
   }
 
-  // A run in a project: its files are remembered before it, and what it removes goes into the trash
-  // after it, whatever way it ends (spec, section 8.20).
-  async function inProjectSnapshot<T>(rc: RequestContext, userId: string, threadId: string, work: () => Promise<T>): Promise<T> {
+  // A run holds its folder; in a project its files are remembered before it, and what it removes goes
+  // into the trash after it, whatever way it ends (spec, sections 8.20 and 8.23).
+  async function inRunFolder<T>(rc: RequestContext, userId: string, threadId: string, work: () => Promise<T>): Promise<T> {
     const projectId = optionalContextValue(rc, REQUEST_KEYS.projectId);
     const ownerId = optionalContextValue(rc, REQUEST_KEYS.projectOwnerId);
-    if (!projectId || !ownerId) return work();
-    const snapshot = takeSnapshot(deps.workspaceRoot, { projectId, ownerId, userId, threadId });
-    rc.set(REQUEST_KEYS.projectSnapshot, snapshot.id);
+    // The run's folder stays on the disk while it runs (an S3 bucket keeps the files, spec section 8.23).
+    const release = await deps.storage.hold(projectId && ownerId ? projectArea(projectId, ownerId) : userArea(userId), 'write');
     try {
-      return await work();
+      if (!projectId || !ownerId) return await work();
+      const snapshot = takeSnapshot(deps.workspaceRoot, { projectId, ownerId, userId, threadId });
+      rc.set(REQUEST_KEYS.projectSnapshot, snapshot.id);
+      try {
+        return await work();
+      } finally {
+        await settleSnapshot(db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId, error }));
+      }
     } finally {
-      await settleSnapshot(db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId, error }));
+      await release();
     }
   }
 
@@ -183,7 +193,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       const agent = await resolveAgent(deps.editor, row.agent_id, 'published');
       const requestContext = await contextFor(row, threadId, userId);
       await writeJournal(db, { ...journalBase, event: 'background_started', result: 'started' });
-      const awaiting = await inProjectSnapshot(requestContext, userId, threadId, async () => {
+      const awaiting = await inRunFolder(requestContext, userId, threadId, async () => {
         const stream = await agent.stream(row.prompt, { memory: { thread: threadId, resource: userId }, requestContext });
         let waits = false;
         for await (const part of stream.fullStream) {
@@ -235,7 +245,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     const agent = await resolveAgent(deps.editor, approval.agentId, 'published');
     const requestContext = await contextFor(row, approval.threadId, approval.userId, approval);
     const options = { runId: approval.runId, toolCallId: approval.toolCallId, memory: { thread: approval.threadId, resource: approval.userId }, requestContext };
-    await inProjectSnapshot(requestContext, approval.userId, approval.threadId, async () => {
+    await inRunFolder(requestContext, approval.userId, approval.threadId, async () => {
       const stream = approved ? await agent.approveToolCall(options) : await agent.declineToolCall({ ...options, reason: reason ?? 'Сотрудник отказался.' });
       for await (const part of stream.fullStream) {
         if (part.type === 'error') throw (part.payload as { error: unknown }).error;

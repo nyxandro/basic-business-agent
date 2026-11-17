@@ -14,6 +14,7 @@ import { threadProjectState, type ThreadProjectState } from '../projects/access.
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileDownload } from '../workspace/download.ts';
+import { areaOf, type Area } from '../storage/areas.ts';
 import { contextRoot, isFileInside, resolveInside, saveFile } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
@@ -236,35 +237,47 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // folder — with its creator — when the person sees the project, otherwise the person's own. Only the
   // person's own conversation or their draft check of a prompt; a conversation not saved yet (a file
   // attached before the first message) is their own.
-  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; folder: string }> {
+  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; area: Area; folder: () => string }> {
     const thread = await deps.memory.getThreadById({ threadId });
     if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
     }
     const state = await threadProjectState(deps.db, userId, threadId);
-    const folder = state.state === 'active' ? contextRoot(deps.workspaceRoot, state.project.user_id, state.project.id) : contextRoot(deps.workspaceRoot, userId, null);
-    return { state, folder };
+    const area = areaOf(userId, state.state === 'active' ? state.project : null);
+    return { state, area, folder: () => (state.state === 'active' ? contextRoot(deps.workspaceRoot, state.project.user_id, state.project.id) : contextRoot(deps.workspaceRoot, userId, null)) };
+  }
+
+  // The folder is on the disk while `work` runs (an S3 bucket keeps the files, spec section 8.23).
+  async function inFolder<T>(found: { area: Area; folder: () => string }, how: 'read' | 'write', work: (folder: string) => T | Promise<T>): Promise<T> {
+    const release = await deps.storage.hold(found.area, how);
+    try {
+      return await work(found.folder());
+    } finally {
+      await release();
+    }
   }
 
   // An attachment goes where the agent of the conversation works: a project gone for the person
   // leaves them their own folder.
   app.post('/app/api/threads/:threadId/files', async (c) => {
-    const { folder } = await threadFolders(access(c).userId, c.req.param('threadId'));
+    const found = await threadFolders(access(c).userId, c.req.param('threadId'));
     const file = await readUploadedFile(c);
-    return c.json(saveFile(folder, file.name, new Uint8Array(await file.arrayBuffer())), 201);
+    const data = new Uint8Array(await file.arrayBuffer());
+    return c.json(await inFolder(found, 'write', (folder) => saveFile(folder, file.name, data)), 201);
   });
 
   // What «Скачать» of a file block will find (spec, sections 8.18 and 8.20): the file; or it was
   // removed and lies in the project's trash (found by its exact path), or is gone; or it is a file of
   // a project gone for the person — a file of their own folder in such a conversation is still theirs.
   async function fileStatus(userId: string, threadId: string, path: string): Promise<ThreadFileStatus> {
-    const { state, folder } = await threadFolders(userId, threadId);
-    const full = resolveInside(folder, path);
+    const found = await threadFolders(userId, threadId);
+    const { state } = found;
+    const { full, present } = await inFolder(found, 'read', (folder) => ({ full: relative(folder, resolveInside(folder, path)), present: isFileInside(folder, path) }));
     const name = basename(full);
-    if (isFileInside(folder, path)) return { state: 'ok' };
+    if (present) return { state: 'ok' };
     if (state.state === 'lost') return { state: 'lost', name, projectName: state.name, reason: state.reason };
     if (state.state === 'active') {
-      const trashed = await trashedAt(deps.db, state.project.id, relative(folder, full));
+      const trashed = await trashedAt(deps.db, state.project.id, full);
       if (trashed) return { state: 'trash', name, projectId: state.project.id, trashId: trashed.id, expiresAt: trashed.expiresAt.toISOString() };
     }
     return { state: 'deleted', name };
@@ -282,6 +295,6 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       throw appError('APP_FILE_IN_TRASH', 'the file was removed into the project trash', { userMessage: `Файл «${status.name}» удалён из рабочей папки. Он в корзине проекта до ${dayMonth(new Date(status.expiresAt), deps.timezone)}.` });
     }
     if (status.state === 'deleted') throw appError('APP_FILE_DELETED', 'the file is gone', { userMessage: `Файл «${status.name}» удалён из рабочей папки — скачать его нельзя.` });
-    return fileDownload((await threadFolders(userId, c.req.param('threadId'))).folder, path, `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`);
+    return inFolder(await threadFolders(userId, c.req.param('threadId')), 'read', (folder) => fileDownload(folder, path, `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`));
   });
 }

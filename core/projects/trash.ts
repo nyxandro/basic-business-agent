@@ -16,6 +16,8 @@ import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
 import { copyOpened, inFolderOf, openRegular, sameContent, walkRegularFiles } from '../workspace/held-folder.ts';
 import { contextRoot, freeName, moveFileOutOf, projectRoot, removeFileInside, resolveInside } from '../workspace/layout.ts';
+import { projectArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 
 export const TRASH_KEEP_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -331,7 +333,7 @@ export async function restoreFromTrash(db: Db, workspaceRoot: string, project: {
 }
 
 // Files older than 30 days leave the trash for good: the row first, then the file.
-export async function purgeTrash(db: Db, workspaceRoot: string, now = new Date()): Promise<{ files: number; bytes: number }> {
+export async function purgeTrash(db: Db, storage: Pick<FileStorage, 'removeFile'>, now = new Date()): Promise<{ files: number; bytes: number }> {
   const { rows } = await db.query<{ id: string; project_id: string; user_id: string; bytes: string }>(
     `DELETE FROM app.project_trash t USING app.projects p WHERE p.id = t.project_id AND t.expires_at <= $1
      RETURNING t.id, t.project_id, p.user_id, t.bytes`,
@@ -339,7 +341,8 @@ export async function purgeTrash(db: Db, workspaceRoot: string, now = new Date()
   );
   let bytes = 0;
   for (const r of rows) {
-    rmSync(join(trashDir(workspaceRoot, r.user_id, r.project_id), r.id), { force: true });
+    // From the disk and, with an S3 bucket, from the bucket (spec, section 8.23).
+    await storage.removeFile(projectArea(r.project_id, r.user_id), `${TRASH}/${r.id}`);
     bytes += Number(r.bytes);
   }
   if (rows.length > 0) logEvent('info', 'project_trash_purged', { files: rows.length, bytes });
@@ -402,8 +405,8 @@ export async function recoverProjectFolders(db: Db, workspaceRoot: string): Prom
 // for the next hour and is written to the log (`project_trash_purge_failed`).
 export const TRASH_PURGE_EVERY_MS = 60 * 60 * 1000;
 
-export function startTrashPurge(db: Db, workspaceRoot: string): () => void {
-  const purge = () => void purgeTrash(db, workspaceRoot).catch((error: unknown) => logEvent('error', 'project_trash_purge_failed', { code: 'APP_INTERNAL', error }));
+export function startTrashPurge(db: Db, storage: Pick<FileStorage, 'removeFile'>): () => void {
+  const purge = () => void purgeTrash(db, storage).catch((error: unknown) => logEvent('error', 'project_trash_purge_failed', { code: 'APP_INTERNAL', error }));
   purge();
   const timer = setInterval(purge, TRASH_PURGE_EVERY_MS);
   timer.unref();

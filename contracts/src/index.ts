@@ -9,3 +9,4 @@ export * from './models.ts';
 export * from './skills.ts';
 export * from './tasks.ts';
 export * from './interface.ts';
+export * from './storage.ts';

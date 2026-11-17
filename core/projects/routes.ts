@@ -8,7 +8,8 @@ import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { fileDownload } from '../workspace/download.ts';
-import { contextRoot, listFiles, saveFile } from '../workspace/layout.ts';
+import { contextRoot, saveFile } from '../workspace/layout.ts';
+import { projectArea } from '../storage/areas.ts';
 import { requireActive, threadProjectState, visibleProject } from './access.ts';
 import { registerDirectoryRoutes } from './directory.ts';
 import { listTrash, restoreFromTrash, trashDir, trashFromPage, trashItem } from './trash.ts';
@@ -39,6 +40,16 @@ export async function readUploadedFile(c: Context<AppEnv>): Promise<File> {
 export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): void {
   // The files folder of a project: it lives with its creator, whoever works in it.
   const folderOf = (project: { id: string; user_id: string }) => contextRoot(deps.workspaceRoot, project.user_id, project.id);
+  const areaOf = (project: { id: string; user_id: string }) => projectArea(project.id, project.user_id);
+  // The project's folder is on the disk while `work` runs (an S3 bucket keeps the files, spec 8.23).
+  async function inProject<T>(project: { id: string; user_id: string }, how: 'read' | 'write', work: () => T | Promise<T>): Promise<T> {
+    const release = await deps.storage.hold(areaOf(project), how);
+    try {
+      return await work();
+    } finally {
+      await release();
+    }
+  }
 
   registerDirectoryRoutes(app, deps.db);
 
@@ -97,26 +108,28 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   // Reading the files of an archived project is left to its creator; changing them — to nobody.
   app.get('/app/api/projects/:id/files', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
-    return c.json({ files: listFiles(folderOf(project)) });
+    // From the list of the bucket while the project has no copy on the disk: opening the page brings nothing.
+    return c.json({ files: await deps.storage.list(areaOf(project)) });
   });
 
   app.post('/app/api/projects/:id/files', async (c) => {
     const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner'));
     const file = await readUploadedFile(c);
-    return c.json(saveFile(folderOf(project), file.name, new Uint8Array(await file.arrayBuffer())), 201);
+    const data = new Uint8Array(await file.arrayBuffer());
+    return c.json(await inProject(project, 'write', () => saveFile(folderOf(project), file.name, data)), 201);
   });
 
   app.get('/app/api/projects/:id/file', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
     const path = c.req.query('path') ?? '';
-    return fileDownload(folderOf(project), path, 'Файл не найден.', undefined, c.req.query('inline') === '1');
+    return inProject(project, 'read', () => fileDownload(folderOf(project), path, 'Файл не найден.', undefined, c.req.query('inline') === '1'));
   });
 
   // «Удалить» of the page: into the project's trash (spec, section 8.20).
   app.delete('/app/api/projects/:id/file', async (c) => {
     const userId = access(c).userId;
     const project = requireActive(await visibleProject(deps.db, userId, c.req.param('id'), 'owner'));
-    const removed = await trashFromPage(deps.db, deps.workspaceRoot, project, c.req.query('path') ?? '', userId);
+    const removed = await inProject(project, 'write', () => trashFromPage(deps.db, deps.workspaceRoot, project, c.req.query('path') ?? '', userId));
     if (!removed) throw appError('APP_NOT_FOUND', 'no such project file', { userMessage: 'Файл не найден.' });
     return c.json({ ok: true, trashId: removed.trashId });
   });
@@ -130,14 +143,14 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   app.post('/app/api/projects/:id/trash/restore', async (c) => {
     const project = requireActive(await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner'));
     const body = await parseJson(c, trashRestoreSchema);
-    return c.json({ restored: await restoreFromTrash(deps.db, deps.workspaceRoot, project, body) });
+    return c.json({ restored: await inProject(project, 'write', () => restoreFromTrash(deps.db, deps.workspaceRoot, project, body)) });
   });
 
   app.get('/app/api/projects/:id/trash/:trashId/file', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
     const item = await trashItem(deps.db, project.id, c.req.param('trashId'));
     if (!item) throw appError('APP_NOT_FOUND', 'no such trash item', { userMessage: 'Этого файла в корзине уже нет.' });
-    return fileDownload(trashDir(deps.workspaceRoot, project.user_id, project.id), item.id, 'Этого файла в корзине уже нет.', basename(item.path));
+    return inProject(project, 'read', () => fileDownload(trashDir(deps.workspaceRoot, project.user_id, project.id), item.id, 'Этого файла в корзине уже нет.', basename(item.path)));
   });
 
   // The project of a conversation, also of one that has no messages yet (chosen beforehand), or why

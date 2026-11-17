@@ -34,6 +34,7 @@ import { createSkillsRuntime } from '../skills-admin/runtime.ts';
 import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
+import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
 
@@ -85,18 +86,22 @@ async function main(): Promise<void> {
     isolation: assertIsolationAvailable(),
   };
   assertSandboxEnvironment(SKILLS_VENV);
+  // Where the files are kept — the disk or the bucket the superadmin connected (spec, section 8.23).
+  const files = createFileStorage({ db, box, workspaceRoot: env.APP_WORKSPACE_DIR, keepCopyMs: KEEP_COPY_MS });
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone });
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, copilot: createCopilotHandler({ editor }) };
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone, storage: files });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);
-  const stopTrashPurge = startTrashPurge(db, env.APP_WORKSPACE_DIR);
+  // After the recovery: copies a stopped server left are stored into the bucket by the first pass.
+  await files.start();
+  const stopTrashPurge = startTrashPurge(db, files);
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
@@ -114,6 +119,7 @@ async function main(): Promise<void> {
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
     stopTrashPurge();
+    files.stop();
     await mastra.stopWorkers();
     await connections.close();
     server.close();

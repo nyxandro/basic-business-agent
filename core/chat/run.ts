@@ -17,6 +17,8 @@ import { runProjectOf, runProjectOfWaitingAnswer, type RunProject } from '../pro
 import { markSeen } from '../projects/projects.ts';
 import { logEvent } from '../server/log.ts';
 import { settleSnapshot, takeSnapshot, type ProjectSnapshot } from '../projects/trash.ts';
+import { projectArea, userArea } from '../storage/areas.ts';
+import type { FileStorage, Release } from '../storage/engine.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
@@ -38,6 +40,8 @@ export interface ChatDeps {
   connections: Pick<ConnectionManager, 'actionsSeen'>;
   // The service call that names a conversation beside the answer (spec, section 8.16).
   naming: NamingDeps;
+  // Where the files are kept: a run holds its folder until the agent ends (spec, section 8.23).
+  storage: FileStorage;
 }
 
 export interface RunInput {
@@ -66,6 +70,8 @@ export interface PreparedRun {
   models: ModelChoice | null;
   // Folders of the skills the employee gets, fixed for the run.
   skillPaths: string[];
+  // The run's folder held on the disk (spec, section 8.23): let go when the agent ends, after its trash.
+  release: Release | null;
 }
 
 // A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
@@ -89,10 +95,14 @@ function releaseThread(threadId: string): void {
 // agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the
 // server's to log, not the answer's; the snapshot is left for the start of the server then.
 export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
-  if (!run.snapshot) return;
-  const snapshot = run.snapshot;
+  const { snapshot, release } = run;
   run.snapshot = null;
-  void settleSnapshot(deps.db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: snapshot.projectId, error }));
+  run.release = null;
+  const settled = snapshot
+    ? settleSnapshot(deps.db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: snapshot.projectId, error }))
+    : Promise.resolve();
+  // The folder is let go after the trash took what the answer removed; a release never fails.
+  if (release) void settled.then(release);
 }
 
 // The browser's stream of the answer ended (done, closed tab, error). The thread is free; the trash
@@ -193,7 +203,9 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
     // The waiting answer goes on in its own project: one other than the new message's gets its own
     // snapshot, so what the agent removes after «отменено» reaches that project's trash too.
     const waiting = await runProjectOfWaitingAnswer(deps.db, pending.projectId);
-    const other = waiting.projectId && waiting.projectOwnerId && waiting.projectId !== run.projectId ? takeSnapshot(deps.workspaceRoot, { projectId: waiting.projectId, ownerId: waiting.projectOwnerId, userId: run.userId, threadId: run.threadId }) : null;
+    const otherProject = waiting.projectId && waiting.projectOwnerId && waiting.projectId !== run.projectId ? { projectId: waiting.projectId, ownerId: waiting.projectOwnerId } : null;
+    const releaseOther = otherProject ? await deps.storage.hold(projectArea(otherProject.projectId, otherProject.ownerId), 'write') : null;
+    const other = otherProject ? takeSnapshot(deps.workspaceRoot, { ...otherProject, userId: run.userId, threadId: run.threadId }) : null;
     try {
       const stream = await agent.declineToolCall({
         runId: pending.runId,
@@ -205,6 +217,7 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
       await stream.consumeStream();
     } finally {
       if (other) await settleSnapshot(deps.db, deps.workspaceRoot, other).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: other.projectId, error }));
+      if (releaseOther) await releaseOther();
     }
     await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
   }
@@ -216,7 +229,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths: await deps.skills.skillsFor(access.userId) };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths: await deps.skills.skillsFor(access.userId), release: null };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
   // Working in a project shared to the person takes its «новое» off.
@@ -230,8 +243,10 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     const call = parseInterrupt(resume?.interruptId);
     const agent = await resolveAgent(deps.editor, agentId, mode);
     const choose = () => chooseModels(deps.db, deps.timezone, run.userId, agentId);
-    // The project's files as they were before this answer, once its project is known.
-    const remember = () => {
+    // Once the run's folder is known: it is held on the disk for the answer (spec, 8.23), and a project's
+    // files are remembered as they were before it (8.20).
+    const remember = async () => {
+      run.release = await deps.storage.hold(run.projectId && run.projectOwnerId ? projectArea(run.projectId, run.projectOwnerId) : userArea(run.userId), 'write');
       if (run.projectId && run.projectOwnerId) run.snapshot = takeSnapshot(deps.workspaceRoot, { projectId: run.projectId, ownerId: run.projectOwnerId, userId: run.userId, threadId });
     };
 
@@ -244,7 +259,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       if (pending.status !== 'pending') throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} is ${pending.status}`, { userMessage: 'По этому действию решение уже принято.' });
       // «Да» or «Нет» goes on with the answer that waited: it is finished in the project it began in.
       Object.assign(run, await runProjectOfWaitingAnswer(deps.db, pending.projectId));
-      remember();
+      await remember();
       if (pending.expiresAt.getTime() < Date.now()) throw appError('APP_NOT_FOUND', `approval ${pending.id} expired`, { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
       const approved = resume?.status === 'resolved' && (resume.payload === true || (resume.payload as { approved?: unknown } | undefined)?.approved === true);
       if (!approved) {
@@ -267,7 +282,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
     } else {
       await deps.gateway.assertWithinBudget(run.userId);
       run.models = await choose();
-      remember();
+      await remember();
       for (const p of await cancelPending(deps, run, agent)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
     }
   } catch (error) {

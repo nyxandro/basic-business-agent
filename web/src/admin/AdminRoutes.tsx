@@ -16,6 +16,7 @@ import { ModesSection } from './ModesSection.tsx';
 import { OrgProfileSection } from './OrgProfileSection.tsx';
 import { RolesSection } from './RolesSection.tsx';
 import { SkillsSection } from './SkillsSection.tsx';
+import { StorageSection } from './StorageSection.tsx';
 import { UsersSection } from './UsersSection.tsx';
 
 export default function AdminRoutes() {
@@ -39,6 +40,7 @@ export default function AdminRoutes() {
         <Route path="connections" element={<RequireSection path="connections"><ConnectionsSection /></RequireSection>} />
         <Route path="journal" element={<RequireSection path="journal"><JournalSection /></RequireSection>} />
         <Route path="interface" element={<RequireSection path="interface"><InterfaceSection /></RequireSection>} />
+        <Route path="storage" element={<RequireSection path="storage"><StorageSection /></RequireSection>} />
       </Route>
     </Routes>
   );
