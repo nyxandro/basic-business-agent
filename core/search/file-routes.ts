@@ -14,10 +14,12 @@ import { fileResponse } from '../workspace/download.ts';
 import { areaOf, filesPrefix, userArea } from '../storage/areas.ts';
 import { filesRoot, resolveInside } from '../workspace/layout.ts';
 import { recentFiles } from './files.ts';
+import { pdfResponse } from '../preview/response.ts';
+import type { PreviewService } from '../preview/service.ts';
 
 const statusQuery = z.object({ path: z.string().min(1), projectId: z.uuid().optional() });
 
-export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): void {
+export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps & { preview: PreviewService }): void {
   app.get('/app/api/search/files', async (c) => {
     const userId = access(c).userId;
     try {
@@ -51,5 +53,13 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps):
     const folder = filesRoot(deps.workspaceRoot, userId, null);
     const rel = relative(folder, resolveInside(folder, c.req.query('path') ?? ''));
     return fileResponse(await deps.storage.openFile(userArea(userId), rel), 'Файл не найден.', basename(rel), c.req.query('inline') === '1');
+  });
+
+  // «Посмотреть» of the window of a found file: the PDF of a Word, Excel or PowerPoint file (spec, 8.27).
+  app.get('/app/api/files/file/preview', async (c) => {
+    const userId = access(c).userId;
+    const folder = filesRoot(deps.workspaceRoot, userId, null);
+    const rel = relative(folder, resolveInside(folder, c.req.query('path') ?? ''));
+    return pdfResponse(await deps.preview.pdf(userArea(userId), rel, 'Файл не найден.'), basename(rel), c.req.header('range'));
   });
 }

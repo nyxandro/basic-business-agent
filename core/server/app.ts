@@ -80,12 +80,12 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerRoleRoutes(app, deps);
   registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts });
   registerConnectionRoutes(app, deps);
-  registerChatRoutes(app, deps.chat);
+  registerChatRoutes(app, { ...deps.chat, preview: deps.preview });
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
-  registerProjectRoutes(app, projects);
+  registerProjectRoutes(app, { ...projects, preview: deps.preview });
   registerMemoryRoutes(app, { db: deps.db });
   registerSearchRoutes(app, projects);
-  registerFileSearchRoutes(app, projects);
+  registerFileSearchRoutes(app, { ...projects, preview: deps.preview });
   registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });

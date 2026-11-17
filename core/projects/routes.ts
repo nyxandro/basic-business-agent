@@ -14,6 +14,8 @@ import { requireActive, threadProjectState, visibleProject } from './access.ts';
 import { registerDirectoryRoutes } from './directory.ts';
 import { listTrash, restoreFromTrash, TRASH_FOLDER, trashFromPage, trashItem } from './trash.ts';
 import { archiveProject, createProject, deleteProject, listArchive, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
+import { pdfResponse } from '../preview/response.ts';
+import type { PreviewService } from '../preview/service.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
 export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
@@ -37,7 +39,7 @@ export async function readUploadedFile(c: Context<AppEnv>): Promise<File> {
   return file;
 }
 
-export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): void {
+export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps & { preview: PreviewService }): void {
   // The files folder of a project: it lives with its creator, whoever works in it.
   const folderOf = (project: { id: string; user_id: string }) => contextRoot(deps.workspaceRoot, project.user_id, project.id);
   const areaOf = (project: { id: string; user_id: string }) => projectArea(project.id, project.user_id);
@@ -127,6 +129,13 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
     // From the copy, or straight from the bucket: one file does not bring the whole project (spec, 8.23).
     const inArea = `files/${relative(filesOf(project), resolveInside(filesOf(project), path))}`;
     return fileResponse(await deps.storage.openFile(areaOf(project), inArea), 'Файл не найден.', basename(inArea), c.req.query('inline') === '1');
+  });
+
+  // The viewer of «Файлы проекта»: the PDF of a Word, Excel or PowerPoint file (spec, section 8.27).
+  app.get('/app/api/projects/:id/file/preview', async (c) => {
+    const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
+    const inArea = `files/${relative(filesOf(project), resolveInside(filesOf(project), c.req.query('path') ?? ''))}`;
+    return pdfResponse(await deps.preview.pdf(areaOf(project), inArea, 'Файл не найден.'), basename(inArea), c.req.header('range'));
   });
 
   // «Удалить» of the page: into the project's trash (spec, section 8.20).

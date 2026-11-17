@@ -14,6 +14,8 @@ import { threadProjectState, type ThreadProjectState } from '../projects/access.
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileResponse } from '../workspace/download.ts';
+import { pdfResponse } from '../preview/response.ts';
+import type { PreviewService } from '../preview/service.ts';
 import { areaOf, filesPrefix, type Area } from '../storage/areas.ts';
 import { contextRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
@@ -54,7 +56,7 @@ function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): App
 // A copy of a file of the person's computer stays this long after it was brought (spec, section 8.25).
 const COMPUTER_COPY_KEEP_MS = 60 * 60 * 1000;
 
-export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
+export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler; preview: PreviewService }): void {
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
   const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }));
   const mailSystems = Object.fromEntries(MAIL_TOOL_NAMES.map((name) => [name, MAIL_SYSTEM]));
@@ -315,18 +317,28 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
 
   app.get('/app/api/threads/:threadId/file/status', async (c) => c.json(await fileStatus(access(c).userId, c.req.param('threadId'), c.req.query('path') ?? '')));
 
-  // «Скачать» of the file block a file the agent made (spec, section 8.18).
-  app.get('/app/api/threads/:threadId/file', async (c) => {
-    const path = c.req.query('path') ?? '';
-    const userId = access(c).userId;
-    const status = await fileStatus(userId, c.req.param('threadId'), path);
+  // A file of the conversation's folder that is there: one removed, in the trash or of a project closed is
+  // said so — the same for «Скачать» and «Открыть».
+  async function presentFile(userId: string, threadId: string, path: string) {
+    const status = await fileStatus(userId, threadId, path);
     if (status.state === 'lost') throw projectFileLost(status.projectName, status.reason);
     if (status.state === 'trash') {
       throw appError('APP_FILE_IN_TRASH', 'the file was removed into the project trash', { userMessage: `Файл «${status.name}» удалён из рабочей папки. Он в корзине проекта до ${dayMonth(new Date(status.expiresAt), deps.timezone)}.` });
     }
     if (status.state === 'deleted') throw appError('APP_FILE_DELETED', 'the file is gone', { userMessage: `Файл «${status.name}» удалён из рабочей папки — скачать его нельзя.` });
-    const found = await threadFolders(userId, c.req.param('threadId'));
-    const inArea = found.inArea(path);
-    return fileResponse(await deps.storage.openFile(found.area, inArea), `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`, basename(inArea));
+    const found = await threadFolders(userId, threadId);
+    return { area: found.area, inArea: found.inArea(path), missing: `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.` };
+  }
+
+  // «Скачать» of the file block a file the agent made (spec, section 8.18).
+  app.get('/app/api/threads/:threadId/file', async (c) => {
+    const file = await presentFile(access(c).userId, c.req.param('threadId'), c.req.query('path') ?? '');
+    return fileResponse(await deps.storage.openFile(file.area, file.inArea), file.missing, basename(file.inArea));
+  });
+
+  // «Открыть» of the file block: the PDF of a Word, Excel or PowerPoint file (spec, section 8.27).
+  app.get('/app/api/threads/:threadId/file/preview', async (c) => {
+    const file = await presentFile(access(c).userId, c.req.param('threadId'), c.req.query('path') ?? '');
+    return pdfResponse(await deps.preview.pdf(file.area, file.inArea, file.missing), basename(file.inArea), c.req.header('range'));
   });
 }
