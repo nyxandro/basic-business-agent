@@ -1,6 +1,6 @@
 // The code of the admin panel is loaded in the background for a person with rights to it, so a click
 // opens it at once; an employee without rights never loads it (spec, section 8.22).
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { preloadAdminCode } from '../app/admin-code.ts';
 import { ME, mockServer } from '../test/fetch-mock.ts';
@@ -31,13 +31,16 @@ describe('the admin panel loaded beforehand', () => {
     server({ ...ME, isSuperadmin: true });
     renderApp('/agents/sales');
     expect(await screen.findByRole('link', { name: 'Админка' })).toBeInTheDocument();
-    expect(preloadAdminCode).toHaveBeenCalledOnce();
+    // It starts right after the panel is drawn.
+    await waitFor(() => expect(preloadAdminCode).toHaveBeenCalledOnce());
   });
 
   it('is never loaded for an employee without rights', async () => {
     server(ME);
     renderApp('/agents/sales');
     expect(await screen.findByRole('button', { name: /Продажи/ })).toBeInTheDocument();
+    // Past the moment it would have started.
+    await new Promise((resolve) => setTimeout(resolve, 100));
     expect(preloadAdminCode).not.toHaveBeenCalled();
   });
 });

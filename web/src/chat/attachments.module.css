@@ -1,0 +1,239 @@
+/* The files of the next message above the input (Attachments.tsx, AttachmentStack.tsx, FileName.tsx):
+   chips in full rows, and the card more than six of them gather into. */
+
+/* Many files do not push the input off the screen: past nearly half of its height (a third on a phone) the
+   files scroll — up and down only; while the chips move there is no scroll bar at all. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  /* Rows apart by the chips' own margins. */
+  gap: 0 6px;
+  max-height: 45dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* The room of the scroll bar is kept: its coming and going must not change the width the rows are laid
+     out for (that laid everything out anew mid-way, 17.11). */
+  scrollbar-gutter: stable;
+  /* A chip leaving is taken out of the flow and stays where it was (Motion, popLayout). */
+  position: relative;
+}
+
+@media (max-width: 859px) {
+  .chips {
+    max-height: 30dvh;
+  }
+}
+
+.chips[data-moving] {
+  overflow-y: hidden;
+}
+
+/* As wide as its name: the files lie as they fit, a name is cut only when longer than the whole row
+   (decision of the owner 17.11). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-block: 3px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* The icon and the cross of a chip: they move with it, unstretched by its scale. */
+.chipPart {
+  display: inline-flex;
+  flex: none;
+}
+
+.chipName {
+  /* A stretched chip keeps its cross at its right end. */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A file's name: the start gives way, the end with the extension stays. */
+.chipName:has(.chipNameHead) {
+  display: flex;
+  overflow: visible;
+}
+
+/* Spaces kept as they are: a name cut at a space would lose it at the joint. */
+.chipNameHead {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.chipNameTail {
+  flex: none;
+  white-space: pre;
+}
+
+.chipBad {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* More than six files: one card, a stack of sheets (decision of the owner 17.11). The sheets under it
+   peek out above its top edge only, so they never cover the card whatever is drawn first. */
+.stack {
+  position: relative;
+  margin: 12px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface2);
+}
+
+.stack::before,
+.stack::after {
+  content: '';
+  position: absolute;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface2);
+  pointer-events: none;
+}
+
+.stack::before {
+  top: -7px;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+}
+
+.stack::after {
+  top: -12px;
+  left: 22px;
+  right: 22px;
+  height: 5px;
+  opacity: 0.7;
+}
+
+.stackHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.stackHead:hover {
+  background: var(--hover);
+}
+
+.stackHead:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.stackIcons {
+  display: flex;
+  flex: none;
+}
+
+.stackIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--surface2);
+  background: var(--surface);
+}
+
+.stackIcon + .stackIcon {
+  margin-left: -9px;
+}
+
+.stackText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stackTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stackKinds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stackChevron {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.25s var(--ease-out);
+}
+
+.stackChevronOpen {
+  transform: rotate(180deg);
+}
+
+.stackBody {
+  border-top: 1px solid var(--border-soft);
+}
+
+.stackList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 30dvh;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.stackRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.stackRow:hover {
+  background: var(--hover);
+}
+
+.stackSize {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stackActions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 8px 8px;
+}

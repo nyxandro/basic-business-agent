@@ -2,7 +2,7 @@
 // from the computer onto the chat window. Files go up one at a time; a file that cannot go is named
 // in the error, the others are attached.
 import type { CopilotChatViewProps } from '@copilotkit/react-core';
-import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +10,7 @@ import { ApiRequestError } from '../api/client.ts';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { apiError, ME, mockServer, type MockCall, type Reply } from '../test/fetch-mock.ts';
 import { ToastProvider } from '../ui/Toast.tsx';
-import { attachFailure } from './attach.ts';
+import { attachFailure, type WaitingFile } from './attach.ts';
 import { Attachments } from './Attachments.tsx';
 import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
 import { ChatView } from './ChatView.tsx';
@@ -294,5 +294,56 @@ describe('the name of an attached file (decision of the owner 17.11)', () => {
       return chip.lastElementChild!.textContent;
     });
     expect(ends).toEqual([' (2).txt', '_Отчество.txt', 'Смета.xlsx']);
+  });
+});
+
+describe('many files in one card (decision of the owner 17.11)', () => {
+  const NAMES = ['Резюме 1.docx', 'Резюме 2.docx', 'Резюме 3.docx', 'Резюме 4.docx', 'Счёт.pdf', 'Акт.pdf', 'Фото.png'];
+  const show = (names: string[], uploading: WaitingFile[] = []) => {
+    const ex = { ...extras(), attachments: names.map((name) => ({ name, path: `p/${name}`, bytes: 2048 })) };
+    render(
+      <ChatExtrasContext value={ex}>
+        <Attachments uploading={uploading} voice={null} />
+      </ChatExtrasContext>,
+    );
+    return ex;
+  };
+
+  it('gathers more than six files into one card with their count and kinds', () => {
+    show(NAMES);
+    const card = screen.getByRole('button', { name: /7 файлов/ });
+    expect(card).toHaveAttribute('aria-expanded', 'false');
+    expect(card).toHaveTextContent('4 Word · 2 PDF · 1 PNG');
+    // The chips of the files are not drawn one by one.
+    expect(screen.queryByRole('button', { name: 'Убрать Счёт.pdf' })).not.toBeInTheDocument();
+  });
+
+  it('keeps six files as chips', () => {
+    show(NAMES.slice(0, 6));
+    expect(screen.queryByRole('button', { name: /файлов/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Убрать Счёт.pdf' })).toBeInTheDocument();
+  });
+
+  it('opens into the list of the files, each taken away by its cross, all at once by «Убрать все»', async () => {
+    const ex = show(NAMES);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /7 файлов/ }));
+    expect(screen.getByRole('button', { name: /7 файлов/ })).toHaveAttribute('aria-expanded', 'true');
+    const list = screen.getByRole('list', { name: 'Прикреплённые файлы' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(7);
+    expect(within(list).getAllByText('2 КБ')).toHaveLength(7);
+    await user.click(within(list).getByRole('button', { name: 'Убрать Счёт.pdf' }));
+    expect(ex.removeAttachment).toHaveBeenCalledWith('p/Счёт.pdf');
+    await user.click(screen.getByRole('button', { name: 'Убрать все' }));
+    expect(ex.clearAttachments).toHaveBeenCalledOnce();
+  });
+
+  it('says how many are still on their way up', () => {
+    show(NAMES.slice(0, 5), [
+      { id: 1, name: 'Смета.xlsx' },
+      { id: 2, name: 'План.pptx' },
+      { id: 3, name: 'Договор.docx' },
+    ]);
+    expect(screen.getByRole('button', { name: /8 файлов/ })).toHaveTextContent('Загружаю ещё 3…');
   });
 });

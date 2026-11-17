@@ -7,18 +7,23 @@
 // own animation of the widths broke the rows mid-way): each chip takes its new place and width at once
 // and is shown moving there by a shift and a scale, which never lays the rows out again. A file taken
 // away turns to sand (decision of the owner 15.11) and leaves the flow at once; a file come fades in.
-// The box changes its height over the same moment, so the input above the feed glides, not jumps.
-// With «уменьшить движение» in the system everything simply takes its place.
+// More than six files gather into one card (AttachmentStack.tsx). The height of it all follows over the
+// same moment (AutoHeight), so the input above the feed glides, not jumps. With «уменьшить движение» in
+// the system everything simply takes its place.
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { AutoHeight } from '../ui/AutoHeight.tsx';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { dissolve } from '../ui/dissolve.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import type { WaitingFile } from './attach.ts';
+import { AttachmentStack, MAX_CHIPS } from './AttachmentStack.tsx';
 import { useChatExtras } from './chat-context.ts';
 import { chipMin, chipWidths, stableRows, type ChipSize } from './chip-rows.ts';
-import styles from './chat.module.css';
+import { FileName } from './FileName.tsx';
+import styles from './attachments.module.css';
+import chat from './chat.module.css';
 
 const MOVE_S = 0.36;
 const MOVE_MS = MOVE_S * 1000;
@@ -26,33 +31,7 @@ const MOVE_MS = MOVE_S * 1000;
 const EASING = [0.4, 0, 0.2, 1] as const;
 const CHIP_GAP_PX = 6;
 const CHIP_RADIUS_PX = 10;
-// The end of a name cut in the middle stays: «Отчёт (2).docx» and «Отчёт.docx» are told apart when both
-// are longer than the row. It is the last word before the extension (after a space, «_» or «-») when
-// that word is short, otherwise its last letters.
-const NAME_TAIL_WORD = 12;
-const NAME_TAIL_LETTERS = 6;
-
 const stillMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function tailStart(name: string): number {
-  const dot = name.lastIndexOf('.');
-  const stemEnd = dot > 0 ? dot : name.length;
-  const stem = name.slice(0, stemEnd);
-  const cut = Math.max(stem.lastIndexOf(' '), stem.lastIndexOf('_'), stem.lastIndexOf('-'));
-  return cut > 0 && stemEnd - cut <= NAME_TAIL_WORD ? cut : Math.max(0, stemEnd - NAME_TAIL_LETTERS);
-}
-
-// A name cut in the middle when it does not fit: its start shrinks to «…», its end stays. It moves with
-// its chip without being stretched by the chip's scale (layout="position").
-function FileName({ name }: { name: string }) {
-  const start = tailStart(name);
-  return (
-    <motion.span layout="position" className={styles.chipName} title={name} data-chip-name>
-      <span className={styles.chipNameHead}>{name.slice(0, start)}</span>
-      <span className={styles.chipNameTail}>{name.slice(start)}</span>
-    </motion.span>
-  );
-}
 
 // A chip with its whole name, whatever width it is drawn at now (stretched or cut, or mid-way of a
 // move): its padding, border and the gaps, the icon and the cross as laid out, and the full width of
@@ -77,11 +56,9 @@ interface Layout {
 }
 
 const chipsOf = (box: HTMLElement) => [...box.querySelectorAll<HTMLElement>('[data-chip]')];
-// The moves of an element (jsdom has none).
-const movesOf = (el: HTMLElement): Animation[] => (typeof el.getAnimations === 'function' ? el.getAnimations() : []);
 
 // The rows of the chips of the box, laid out anew when the chips or the width change, keeping what stays;
-// the box's height follows over a moment, and there is no scroll bar while the chips move.
+// there is no scroll bar while the chips move.
 function useChipLayout(box: RefObject<HTMLDivElement | null>, ids: readonly string[]): Layout | null {
   const key = ids.join('\n');
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -92,9 +69,6 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, ids: readonly stri
   useLayoutEffect(() => {
     drawn.current = layout;
   });
-  // The box's height as last painted: a file come is already in the box when it is measured, so the box
-  // grows from the height it had; a file gone has already left it, so it shrinks from that height too.
-  const painted = useRef<number | null>(null);
   // The moves under way: the scroll bar comes back when the last of them ends, not an earlier one.
   const moving = useRef(0);
   // The box is there only while there are chips: its width is watched from when it appears.
@@ -134,21 +108,15 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, ids: readonly stri
     setLayout({ width: boxWidth, rows, widths });
   }, [box, key, width, fonts]);
 
-  // The box comes to its new height over a moment, from the height it was painted at.
+  // No scroll bar while the chips move to their new places.
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
-    const from = movesOf(el).length > 0 ? el.getBoundingClientRect().height : painted.current;
-    for (const move of movesOf(el)) move.cancel();
-    const to = el.getBoundingClientRect().height;
-    painted.current = to;
-    if (stillMotion()) return;
+    if (!el || stillMotion()) return;
     const turn = ++moving.current;
     el.setAttribute('data-moving', '');
     window.setTimeout(() => {
       if (moving.current === turn) el.removeAttribute('data-moving');
     }, MOVE_MS + 60);
-    if (from !== null && Math.abs(from - to) > 0.5) el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: MOVE_MS, easing: `cubic-bezier(${EASING.join(', ')})` });
   }, [box, layout, key]);
 
   return layout;
@@ -159,8 +127,6 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
   const row = useRef<HTMLDivElement>(null);
   const ids = [...extras.attachments.map((f) => f.path), ...uploading.map((f) => `up:${f.id}`)];
   const layout = useChipLayout(row, ids);
-
-  if (ids.length === 0 && !voice) return null;
 
   function remove(path: string, chip: HTMLElement | null) {
     // The sand is only a picture: if it cannot be drawn, the file still goes.
@@ -187,13 +153,18 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
     );
   };
 
-  return (
-    <>
-      {voice}
-      {ids.length > 0 ? (
-        <MotionConfig reducedMotion="user" transition={{ duration: MOVE_S, ease: EASING }}>
-          <motion.div ref={row} layoutRoot layoutScroll className={`${styles.chips} scroll-thin`}>
-            <AnimatePresence mode="popLayout" initial={false}>
+  const chips = (
+    <motion.div
+      key="chips"
+      ref={row}
+      layoutRoot
+      layoutScroll
+      className={`${styles.chips} scroll-thin`}
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+    >
+      <AnimatePresence mode="popLayout" initial={false}>
               {extras.attachments.map((f) =>
                 chip(
                   f.path,
@@ -213,7 +184,7 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
                   `up:${file.id}`,
                   <>
                     <motion.span layout="position" className={styles.chipPart}>
-                      <span className={styles.spin} />
+                      <span className={chat.spin} />
                     </motion.span>
                     <motion.span layout="position" className={styles.chipName} data-chip-name>
                       {ru.chat.uploadingName(file.name)}
@@ -222,10 +193,25 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
                   true,
                 ),
               )}
-            </AnimatePresence>
-          </motion.div>
-        </MotionConfig>
-      ) : null}
+      </AnimatePresence>
+    </motion.div>
+  );
+
+  // Always there, so the first file grows the box too instead of popping in.
+  return (
+    <>
+      {voice}
+      <MotionConfig reducedMotion="user" transition={{ duration: MOVE_S, ease: EASING }}>
+        <AutoHeight>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {ids.length > MAX_CHIPS ? (
+              <AttachmentStack key="stack" files={extras.attachments} uploading={uploading} onRemove={extras.removeAttachment} onRemoveAll={extras.clearAttachments} />
+            ) : ids.length > 0 ? (
+              chips
+            ) : null}
+          </AnimatePresence>
+        </AutoHeight>
+      </MotionConfig>
     </>
   );
 }

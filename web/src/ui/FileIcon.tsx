@@ -48,6 +48,16 @@ function extensionOf(name: string): string {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
 }
 
+// What a person calls the type of a file in a word: Word, Excel, PDF; a picture or a text by its own
+// extension (PNG, MD) — for a line like «4 Word · 2 PDF · 1 PNG».
+const PRODUCT: Partial<Record<Kind, string>> = { pdf: 'PDF', doc: 'Word', slides: 'PowerPoint', archive: 'ZIP' };
+export function fileTypeLabel(name: string): string {
+  const ext = extensionOf(name);
+  const kind = TYPES[ext]?.kind;
+  if (kind === 'sheet') return ext === 'csv' || ext === 'tsv' ? ext.toUpperCase() : 'Excel';
+  return (kind && PRODUCT[kind]) ?? (ext ? ext.toUpperCase() : 'файл');
+}
+
 // Decorative: the name of the file is always next to it.
 export function FileIcon({ name, size = 18 }: { name: string; size?: number }) {
   const type = TYPES[extensionOf(name)];
