@@ -66,6 +66,8 @@ export interface AgentFactoryDeps {
   stepMs: number;
   memory?: Memory;
   connections?: Pick<ConnectionManager, 'toolsFor'>;
+  // The person's mailbox (spec, section 8.24): its tools, when the person has connected one.
+  mail?: { toolsFor(userId: string): Promise<Record<string, AnyTool>> };
   // Files and commands of the employee's own folder; without it the agent only reads skills.
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // Per agent, because some layers depend on its passport (e.g. baseRules: false) and some only
@@ -107,13 +109,17 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
         { id: fallbackId, model: await deps.gateway.modelConfig(fallbackId, userId, rt.passport.id), maxRetries: 0 },
       ];
     },
-    // Tools of connected systems are built per employee and request (their personal access).
+    // Tools of connected systems and of the mailbox are per employee and request (their personal access).
     tools:
-      rt.connectorIds.length > 0 && deps.connections
-        ? async ({ requestContext }) => ({
-            ...staticTools,
-            ...(await deps.connections!.toolsFor(requireContextValue(requestContext, REQUEST_KEYS.userId), rt.connectorIds)),
-          })
+      (rt.connectorIds.length > 0 && deps.connections) || deps.mail
+        ? async ({ requestContext }) => {
+            const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
+            return {
+              ...staticTools,
+              ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
+              ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
+            };
+          }
         : staticTools,
     ...(deps.memory ? { memory: deps.memory } : {}),
     // Every entry point (chat, background tasks, sub-agents) gets the limit; with a fallback model a

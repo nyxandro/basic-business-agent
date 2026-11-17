@@ -5,7 +5,8 @@ import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type Memor
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
-import { agentActions, subagentCalls } from '../approvals/describe.ts';
+import { agentActions, describeTools, subagentCalls } from '../approvals/describe.ts';
+import { createMailTools, MAIL_SYSTEM, MAIL_TOOL_NAMES } from '../mail/tools.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
@@ -52,6 +53,9 @@ function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): App
 }
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
+  // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
+  const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }));
+  const mailSystems = Object.fromEntries(MAIL_TOOL_NAMES.map((name) => [name, MAIL_SYSTEM]));
   // A failure of a run in our code and words: the text of RUN_ERROR, or the failure Mastra kept in
   // a broken answer (spec, section 9.1).
   async function translate(userId: string, failure: unknown): Promise<TranslatedError> {
@@ -79,12 +83,13 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         mark: chatMark(marks.get(rt.passport.id) ?? DEFAULT_MARK),
         actions: {
           ...WORKSPACE_ACTIONS,
+          ...mailActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...agentActions(rt),
           ...subagentCalls(rt),
         },
         systems: {
-          tools: rt.toolSystems,
+          tools: { ...mailSystems, ...rt.toolSystems },
           prefixes: Object.fromEntries(
             deps.registry.connectors.filter((conn) => rt.connectorIds.includes(conn.id)).map((conn) => [`${serverKey(conn.id)}_`, conn.title]),
           ),

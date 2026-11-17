@@ -1,4 +1,4 @@
-import type { MemoryResponse, MyConnection, MyUsage } from '@bba/contracts';
+import type { MailAccountsResponse, MailConnectInput, MailDiscovery, MailOAuthProvider, MemoryResponse, MyConnection, MyUsage } from '@bba/contracts';
 import { api } from '../api/client.ts';
 
 const enc = encodeURIComponent;
@@ -13,3 +13,10 @@ export const fetchConnections = () => api<{ connections: MyConnection[] }>('GET'
 export const saveStaticConnection = (id: string, fields: Record<string, string>) => api<{ status: MyConnection }>('PUT', `/app/api/me/connections/${enc(id)}`, { fields });
 export const disconnect = (id: string) => api<{ ok: true }>('DELETE', `/app/api/me/connections/${enc(id)}`);
 export const startOAuth = (id: string) => api<{ url: string }>('POST', `/app/api/me/connections/${enc(id)}/oauth/start`, {});
+
+// The person's mailbox (spec, section 8.24).
+export const fetchMail = () => api<MailAccountsResponse>('GET', '/app/api/me/mail');
+export const discoverMail = (email: string) => api<MailDiscovery>('POST', '/app/api/me/mail/discover', { email });
+export const connectMail = (input: MailConnectInput) => api<MailAccountsResponse>('POST', '/app/api/me/mail', input);
+export const startMailOAuth = (email: string, provider: MailOAuthProvider) => api<{ url: string }>('POST', '/app/api/me/mail/oauth/start', { email, provider });
+export const disconnectMail = (id: string) => api<MailAccountsResponse>('DELETE', `/app/api/me/mail/${enc(id)}`);

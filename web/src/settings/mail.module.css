@@ -1,0 +1,160 @@
+/* «Почта» in «Подключения» and the window «Подключение почты» (spec, section 8.24). */
+.boxes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-soft);
+}
+
+.box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.box:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.boxText {
+  flex: 1;
+  min-width: 180px;
+}
+
+.boxEmail {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.boxActions {
+  display: flex;
+  gap: 6px;
+}
+
+.caption {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.found {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.foundTitle {
+  font-weight: 600;
+}
+
+.foundEmail {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.found .caption {
+  margin-top: 6px;
+}
+
+.or {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--warn-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.link {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acc-text);
+}
+
+.more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acc-text);
+  cursor: pointer;
+}
+
+.server {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.serverRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 120px;
+  gap: 8px;
+}
+
+.host {
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .serverRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .host {
+    grid-column: 1 / -1;
+  }
+}

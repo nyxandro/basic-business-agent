@@ -25,6 +25,9 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
   const table = new Map<string, Route>([
     ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unreadResults: 0 } }],
     ['GET /app/api/copilotkit/info', { body: { agents: {} } }],
+    // «Подключения» show the mailbox in every installation (spec, section 8.24).
+    ['GET /app/api/me/mail', { body: { accounts: [], oauth: [] } }],
+    ['GET /app/api/admin/mail', { body: { apps: [], redirectUri: 'http://localhost/app/api/mail/oauth/callback', connected: 0, authErrors: 0 } }],
     ...Object.entries(routes),
   ]);
   const calls: MockCall[] = [];

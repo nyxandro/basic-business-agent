@@ -7,13 +7,14 @@ import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { PageFrame } from '../layout/PageFrame.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Card, EmptyState, IconTile, Pill, type Tone } from '../ui/Display.tsx';
+import { Card, IconTile, Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { dateTime } from '../ui/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { disconnect, fetchConnections, saveStaticConnection, startOAuth } from './api.ts';
+import { MailConnections } from './MailConnections.tsx';
 import styles from './settings.module.css';
 
 const AUTH_FAILED = 'APP_CONNECTOR_AUTH_FAILED';
@@ -122,18 +123,16 @@ function ReturnNotice({ list }: { list: MyConnection[] }) {
 
 export function ConnectionsPage() {
   const { state, reload } = useLoad(fetchConnections, ['me', 'connections']);
+  const [params] = useSearchParams();
   return (
     <PageFrame title={ru.settings.connections} lead={ru.connections.lead}>
+      {/* The mailbox is in every installation (spec, section 8.24); the systems of plugins follow. */}
+      <MailConnections params={params} />
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? (
         <>
           <ReturnNotice list={state.data.connections} />
-          {state.data.connections.length === 0 ? (
-            <Card>
-              <EmptyState title={ru.connections.empty} />
-            </Card>
-          ) : null}
           {state.data.connections.map((c) => (
             <Connection key={c.id} c={c} onChanged={reload} />
           ))}

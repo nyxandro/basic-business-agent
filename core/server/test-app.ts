@@ -47,6 +47,12 @@ import { createTestDatabase } from '../db/test-database.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
 import type { ObjectStore, S3Config } from '../storage/object-store.ts';
+import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
+import type { checkMailbox } from '../mail/client.ts';
+import { TEST_MAIL_SERVERS } from '../mail/test-server.ts';
+import { realDiscoverDeps, type DiscoverDeps } from '../mail/discover.ts';
+import { realEndpoints, type EndpointsOf } from '../mail/oauth.ts';
+import { createMailService, type MailService } from '../mail/service.ts';
 import { createApp } from './app.ts';
 import type { AppEnv } from './http.ts';
 
@@ -75,6 +81,8 @@ export interface TestApp {
   workspaceRoot: string;
   // Where the files are kept: the disk, or a fake bucket the test connects (spec, section 8.23).
   storage: FileStorage;
+  // The mailboxes of employees (spec, section 8.24).
+  mail: MailService;
   // Mastra memory of the conversations: tests create threads directly.
   memory: Memory;
   // Unpacked skills of this test installation.
@@ -155,6 +163,10 @@ export async function createTestApp(
     // How long an unused copy of a folder stays when files are in a bucket (KEEP_COPY_MS in an installation).
     keepCopyMs?: number;
     connectStore?: (config: S3Config) => ObjectStore;
+    // How the mail settings of a domain are found and where the services' sign-in is (fakes in tests).
+    mailDiscover?: DiscoverDeps;
+    mailEndpoints?: EndpointsOf;
+    mailCheck?: typeof checkMailbox;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -219,6 +231,18 @@ export async function createTestApp(
   const skillsDir = mkdtempSync(join(tmpdir(), 'bba-test-skills-'));
   const skillsDeps = { db, skillsDir, systemSkills: SYSTEM_SKILLS };
   const skills = createSkillsRuntime(skillsDeps);
+  const mail = createMailService({
+    db,
+    box,
+    publicUrl: TEST_PUBLIC_URL,
+    // The test mail server has a self-signed certificate.
+    transport: { trustSelfSigned: true },
+    discover: opts.mailDiscover ?? realDiscoverDeps,
+    endpoints: opts.mailEndpoints ?? realEndpoints,
+    ...(opts.mailCheck ? { check: opts.mailCheck } : {}),
+    // The test mail server's own ports besides the mail ports (deploy/compose.dev.yaml).
+    ports: { imap: [...IMAP_PORTS, TEST_MAIL_SERVERS.imap.port], smtp: [...SMTP_PORTS, TEST_MAIL_SERVERS.smtp.port] },
+  });
   const files = createFileStorage({ db, box, workspaceRoot, keepCopyMs: opts.keepCopyMs ?? KEEP_COPY_MS, ...(opts.connectStore ? { connectStore: opts.connectStore } : {}) });
   await files.start();
   const backgroundRef: { current?: BackgroundService } = {};
@@ -234,6 +258,7 @@ export async function createTestApp(
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
+    mail,
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
       ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) }, isolation: assertIsolationAvailable() } }
@@ -244,7 +269,7 @@ export async function createTestApp(
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });
@@ -295,6 +320,7 @@ export async function createTestApp(
     background,
     workspaceRoot,
     storage: files,
+    mail,
     memory,
     skillsDir,
     skillsDeps,

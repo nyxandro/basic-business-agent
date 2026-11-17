@@ -19,6 +19,7 @@ import { logEvent } from '../server/log.ts';
 import { settleSnapshot, takeSnapshot, type ProjectSnapshot } from '../projects/trash.ts';
 import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage, Release } from '../storage/engine.ts';
+import type { MailService } from '../mail/service.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
@@ -42,6 +43,8 @@ export interface ChatDeps {
   naming: NamingDeps;
   // Where the files are kept: a run holds its folder until the agent ends (spec, section 8.23).
   storage: FileStorage;
+  // The mailboxes of employees: the chat names their actions (spec, section 8.24).
+  mail: MailService;
 }
 
 export interface RunInput {

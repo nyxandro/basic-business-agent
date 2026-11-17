@@ -53,5 +53,16 @@ services:
       timeout: 3s
       retries: 60
 
+  # A mail server for automated tests of the mailbox connection (spec, section 8.24): IMAPS and SMTPS with
+  # its own self-signed certificate, people created by the tests through its API. Fixed ports: only tests use it.
+  mail-test:
+    image: greenmail/standalone:2.1.3@sha256:d6db42a4fc258fec0948b1ae7b579fd06947cc92087c162ec0597972a6c36850
+    environment:
+      GREENMAIL_OPTS: -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.tls.keystore.file=/home/greenmail/greenmail.p12 -Dgreenmail.tls.keystore.password=changeit
+    ports:
+      - "127.0.0.1:54993:3993"
+      - "127.0.0.1:54465:3465"
+      - "127.0.0.1:54480:8080"
+
 volumes:
   db-data:

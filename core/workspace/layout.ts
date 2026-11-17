@@ -3,7 +3,8 @@
 //   /workspace/<userId>/projects/<projectId>/files — files of a project
 // A conversation's sandbox root is one of these files folders: the agent works freely inside it,
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { inFolderOf } from './held-folder.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
@@ -73,6 +74,28 @@ export function saveFile(dir: string, fileName: string, data: Uint8Array): { nam
     rmSync(temp, { force: true });
   }
   return { name, path: name, bytes: data.byteLength };
+}
+
+// Saves a file into a subfolder of a folder the agent writes into (an attachment of a letter, a file of the
+// person's computer): the subfolder and its folders are reached without following a link the agent may
+// have put there, the name gets « (2)» when taken, the bytes appear under the name only when whole.
+export function saveInFolder(root: string, folder: string, fileName: string, data: Uint8Array, options: { anyType?: boolean } = {}): { name: string; path: string; bytes: number } {
+  const clean = safeFileName(fileName);
+  if (!options.anyType && !ALLOWED_EXTENSIONS.has(extname(clean).toLowerCase())) throw appError('APP_UPLOAD_TYPE_UNSUPPORTED', `extension of ${clean} is not allowed`);
+  if (data.byteLength > MAX_UPLOAD_BYTES) throw appError('APP_UPLOAD_TOO_LARGE', `${clean} is ${data.byteLength} bytes`);
+  const placed = inFolderOf(root, `${folder}/${clean}`, true, (held) => {
+    const name = freeName(held, clean);
+    const temp = join(held, `.upload-${randomUUID()}`);
+    try {
+      writeFileSync(temp, data, { flag: 'wx' });
+      linkSync(temp, join(held, name));
+    } finally {
+      rmSync(temp, { force: true });
+    }
+    return name;
+  });
+  if (placed === null) throw appError('APP_VALIDATION_FAILED', `${folder} in the working folder is not a folder`, { userMessage: `«${folder}» в рабочей папке — не папка. Переименуйте этот файл и повторите.` });
+  return { name: placed, path: `${folder}/${placed}`, bytes: data.byteLength };
 }
 
 // Files of a folder for people and for the model: hidden working folders (".renders") are skipped.

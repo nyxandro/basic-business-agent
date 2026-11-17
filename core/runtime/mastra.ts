@@ -10,7 +10,9 @@ import type { ConnectionManager } from '../connections/manager.ts';
 import type { Db } from '../db/pool.ts';
 import type { Registry } from '../loader/registry.ts';
 import { createMaskingProcessor } from '../masking/processor.ts';
-import { agentActions } from '../approvals/describe.ts';
+import { agentActions, describeTools } from '../approvals/describe.ts';
+import { createMailTools } from '../mail/tools.ts';
+import type { MailService } from '../mail/service.ts';
 import { createApprovalRecorder } from '../approvals/requests.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
@@ -32,6 +34,8 @@ export interface MastraRuntimeDeps {
   stepMs?: number;
   connections?: Pick<ConnectionManager, 'toolsFor' | 'actionsSeen'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
+  // The mailboxes of employees (spec, section 8.24).
+  mail?: MailService;
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
   workflows?: ConstructorParameters<typeof Mastra>[0] extends infer O ? (O extends { workflows?: infer W } ? W : never) : never;
 }
@@ -41,10 +45,14 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const memory = deps.memory;
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const agents: Record<string, Agent> = {};
-  // Questions keep the name of the action: the agent's own tools, else a connected system's.
+  // The mail tools do not depend on the person (they read who runs from the request): made once.
+  const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
+  const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
+  const mailActions = mailTools ? describeTools(mailTools) : {};
+  // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);
-    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
+    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? mailActions[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
   };
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {
@@ -54,6 +62,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       memory,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
+      ...(mail ? { mail } : {}),
       processorsFor: (r, level) => ({
         input: [
           createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot }),

@@ -30,6 +30,7 @@ import { registerSkillRoutes } from '../skills-admin/routes.ts';
 import { registerInterfaceRoutes } from '../interface-settings/routes.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { registerStorageRoutes } from '../storage/routes.ts';
+import { registerMailRoutes } from '../mail/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
@@ -88,6 +89,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerSkillRoutes(app, deps.skills);
   registerInterfaceRoutes(app, { db: deps.db, registry: deps.chat.registry });
   registerStorageRoutes(app, { db: deps.db, storage: deps.storage });
+  registerMailRoutes(app, { db: deps.db, mail: deps.chat.mail });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
   return app;
 }

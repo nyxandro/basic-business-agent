@@ -2,11 +2,12 @@
 // connected, their state and how many employees have connected them. Each employee connects a
 // system themselves, and the agent works there with their rights.
 import type { AdminConnection } from '@bba/contracts';
-import { Card, EmptyState, PageHead, Pill, Progress } from '../ui/Display.tsx';
+import { Card, PageHead, Pill, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
+import { MailCard } from './MailCard.tsx';
 import section from './section.module.css';
 import styles from './systems.module.css';
 
@@ -67,18 +68,11 @@ export function ConnectionsSection() {
       <PageHead title="Подключения" lead="Каждый сотрудник подключает системы сам, и агент работает там с его правами." />
       {load.status === 'loading' ? <DelayedBar /> : null}
       {load.status === 'error' ? <ErrorBanner error={load.error} onRetry={reload} /> : null}
-      {load.status === 'ready' && load.data.connections.length === 0 ? (
-        <Card>
-          <EmptyState title="Подключаемых систем в этой установке нет" text="Их добавляет разработчик плагинами." />
-        </Card>
-      ) : null}
-      {load.status === 'ready' && load.data.connections.length > 0 ? (
-        <div className={styles.grid}>
-          {load.data.connections.map((c) => (
-            <SystemCard key={c.id} c={c} total={load.data.employeesTotal} />
-          ))}
-        </div>
-      ) : null}
+      {/* The mail is in every installation (spec, section 8.24); systems of plugins follow. */}
+      <div className={styles.grid}>
+        <MailCard />
+        {load.status === 'ready' ? load.data.connections.map((c) => <SystemCard key={c.id} c={c} total={load.data.employeesTotal} />) : null}
+      </div>
     </div>
   );
 }
