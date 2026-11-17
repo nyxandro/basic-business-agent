@@ -1,5 +1,5 @@
 import type { RenameThreadResponse, RetryTurnResponse, ThreadFileStatus, ThreadNameResponse, ThreadPage, UploadedFile } from '@bba/contracts';
-import { api, apiForm } from '../api/client.ts';
+import { api, apiFormWithProgress } from '../api/client.ts';
 
 const enc = encodeURIComponent;
 
@@ -22,8 +22,9 @@ export const renameThread = (threadId: string, title: string) => api<RenameThrea
 // «Ответить заново»: the server takes the question and its broken answer out and gives the question back.
 export const retryTurn = (threadId: string, questionId: string) => api<RetryTurnResponse>('POST', `/app/api/threads/${enc(threadId)}/retry`, { questionId });
 
-export function uploadFile(threadId: string, file: File): Promise<UploadedFile> {
+// `onProgress` hears how much of the request is sent (the file and a little of the form around it).
+export function uploadFile(threadId: string, file: File, onProgress: (sent: number, total: number) => void): Promise<UploadedFile> {
   const form = new FormData();
   form.append('file', file);
-  return apiForm<UploadedFile>(`/app/api/threads/${enc(threadId)}/files`, form);
+  return apiFormWithProgress<UploadedFile>(`/app/api/threads/${enc(threadId)}/files`, form, onProgress);
 }

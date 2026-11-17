@@ -9,6 +9,7 @@ import { ApiRequestError, asApiError, SESSION_EXPIRED } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { uploadFile } from './api.ts';
 import { useChatExtras } from './chat-context.ts';
+import { UploadProgress } from './upload-progress.ts';
 
 export interface AttachFailure {
   name: string;
@@ -56,6 +57,8 @@ export interface AttachQueue {
   waiting: WaitingFile[];
   // Files to attach; `refused` — what was refused before (a dropped folder), named with the rest.
   attach: (files: readonly File[], refused?: readonly AttachFailure[]) => void;
+  // How far each of them is, and the batch (upload-progress.ts).
+  progress: UploadProgress;
 }
 
 export function useAttachQueue(): AttachQueue {
@@ -71,6 +74,7 @@ export function useAttachQueue(): AttachQueue {
   const failures = useRef<AttachFailure[]>([]);
   const open = useRef(true);
   const [waiting, setWaiting] = useState<WaitingFile[]>([]);
+  const [progress] = useState(() => new UploadProgress());
 
   // A conversation left: the files not yet sent are not sent into it.
   useEffect(() => {
@@ -93,19 +97,22 @@ export function useAttachQueue(): AttachQueue {
     busy.current = true;
     try {
       while (open.current && queue.current.length > 0) {
-        const { file } = queue.current[0]!;
+        const { id, file } = queue.current[0]!;
         try {
-          latest.current.addAttachment(await uploadFile(latest.current.threadId, file));
+          // The request is the file and a little of the form around it: its share is the file's.
+          latest.current.addAttachment(await uploadFile(latest.current.threadId, file, (sent, total) => progress.sent(id, (file.size * sent) / total)));
         } catch (raw) {
           const error = asApiError(raw);
           // Signed out: the rest would fail the same, and the error is the sign-in one as it is.
           if (error.code === SESSION_EXPIRED) {
             queue.current = [];
+            progress.begin();
             latest.current.onUploadError(error);
             break;
           }
           fail([{ name: file.name, error }]);
         }
+        progress.finish(id);
         queue.current.shift();
         if (open.current) show();
       }
@@ -116,17 +123,24 @@ export function useAttachQueue(): AttachQueue {
   }
 
   function attach(files: readonly File[], refused: readonly AttachFailure[] = []) {
-    if (!busy.current && queue.current.length === 0) failures.current = [];
+    if (!busy.current && queue.current.length === 0) {
+      failures.current = [];
+      progress.begin();
+    }
     const failed = [...refused];
     for (const file of files) {
       const error = refusalOf(file);
       if (error) failed.push({ name: file.name, error });
-      else queue.current.push({ id: nextId.current++, file });
+      else {
+        const id = nextId.current++;
+        queue.current.push({ id, file });
+        progress.add(id, file.size);
+      }
     }
     fail(failed);
     show();
     void drain();
   }
 
-  return { waiting, attach };
+  return { waiting, attach, progress };
 }

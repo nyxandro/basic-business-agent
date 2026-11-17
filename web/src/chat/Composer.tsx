@@ -14,6 +14,7 @@ import { useVoice } from '../voice/use-voice.ts';
 import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
 import { Attachments } from './Attachments.tsx';
 import type { WaitingFile } from './attach.ts';
+import type { UploadProgress } from './upload-progress.ts';
 import { useChatExtras } from './chat-context.ts';
 import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
@@ -76,6 +77,7 @@ export function Composer({
   running,
   extra,
   uploading,
+  progress,
   onAttach,
 }: {
   value: string;
@@ -84,8 +86,9 @@ export function Composer({
   onStop?: () => void;
   running: boolean;
   extra?: ReactNode;
-  // Files on their way up.
+  // Files on their way up, and how far they are.
   uploading: readonly WaitingFile[];
+  progress: UploadProgress;
   onAttach: (files: File[]) => void;
 }) {
   const extras = useChatExtras();
@@ -122,7 +125,7 @@ export function Composer({
 
   return (
     <div className={styles.composer}>
-      <Attachments uploading={uploading} voice={voiceLine} />
+      <Attachments uploading={uploading} progress={progress} voice={voiceLine} />
       <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} />
       <div className={styles.composerRow}>
         <input ref={fileInput} type="file" hidden multiple accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => pick(e.currentTarget)} />

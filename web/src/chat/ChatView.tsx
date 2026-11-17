@@ -235,6 +235,7 @@ export function ChatView(props: CopilotChatViewProps) {
             running={isRunning}
             extra={extras.composerExtra}
             uploading={uploads.waiting}
+            progress={uploads.progress}
             onAttach={uploads.attach}
           />
         </div>

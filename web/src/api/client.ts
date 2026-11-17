@@ -62,6 +62,28 @@ export async function apiForm<T>(path: string, form: FormData, method: 'POST' | 
   return (await res.json()) as T;
 }
 
+// A multipart upload that tells how much of it has gone (attachments, spec 8.9): fetch cannot tell how
+// much of a body is sent, XMLHttpRequest can. Failures are read as api() reads them.
+export function apiFormWithProgress<T>(path: string, form: FormData, onProgress: (sent: number, total: number) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', path);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    };
+    xhr.onerror = () => reject(new ApiRequestError({ code: 'APP_NETWORK_FAILED', message: ru.clientErrors.APP_NETWORK_FAILED, status: 0 }));
+    xhr.onload = () => {
+      const res = new Response(xhr.responseText, { status: xhr.status });
+      if (!res.ok) {
+        void toError(res).then(reject);
+        return;
+      }
+      res.json().then((body) => resolve(body as T), reject);
+    };
+    xhr.send(form);
+  });
+}
+
 export function asApiError(error: unknown): ApiRequestError {
   if (error instanceof ApiRequestError) return error;
   // Not a server answer but a failure inside the page: keep the details for diagnosis.

@@ -12,8 +12,9 @@ import { fileSize } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import type { WaitingFile } from './attach.ts';
 import { FileName } from './FileName.tsx';
+import type { UploadProgress } from './upload-progress.ts';
+import { BatchProgress, FileRing } from './UploadRing.tsx';
 import styles from './attachments.module.css';
-import chat from './chat.module.css';
 
 // Files gathered into the card when there are more than this.
 export const MAX_CHIPS = 6;
@@ -39,12 +40,14 @@ function iconNames(names: readonly string[]): string[] {
 export function AttachmentStack({
   files,
   uploading,
+  progress,
   onRemove,
   onRemoveAll,
   ref,
 }: {
   files: readonly UploadedFile[];
   uploading: readonly WaitingFile[];
+  progress: UploadProgress;
   onRemove: (path: string) => void;
   onRemoveAll: () => void;
   ref?: Ref<HTMLDivElement>;
@@ -72,14 +75,7 @@ export function AttachmentStack({
         <span className={styles.stackText}>
           <span className={styles.stackTitle}>{ru.chat.filesCount(total)}</span>
           <span className={styles.stackKinds}>
-            {uploading.length > 0 ? (
-              <>
-                <span className={chat.spin} />
-                {ru.chat.uploadingMore(uploading.length)}
-              </>
-            ) : (
-              kindsLine(names)
-            )}
+            {uploading.length > 0 ? <BatchProgress progress={progress} left={uploading.length} /> : kindsLine(names)}
           </span>
         </span>
         <Icon name="down" size={16} className={cx(styles.stackChevron, open && styles.stackChevronOpen)} />
@@ -98,7 +94,7 @@ export function AttachmentStack({
               ))}
               {uploading.map((f) => (
                 <li key={`up:${f.id}`} className={styles.stackRow} role="status">
-                  <span className={chat.spin} />
+                  <FileRing progress={progress} id={f.id} />
                   <span className={styles.chipName}>{ru.chat.uploadingName(f.name)}</span>
                 </li>
               ))}

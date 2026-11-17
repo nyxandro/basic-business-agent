@@ -13,6 +13,7 @@ import { ToastProvider } from '../ui/Toast.tsx';
 import { attachFailure, type WaitingFile } from './attach.ts';
 import { Attachments } from './Attachments.tsx';
 import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
+import { UploadProgress } from './upload-progress.ts';
 import { ChatView } from './ChatView.tsx';
 
 vi.mock('@copilotkit/react-core', async (original) => ({
@@ -114,6 +115,9 @@ describe('attaching several files (spec, section 8.9)', () => {
     await userEvent.setup().upload(picker(), [file('Счёт.pdf'), file('Смета.xlsx')]);
     expect(await screen.findByText('Загружаю Счёт.pdf…')).toBeInTheDocument();
     expect(screen.getByText('Загружаю Смета.xlsx…')).toBeInTheDocument();
+    // The ring of each fills as it goes: half of the first is sent, the second waits its turn.
+    const rings = screen.getAllByRole('progressbar');
+    expect(rings.map((ring) => ring.getAttribute('aria-valuenow'))).toEqual(['50', '0']);
     // One at a time: the second goes up when the first is in.
     expect(held.answers).toHaveLength(1);
     expect(sendButton).toBeDisabled();
@@ -285,7 +289,7 @@ describe('the name of an attached file (decision of the owner 17.11)', () => {
     const ex = { ...extras(), attachments: [{ name: 'ПРИМЕР_CV_Фамилия_Имя_Отчество (2).txt', path: 'a', bytes: 1 }, { name: 'ПРИМЕР_CV_Фамилия_Имя_Отчество.txt', path: 'b', bytes: 1 }, { name: 'Смета.xlsx', path: 'c', bytes: 1 }] };
     render(
       <ChatExtrasContext value={ex}>
-        <Attachments uploading={[]} voice={null} />
+        <Attachments uploading={[]} progress={new UploadProgress()} voice={null} />
       </ChatExtrasContext>,
     );
     const ends = ['ПРИМЕР_CV_Фамилия_Имя_Отчество (2).txt', 'ПРИМЕР_CV_Фамилия_Имя_Отчество.txt', 'Смета.xlsx'].map((name) => {
@@ -299,11 +303,11 @@ describe('the name of an attached file (decision of the owner 17.11)', () => {
 
 describe('many files in one card (decision of the owner 17.11)', () => {
   const NAMES = ['Резюме 1.docx', 'Резюме 2.docx', 'Резюме 3.docx', 'Резюме 4.docx', 'Счёт.pdf', 'Акт.pdf', 'Фото.png'];
-  const show = (names: string[], uploading: WaitingFile[] = []) => {
+  const show = (names: string[], uploading: WaitingFile[] = [], progress = new UploadProgress()) => {
     const ex = { ...extras(), attachments: names.map((name) => ({ name, path: `p/${name}`, bytes: 2048 })) };
     render(
       <ChatExtrasContext value={ex}>
-        <Attachments uploading={uploading} voice={null} />
+        <Attachments uploading={uploading} progress={progress} voice={null} />
       </ChatExtrasContext>,
     );
     return ex;
@@ -338,12 +342,17 @@ describe('many files in one card (decision of the owner 17.11)', () => {
     expect(ex.clearAttachments).toHaveBeenCalledOnce();
   });
 
-  it('says how many are still on their way up', () => {
-    show(NAMES.slice(0, 5), [
-      { id: 1, name: 'Смета.xlsx' },
-      { id: 2, name: 'План.pptx' },
-      { id: 3, name: 'Договор.docx' },
-    ]);
-    expect(screen.getByRole('button', { name: /8 файлов/ })).toHaveTextContent('Загружаю ещё 3…');
+  it('says how many are still on their way up and how far the whole batch is, as bytes go (the owner, 17.11)', () => {
+    const progress = new UploadProgress();
+    progress.begin();
+    progress.add(1, 1000);
+    progress.add(2, 1000);
+    progress.add(3, 2000);
+    show(NAMES.slice(0, 5), [{ id: 1, name: 'Смета.xlsx' }, { id: 2, name: 'План.pptx' }, { id: 3, name: 'Договор.docx' }], progress);
+    const card = screen.getByRole('button', { name: /8 файлов/ });
+    expect(card).toHaveTextContent('Загружаю ещё 3 · 0%');
+    act(() => progress.sent(1, 1000));
+    expect(card).toHaveTextContent('Загружаю ещё 3 · 25%');
+    expect(within(card).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
   });
 });

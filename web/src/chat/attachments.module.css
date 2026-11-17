@@ -232,6 +232,25 @@
   color: var(--muted);
 }
 
+/* How far a file, or a batch, has gone up. */
+.ring {
+  flex: none;
+}
+
+.ringTrack {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.ringArc {
+  fill: none;
+  stroke: var(--acc);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.2s linear;
+}
+
 .stackActions {
   display: flex;
   justify-content: flex-end;

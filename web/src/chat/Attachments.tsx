@@ -19,11 +19,12 @@ import { dissolve } from '../ui/dissolve.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import type { WaitingFile } from './attach.ts';
 import { AttachmentStack, MAX_CHIPS } from './AttachmentStack.tsx';
+import type { UploadProgress } from './upload-progress.ts';
+import { FileRing } from './UploadRing.tsx';
 import { useChatExtras } from './chat-context.ts';
 import { chipMin, chipWidths, stableRows, type ChipSize } from './chip-rows.ts';
 import { FileName } from './FileName.tsx';
 import styles from './attachments.module.css';
-import chat from './chat.module.css';
 
 const MOVE_S = 0.36;
 const MOVE_MS = MOVE_S * 1000;
@@ -122,7 +123,7 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, ids: readonly stri
   return layout;
 }
 
-export function Attachments({ uploading, voice }: { uploading: readonly WaitingFile[]; voice: ReactNode }) {
+export function Attachments({ uploading, progress, voice }: { uploading: readonly WaitingFile[]; progress: UploadProgress; voice: ReactNode }) {
   const extras = useChatExtras();
   const row = useRef<HTMLDivElement>(null);
   const ids = [...extras.attachments.map((f) => f.path), ...uploading.map((f) => `up:${f.id}`)];
@@ -184,7 +185,7 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
                   `up:${file.id}`,
                   <>
                     <motion.span layout="position" className={styles.chipPart}>
-                      <span className={chat.spin} />
+                      <FileRing progress={progress} id={file.id} />
                     </motion.span>
                     <motion.span layout="position" className={styles.chipName} data-chip-name>
                       {ru.chat.uploadingName(file.name)}
@@ -205,7 +206,7 @@ export function Attachments({ uploading, voice }: { uploading: readonly WaitingF
         <AutoHeight>
           <AnimatePresence mode="popLayout" initial={false}>
             {ids.length > MAX_CHIPS ? (
-              <AttachmentStack key="stack" files={extras.attachments} uploading={uploading} onRemove={extras.removeAttachment} onRemoveAll={extras.clearAttachments} />
+              <AttachmentStack key="stack" files={extras.attachments} uploading={uploading} progress={progress} onRemove={extras.removeAttachment} onRemoveAll={extras.clearAttachments} />
             ) : ids.length > 0 ? (
               chips
             ) : null}

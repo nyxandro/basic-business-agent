@@ -45,7 +45,40 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
       });
     }),
   );
+  // Uploads that tell how far they are go by XMLHttpRequest (api/client.ts): the same table answers them,
+  // and half of the body is told sent before the answer, all of it when it comes.
+  vi.stubGlobal('XMLHttpRequest', TableXhr);
   return { calls, set: (key, route) => table.set(key, route) };
+}
+
+const bodySize = (body: unknown) =>
+  body instanceof FormData ? [...body.values()].reduce((sum, value) => sum + (typeof value === 'string' ? value.length : value.size), 0) : 0;
+
+class TableXhr {
+  upload: { onprogress: ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  status = 0;
+  responseText = '';
+  private method = 'GET';
+  private url = '';
+  open(method: string, url: string): void {
+    this.method = method;
+    this.url = url;
+  }
+  send(body?: FormData): void {
+    const total = Math.max(1, bodySize(body));
+    this.upload.onprogress?.({ lengthComputable: true, loaded: Math.floor(total / 2), total });
+    void fetch(this.url, { method: this.method, ...(body ? { body } : {}) }).then(
+      async (res) => {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: total, total });
+        this.status = res.status;
+        this.responseText = await res.text();
+        this.onload?.();
+      },
+      () => this.onerror?.(),
+    );
+  }
 }
 
 export const ME = {
