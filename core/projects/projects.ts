@@ -3,7 +3,7 @@
 // Conversations are Mastra threads; their link to a project lives in app.thread_projects; the place of
 // a project in a person's side panel — in app.project_places.
 import { randomUUID } from 'node:crypto';
-import type { ArchivedProjectDto, ProjectAccessInput, ProjectDto, ProjectListResponse, ThreadPage, ThreadSummaryDto } from '@bba/contracts';
+import { byRecentWork, type ArchivedProjectDto, type ProjectAccessInput, type ProjectDto, type ProjectListResponse, type ThreadPage, type ThreadSummaryDto } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
 import type pg from 'pg';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -41,12 +41,12 @@ interface ListedRow extends ProjectRow {
   shared: boolean;
 }
 
-// The side panel's order (spec, section 8.12): pinned first; then projects the person has no place
-// for yet (a colleague's new shared one), newest first; then the rest in the order the person gave.
-const PANEL_ORDER = '(pl.pinned IS TRUE) DESC, (pl.user_id IS NULL) DESC, CASE WHEN pl.user_id IS NULL THEN p.created_at END DESC, pl.position, lower(p.name)';
-// A new place and an unpinned one: first among the unpinned. A pinned one: after all the places.
-const FIRST_UNPINNED = '(SELECT COALESCE(min(position), 1) - 1 FROM app.project_places WHERE user_id = $1 AND NOT pinned)';
-const AFTER_ALL = '(SELECT COALESCE(max(position), 0) + 1 FROM app.project_places WHERE user_id = $1)';
+// The pinned ones of the side panel in the order the person gave them (spec, section 8.12); the rest go
+// by the person's latest work (`byRecentWork`), which only the list of conversations knows.
+const PINNED_ORDER = '(pl.pinned IS TRUE) DESC, CASE WHEN pl.pinned THEN pl.position END, lower(p.name)';
+// `position` is the place among the pinned; an unpinned project's is not used.
+export const UNPINNED_POSITION = 0;
+const AFTER_PINNED = '(SELECT COALESCE(max(position), 0) + 1 FROM app.project_places WHERE user_id = $1 AND pinned)';
 
 function cleanName(name: string): string {
   const clean = name.replace(/\s+/g, ' ').trim();
@@ -104,9 +104,10 @@ async function threadStats(deps: ProjectsDeps, userId: string): Promise<Map<stri
   return stats;
 }
 
-// When the person last worked in the project (the picker of the input sorts by it): their latest
-// conversation in it; before that, the latest of the project's creation and the person's first opening
-// of it (a colleague's project not opened yet is «новое»: the picker puts it first by itself).
+// When the person last worked in the project (the unpinned projects of the side panel and the picker of
+// the input go by it, `byRecentWork`): their latest conversation in it; before that, the latest of the
+// project's creation and the person's first opening of it (a colleague's project not opened yet is
+// «новое»: `byRecentWork` puts it first by itself).
 function lastActive(row: ListedRow, threads: ThreadStats | undefined): string {
   const times = [row.created_at, row.seen_at, threads?.lastAt].filter((at): at is Date => at instanceof Date);
   return new Date(Math.max(...times.map((at) => at.getTime()))).toISOString();
@@ -119,7 +120,7 @@ async function listedRows(db: Queryable, userId: string, where: string, params: 
        FROM app.projects p JOIN app."user" u ON u."id" = p.user_id
        LEFT JOIN app.project_places pl ON pl.project_id = p.id AND pl.user_id = $1
       WHERE ${SEES} AND ${where}
-      ORDER BY ${PANEL_ORDER}`,
+      ORDER BY ${PINNED_ORDER}`,
     [userId, ...params],
   );
   return rows;
@@ -150,7 +151,8 @@ export async function listProjects(deps: ProjectsDeps, userId: string): Promise<
   const stats = await threadStats(deps, userId);
   const rows = await listedRows(deps.db, userId, 'p.archived_at IS NULL');
   const { rows: archived } = await deps.db.query<{ n: number }>('SELECT count(*)::int AS n FROM app.projects WHERE user_id = $1 AND archived_at IS NOT NULL', [userId]);
-  return { projects: await Promise.all(rows.map((r) => toDto(deps.db, userId, r, stats.get(r.id)))), archivedCount: archived[0]!.n };
+  const projects = await Promise.all(rows.map((r) => toDto(deps.db, userId, r, stats.get(r.id))));
+  return { projects: [...projects.filter((p) => p.pinned), ...projects.filter((p) => !p.pinned).sort(byRecentWork)], archivedCount: archived[0]!.n };
 }
 
 // One project as its page shows it: the creator also gets an archived one, for reading.
@@ -164,9 +166,9 @@ export async function projectDto(deps: ProjectsDeps, userId: string, projectId: 
 // Opening the project's page or working in it takes «новое» off.
 export async function markSeen(db: Queryable, userId: string, projectId: string): Promise<void> {
   await db.query(
-    `INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, ${FIRST_UNPINNED}, false, now())
+    `INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, $3, false, now())
      ON CONFLICT (user_id, project_id) DO UPDATE SET seen_at = now() WHERE app.project_places.seen_at IS NULL`,
-    [userId, projectId],
+    [userId, projectId, UNPINNED_POSITION],
   );
 }
 
@@ -178,7 +180,7 @@ export async function createProject(deps: ProjectsDeps, userId: string, input: {
       const access = await checkAccess(c, userId, input.access);
       await c.query('INSERT INTO app.projects (id, user_id, name, access) VALUES ($1, $2, $3, $4)', [id, userId, clean, access.mode]);
       await writeAccess(c, id, access);
-      await c.query(`INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, ${FIRST_UNPINNED}, false, now())`, [userId, id]);
+      await c.query('INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, $3, false, now())', [userId, id, UNPINNED_POSITION]);
     });
   } catch (error) {
     throw (await nameTaken(deps.db, error, userId, clean)) ?? error;
@@ -205,21 +207,22 @@ export async function updateProject(deps: ProjectsDeps, userId: string, projectI
   return projectDto(deps, userId, projectId);
 }
 
-// Pinning a pinned project (or unpinning an unpinned one) leaves it in its place.
+// A pinned project comes last among the pinned; an unpinned one goes by its work. Pinning a pinned
+// project (or unpinning an unpinned one) leaves it in its place.
 async function pinProject(db: Db, userId: string, projectId: string, pinned: boolean): Promise<void> {
   await visibleProject(db, userId, projectId);
   if (pinned) {
     await db.query(
-      `INSERT INTO app.project_places (user_id, project_id, position, pinned) VALUES ($1, $2, ${AFTER_ALL}, true)
+      `INSERT INTO app.project_places (user_id, project_id, position, pinned) VALUES ($1, $2, ${AFTER_PINNED}, true)
        ON CONFLICT (user_id, project_id) DO UPDATE SET pinned = true, position = EXCLUDED.position WHERE NOT app.project_places.pinned`,
       [userId, projectId],
     );
     return;
   }
   await db.query(
-    `INSERT INTO app.project_places (user_id, project_id, position, pinned) VALUES ($1, $2, ${FIRST_UNPINNED}, false)
+    `INSERT INTO app.project_places (user_id, project_id, position, pinned) VALUES ($1, $2, $3, false)
      ON CONFLICT (user_id, project_id) DO UPDATE SET pinned = false, position = EXCLUDED.position WHERE app.project_places.pinned`,
-    [userId, projectId],
+    [userId, projectId, UNPINNED_POSITION],
   );
 }
 
@@ -237,17 +240,17 @@ export async function setProjectAccess(deps: ProjectsDeps, userId: string, proje
   return projectDto(deps, userId, projectId);
 }
 
-// The order the person dragged the projects of their panel into, all of them: pinned or not stays
-// as it is, so a project dragged among the others only changes its place in its own group.
+// The order the person dragged their pinned projects into, all of them (decision of the owner 17.11):
+// the rest go by the person's work and are not dragged.
 export async function orderProjects(deps: Pick<ProjectsDeps, 'db'>, userId: string, ids: readonly string[]): Promise<void> {
-  const shown = new Set((await listedRows(deps.db, userId, 'p.archived_at IS NULL')).map((r) => r.id));
-  if (new Set(ids).size !== ids.length || ids.length !== shown.size || ids.some((id) => !shown.has(id))) {
-    throw appError('APP_VALIDATION_FAILED', `project order of ${ids.length} ids does not match the person's ${shown.size} projects`, { userMessage: 'Список проектов изменился, порядок не сохранён. Перетащите проект ещё раз.' });
+  const pinned = new Set((await listedRows(deps.db, userId, 'p.archived_at IS NULL AND pl.pinned')).map((r) => r.id));
+  if (new Set(ids).size !== ids.length || ids.length !== pinned.size || ids.some((id) => !pinned.has(id))) {
+    throw appError('APP_VALIDATION_FAILED', `project order of ${ids.length} ids does not match the person's ${pinned.size} pinned projects`, { userMessage: 'Список проектов изменился, порядок не сохранён. Перетащите проект ещё раз.' });
   }
   await deps.db.query(
-    `INSERT INTO app.project_places (user_id, project_id, position, pinned)
-     SELECT $1, o.id, o.n, false FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, n)
-     ON CONFLICT (user_id, project_id) DO UPDATE SET position = EXCLUDED.position`,
+    `UPDATE app.project_places pl SET position = o.n
+       FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, n)
+      WHERE pl.user_id = $1 AND pl.project_id = o.id`,
     [userId, ids],
   );
 }

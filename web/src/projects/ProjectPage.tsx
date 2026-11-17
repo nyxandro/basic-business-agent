@@ -1,7 +1,8 @@
 // /projects/:id (spec, scenario 6, sections 7, 8.12 and 8.20): the project's name and who it is open to, then the
 // tabs (request of the owner 17.11): «Разговоры» — the person's conversations in it with «Новый разговор в проекте»,
 // «Файлы» — «Файлы проекта», and the gear at their end — «Настройки проекта»: the instructions, the memory and the
-// folder of the computer (ProjectSettings.tsx). The tab is in the address (`?tab=files|settings`). Its creator
+// folder of the computer (ProjectSettings.tsx). The tab is in the address (`?tab=files|settings`). Anyone who sees
+// the project pins it to their side panel from the title row (decision of the owner 17.11). Its creator
 // renames it, sets who it is open to, archives it; a colleague reads the instructions and works with the files. An archived project is read only, by its creator, with
 // «Вернуть из архива» and — 30 days on — «Удалить навсегда». A project the person does not see is
 // «Проект недоступен…».
@@ -259,6 +260,12 @@ export function ProjectPage() {
     void navigate('/', { replace: true });
   }
 
+  // The project goes into the side panel or out of it (decision of the owner 17.11): the panel loads again.
+  async function pin() {
+    let saved: ProjectDto | null = null;
+    if (await act(async () => (saved = await updateProject(project.id, { pinned: !project.pinned })))) update(saved!);
+  }
+
   async function unarchive() {
     if (await act(() => unarchiveProject(project.id))) {
       refreshProjects();
@@ -300,12 +307,21 @@ export function ProjectPage() {
             ) : (
               <h1 className={styles.title}>{project.name}</h1>
             )}
-            {/* Three icons in a row (request of the owner 17.11): «Переименовать», «В архив», «Настройки проекта»;
-                a colleague and an archived project have only the settings. */}
+            {/* Icons in a row (requests of the owner 17.11): «Закрепить в панели», «Переименовать», «В архив»,
+                «Настройки проекта»; a colleague pins and opens the settings, an archived project has only the settings. */}
             <span className={styles.titleActions}>
+              {!archived ? (
+                <IconButton
+                  icon="pin"
+                  label={project.pinned ? ru.projects.unpinFromPanel : ru.projects.pinToPanel}
+                  className={cx(project.pinned && styles.titleIconOn)}
+                  disabled={busy}
+                  onClick={() => void pin()}
+                />
+              ) : null}
               {owner && !archived && !renaming ? <IconButton icon="edit" label={ru.projects.rename} onClick={() => setRenaming(true)} /> : null}
               {owner && !archived ? <IconButton icon="archive" label={ru.projects.archive} disabled={busy} onClick={() => void archive()} /> : null}
-              <IconButton icon="gear" label={ru.projects.settings} aria-pressed={tab === 'settings'} className={cx(tab === 'settings' && styles.gearOn)} onClick={() => setParams({ tab: 'settings' })} />
+              <IconButton icon="gear" label={ru.projects.settings} aria-pressed={tab === 'settings'} className={cx(tab === 'settings' && styles.titleIconOn)} onClick={() => setParams({ tab: 'settings' })} />
             </span>
           </div>
           <AccessLine project={project} onEdit={() => setEditAccess(true)} />

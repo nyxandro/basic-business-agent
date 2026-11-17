@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useMatch, useNavigate, useOutletContext, useSearchParams } from 'react-router';
 import { availableSections } from '../admin/sections.ts';
 import { fetchAgents } from '../agents/api.ts';
+import type { ApiRequestError } from '../api/client.ts';
 import { preloadAdminCode } from '../app/admin-code.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
@@ -113,6 +114,12 @@ export function AppShell() {
     setProjectsKey((n) => n + 1);
   }, []);
   const refreshProjects = useCallback(() => setProjectsKey((n) => n + 1), []);
+  // A pin of the window of «Поиск» that did not get saved: the panel says so and loads its list again.
+  const [projectsFailure, setProjectsFailure] = useState<ApiRequestError | null>(null);
+  const pinFailed = useCallback((error: ApiRequestError) => {
+    setProjectsFailure(error);
+    setProjectsKey((n) => n + 1);
+  }, []);
   // Back to the tab: a project opened or closed to the person meanwhile shows at once (spec, 8.20).
   useEffect(() => {
     const onVisible = () => {
@@ -150,7 +157,7 @@ export function AppShell() {
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}${project ? `&project=${encodeURIComponent(project)}` : ''}`);
   };
 
-  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, threadNames, onThreadNamed: nameThread, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: () => openSearch('all'), onShowAllThreads: () => openSearch('threads'), onShowAllProjects: () => openSearch('projects') };
+  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, threadNames, onThreadNamed: nameThread, projectsKey, projectsFailure, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: () => openSearch('all'), onShowAllThreads: () => openSearch('threads'), onShowAllProjects: () => openSearch('projects') };
   const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, nameThread, refreshProjects, projectsKey, showChatProject };
   return (
     <NotificationsProvider>
@@ -165,7 +172,7 @@ export function AppShell() {
           </ErrorBoundary>
         </main>
       </div>
-      <SearchDialog key={search.opened} open={search.open} startScope={search.scope} wide={wide} onClose={() => setSearch((s) => ({ ...s, open: false }))} />
+      <SearchDialog key={search.opened} open={search.open} startScope={search.scope} wide={wide} onClose={() => setSearch((s) => ({ ...s, open: false }))} onProjectsChanged={refreshProjects} onPinFailed={pinFailed} />
     </NotificationsProvider>
   );
 }

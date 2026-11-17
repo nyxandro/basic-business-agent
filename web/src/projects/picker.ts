@@ -1,22 +1,16 @@
 // The order and the search of the project picker of the input (owner 17.11): the most recent work
 // first, or by name. The chosen order is a convenience of this browser: without storage it is «недавние».
-import type { ProjectDto } from '@bba/contracts';
+import { byProjectName, byRecentWork, type ProjectDto } from '@bba/contracts';
 
 export type PickerSort = 'recent' | 'name';
 
 export const PICKER_SORT_KEY = 'bba-project-picker-sort';
 
-// «Проект 9» before «Проект 10»; letter case and «ё» do not change the place.
-const byName = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+type Listed = Pick<ProjectDto, 'id' | 'name' | 'lastActiveAt' | 'unseen'>;
 
-type Listed = Pick<ProjectDto, 'name' | 'lastActiveAt' | 'unseen'>;
-
+// «Недавние» — the same order as the unpinned projects of the side panel.
 export function sortProjects<T extends Listed>(list: readonly T[], sort: PickerSort): T[] {
-  const named = (a: T, b: T) => byName.compare(a.name, b.name);
-  // A project a colleague has just opened to the person («новое» in the side panel) is the newest of
-  // all, whenever it was created. lastActiveAt is an ISO time of the server: its text sorts as the time.
-  const recent = (a: T, b: T) => Number(b.unseen) - Number(a.unseen) || b.lastActiveAt.localeCompare(a.lastActiveAt) || named(a, b);
-  return [...list].sort(sort === 'name' ? named : recent);
+  return [...list].sort(sort === 'name' ? (a, b) => byProjectName.compare(a.name, b.name) : byRecentWork);
 }
 
 const fold = (text: string) => text.toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/\s+/g, ' ').trim();

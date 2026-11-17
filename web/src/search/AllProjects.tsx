@@ -6,13 +6,13 @@ import type { ProjectDto } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import type { LoadState } from '../ui/use-load.ts';
-import { ProjectResult, projectPath, projectResultOf } from './ProjectResult.tsx';
+import { ProjectResult, projectPath, projectResultOf, type ProjectPin } from './ProjectResult.tsx';
 import styles from './search.module.css';
 import { DelayedBar } from '../ui/Loading.tsx';
 
 export type ProjectsState = LoadState<ProjectDto[]>;
 
-export function AllProjects({ state, quiet, onRetry, onPick }: { state: ProjectsState; quiet: boolean; onRetry: () => void; onPick: (path: string) => void }) {
+export function AllProjects({ state, quiet, pinOf, onRetry, onPick }: { state: ProjectsState; quiet: boolean; pinOf: (id: string) => ProjectPin | undefined; onRetry: () => void; onPick: (path: string) => void }) {
   if (state.status === 'loading') return quiet ? null : <DelayedBar />;
   if (state.status === 'error') {
     return (
@@ -34,7 +34,7 @@ export function AllProjects({ state, quiet, onRetry, onPick }: { state: Projects
     <>
       <div className={styles.group}>{ru.search.projects}</div>
       {projects.map((p) => (
-        <ProjectResult key={p.id} project={projectResultOf(p)} onOpen={() => onPick(projectPath(p.id))} />
+        <ProjectResult key={p.id} project={projectResultOf(p)} pin={pinOf(p.id)} onOpen={() => onPick(projectPath(p.id))} />
       ))}
     </>
   );

@@ -1,10 +1,12 @@
 // «Проекты» of the side panel (spec, scenario 6, sections 8.12 and 8.20): «+» opens the window «Новый
 // проект» — the name and who it is open to (decision of the owner 16.11) — and the project's page
-// opens after it. The panel shows the first seven, as «Недавние», and «Ещё» opens all of them in the window of «Поиск»
-// on «Проекты» (request of the owner 17.11); the open project beyond the seven is shown as the eighth, or it could be
-// neither pinned nor dragged up. Under the list, «Архив · N» when the person has archived projects. The pinned projects come first; the person drags a project
-// up and down among its group, and the panel shows the new order at once, before the server keeps
-// it. Saves go one after another, so the server ends with the last order the person made.
+// opens after it. The pinned projects come first, all of them, and the rest by the person's latest work
+// fill the panel up to seven, as «Недавние»; «Ещё» opens all of them in the window of «Поиск» on
+// «Проекты» (decision of the owner 17.11). The open project further down is shown after them, or it could
+// not be pinned from its row. Under the list, «Архив · N» when the person has archived projects. The
+// person drags a pinned project up and down among the pinned, and the panel shows the new order at once,
+// before the server keeps it. Saves go one after another, so the server ends with the last order the
+// person made.
 import type { ProjectDto } from '@bba/contracts';
 import { closestCenter, DndContext, KeyboardCode, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type Announcements, type DragEndEvent, type UniqueIdentifier } from '@dnd-kit/core';
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -21,19 +23,9 @@ import shell from '../layout/shell.module.css';
 import { useToast } from '../ui/Toast.tsx';
 import { archiveProject, fetchProjects, orderProjects, unarchiveProject, updateProject } from './api.ts';
 import { AccessDialog, NewProjectDialog } from './ProjectDialog.tsx';
-import { moveProject, pinProject } from './order.ts';
+import { moveProject, pinProject, shownProjects } from './order.ts';
 import { ARCHIVE_PATH, projectPath, ProjectRow } from './ProjectRow.tsx';
 import styles from './projects.module.css';
-
-// How many projects the panel shows, as many as «Недавние» (request of the owner 17.11).
-export const PROJECTS_SHOWN = 7;
-
-// The first ones in the order of the panel, and the open one when it is further down.
-function shownOf(projects: ProjectDto[], current: string | null | undefined): ProjectDto[] {
-  const first = projects.slice(0, PROJECTS_SHOWN);
-  const open = current && !first.some((p) => p.id === current) ? projects.find((p) => p.id === current) : undefined;
-  return open ? [...first, open] : first;
-}
 
 // A mouse drag starts after this many pixels: a click stays a click.
 const DRAG_START_PX = 6;
@@ -42,7 +34,7 @@ const TOUCH_HOLD_MS = 250;
 const TOUCH_TOLERANCE_PX = 6;
 // The keyboard picks a project up only by the space bar: Enter keeps opening it.
 const KEYBOARD_CODES = { start: [KeyboardCode.Space], cancel: [KeyboardCode.Esc], end: [KeyboardCode.Space, KeyboardCode.Enter, KeyboardCode.Tab] };
-// A project moves only up and down, inside its group (pinned or not).
+// A pinned project moves only up and down, among the pinned ones.
 const MODIFIERS = [restrictToVerticalAxis, restrictToParentElement];
 
 // A mouse drag (or a long press) ends with a click on the link under the pointer. dnd-kit keeps
@@ -52,7 +44,10 @@ function cancelClick(event: Event) {
   event.preventDefault();
 }
 
-export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, onShowAll }: { refreshKey: number; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void; onShowAll: () => void }) {
+// The keyboard goes to «Ещё» once the project it was on is drawn there.
+const TO_MORE = 'more';
+
+export function ProjectList({ refreshKey, failure, chatProjectId, onNavigate, onChanged, onShowAll }: { refreshKey: number; failure: ApiRequestError | null; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void; onShowAll: () => void }) {
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   // The list loads after the saves under way, and once more when a save starts while it loads:
   // it never brings back an order being saved.
@@ -73,8 +68,15 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, 
   // loaded again (it has them from the server) takes their place.
   const [changed, setChanged] = useState<{ over: ProjectDto[]; list: ProjectDto[] } | null>(null);
   const [saveError, setSaveError] = useState<ApiRequestError | null>(null);
+  // A pin of the window of «Поиск» that did not get saved is told here, as the panel's own: the window
+  // may be closed by then. The next change of the panel takes it away.
+  const [seenFailure, setSeenFailure] = useState(failure);
+  if (seenFailure !== failure) {
+    setSeenFailure(failure);
+    if (failure) setSaveError(failure);
+  }
   // A project pinned or unpinned from its menu moves to the other group and is drawn anew: its link
-  // takes the keyboard back.
+  // takes the keyboard back; a project gone under «Ещё» leaves the keyboard there.
   const focusNext = useRef<string | null>(null);
   const navigate = useNavigate();
   const archivePage = useMatch(ARCHIVE_PATH) !== null;
@@ -142,7 +144,7 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, 
     afterDrag();
     if (!projects || !over) return;
     const list = moveProject(projects, String(active.id), String(over.id));
-    if (list) show(list, () => orderProjects(list.map((p) => p.id)));
+    if (list) show(list, () => orderProjects(list.filter((p) => p.pinned).map((p) => p.id)));
   }
 
   const nameOf = (id: UniqueIdentifier) => projects?.find((p) => p.id === id)?.name ?? '';
@@ -153,9 +155,36 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, 
     onDragEnd: ({ active, over }) => (over ? ru.projects.dragEnd(nameOf(active.id), placeOf(over.id)) : ru.projects.dragCancel(nameOf(active.id))),
     onDragCancel: ({ active }) => ru.projects.dragCancel(nameOf(active.id)),
   };
-  const shown = projects ? shownOf(projects, current) : [];
-  // Dragging and pinning work on the whole list: a shown project moves to the place of another in it.
-  const groups = [shown.filter((p) => p.pinned), shown.filter((p) => !p.pinned)];
+  const shown = projects ? shownProjects(projects, current) : [];
+  const pinned = shown.filter((p) => p.pinned);
+  const rest = shown.filter((p) => !p.pinned);
+
+  const row = (p: ProjectDto, list: ProjectDto[]) => (
+    <ProjectRow
+      key={p.id}
+      project={p}
+      sortable={p.pinned}
+      current={p.id === current}
+      page={p.id === page}
+      onNavigate={onNavigate}
+      onRenamed={(name) => {
+        show(list.map((x) => (x.id === p.id ? { ...x, name } : x)));
+        onChanged();
+      }}
+      onPin={(pin) => {
+        const next = pinProject(list, p.id, pin);
+        if (next) focusNext.current = shownProjects(next, current).some((x) => x.id === p.id) ? p.id : TO_MORE;
+        show(next, () => updateProject(p.id, { pinned: pin }));
+      }}
+      onAccess={() => setAccessOf(p)}
+      onArchive={() => void archive(p)}
+      takeFocus={() => {
+        if (focusNext.current !== p.id) return false;
+        focusNext.current = null;
+        return true;
+      }}
+    />
+  );
 
   return (
     <>
@@ -186,42 +215,27 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, 
           onDragEnd={drop}
           onDragCancel={afterDrag}
         >
-          {groups.map((group, i) =>
-            group.length > 0 ? (
-              <div key={i === 0 ? 'pinned' : 'rest'} className={styles.projectGroup}>
-                <SortableContext items={group.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                  {group.map((p) => (
-                    <ProjectRow
-                      key={p.id}
-                      project={p}
-                      current={p.id === current}
-                      page={p.id === page}
-                      onNavigate={onNavigate}
-                      onRenamed={(name) => {
-                        show(projects.map((x) => (x.id === p.id ? { ...x, name } : x)));
-                        onChanged();
-                      }}
-                      onPin={(pinned) => {
-                        focusNext.current = p.id;
-                        show(pinProject(projects, p.id, pinned), () => updateProject(p.id, { pinned }));
-                      }}
-                      onAccess={() => setAccessOf(p)}
-                      onArchive={() => void archive(p)}
-                      takeFocus={() => {
-                        if (focusNext.current !== p.id) return false;
-                        focusNext.current = null;
-                        return true;
-                      }}
-                    />
-                  ))}
-                </SortableContext>
-              </div>
-            ) : null,
-          )}
+          {pinned.length > 0 ? (
+            <div className={styles.projectGroup}>
+              <SortableContext items={pinned.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {pinned.map((p) => row(p, projects))}
+              </SortableContext>
+            </div>
+          ) : null}
+          {rest.length > 0 ? <div className={styles.projectGroup}>{rest.map((p) => row(p, projects))}</div> : null}
         </DndContext>
       ) : null}
       {projects && projects.length > shown.length ? (
-        <button type="button" className={shell.more} onClick={onShowAll}>
+        <button
+          type="button"
+          className={shell.more}
+          ref={(more) => {
+            if (!more || focusNext.current !== TO_MORE) return;
+            focusNext.current = null;
+            more.focus();
+          }}
+          onClick={onShowAll}
+        >
           {ru.projects.more}
         </button>
       ) : null}

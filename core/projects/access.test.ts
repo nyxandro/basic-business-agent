@@ -111,17 +111,20 @@ describe('who sees a project', () => {
   });
 
   it('a newly shared project comes first among the colleague’s unpinned ones, «новое» until opened', async () => {
-    const own = await create('nina', 'Свой Нины');
+    // The shared project is the older one: «новое» goes first anyway.
     const shared = await create('olga', 'Новое для Нины', { mode: 'list', departmentIds: [logistics], userIds: [] });
+    const own = await create('nina', 'Свой Нины');
     const ninas = (await list('nina')).projects.filter((p) => !p.pinned);
     expect(ninas[0]).toMatchObject({ id: shared.id, unseen: true });
     expect(ninas.find((p) => p.id === own.id)?.unseen).toBe(false);
     expect(await json<ProjectDto>(await page('nina', shared.id))).toMatchObject({ unseen: false });
     expect((await list('nina')).projects.find((p) => p.id === shared.id)?.unseen).toBe(false);
-    // The order the colleague drags covers the shared projects too.
-    const ids = (await list('nina')).projects.map((p) => p.id).reverse();
+    // A shared project is pinned and dragged among the pinned ones as the person's own.
+    for (const p of [own, shared]) await t.call('PUT', `/app/api/projects/${p.id}`, { cookie: cookie.nina, body: { pinned: true } });
+    const pinned = async () => (await list('nina')).projects.filter((p) => p.pinned).map((p) => p.id);
+    const ids = (await pinned()).reverse();
     expect((await t.call('PUT', '/app/api/projects/order', { cookie: cookie.nina, body: { ids } })).status).toBe(200);
-    expect((await list('nina')).projects.map((p) => p.id)).toEqual(ids);
+    expect(await pinned()).toEqual(ids);
   });
 
   it('creates a project with its access in one go: a bad list or a taken name leaves nothing', async () => {

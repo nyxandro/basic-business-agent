@@ -129,20 +129,22 @@ describe('projects', () => {
     expect((await json<{ files: unknown[] }>(await t.call('GET', `/app/api/projects/${project.id}/files`, { cookie: olga }))).files).toEqual([]);
   });
 
-  // Order of the side panel (spec, section 8.12, decisions of the owner 15.11): pinned first in the
-  // order they were pinned, then the rest in the order the person dragged them.
-  it('keeps the order the person dragged, pins after the pinned ones and unpins under them', async () => {
-    await t.createUser({ email: 'nina@example.com', name: 'Нина' });
+  // Order of the side panel (spec, section 8.12; decision of the owner 17.11): the pinned ones first in
+  // the order the person gave them, then the rest by the person's latest work in each.
+  it('puts the pinned ones first in the order the person dragged, then the rest by the latest work', async () => {
+    const ninaId = await t.createUser({ email: 'nina@example.com', name: 'Нина' });
     const nina = await t.signIn('nina@example.com');
     const names = async () => (await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: nina }))).projects.map((p) => `${p.name}${p.pinned ? '*' : ''}`);
     const ids: Record<string, string> = {};
-    for (const name of ['Альфа', 'Бета', 'Гамма', 'Дельта']) ids[name] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name, access: PRIVATE } }))).id;
-    // A new project comes first among the unpinned ones.
+    const create = async (name: string) => (ids[name] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name, access: PRIVATE } }))).id);
+    for (const name of ['Альфа', 'Бета', 'Гамма', 'Дельта']) await create(name);
+    // Nothing done in any yet: the newest first.
     expect(await names()).toEqual(['Дельта', 'Гамма', 'Бета', 'Альфа']);
-
-    const order = (list: string[]) => t.call('PUT', '/app/api/projects/order', { cookie: nina, body: { ids: list.map((n) => ids[n]!) } });
-    expect((await order(['Альфа', 'Бета', 'Гамма', 'Дельта'])).status).toBe(200);
-    expect(await names()).toEqual(['Альфа', 'Бета', 'Гамма', 'Дельта']);
+    // A conversation in a project takes it up.
+    const talk = randomUUID();
+    await t.call('PUT', `/app/api/threads/${talk}/project`, { cookie: nina, body: { projectId: ids['Альфа'] } });
+    await ensureThread(t.memory, { threadId: talk, resourceId: ninaId, agentId: 'sales', kind: 'chat', title: 'Смета' });
+    expect(await names()).toEqual(['Альфа', 'Дельта', 'Гамма', 'Бета']);
 
     const pin = async (name: string, pinned: boolean) => json<ProjectDto>(await t.call('PUT', `/app/api/projects/${ids[name]}`, { cookie: nina, body: { pinned } }));
     expect(await pin('Гамма', true)).toMatchObject({ name: 'Гамма', pinned: true });
@@ -151,29 +153,44 @@ describe('projects', () => {
     // Pinning a pinned project again does not move it.
     await pin('Гамма', true);
     expect(await names()).toEqual(['Гамма*', 'Бета*', 'Альфа', 'Дельта']);
-    // The pinned ones are dragged among themselves; a new project comes under them.
-    await order(['Бета', 'Гамма', 'Альфа', 'Дельта']);
-    ids['Эпсилон'] = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: nina, body: { name: 'Эпсилон', access: PRIVATE } }))).id;
+    // The pinned ones are dragged among themselves; a new project comes first under them.
+    expect((await t.call('PUT', '/app/api/projects/order', { cookie: nina, body: { ids: [ids['Бета'], ids['Гамма']] } })).status).toBe(200);
+    await create('Эпсилон');
     expect(await names()).toEqual(['Бета*', 'Гамма*', 'Эпсилон', 'Альфа', 'Дельта']);
+    // An unpinned project goes by its work: nothing was done in Бета since it was created.
     await pin('Бета', false);
-    expect(await names()).toEqual(['Гамма*', 'Бета', 'Эпсилон', 'Альфа', 'Дельта']);
-    // The last pinned one unpinned: the unpinned list keeps its order under it.
-    await pin('Гамма', false);
-    expect(await names()).toEqual(['Гамма', 'Бета', 'Эпсилон', 'Альфа', 'Дельта']);
+    expect(await names()).toEqual(['Гамма*', 'Эпсилон', 'Альфа', 'Дельта', 'Бета']);
+    // A pinned project, pinned again, comes last among the pinned.
+    await pin('Дельта', true);
+    await pin('Бета', true);
+    expect(await names()).toEqual(['Гамма*', 'Дельта*', 'Бета*', 'Эпсилон', 'Альфа']);
   });
 
-  it('takes an order only of exactly the person’s projects', async () => {
+  it('takes an order only of exactly the person’s pinned projects', async () => {
     await t.createUser({ email: 'vera@example.com', name: 'Вера' });
     const vera = await t.signIn('vera@example.com');
-    const a = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Первый', access: PRIVATE } }))).id;
-    const b = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name: 'Второй', access: PRIVATE } }))).id;
+    const create = async (name: string) => (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: vera, body: { name, access: PRIVATE } }))).id;
+    const a = await create('Первый');
+    const b = await create('Второй');
+    const c = await create('Третий');
+    for (const id of [a, b]) await t.call('PUT', `/app/api/projects/${id}`, { cookie: vera, body: { pinned: true } });
     const someoneElses = (await json<ProjectDto>(await t.call('POST', '/app/api/projects', { cookie: petr, body: { name: 'Чужой', access: PRIVATE } }))).id;
-    for (const ids of [[a], [a, b, a], [a, b, someoneElses], [a, someoneElses], ['order', b]]) {
+    for (const ids of [[a], [a, b, a], [a, b, c], [a, someoneElses], ['order', b]]) {
       const res = await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids } });
       expect(res.status).toBe(400);
       expect((await json<{ error: { code: string; message: string } }>(res)).error).toMatchObject({ code: 'APP_VALIDATION_FAILED', message: 'Список проектов изменился, порядок не сохранён. Перетащите проект ещё раз.' });
     }
-    expect((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: vera }))).projects.map((p) => p.id)).toEqual([b, a]);
+    const listed = async () => (await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: vera }))).projects.map((p) => p.id);
+    expect(await listed()).toEqual([a, b, c]);
+    expect((await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids: [b, a] } })).status).toBe(200);
+    expect(await listed()).toEqual([b, a, c]);
+    // A pinned project in the archive is not in the panel: the order is of the others.
+    const d = await create('Четвёртый');
+    await t.call('PUT', `/app/api/projects/${d}`, { cookie: vera, body: { pinned: true } });
+    expect((await t.call('POST', `/app/api/projects/${d}/archive`, { cookie: vera })).status).toBe(200);
+    expect((await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids: [b, a, d] } })).status).toBe(400);
+    expect((await t.call('PUT', '/app/api/projects/order', { cookie: vera, body: { ids: [a, b] } })).status).toBe(200);
+    expect(await listed()).toEqual([a, b, c]);
     expect((await json<{ projects: ProjectDto[] }>(await t.call('GET', '/app/api/projects', { cookie: petr }))).projects.map((p) => p.id)).toContain(someoneElses);
   });
 

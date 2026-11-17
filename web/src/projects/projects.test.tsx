@@ -87,7 +87,9 @@ describe('projects of conversations', () => {
 
   // «Проекты» of the side panel (spec, section 8.12; decisions of the owner 15.11).
   describe('order of «Проекты»', () => {
-    const PLAN = { ...TENDER, id: 'p3', name: 'План', pinned: true };
+    const PLAN = { ...TENDER, id: 'p3', name: 'План', pinned: true, lastActiveAt: '2026-11-01T08:00:00Z' };
+    const TENDER_PINNED = { ...TENDER, pinned: true };
+    const REPORTS_PINNED = { ...REPORTS, pinned: true };
     const PROJECT_LINK = 'a[href^="/projects/"]';
     const panel = () =>
       screen.getAllByRole('link').filter((a) => a.matches(PROJECT_LINK)).map((a) => `${a.textContent}${within(a).queryByRole('img', { name: 'Закреплён' }) ? '*' : ''}`);
@@ -105,7 +107,7 @@ describe('projects of conversations', () => {
         if (inside.length === 0) return new DOMRect(0, 0, 0, 0);
         return new DOMRect(0, all.indexOf(inside[0]!) * 40, 240, inside.length * 40 - 4);
       });
-    const dragUpByKeyboard = async (name: string) => {
+    const dragUpByKeyboard = async (name: string | RegExp) => {
       const user = userEvent.setup();
       screen.getByRole('link', { name }).focus();
       await user.keyboard(' ');
@@ -116,7 +118,8 @@ describe('projects of conversations', () => {
 
     afterEach(() => vi.restoreAllMocks());
 
-    it('pins a project after the pinned ones and unpins it first among the rest', async () => {
+    // Decision of the owner 17.11: the unpinned ones go by the person's latest work.
+    it('pins a project after the pinned ones; an unpinned one goes among the rest by its latest work', async () => {
       const s = server({
         'GET /app/api/projects': { body: { projects: [PLAN, TENDER, REPORTS], archivedCount: 0 } },
         'PUT /app/api/projects/p2': { body: { ...REPORTS, pinned: true } },
@@ -135,23 +138,27 @@ describe('projects of conversations', () => {
 
       user = await openMenu('План');
       await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
-      expect(panel()).toEqual(['Отчёты*', 'План', 'Тендер Альфа']);
+      expect(panel()).toEqual(['Отчёты*', 'Тендер Альфа', 'План']);
       await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === '/app/api/projects/p3')?.body).toEqual({ pinned: false }));
     });
 
-    it('drags a project with the keyboard: the space bar picks it up, the arrows move it, the space bar leaves it', async () => {
+    it('drags a pinned project with the keyboard: the space bar picks it up, the arrows move it, the space bar leaves it', async () => {
       layOutPanel();
       const s = server({
-        'GET /app/api/projects': { body: { projects: [PLAN, TENDER, REPORTS], archivedCount: 0 } },
+        'GET /app/api/projects': { body: { projects: [PLAN, REPORTS_PINNED, TENDER], archivedCount: 0 } },
         'PUT /app/api/projects/order': { body: { ok: true } },
       });
       renderApp('/agents/sales?thread=t1');
-      await screen.findByRole('link', { name: 'Отчёты' });
-      const user = await dragUpByKeyboard('Отчёты');
-      expect(panel()).toEqual(['План*', 'Отчёты', 'Тендер Альфа']);
-      await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p3', 'p2', 'p1'] }));
+      await screen.findByRole('link', { name: /Отчёты/ });
+      // An unpinned project goes by work: the space bar does not pick it up.
+      await dragUpByKeyboard('Тендер Альфа');
+      expect(panel()).toEqual(['План*', 'Отчёты*', 'Тендер Альфа']);
+      const user = await dragUpByKeyboard(/Отчёты/);
+      expect(panel()).toEqual(['Отчёты*', 'План*', 'Тендер Альфа']);
+      await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p2', 'p3'] }));
+      expect(s.calls.filter((c) => c.path === '/app/api/projects/order')).toHaveLength(1);
       // A drop opens nothing; Enter still opens the project.
-      expect(screen.getByRole('link', { name: 'Отчёты' })).toHaveFocus();
+      expect(screen.getByRole('link', { name: /Отчёты/ })).toHaveFocus();
       expect(screen.queryByRole('heading', { name: 'Отчёты' })).not.toBeInTheDocument();
       await user.keyboard('{Enter}');
       expect(await screen.findByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
@@ -159,9 +166,9 @@ describe('projects of conversations', () => {
 
     it('a mouse drop does not let the browser follow the link; a click after it opens the project', async () => {
       layOutPanel();
-      const s = server({ 'PUT /app/api/projects/order': { body: { ok: true } } });
+      const s = server({ 'GET /app/api/projects': { body: { projects: [TENDER_PINNED, REPORTS_PINNED], archivedCount: 0 } }, 'PUT /app/api/projects/order': { body: { ok: true } } });
       renderApp('/agents/sales?thread=t1');
-      const link = await screen.findByRole('link', { name: 'Отчёты' });
+      const link = await screen.findByRole('link', { name: /Отчёты/ });
       fireEvent.mouseDown(link, { button: 0, clientX: 20, clientY: 60 });
       fireEvent.mouseMove(document, { clientX: 20, clientY: 40 });
       fireEvent.mouseMove(document, { clientX: 20, clientY: 20 });
@@ -169,9 +176,9 @@ describe('projects of conversations', () => {
       const click = createEvent.click(link, { button: 0 });
       fireEvent(link, click);
       expect(click.defaultPrevented).toBe(true);
-      expect(panel()).toEqual(['Отчёты', 'Тендер Альфа']);
+      expect(panel()).toEqual(['Отчёты*', 'Тендер Альфа*']);
       await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/order')?.body).toEqual({ ids: ['p2', 'p1'] }));
-      await userEvent.setup().click(screen.getByRole('link', { name: 'Отчёты' }));
+      await userEvent.setup().click(screen.getByRole('link', { name: /Отчёты/ }));
       expect(await screen.findByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
     });
 
@@ -179,24 +186,25 @@ describe('projects of conversations', () => {
       layOutPanel();
       let answerList: (() => void) | null = null;
       const s = server({
+        'GET /app/api/projects': { body: { projects: [TENDER_PINNED, REPORTS_PINNED], archivedCount: 0 } },
         'PUT /app/api/projects/order': { body: { ok: true } },
-        'PUT /app/api/projects/p1': { body: { ...TENDER, name: 'Тендер Бета' } },
+        'PUT /app/api/projects/p1': { body: { ...TENDER_PINNED, name: 'Тендер Бета' } },
       });
       renderApp('/agents/sales?thread=t1');
-      await screen.findByRole('link', { name: 'Отчёты' });
+      await screen.findByRole('link', { name: /Отчёты/ });
       // The rename loads the list again; that list (the old order) answers only after the drop.
-      s.set('GET /app/api/projects', () => new Promise((resolve) => (answerList = () => resolve({ body: { projects: [{ ...TENDER, name: 'Тендер Бета' }, REPORTS], archivedCount: 0 } }))));
+      s.set('GET /app/api/projects', () => new Promise((resolve) => (answerList = () => resolve({ body: { projects: [{ ...TENDER_PINNED, name: 'Тендер Бета' }, REPORTS_PINNED], archivedCount: 0 } }))));
       const user = await openMenu('Тендер Альфа');
       await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
       await user.clear(screen.getByRole('textbox', { name: 'Название проекта' }));
       await user.type(screen.getByRole('textbox', { name: 'Название проекта' }), 'Тендер Бета{Enter}');
       await waitFor(() => expect(answerList).not.toBeNull());
-      await dragUpByKeyboard('Отчёты');
+      await dragUpByKeyboard(/Отчёты/);
       await waitFor(() => expect(s.calls.some((c) => c.path === '/app/api/projects/order')).toBe(true));
-      s.set('GET /app/api/projects', { body: { projects: [REPORTS, { ...TENDER, name: 'Тендер Бета' }], archivedCount: 0 } });
+      s.set('GET /app/api/projects', { body: { projects: [REPORTS_PINNED, { ...TENDER_PINNED, name: 'Тендер Бета' }], archivedCount: 0 } });
       answerList!();
       await waitFor(() => expect(s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/projects')).toHaveLength(3));
-      await waitFor(() => expect(panel()).toEqual(['Отчёты', 'Тендер Бета']));
+      await waitFor(() => expect(panel()).toEqual(['Отчёты*', 'Тендер Бета*']));
     });
 
     it('says when the order was not saved and shows the order of the server again', async () => {
@@ -240,7 +248,7 @@ describe('projects of conversations', () => {
     const tabs = await screen.findByRole('navigation', { name: 'Разделы проекта' });
     expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Разговоры', 'Файлы']);
     const gear = screen.getByRole('button', { name: 'Настройки проекта' });
-    expect([...gear.parentElement!.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Переименовать', 'В архив', 'Настройки проекта']);
+    expect([...gear.parentElement!.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Закрепить в панели', 'Переименовать', 'В архив', 'Настройки проекта']);
     expect(within(tabs).getByRole('link', { name: 'Разговоры' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Новый разговор в проекте' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Файлы проекта' })).not.toBeInTheDocument();
@@ -258,6 +266,27 @@ describe('projects of conversations', () => {
     expect(screen.getByRole('heading', { name: 'Память проекта' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Папка на компьютере' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Файлы проекта' })).not.toBeInTheDocument();
+  });
+
+  // Decision of the owner 17.11: a project far down the list is put into the panel from its page.
+  it('pins the project from the title row, and the panel shows it among the pinned', async () => {
+    const s = server({ 'PUT /app/api/projects/p1': { body: { ...TENDER, pinned: true } } });
+    renderApp('/projects/p1');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'Закрепить в панели' });
+    s.set('GET /app/api/projects/p1', { body: { ...TENDER, pinned: true } });
+    await user.click(button);
+    await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === '/app/api/projects/p1')?.body).toEqual({ pinned: true }));
+    expect(await screen.findByRole('button', { name: 'Открепить от панели' })).toBeInTheDocument();
+    // The panel asks for the list again.
+    await waitFor(() => expect(s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/projects')).toHaveLength(2));
+  });
+
+  it('a colleague pins a shared project from its page too', async () => {
+    server({ 'GET /app/api/projects/p1': { body: { ...TENDER, role: 'member' as const, access: null, shared: true } } });
+    renderApp('/projects/p1');
+    const gear = await screen.findByRole('button', { name: 'Настройки проекта' });
+    expect([...gear.parentElement!.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Закрепить в панели', 'Настройки проекта']);
   });
 
   it('renames the project from the pencil of the title row', async () => {
@@ -529,6 +558,8 @@ describe('projects of conversations', () => {
     expect(await screen.findByRole('heading', { name: 'Файлы проекта' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Загрузить файл' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Переименовать' })).not.toBeInTheDocument();
+    // An archived project is in no one's panel.
+    expect(screen.queryByRole('button', { name: 'Закрепить в панели' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Настройки проекта' }));
     expect(await screen.findByRole('heading', { name: 'Инструкции для агента' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Инструкции для агента' })).not.toBeInTheDocument();
@@ -585,7 +616,7 @@ describe('seven projects in the panel', () => {
     expect(await within(dialog).findByText('Проект 9')).toBeInTheDocument();
   });
 
-  it('shows the open project beyond the seven as the eighth, so it can be pinned or dragged up', async () => {
+  it('shows the open project beyond the seven as the eighth, so it can be pinned from its row', async () => {
     manyServer();
     renderApp('/projects/q9');
     expect(await screen.findByRole('heading', { name: 'Проект 9' })).toBeInTheDocument();
@@ -593,6 +624,40 @@ describe('seven projects in the panel', () => {
     expect(panelLinks().at(-1)?.textContent).toContain('Проект 9');
     expect(screen.queryByRole('link', { name: /Проект 8/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ещё' })).toBeInTheDocument();
+  });
+
+  // Decision of the owner 17.11: the pinned ones are all shown; the rest fill the panel up to seven.
+  it('shows every pinned project, and the rest only up to seven in all', async () => {
+    const pinned = many.slice(0, 3).map((p) => ({ ...p, pinned: true }));
+    server({ 'GET /app/api/projects': { body: { projects: [...pinned, ...many.slice(3)], archivedCount: 0 } } });
+    renderApp('/agents/sales?thread=t1');
+    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
+    expect(panelLinks()).toHaveLength(7);
+    expect(screen.getByRole('button', { name: 'Ещё' })).toBeInTheDocument();
+  });
+
+  // The row and its menu are gone: the keyboard goes to «Ещё», where the project now is.
+  it('an unpinned project that goes beyond the seven leaves the keyboard on «Ещё»', async () => {
+    // Nothing done in Проект 1 for long: unpinned, it goes under the others.
+    const pinned = many.slice(0, 7).map((p, i) => ({ ...p, pinned: true, ...(i === 0 ? { lastActiveAt: '2026-01-01T08:00:00Z' } : {}) }));
+    const s = manyServer();
+    s.set('GET /app/api/projects', { body: { projects: [...pinned, ...many.slice(7)], archivedCount: 0 } });
+    s.set('PUT /app/api/projects/q1', { body: { ...pinned[0]!, pinned: false } });
+    renderApp('/agents/sales?thread=t1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Действия с проектом «Проект 1»' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
+    expect(screen.queryByRole('link', { name: /Проект 1$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ещё' })).toHaveFocus();
+  });
+
+  it('shows all the pinned ones even beyond seven, with no unpinned one', async () => {
+    const pinned = many.slice(0, 8).map((p) => ({ ...p, pinned: true }));
+    server({ 'GET /app/api/projects': { body: { projects: [...pinned, many[8]!], archivedCount: 0 } } });
+    renderApp('/agents/sales?thread=t1');
+    expect(await screen.findByRole('link', { name: /Проект 8/ })).toBeInTheDocument();
+    expect(panelLinks()).toHaveLength(8);
+    expect(screen.queryByRole('link', { name: /Проект 9/ })).not.toBeInTheDocument();
   });
 
   it('has no «Ещё» with seven projects or fewer', async () => {

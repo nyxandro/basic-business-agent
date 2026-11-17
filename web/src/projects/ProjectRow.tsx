@@ -1,8 +1,9 @@
 // A project of «Проекты» in the side panel (spec, sections 8.12 and 8.20): its link — a shared project
 // with the folder with a person, «новое» until a colleague opens it — a pin when it is pinned, and
 // three dots on hover — on a phone always: its creator gets «Переименовать», «Закрепить» / «Открепить»,
-// «Настроить доступ» and «В архив»; a colleague only pins. The row is dragged up and down among its
-// group: by the mouse, by a long press on a touch screen, by the space bar and the arrows.
+// «Настроить доступ» and «В архив»; a colleague only pins. A pinned row is dragged up and down among the
+// pinned: by the mouse, by a long press on a touch screen, by the space bar and the arrows; the rest go
+// by the person's latest work (decision of the owner 17.11).
 import type { ProjectDto } from '@bba/contracts';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -29,7 +30,7 @@ export function sharedHint(project: ProjectDto): string {
 }
 
 // `takeFocus` says once that the link takes the keyboard on being drawn (after «Закрепить»).
-export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; current: boolean; page: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
+export function ProjectRow({ project, sortable, current, page, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; sortable: boolean; current: boolean; page: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
   const [menu, setMenu] = useState(false);
   const prefetch = usePrefetchProject();
   // The pointer that rests on the project, not one passing over the list, starts its loading.
@@ -42,7 +43,7 @@ export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPi
   const [editing, setEditing] = useState(false);
   // The link comes back after the field: it takes the keyboard when the field had it.
   const refocus = useRef(false);
-  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: project.id, disabled: editing });
+  const { setNodeRef, setActivatorNodeRef, listeners, attributes, transform, transition, isDragging } = useSortable({ id: project.id, disabled: editing || !sortable });
   const label = ru.projects.menuOf(project.name);
   const owner = project.role === 'owner';
 
@@ -80,7 +81,7 @@ export function ProjectRow({ project, current, page, onNavigate, onRenamed, onPi
             onFocus={() => prefetch(project.id)}
             className={cx(shell.item, shell.threadLink, styles.projectLink)}
             aria-current={page ? 'page' : undefined}
-            aria-describedby={attributes['aria-describedby']}
+            aria-describedby={sortable ? attributes['aria-describedby'] : undefined}
             // The row is dragged by our code, not as a link the browser carries elsewhere.
             draggable={false}
             {...listeners}

@@ -239,6 +239,48 @@
   flex: none;
 }
 
+/* A project row with its pin (decision of the owner 17.11). The pin lies over its place, left of the
+   arrow (row padding 10 + arrow 15 + gap 12): on hover and keyboard focus, on a touch screen always;
+   a pinned project shows it always, in the accent. */
+.pinRow {
+  position: relative;
+}
+
+.pinRow:hover .result {
+  background: var(--hover);
+}
+
+.pinPlace {
+  width: 32px;
+  flex: none;
+}
+
+.pin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 37px;
+  margin: auto 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.pinRow:hover .pin,
+.pinRow:has(:focus-visible) .pin,
+.pinRowOn .pin {
+  opacity: 1;
+}
+
+.pinRowOn .pin {
+  color: var(--acc-text);
+}
+
+@media (hover: none) {
+  .pin {
+    opacity: 1;
+  }
+}
+
 .hint {
   display: flex;
   align-items: center;

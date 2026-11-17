@@ -6,14 +6,16 @@
 // Until a query is typed it lists all the person's projects (AllProjects.tsx) and conversations,
 // newest first (AllThreads.tsx), as the scope allows, and on «Файлы» the newest documents
 // (RecentFiles.tsx); «Ещё» under «Недавние» opens it on «Разговоры». It starts afresh each time it
-// opens (a new `key`).
-import type { SearchFile, SearchScope } from '@bba/contracts';
-import { useEffect, useState } from 'react';
+// opens (a new `key`). A project's pin puts it into the side panel or out of it (decision of the owner
+// 17.11): the row stays where it is — one that jumped up would put another project's pin under a second
+// click — and the panel loads its list once the server has the pin.
+import type { ProjectDto, SearchFile, SearchScope } from '@bba/contracts';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { asApiError } from '../api/client.ts';
+import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { threadPath } from '../layout/ThreadRow.tsx';
-import { fetchProjects } from '../projects/api.ts';
+import { fetchProjects, updateProject } from '../projects/api.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -22,7 +24,7 @@ import { AllProjects, type ProjectsState } from './AllProjects.tsx';
 import { AllThreads } from './AllThreads.tsx';
 import { FileDialog } from './FileDialog.tsx';
 import { FilesGroup } from './FileResult.tsx';
-import { ProjectResult, projectPath } from './ProjectResult.tsx';
+import { ProjectResult, projectPath, type ProjectPin } from './ProjectResult.tsx';
 import { RecentFiles } from './RecentFiles.tsx';
 import { useSearch, type SearchState } from './use-search.ts';
 import styles from './search.module.css';
@@ -45,10 +47,10 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function Results({ state, projectsState, scope, wide, projectName, onRetry, onRetryProjects, onPick, onOpenFile }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void; onOpenFile: (file: SearchFile) => void }) {
+function Results({ state, projectsState, scope, wide, projectName, pinOf, onRetry, onRetryProjects, onPick, onOpenFile }: { state: SearchState; projectsState: ProjectsState; scope: SearchScope; wide: boolean; projectName: (id: string | null) => string; pinOf: (id: string) => ProjectPin | undefined; onRetry: () => void; onRetryProjects: () => void; onPick: (path: string) => void; onOpenFile: (file: SearchFile) => void }) {
   if (state.status === 'idle') {
     if (scope === 'files') return <RecentFiles wide={wide} projectName={projectName} onOpen={onOpenFile} />;
-    const projects = scope === 'threads' ? null : <AllProjects state={projectsState} quiet={scope === 'all'} onRetry={onRetryProjects} onPick={onPick} />;
+    const projects = scope === 'threads' ? null : <AllProjects state={projectsState} quiet={scope === 'all'} pinOf={pinOf} onRetry={onRetryProjects} onPick={onPick} />;
     if (scope === 'projects') return projects;
     return (
       <>
@@ -89,7 +91,7 @@ function Results({ state, projectsState, scope, wide, projectName, onRetry, onRe
         <>
           <div className={styles.group}>{ru.search.projects}</div>
           {projects.map((p) => (
-            <ProjectResult key={p.id} project={p} onOpen={() => onPick(projectPath(p.id))} />
+            <ProjectResult key={p.id} project={p} pin={pinOf(p.id)} onOpen={() => onPick(projectPath(p.id))} />
           ))}
         </>
       ) : null}
@@ -113,7 +115,7 @@ function count(state: SearchState, scope: SearchScope): string | null {
   return n === 0 ? ru.search.noMatches : ru.search.found(n);
 }
 
-export function SearchDialog({ open, startScope, wide, onClose }: { open: boolean; startScope: SearchScope; wide: boolean; onClose: () => void }) {
+export function SearchDialog({ open, startScope, wide, onClose, onProjectsChanged, onPinFailed }: { open: boolean; startScope: SearchScope; wide: boolean; onClose: () => void; onProjectsChanged: () => void; onPinFailed: (error: ApiRequestError) => void }) {
   const [q, setQ] = useState('');
   const [scope, setScope] = useState<SearchScope>(startScope);
   const [projectsState, setProjectsState] = useState<ProjectsState>({ status: 'loading' });
@@ -144,6 +146,40 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
   const retryProjects = () => {
     setProjectsState({ status: 'loading' });
     setProjectsAttempt((n) => n + 1);
+  };
+
+  // Saves of pins go one after another, so the server ends with the last pin the person made.
+  const pins = useRef<Promise<unknown>>(Promise.resolve());
+  const [pinError, setPinError] = useState<ApiRequestError | null>(null);
+  // The list of the server once no pin is being saved: it never brings back a pin under way.
+  async function settledProjects(): Promise<ProjectDto[]> {
+    for (;;) {
+      const pending = pins.current;
+      await pending;
+      const { projects: list } = await fetchProjects();
+      if (pins.current === pending) return list;
+    }
+  }
+  function togglePin(project: ProjectDto) {
+    const pinned = !project.pinned;
+    setPinError(null);
+    setProjectsState({ status: 'ready', data: projects.map((p) => (p.id === project.id ? { ...p, pinned } : p)) });
+    const saved = pins.current.then(() => updateProject(project.id, { pinned }));
+    pins.current = saved.catch(() => undefined);
+    saved.then(onProjectsChanged, (raw: unknown) => {
+      const error = asApiError(raw);
+      setPinError(error);
+      onPinFailed(error);
+      settledProjects().then(
+        (list) => setProjectsState({ status: 'ready', data: list }),
+        (again: unknown) => setProjectsState({ status: 'error', error: asApiError(again) }),
+      );
+    });
+  }
+  // Only a project of the person's list is pinned: the list says whether it is pinned already.
+  const pinOf = (id: string): ProjectPin | undefined => {
+    const project = projects.find((p) => p.id === id);
+    return project ? { pinned: project.pinned, onToggle: () => togglePin(project) } : undefined;
   };
 
   const close = () => {
@@ -181,7 +217,12 @@ export function SearchDialog({ open, startScope, wide, onClose }: { open: boolea
         </div>
       ) : null}
       <div className={cx(styles.results, !wide && styles.resultsPhone, 'scroll-thin')} aria-live="polite">
-        <Results state={state} projectsState={projectsState} scope={scope} wide={wide} projectName={projectName} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} onOpenFile={setOpenFile} />
+        {pinError ? (
+          <div className={styles.error}>
+            <ErrorBanner title={ru.projects.orderFailed} error={pinError} />
+          </div>
+        ) : null}
+        <Results state={state} projectsState={projectsState} scope={scope} wide={wide} projectName={projectName} pinOf={pinOf} onRetry={retry} onRetryProjects={retryProjects} onPick={pick} onOpenFile={setOpenFile} />
       </div>
       {wide && footer ? <div className={styles.footer}>{footer}</div> : null}
       {openFile ? <FileDialog file={openFile} projectName={projectName(openFile.projectId)} onClose={() => setOpenFile(null)} /> : null}

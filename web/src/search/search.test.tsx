@@ -186,6 +186,56 @@ describe('search over conversations and projects', () => {
     expect(searches(s)).toHaveLength(0);
   });
 
+  // Decision of the owner 17.11: a project beyond the seven of the side panel goes into it from here.
+  it('pins a project to the side panel from its row, before a query and among the found ones', async () => {
+    const s = server();
+    s.set('PUT /app/api/projects/p3', { body: { ...PROJECTS[2], pinned: true } });
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
+    await within(dialog).findByRole('button', { name: /Архив договоровПусто/ });
+    const panelLoads = () => s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/projects').length;
+    const loaded = panelLoads();
+    s.set('GET /app/api/projects', { body: { projects: [{ ...PROJECTS[2], pinned: true }, PROJECTS[0], PROJECTS[1]] } });
+    await user.click(within(dialog).getByRole('button', { name: 'Закрепить «Архив договоров» в панели' }));
+    // The row is pinned at once and stays under the pointer with the keyboard on its pin: a row that
+    // jumped up would put another project's pin under a second click. The panel loads its list again.
+    expect(within(dialog).getByRole('button', { name: 'Открепить «Архив договоров» от панели' })).toHaveFocus();
+    expect(within(dialog).getAllByRole('button', { name: /\d+ разговор|Пусто/ }).at(-1)).toHaveTextContent('Архив договоров');
+    await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT' && c.path === '/app/api/projects/p3')?.body).toEqual({ pinned: true }));
+    await waitFor(() => expect(panelLoads()).toBeGreaterThan(loaded));
+
+    await user.type(within(dialog).getByRole('textbox'), 'договор строй');
+    expect(await within(dialog).findByText('Найдено: 1')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Закрепить «Тендер Северный» в панели' })).toBeInTheDocument();
+  });
+
+  it('says when a pin was not saved and shows the projects of the server again', async () => {
+    const s = server();
+    s.set('PUT /app/api/projects/p3', apiError('APP_INTERNAL', 'Что-то пошло не так на сервере.', 500));
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Закрепить «Архив договоров» в панели' }));
+    expect(await within(dialog).findByText('Изменение в «Проектах» не сохранилось')).toBeInTheDocument();
+    expect(await within(dialog).findByRole('button', { name: 'Закрепить «Архив договоров» в панели' })).toBeInTheDocument();
+  });
+
+  it('a pin that fails after the window closed is told in the panel', async () => {
+    const s = server();
+    let fail: (() => void) | null = null;
+    s.set('PUT /app/api/projects/p3', () => new Promise((resolve) => (fail = () => resolve(apiError('APP_INTERNAL', 'Что-то пошло не так на сервере.', 500)))));
+    renderApp('/agents/sales?thread=t1');
+    const { user, dialog } = await open();
+    await user.click(within(dialog).getByRole('button', { name: 'Проекты' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Закрепить «Архив договоров» в панели' }));
+    await waitFor(() => expect(fail).not.toBeNull());
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
+    act(() => fail!());
+    expect(await screen.findByText('Изменение в «Проектах» не сохранилось')).toBeInTheDocument();
+  });
+
   it('shows a project list that did not load with a repeat and says when there are no projects', async () => {
     const s = server();
     renderApp('/agents/sales?thread=t1');

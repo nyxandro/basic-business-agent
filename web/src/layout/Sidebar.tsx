@@ -35,6 +35,8 @@ export interface SidebarProps {
   onThreadNamed: (threadId: string, title: string) => void;
   // Bumped when a project changes: «Проекты» load again.
   projectsKey: number;
+  // A pin from the window of «Поиск» that did not get saved: the panel tells it, the window may be closed.
+  projectsFailure: ApiRequestError | null;
   chatProjectId: string | null;
   onProjectsChanged: () => void;
   onNewThread: () => void;
@@ -135,7 +137,7 @@ export function Sidebar(props: SidebarProps) {
       <div className={styles.sectionLabel}>{ru.shell.agents}</div>
       <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
 
-      <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
+      <ProjectList refreshKey={props.projectsKey} failure={props.projectsFailure} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
       <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />

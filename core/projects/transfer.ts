@@ -11,7 +11,7 @@ import { logEvent } from '../server/log.ts';
 import { projectRoot } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
-import { NAME_MAX } from './projects.ts';
+import { NAME_MAX, UNPINNED_POSITION } from './projects.ts';
 
 // The administrator may have a project of the same name: the given one is named after its creator.
 // The name of the former creator in it is cut short, so each try differs in its number whatever its length.
@@ -57,9 +57,9 @@ export async function transferProjects(db: Db, storage: Pick<FileStorage, 'exclu
         await c.query('DELETE FROM app.project_shares WHERE project_id = $1 AND user_id = $2', [project.id, toUserId]);
         await c.query(
           `INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at)
-           VALUES ($1, $2, (SELECT COALESCE(min(position), 1) - 1 FROM app.project_places WHERE user_id = $1 AND NOT pinned), false, NULL)
+           VALUES ($1, $2, $3, false, NULL)
            ON CONFLICT (user_id, project_id) DO UPDATE SET seen_at = NULL`,
-          [toUserId, project.id],
+          [toUserId, project.id, UNPINNED_POSITION],
         );
         await writeAudit(c, { actorUserId: toUserId, action: 'project.transfer', target: project.id, details: { from: fromUserId, name } });
       });

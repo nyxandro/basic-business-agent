@@ -157,6 +157,11 @@ export const ru = {
     pin: 'Закрепить',
     unpin: 'Открепить',
     pinned: 'Закреплён',
+    // The project's page and the window of «Поиск»: put the project into the side panel (decision of the owner 17.11).
+    pinToPanel: 'Закрепить в панели',
+    unpinFromPanel: 'Открепить от панели',
+    pinOf: (name: string) => `Закрепить «${name}» в панели`,
+    unpinOf: (name: string) => `Открепить «${name}» от панели`,
     orderFailed: 'Изменение в «Проектах» не сохранилось',
     // Screen readers: dragging a project with the keyboard (spec, section 8.12).
     dragHint: 'Чтобы переместить проект, нажмите пробел, затем стрелки вверх и вниз. Пробел — оставить здесь, Esc — отменить.',

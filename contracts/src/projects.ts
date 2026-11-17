@@ -26,7 +26,8 @@ export interface ProjectAccessDto {
   people: { id: string; name: string; email: string; blocked: boolean }[];
 }
 
-// GET /app/api/projects gives them in the order of the person's side panel: pinned first.
+// GET /app/api/projects gives them in the order of the person's side panel: the pinned ones first, in
+// the order the person dragged them; then the rest by `byRecentWork`.
 export interface ProjectDto {
   id: string;
   name: string;
@@ -34,8 +35,8 @@ export interface ProjectDto {
   // The person's own conversations in the project: the others' are theirs alone.
   threadCount: number;
   // When the person last worked in the project: their latest conversation in it; before any — the
-  // latest of its creation and the person's first opening of it. The project picker of the input sorts
-  // by it, a colleague's project not opened yet («новое», `unseen`) going first.
+  // latest of its creation and the person's first opening of it. The unpinned projects of the side panel
+  // and the project picker of the input go by it (`byRecentWork`).
   lastActiveAt: string;
   pinned: boolean;
   createdAt: string;
@@ -48,6 +49,16 @@ export interface ProjectDto {
   // Only for the creator.
   access: ProjectAccessDto | null;
   archivedAt: string | null;
+}
+
+// «Проект 9» before «Проект 10»; letter case and «ё» do not change the place.
+export const byProjectName = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+
+// The unpinned projects of the side panel and «недавние» of the project picker (decision of the owner
+// 17.11): a project a colleague has just opened to the person («новое») first, whenever it was created;
+// then the latest work. lastActiveAt is an ISO time of the server: its text sorts as the time.
+export function byRecentWork(a: Pick<ProjectDto, 'id' | 'name' | 'lastActiveAt' | 'unseen'>, b: Pick<ProjectDto, 'id' | 'name' | 'lastActiveAt' | 'unseen'>): number {
+  return Number(b.unseen) - Number(a.unseen) || b.lastActiveAt.localeCompare(a.lastActiveAt) || byProjectName.compare(a.name, b.name) || a.id.localeCompare(b.id);
 }
 
 export interface ProjectListResponse {
