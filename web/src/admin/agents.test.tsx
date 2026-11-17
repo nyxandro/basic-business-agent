@@ -66,7 +66,7 @@ describe('the page of an agent', () => {
     server();
     renderApp('/admin/agents/sales');
     const layers = await screen.findByRole('list', { name: 'Слои промпта' });
-    expect(within(layers).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект', 'Личная память']);
+    expect(within(layers).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект и его память', 'Личная память']);
     expect(screen.getByText('Отдел продаж')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Проверить в чате' })).toHaveAttribute('href', '/admin/agents/sales/check');
     // The model and the starters are in «Настройки».
