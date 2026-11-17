@@ -46,10 +46,36 @@ function skillSummary(status: ToolStatus, result: string | undefined, parameters
   return { state: 'done', text: ru.chat.skillActivated(title), readOnly: false, count: null, value: outcome.value };
 }
 
+// The memory tools of the agent (spec, section 8.26): the line says what was remembered, changed or removed —
+// the text of the entry, or how many when the call made several; the result keeps «было / стало» for the details.
+const MEMORY_TOOLS: Record<string, 'project' | 'personal'> = { project_memory: 'project', personal_memory: 'personal' };
+
+interface MemoryResult {
+  action: 'add' | 'change' | 'remove';
+  text: string;
+}
+
+function memorySummary(where: 'project' | 'personal', status: ToolStatus, result: string | undefined): ToolSummary {
+  if (status !== 'complete') return { state: 'running', text: ru.chat.memoryRunning };
+  const outcome = parseToolResult(result);
+  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.memoryFailed(where), code: outcome.code };
+  const results = ((outcome.value as { results?: MemoryResult[] } | null)?.results ?? []).filter((r) => typeof r?.text === 'string');
+  const line = { add: ru.chat.memoryAdded, change: ru.chat.memoryChanged, remove: ru.chat.memoryRemoved };
+  const actions = new Set(results.map((r) => r.action));
+  let text: string;
+  if (results.length === 1) text = line[results[0]!.action](where, `«${results[0]!.text}»`);
+  else if (actions.size === 1) text = line[results[0]!.action](where, ru.chat.memoryEntries(results.length));
+  else text = ru.chat.memoryUpdated(where, results.length);
+  return { state: 'done', text, readOnly: false, count: null, value: outcome.value };
+}
+
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
   if (skill) return skill;
+  const memory = MEMORY_TOOLS[name];
+  if (memory) return memorySummary(memory, status, result);
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };

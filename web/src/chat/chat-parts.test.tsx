@@ -120,6 +120,59 @@ describe('activation of a skill', () => {
   });
 });
 
+// What the agent remembered (spec, section 8.26): the line says it in words, the details keep «было / стало».
+describe('a line of the memory', () => {
+  const MEMORY_AGENT = { systems: SYSTEMS, actions: { project_memory: { title: 'Память проекта', fields: {}, readOnly: false }, personal_memory: { title: 'Память о сотруднике', fields: {}, readOnly: false } } };
+  const memoryRow = (name: string, operations: unknown[], result?: unknown, status: ToolRowProps['status'] = 'complete') =>
+    render(<ToolRow name={name} status={status} parameters={{ operations }} {...(result === undefined ? {} : { result: JSON.stringify(result) })} agent={MEMORY_AGENT} />);
+
+  it('says what one operation remembered, changed or removed — in the project and about the person', () => {
+    memoryRow('project_memory', [{ action: 'add', text: 'Подача до 28.11' }], { results: [{ action: 'add', number: 1, text: 'Подача до 28.11' }], usedChars: 15, maxChars: 6000 });
+    expect(screen.getByRole('button', { name: 'Запомнил в проекте: «Подача до 28.11»' })).toBeInTheDocument();
+    cleanup();
+    memoryRow('project_memory', [{ action: 'change', number: 1, text: 'Подача до 01.12' }], { results: [{ action: 'change', number: 1, text: 'Подача до 01.12', previousText: 'Подача до 28.11' }], usedChars: 15, maxChars: 6000 });
+    expect(screen.getByRole('button', { name: 'Поправил в памяти проекта: «Подача до 01.12»' })).toBeInTheDocument();
+    cleanup();
+    // The text of a removed entry comes in the result: the call names only its number.
+    memoryRow('project_memory', [{ action: 'remove', number: 2 }], { results: [{ action: 'remove', number: 2, text: 'Аванс не предусмотрен' }], usedChars: 0, maxChars: 6000 });
+    expect(screen.getByRole('button', { name: 'Убрал из памяти проекта: «Аванс не предусмотрен»' })).toBeInTheDocument();
+    cleanup();
+    memoryRow('personal_memory', [{ action: 'add', text: 'Ведёт только юрлиц' }], { results: [{ action: 'add', number: 1, text: 'Ведёт только юрлиц' }], usedChars: 18, maxChars: 3000 });
+    expect(screen.getByRole('button', { name: 'Запомнил о вас: «Ведёт только юрлиц»' })).toBeInTheDocument();
+    cleanup();
+    memoryRow('personal_memory', [{ action: 'remove', number: 1 }], { results: [{ action: 'remove', number: 1, text: 'Ведёт только юрлиц' }], usedChars: 0, maxChars: 3000 });
+    expect(screen.getByRole('button', { name: 'Убрал из памяти о вас: «Ведёт только юрлиц»' })).toBeInTheDocument();
+  });
+
+  it('counts several operations of one call', () => {
+    const adds = [1, 2, 3].map((n) => ({ action: 'add', number: n, text: `Факт ${n}` }));
+    memoryRow('project_memory', adds, { results: adds, usedChars: 18, maxChars: 6000 });
+    expect(screen.getByRole('button', { name: 'Запомнил в проекте: 3 записи' })).toBeInTheDocument();
+    cleanup();
+    const mixed = [{ action: 'remove', number: 1, text: 'Старое' }, { action: 'change', number: 2, text: 'Новое', previousText: 'Было' }];
+    memoryRow('project_memory', mixed, { results: mixed, usedChars: 5, maxChars: 6000 });
+    expect(screen.getByRole('button', { name: 'Обновил память проекта: 2 изменения' })).toBeInTheDocument();
+  });
+
+  it('keeps what was there before in the details', async () => {
+    memoryRow('project_memory', [{ action: 'change', number: 1, text: 'Подача до 01.12' }], { results: [{ action: 'change', number: 1, text: 'Подача до 01.12', previousText: 'Подача до 28.11' }], usedChars: 15, maxChars: 6000 });
+    await userEvent.setup().click(screen.getByRole('button', { name: /Поправил в памяти проекта/ }));
+    expect(screen.getByText(/Подача до 28\.11/)).toBeInTheDocument();
+  });
+
+  it('says it is remembering while it runs, and what failed with the code', () => {
+    memoryRow('project_memory', [{ action: 'add', text: 'Срок' }], undefined, 'executing');
+    expect(screen.getByText('Запоминаю…')).toBeInTheDocument();
+    cleanup();
+    memoryRow('project_memory', [{ action: 'add', text: 'Срок' }], { error: true, code: 'APP_MEMORY_FULL', message: 'Память проекта заполнена…' });
+    expect(screen.getByText(/Не удалось записать в память проекта/)).toBeInTheDocument();
+    expect(screen.getByText(/APP_MEMORY_FULL/)).toBeInTheDocument();
+    cleanup();
+    memoryRow('personal_memory', [{ action: 'add', text: 'Факт' }], { error: true, code: 'APP_MEMORY_SAVE_FAILED', message: 'Не удалось…' });
+    expect(screen.getByText(/Не удалось записать в память о вас/)).toBeInTheDocument();
+  });
+});
+
 describe('stack of status lines', () => {
   const COMMAND = 'mastra_workspace_execute_command';
   const STACK_AGENT = { systems: SYSTEMS, actions: { ...AGENT.actions, [COMMAND]: { title: 'Команда в рабочей папке', fields: {}, readOnly: false } } };
