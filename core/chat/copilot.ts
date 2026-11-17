@@ -5,7 +5,8 @@
 import { MastraAgent } from '@ag-ui/mastra';
 import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime';
 import type { AbstractAgent } from '@ag-ui/client';
-import { finalize } from 'rxjs';
+import { EventType } from '@ag-ui/core';
+import { filter, finalize } from 'rxjs';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
@@ -44,9 +45,17 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
     requestContext.set(REQUEST_KEYS.messageDiscarded, live.onMessageDiscarded);
     // A middleware survives the copy of the agent CopilotKit makes for a run; `finalize` fires once
     // the agent's events end — completed, failed or unsubscribed by «Стоп».
+    // The «state of the agent» is cut both ways (spec, 8.26): the chat does not use it, and the adapter of
+    // Mastra carried the personal memory through it — read past our settings after every run, sent to the
+    // browser, and written back from the browser's next run.
     return mastraAgent.use((input, next) => {
       run.agentStarted = true;
-      return next.run(input).pipe(finalize(live.onAgentEnd));
+      return next
+        .run({ ...input, state: {} })
+        .pipe(
+          filter((event) => event.type !== EventType.STATE_SNAPSHOT && event.type !== EventType.STATE_DELTA),
+          finalize(live.onAgentEnd),
+        );
     });
   }
 

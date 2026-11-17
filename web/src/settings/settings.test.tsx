@@ -4,41 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
-describe('my memory', () => {
-  it('asks before forgetting everything and forgets only after «да»', async () => {
-    const server = mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/memory': { body: { text: '# О сотруднике\n- ведёт юрлиц', empty: false } } });
-    server.set('DELETE /app/api/me/memory', () => {
-      server.set('GET /app/api/me/memory', { body: { text: '', empty: true } });
-      return { body: { ok: true } };
-    });
-    renderApp('/settings');
-    const user = userEvent.setup();
-    expect(await screen.findByText(/ведёт юрлиц/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Забыть всё' }));
-    const question = screen.getByRole('alertdialog', { name: 'Забыть всё?' });
-    expect(within(question).getByText('Агенты забудут всё, что запомнили о вас. Разговоры останутся — их можно удалить в списке разговоров.')).toBeInTheDocument();
-    await user.click(within(question).getByRole('button', { name: 'Отмена' }));
-    expect(server.calls.some((c) => c.method === 'DELETE')).toBe(false);
-
-    await user.click(screen.getByRole('button', { name: 'Забыть всё' }));
-    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Забыть всё' }));
-    expect(await screen.findByText('Память очищена')).toBeInTheDocument();
-    expect(await screen.findByText('Агенты пока ничего о вас не запомнили')).toBeInTheDocument();
-  });
-
-  it('saves an edit', async () => {
-    const server = mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/memory': { body: { text: '- ведёт юрлиц', empty: false } }, 'PUT /app/api/me/memory': { body: { ok: true } } });
-    renderApp('/settings/memory');
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Изменить' }));
-    await user.type(screen.getByRole('textbox', { name: 'Изменить' }), '\n- звонить после обеда');
-    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
-    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
-    expect(server.calls.find((c) => c.method === 'PUT')?.body).toEqual({ text: '- ведёт юрлиц\n- звонить после обеда' });
-  });
-});
-
 describe('my spend', () => {
   it('shows the rest of the monthly limit and today’s tokens of subscription models', async () => {
     mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/usage': { body: { month: { spentRub: 1760, limitRub: 3000, resetsOn: '2026-12-01' }, daily: { usedTokens: 120_000, capTokens: 500_000 } } } });

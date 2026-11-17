@@ -1,7 +1,7 @@
 // Dynamic prompt assembly (spec, section 8.3). The agent's own instructions (file or published
 // Editor version) are the only layer edited in the admin panel; this processor adds the rest, from
 // what never changes to what changes: core rules before them, then the organisation, the employee
-// and the project of the conversation. Personal memory is added by Mastra itself, after them.
+// and the project of the conversation with its memory; the employee's personal memory goes last (spec, 8.26).
 // The current time is not in the system prompt at all: a provider reuses only an unchanged beginning
 // of a request, and a clock there would make the whole prompt and the conversation history after it
 // new every minute. It is added to the person's last message of the outgoing request only
@@ -10,6 +10,8 @@ import { readFileSync } from 'node:fs';
 import type { Processor } from '@mastra/core/processors';
 import type { LostProjectReason } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
+import { listEntries } from '../memory/entries.ts';
+import { keepMemorySeen, personalMemoryText, projectMemoryText, seenVersions } from '../memory/prompt.ts';
 import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { contextRoot, listFiles } from '../workspace/layout.ts';
@@ -79,8 +81,8 @@ function sizeText(bytes: number): string {
 
 // The project of the run: the run's entry point checked that the person sees it, so it is read by its
 // id; its files live with its creator (spec, section 8.20). A project open to colleagues says so, and
-// warns the agent off their files.
-export async function projectLayer(db: Db, workspaceRoot: string, viewerId: string, ownerId: string, projectId: string): Promise<string | null> {
+// warns the agent off their files. `memory` — the project's memory as the prompt reads it (null in a draft check).
+export async function projectLayer(db: Db, workspaceRoot: string, viewerId: string, ownerId: string, projectId: string, memory: string | null): Promise<string | null> {
   const { rows } = await db.query<{ name: string; instructions: string; owner_name: string; shared: boolean }>(
     `SELECT p.name, p.instructions, u."name" AS owner_name, ${SHARED} AS shared
        FROM app.projects p JOIN app."user" u ON u."id" = p.user_id WHERE p.id = $1 AND p.user_id = $2`,
@@ -100,6 +102,7 @@ export async function projectLayer(db: Db, workspaceRoot: string, viewerId: stri
     `# Проект «${project.name}»`,
     shared,
     project.instructions.trim() || null,
+    memory,
     files.length > 0 ? ['Файлы проекта лежат в твоей рабочей папке:', ...shown, ...more].join('\n') : 'Файлов в проекте пока нет.',
   ]
     .filter(Boolean)
@@ -129,11 +132,17 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
       const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
       const projectId = optionalContextValue(requestContext, REQUEST_KEYS.projectId);
       const lost = optionalContextValue(requestContext, REQUEST_KEYS.lostProject);
+      // A draft check of a prompt neither reads nor writes anyone's memory (spec, 8.26).
+      const withMemory = optionalContextValue(requestContext, REQUEST_KEYS.runKind) !== 'draft';
+      const [projectMemory, personalMemory] = withMemory
+        ? await Promise.all([projectId ? listEntries(deps.db, { kind: 'project', projectId }) : Promise.resolve(null), listEntries(deps.db, { kind: 'personal', userId })])
+        : [null, null];
+      if (personalMemory && requestContext) keepMemorySeen(requestContext, { project: projectMemory ? seenVersions(projectMemory) : null, personal: seenVersions(personalMemory) });
       const [org, employee, project] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
         projectId
-          ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId)
+          ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId, projectMemory ? projectMemoryText(projectMemory, deps.timezone) : null)
           : Promise.resolve(lost ? lostProjectLayer(JSON.parse(lost) as { name: string; reason: LostProjectReason }) : null),
       ]);
       return {
@@ -144,6 +153,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
           { role: 'system' as const, content: org },
           { role: 'system' as const, content: employee },
           ...(project ? [{ role: 'system' as const, content: project }] : []),
+          ...(personalMemory ? [{ role: 'system' as const, content: personalMemoryText(personalMemory, deps.timezone) }] : []),
         ],
       };
     },

@@ -1,14 +1,13 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
-// personal memory and attachments.
+// and attachments.
 import { basename, relative } from 'node:path';
-import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
+import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
-import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { agentActions, describeTools, subagentCalls } from '../approvals/describe.ts';
 import { createMailTools, MAIL_SYSTEM, MAIL_TOOL_NAMES } from '../mail/tools.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
-import { deleteThread, draftResourceId, forgetAll, isBlankMemory, readMemory, writeMemory } from '../memory/memory.ts';
+import { deleteThread, draftResourceId } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
 import { agentMarks, chatMark, DEFAULT_MARK } from '../interface-settings/agent-marks.ts';
 import { threadProjectState, type ThreadProjectState } from '../projects/access.ts';
@@ -35,7 +34,6 @@ const AGENT_PATH = /^\/agent\/([^/]+)\/(run|connect)$/;
 const STOP_PATH = /^\/agent\/([^/]+)\/stop\/([^/]+)$/;
 
 const notFound = (message: string) => new AppError({ code: 'APP_NOT_FOUND', message, userMessage: 'Разговор не найден.', status: 404 });
-const memoryBody = z.object({ text: z.string().max(20_000) });
 
 const LOST_FILE_TEXT = {
   access: (name: string) => `Файл лежит в проекте «${name}», к которому у вас больше нет доступа.`,
@@ -227,21 +225,6 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const userId = access(c).userId;
     // Files stay: they belong to the files folder, not to the conversation (spec, section 8.9).
     await deleteThread(deps.memory, deps.db, userId, c.req.param('threadId'));
-    return c.json({ ok: true });
-  });
-
-  app.get('/app/api/me/memory', async (c) => {
-    const text = await readMemory(deps.memory, access(c).userId);
-    const body: MemoryResponse = { text, empty: isBlankMemory(text) };
-    return c.json(body);
-  });
-  app.put('/app/api/me/memory', async (c) => {
-    const { text } = await parseJson(c, memoryBody);
-    await writeMemory(deps.memory, access(c).userId, text);
-    return c.json({ ok: true });
-  });
-  app.delete('/app/api/me/memory', async (c) => {
-    await forgetAll(deps.memory, access(c).userId);
     return c.json({ ok: true });
   });
 

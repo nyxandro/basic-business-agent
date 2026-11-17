@@ -1,6 +1,7 @@
-// Personal memory only (spec, section 6 «Память»): Mastra working memory scoped to the employee
-// (resource = userId), so all their agents know it; nobody else reads it. Conversations are Mastra
-// threads of that employee; a background task has a thread "bg:<taskId>:<userId>" per employee.
+// Conversations are Mastra threads of the employee (resource = userId); a background task has a thread
+// "bg:<taskId>:<userId>" per employee. What the agents remember is not here: the memory of a project and the
+// personal memory are entries of core/memory/entries.ts (spec, section 8.26), so Mastra's working memory is
+// off — its instruction told the model to store anything in every answer, and its tool was hidden from the chat.
 import type { ThreadSummaryDto } from '@bba/contracts';
 import { Memory } from '@mastra/memory';
 import type { PostgresStore } from '@mastra/pg';
@@ -8,11 +9,6 @@ import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { FIRST_MESSAGE } from './titles.ts';
 
-export const WORKING_MEMORY_TEMPLATE = `# О сотруднике
-- Чем занимается:
-- Как с ним удобнее работать:
-- Важные договорённости и сроки:
-`;
 const LAST_MESSAGES = 30;
 export const THREAD_TITLE_LENGTH = 60;
 
@@ -27,7 +23,7 @@ export function createMemory(storage: PostgresStore): Memory {
       lastMessages: LAST_MESSAGES,
       semanticRecall: false,
       generateTitle: false,
-      workingMemory: { enabled: true, scope: 'resource', template: WORKING_MEMORY_TEMPLATE },
+      workingMemory: { enabled: false },
     },
   });
 }
@@ -89,21 +85,10 @@ export async function deleteThread(memory: Memory, db: Db, userId: string, threa
   await db.query('DELETE FROM app.thread_projects WHERE thread_id = $1', [threadId]);
 }
 
-// The employee's own memory, shown and edited in «Настройки → Моя память».
-export async function readMemory(memory: Memory, userId: string): Promise<string> {
-  return (await memory.getWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId })) ?? '';
-}
-
-// Nothing remembered: the memory is blank or still the template the agents fill in.
-export function isBlankMemory(text: string): boolean {
-  const normalise = (t: string) => t.replace(/\s+/g, ' ').trim();
-  return normalise(text) === '' || normalise(text) === normalise(WORKING_MEMORY_TEMPLATE);
-}
-
-export async function writeMemory(memory: Memory, userId: string, text: string): Promise<void> {
-  await memory.updateWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId, workingMemory: text });
-}
-
-export async function forgetAll(memory: Memory, userId: string): Promise<void> {
-  await writeMemory(memory, userId, WORKING_MEMORY_TEMPLATE);
+// The working memory Mastra kept of the person before 8.26 (`mastra.mastra_resources`): nothing reads it any
+// more, but it is still the person's memory — «Забыть всё» and the removal of the person take it away too.
+// The table is Mastra's: it is there once Mastra's storage started.
+export async function forgetLegacyWorkingMemory(db: Db, userId: string): Promise<void> {
+  const { rows } = await db.query<{ present: boolean }>(`SELECT to_regclass('mastra.mastra_resources') IS NOT NULL AS present`);
+  if (rows[0]?.present) await db.query('DELETE FROM mastra.mastra_resources WHERE id = $1', [userId]);
 }

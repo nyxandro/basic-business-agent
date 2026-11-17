@@ -1,11 +1,7 @@
-import type { MailAccountsResponse, MailConnectInput, MailDiscovery, MailOAuthProvider, MemoryResponse, MyConnection, MyUsage } from '@bba/contracts';
+import type { MailAccountsResponse, MailConnectInput, MailDiscovery, MailOAuthProvider, MyConnection, MyUsage } from '@bba/contracts';
 import { api } from '../api/client.ts';
 
 const enc = encodeURIComponent;
-
-export const fetchMemory = () => api<MemoryResponse>('GET', '/app/api/me/memory');
-export const saveMemory = (text: string) => api<{ ok: true }>('PUT', '/app/api/me/memory', { text });
-export const forgetMemory = () => api<{ ok: true }>('DELETE', '/app/api/me/memory');
 
 export const fetchMyUsage = () => api<MyUsage>('GET', '/app/api/me/usage');
 

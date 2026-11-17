@@ -1,34 +1,31 @@
-// «Моя память» (spec, scenario 6): what the agents remember about the person — read, edit, forget.
+// «Моя память» (spec, section 8.26): what the agents remember about the person, entry by entry — add, change,
+// remove; «Забыть всё» after a question.
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { PageFrame } from '../layout/PageFrame.tsx';
+import { forgetMemory } from '../memory/api.ts';
+import { MemoryEntries } from '../memory/MemoryEntries.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
-import { Card, EmptyState } from '../ui/Display.tsx';
+import { Card } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { TextArea } from '../ui/Field.tsx';
-import { DelayedBar } from '../ui/Loading.tsx';
 import { useToast } from '../ui/Toast.tsx';
-import { useLoad } from '../ui/use-load.ts';
-import { fetchMemory, forgetMemory, saveMemory } from './api.ts';
 import styles from './settings.module.css';
 
-export function MemoryPage() {
-  const { state, reload } = useLoad(fetchMemory, ['me', 'memory']);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [error, setError] = useState<ApiRequestError | null>(null);
+function Forget({ reload }: { reload: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiRequestError | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
 
-  async function act(action: () => Promise<unknown>, done: string) {
+  async function forget() {
+    if (!(await confirm({ title: ru.memory.forgetTitle, text: ru.memory.forgetConfirm, confirmLabel: ru.memory.forget, danger: true }))) return;
     setBusy(true);
     setError(null);
     try {
-      await action();
-      setDraft(null);
-      toast(done);
+      await forgetMemory();
+      toast(ru.memory.forgotten);
       reload();
     } catch (raw) {
       setError(asApiError(raw));
@@ -37,49 +34,29 @@ export function MemoryPage() {
     }
   }
 
-  async function forget() {
-    if (await confirm({ title: ru.memory.forgetTitle, text: ru.memory.forgetConfirm, confirmLabel: ru.memory.forget, danger: true })) void act(forgetMemory, ru.memory.forgotten);
-  }
+  return (
+    <>
+      {error ? <ErrorBanner error={error} /> : null}
+      <div className={styles.actions}>
+        <Button variant="danger" icon="trash" disabled={busy} onClick={() => void forget()}>
+          {ru.memory.forget}
+        </Button>
+      </div>
+    </>
+  );
+}
 
+export function MemoryPage() {
   return (
     <PageFrame title={ru.settings.memory} lead={ru.memory.hint}>
-      {state.status === 'loading' ? <DelayedBar /> : null}
-      {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
-      {error ? <ErrorBanner error={error} /> : null}
-      {state.status === 'ready' ? (
-        <Card className={`${styles.card} rise`}>
-          {draft !== null ? (
-            <TextArea aria-label={ru.memory.edit} rows={12} value={draft} onChange={(e) => setDraft(e.target.value)} />
-          ) : state.data.empty ? (
-            <EmptyState title={ru.memory.empty} text={ru.memory.emptyHint} />
-          ) : (
-            <div className={styles.memory}>{state.data.text}</div>
-          )}
-          <div className={styles.actions}>
-            {draft !== null ? (
-              <>
-                <Button variant="secondary" disabled={busy} onClick={() => setDraft(null)}>
-                  {ru.memory.cancel}
-                </Button>
-                <Button variant="primary" disabled={busy} onClick={() => void act(() => saveMemory(draft), ru.memory.saved)}>
-                  {ru.memory.save}
-                </Button>
-              </>
-            ) : (
-              <>
-                {!state.data.empty ? (
-                  <Button variant="danger" icon="trash" disabled={busy} onClick={() => void forget()}>
-                    {ru.memory.forget}
-                  </Button>
-                ) : null}
-                <Button variant="secondary" icon="edit" disabled={busy} onClick={() => setDraft(state.data.text)}>
-                  {ru.memory.edit}
-                </Button>
-              </>
-            )}
-          </div>
-        </Card>
-      ) : null}
+      <Card className={`${styles.card} rise`}>
+        <MemoryEntries
+          hint={ru.memory.emptyHint}
+          empty={ru.memory.empty}
+          failed={ru.memory.personalFailed}
+          footer={(list, reload) => (list.entries.length > 0 ? <Forget reload={reload} /> : null)}
+        />
+      </Card>
     </PageFrame>
   );
 }

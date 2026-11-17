@@ -1,52 +1,24 @@
-import { Agent } from '@mastra/core/agent';
-import { RequestContext } from '@mastra/core/request-context';
 import type { Memory } from '@mastra/memory';
 import { PostgresStore } from '@mastra/pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate } from '../db/migrate.ts';
 import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
-import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
-import { createMemory, deleteThread, ensureThread, forgetAll, listOwnThreads, readMemory, titleFrom, WORKING_MEMORY_TEMPLATE, writeMemory } from './memory.ts';
+import { createMemory, deleteThread, ensureThread, listOwnThreads, titleFrom } from './memory.ts';
 
 let database: TestDatabase;
 let db: Db;
 let memory: Memory;
-let model: FakeModel;
 
 beforeAll(async () => {
   database = await createTestDatabase();
   await migrate(database.url);
   db = createPool(database.url);
   memory = createMemory(new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' }));
-  model = await startFakeModel();
 });
 afterAll(async () => {
-  await model.close();
   await db.end();
   await database.drop();
-});
-
-describe('personal memory', () => {
-  it('is shared by all agents of one employee and visible to nobody else', async () => {
-    const make = (id: string) => new Agent({ id, name: id, instructions: 'x', model: { providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x' }, memory });
-    model.script({ toolCalls: [{ name: 'updateWorkingMemory', args: { memory: '# О сотруднике\n- Чем занимается: ведёт только юрлиц\n' } }] }, { text: 'Запомнил.' });
-    await make('sales').generate('Я веду только юрлиц', { memory: { thread: 't-olga-1', resource: 'olga' }, requestContext: new RequestContext() });
-    expect(await readMemory(memory, 'olga')).toContain('ведёт только юрлиц');
-
-    model.script({ text: 'Здравствуйте.' });
-    await make('assistant').generate('Привет', { memory: { thread: 't-olga-2', resource: 'olga' }, requestContext: new RequestContext() });
-    expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain('ведёт только юрлиц');
-    expect(await readMemory(memory, 'igor')).not.toContain('ведёт только юрлиц');
-  });
-
-  it('lets the employee edit it and “forget everything” clears only their own memory', async () => {
-    await writeMemory(memory, 'igor', '# О сотруднике\n- Чем занимается: бухгалтерия\n');
-    await writeMemory(memory, 'olga', '# О сотруднике\n- Чем занимается: продажи\n');
-    await forgetAll(memory, 'olga');
-    expect(await readMemory(memory, 'olga')).toBe(WORKING_MEMORY_TEMPLATE);
-    expect(await readMemory(memory, 'igor')).toContain('бухгалтерия');
-  });
 });
 
 describe('conversations', () => {

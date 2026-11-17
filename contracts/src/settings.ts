@@ -1,12 +1,6 @@
 // Screens of the employee: «Ждёт подтверждения» and «Настройки» (spec, section 7).
 import type { ActionDescription } from './chat.ts';
 
-export interface MemoryResponse {
-  text: string;
-  // Nothing remembered yet: empty or only the blank template.
-  empty: boolean;
-}
-
 export interface MyUsage {
   month: { spentRub: number; limitRub: number | null; resetsOn: string };
   // Only when subscription models exist and a daily cap applies (spec, F5).

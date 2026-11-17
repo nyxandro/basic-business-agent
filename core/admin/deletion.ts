@@ -7,6 +7,8 @@ import { writeAudit } from '../audit/audit.ts';
 import type { Db } from '../db/pool.ts';
 import { inTransaction } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import { forgetPersonal } from '../memory/entries.ts';
+import { forgetLegacyWorkingMemory } from '../memory/memory.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { transferProjects } from '../projects/transfer.ts';
 import { deleteUserWorkspace } from '../workspace/layout.ts';
@@ -67,7 +69,14 @@ export async function deleteEmployee(deps: DeletionDeps, actorUserId: string, us
         }
       },
     ],
-    ['memory', () => deps.memory.updateWorkingMemory({ threadId: `memory-view:${userId}`, resourceId: userId, workingMemory: '' })],
+    // The personal memory (spec, 8.26) and what Mastra's working memory kept of the person before it.
+    [
+      'memory',
+      async () => {
+        await forgetPersonal(deps.db, userId);
+        await forgetLegacyWorkingMemory(deps.db, userId);
+      },
+    ],
     // Their projects go to the administrator who removes them (spec, section 8.20), before their folder goes.
     ['projects', () => transferProjects(deps.db, deps.storage, deps.workspaceRoot, userId, actorUserId)],
     [

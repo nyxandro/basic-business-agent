@@ -12,6 +12,7 @@ import { ru } from '../i18n/ru.ts';
 import { ChatHeaderBar } from '../layout/ChatHeader.tsx';
 import { useShell } from '../layout/AppShell.tsx';
 import { threadPath } from '../layout/ThreadRow.tsx';
+import { MemoryEntries } from '../memory/MemoryEntries.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
@@ -339,6 +340,10 @@ export function ProjectPage() {
           {/* The page may show the project from memory first: the server's instructions, when different,
               start the field anew (spec, section 8.22). */}
           {owner && !archived ? <Instructions key={`${project.id}:${project.instructions}`} project={project} onSaved={update} /> : <InstructionsText project={project} />}
+          {/* What the agents remember about the project (spec, section 8.26). */}
+          <Card className={styles.section}>
+            <MemoryEntries projectId={project.id} title={ru.memory.projectTitle} hint={ru.memory.projectHint} empty={ru.memory.projectEmpty} failed={ru.memory.projectFailed} readOnlyNote={ru.memory.projectArchived} />
+          </Card>
           <ProjectFiles projectId={project.id} readOnly={archived} shared={project.shared} />
           {/* A folder of this browser's computer for the agent (spec, section 8.25); not for an archived project. */}
           {archived ? null : <ComputerFolderCard projectId={project.id} />}

@@ -12,6 +12,7 @@ import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import type { AgentRuntime, Registry } from '../loader/registry.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
+import { addEntry } from '../memory/entries.ts';
 import { createMemory } from '../memory/memory.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
@@ -54,6 +55,7 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
   const agent = await resolveAgent(deps, agentId, mode);
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, 'olga');
+  rc.set(REQUEST_KEYS.runKind, mode === 'draft' ? 'draft' : 'chat');
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
   const threadId = `t-${Date.now()}`;
@@ -139,6 +141,60 @@ describe('prompt layers', () => {
     const system = await systemPromptOf('raw', 'published');
     expect(system.join('\n')).not.toContain('# Правила ядра');
     expect(system.join('\n')).toContain('Ты агент без правил ядра.');
+  });
+});
+
+// Memory of a project and of the employee (spec, section 8.26).
+describe('memory in the prompt', () => {
+  const ROOF = '5f0c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
+  const HOSPITAL = '6a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d';
+
+  beforeAll(async () => {
+    await db.query(`INSERT INTO app.projects (id, user_id, name, instructions, access) VALUES ($1, 'olga', 'Кровля школы', 'Аукцион на капремонт кровли.', 'private'), ($2, 'olga', 'Горбольница', '', 'private')`, [ROOF, HOSPITAL]);
+    saveFile(contextRoot(workspaceRoot, 'olga', ROOF), 'документация.pdf', new Uint8Array(1024));
+  });
+
+  it('shows an empty memory of the project and of the employee as such', async () => {
+    const all = (await systemPromptOf('sales', 'published', ROOF)).join('\n');
+    expect(all).toContain('## Память проекта\nПока пусто.');
+    expect(all).toContain('# Что ты помнишь о сотруднике');
+    expect(all).toContain('Пока ничего.');
+  });
+
+  it('puts the memory of the project after its instructions and before its files, the personal memory last', async () => {
+    await addEntry(db, { kind: 'project', projectId: ROOF }, { userId: 'olga', byAgent: false }, 'Подача до 28.11.2026 09:00');
+    await addEntry(db, { kind: 'project', projectId: ROOF }, { userId: 'anna', byAgent: true }, 'НМЦК 14 862 400 ₽');
+    await addEntry(db, { kind: 'project', projectId: HOSPITAL }, { userId: 'olga', byAgent: false }, 'Краска ЛК-0230 — поставка 15 дней');
+    await addEntry(db, { kind: 'personal', userId: 'olga' }, { userId: 'olga', byAgent: true }, 'Ведёт только юрлиц');
+    const system = await systemPromptOf('sales', 'published', ROOF);
+    const all = system.join('\n');
+    const at = (needle: string) => all.indexOf(needle);
+    expect(at('## Память проекта')).toBeGreaterThan(at('Аукцион на капремонт кровли.'));
+    expect(at('## Память проекта')).toBeLessThan(at('документация.pdf'));
+    expect(all).toMatch(/- \[1\] Подача до 28\.11\.2026 09:00 — Ольга вручную, \d\d\.\d\d\.\d{4}/);
+    expect(all).toMatch(/- \[2\] НМЦК 14 862 400 ₽ — Анна через агента, \d\d\.\d\d\.\d{4}/);
+    expect(all).toMatch(/Занято \d+ из 6\s000 знаков\./);
+    expect(all).not.toContain('Краска ЛК-0230');
+    // The personal memory comes after everything else, the project's files included.
+    expect(at('# Что ты помнишь о сотруднике')).toBeGreaterThan(at('документация.pdf'));
+    expect(all.slice(at('# Что ты помнишь о сотруднике'))).toMatch(/- \[1\] Ведёт только юрлиц — \d\d\.\d\d\.\d{4}/);
+  });
+
+  it('gives a conversation outside projects only the personal memory, and a draft check none', async () => {
+    const outside = (await systemPromptOf('sales', 'published')).join('\n');
+    expect(outside).not.toContain('## Память проекта');
+    expect(outside).not.toContain('Подача до 28.11.2026');
+    expect(outside).toContain('Ведёт только юрлиц');
+    const draft = (await systemPromptOf('sales', 'draft')).join('\n');
+    expect(draft).not.toContain('# Что ты помнишь о сотруднике');
+    expect(draft).not.toContain('Ведёт только юрлиц');
+  });
+
+  it('sends no working memory of Mastra: neither its instruction nor its tool', async () => {
+    await systemPromptOf('sales', 'published', ROOF);
+    const request = model.requests.at(-1)!;
+    expect(JSON.stringify(request.messages)).not.toContain('WORKING_MEMORY_SYSTEM_INSTRUCTION');
+    expect((request.tools ?? []).map((t) => t.function.name)).not.toContain('updateWorkingMemory');
   });
 });
 

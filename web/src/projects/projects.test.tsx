@@ -26,6 +26,8 @@ function server(extra: Record<string, Parameters<typeof mockServer>[0][string]> 
     'GET /app/api/projects/p1/trash': { body: { batches: [] } },
     'GET /app/api/projects/p2/files': { body: { files: [] } },
     'GET /app/api/projects/p2/trash': { body: { batches: [] } },
+    'GET /app/api/projects/p1/memory': { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } },
+    'GET /app/api/projects/p2/memory': { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } },
     'GET /app/api/departments': { body: { departments: [] } },
     ...extra,
   });

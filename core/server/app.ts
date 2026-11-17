@@ -31,6 +31,7 @@ import { registerInterfaceRoutes } from '../interface-settings/routes.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { registerStorageRoutes } from '../storage/routes.ts';
 import { registerMailRoutes } from '../mail/routes.ts';
+import { registerMemoryRoutes } from '../memory/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
@@ -79,6 +80,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerChatRoutes(app, deps.chat);
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
   registerProjectRoutes(app, projects);
+  registerMemoryRoutes(app, { db: deps.db });
   registerSearchRoutes(app, projects);
   registerFileSearchRoutes(app, projects);
   registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });

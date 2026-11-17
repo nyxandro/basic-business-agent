@@ -13,12 +13,6 @@
   gap: 8px;
 }
 
-.memory {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
-}
-
 .caption {
   margin: 0;
   font-size: 13px;
