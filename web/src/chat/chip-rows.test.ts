@@ -41,13 +41,13 @@ describe('rows of the attached files (decision of the owner 17.11)', () => {
     expect(roomy[0]!).toBeGreaterThan(roomy[1]!);
   });
 
-  it('keeps the rows as they are when a file goes, and lays out anew only the last row when files come', () => {
+  it('keeps the rows above a file gone and packs the rest anew, as a paragraph reflows; files come join the last row', () => {
     const ids = ['a', 'b', 'c', 'd', 'e'];
     const size = new Map<string, ChipSize>(ids.map((id) => [id, { natural: 300, min: 210 }]));
     const rows = [['a', 'b'], ['c', 'd'], ['e']];
-    // «c» goes: its row keeps «d», the others do not move.
-    expect(stableRows(rows, ['a', 'b', 'd', 'e'], size, 736, GAP)).toEqual([['a', 'b'], ['d'], ['e']]);
-    // The only file of a row goes: the row goes.
+    // «c» goes: the row above stays; «d» is no longer left alone — «e» comes up beside it (screenshot of 17.11).
+    expect(stableRows(rows, ['a', 'b', 'd', 'e'], size, 736, GAP)).toEqual([['a', 'b'], ['d', 'e']]);
+    // The only file of the last row goes: the row goes, the rest stay.
     expect(stableRows(rows, ['a', 'b', 'c', 'd'], size, 736, GAP)).toEqual([['a', 'b'], ['c', 'd']]);
     // «f» comes: the rows above the last stay, the last is laid out with it.
     size.set('f', { natural: 300, min: 210 });
@@ -117,11 +117,16 @@ describe('rows kept while files come and go', () => {
         const sizes = new Map(ids.map((id, i) => [id, { natural: widths[i]!, min: chipMin(widths[i]!) }] as const));
         const ends = chipRows(sized(widths), 736, GAP);
         const rows = ends.map((end, r) => ids.slice(r === 0 ? 0 : ends[r - 1]! + 1, end + 1));
-        // Some files go…
+        // Some files go: the rows above the first one touched stay as they were, the rest are packed anew.
         const left = ids.filter((_, i) => !gone[i]);
         const afterGoing = stableRows(rows, left, sizes, 736, GAP);
         expect(afterGoing.flat()).toEqual(left);
-        expect(afterGoing).toEqual(rows.map((row) => row.filter((id) => left.includes(id))).filter((row) => row.length > 0));
+        const touched = rows.findIndex((row) => row.some((id) => !left.includes(id)));
+        const above = touched < 0 ? rows : rows.slice(0, touched);
+        expect(afterGoing.slice(0, above.length)).toEqual(above);
+        const rest = left.slice(above.flat().length);
+        const restEnds = chipRows(rest.map((id) => sizes.get(id)!), 736, GAP);
+        expect(afterGoing.slice(above.length)).toEqual(restEnds.map((end, r) => rest.slice(r === 0 ? 0 : restEnds[r - 1]! + 1, end + 1)));
         // …and some come: the rows above the last stay.
         const fresh = Array.from({ length: added }, (_, i) => `n${i}`);
         fresh.forEach((id) => sizes.set(id, { natural: 250, min: chipMin(250) }));

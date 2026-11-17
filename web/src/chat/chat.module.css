@@ -572,8 +572,7 @@
 .chips {
   display: flex;
   flex-wrap: wrap;
-  /* Rows apart by the chips' own margins: the breaks between rows (lines of no height) add no gap, so a
-     row that folds away leaves none behind. */
+  /* Rows apart by the chips' own margins. */
   gap: 0 6px;
   max-height: 45dvh;
   overflow-x: hidden;
@@ -581,6 +580,8 @@
   /* The room of the scroll bar is kept: its coming and going must not change the width the rows are laid
      out for (that laid everything out anew mid-way, 17.11). */
   scrollbar-gutter: stable;
+  /* A chip leaving is taken out of the flow and stays where it was (Motion, popLayout). */
+  position: relative;
 }
 
 @media (max-width: 859px) {
@@ -602,8 +603,6 @@
   max-width: 100%;
   box-sizing: border-box;
   margin-block: 3px;
-  /* A file come fades in where it lies. */
-  animation: bba-fade 0.2s ease-out both;
   height: 30px;
   padding: 0 6px 0 10px;
   border-radius: 10px;
@@ -613,10 +612,10 @@
   font-size: 13px;
 }
 
-/* The end of a row the layout chose (chip-rows.ts): the next chip starts the next row. */
-.chipBreak {
-  flex-basis: 100%;
-  height: 0;
+/* The icon and the cross of a chip: they move with it, unstretched by its scale. */
+.chipPart {
+  display: inline-flex;
+  flex: none;
 }
 
 .chipName {

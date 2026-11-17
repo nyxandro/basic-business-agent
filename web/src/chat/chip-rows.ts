@@ -90,10 +90,11 @@ export function chipWidths(chips: readonly ChipSize[], ends: readonly number[], 
   return widths;
 }
 
-// The rows of the files as they change (the files by their ids, in order), so the chips on the screen
-// move as little as they can: a file gone leaves its row with the rest and the other rows as they were;
-// a file come in the place of one gone (an upload became its file) takes its place; files come at the
-// end are laid out with the last row only. With nothing before (or another width) — anew.
+// The rows of the files as they change (the files by their ids, in order), as a paragraph reflows when a
+// word goes: the rows above the first row touched — a file gone, or an upload become its file — stay
+// where they are, and from that row on the files are packed anew, so no chip is left alone in a row
+// another could share (the owner, 17.11). Files come at the end are laid out with the last row only.
+// With nothing before (or another width) — anew.
 export function stableRows(before: readonly (readonly string[])[] | null, ids: readonly string[], sizes: ReadonlyMap<string, ChipSize>, width: number, gap: number): string[][] {
   const sizeOf = (id: string) => {
     const size = sizes.get(id);
@@ -106,29 +107,17 @@ export function stableRows(before: readonly (readonly string[])[] | null, ids: r
   };
   if (!before) return anew(ids);
   const present = new Set(ids);
-  const known = new Set(before.flat());
-  const rows: string[][] = [];
-  let next = 0;
-  for (const row of before) {
-    const kept: string[] = [];
-    for (const id of row) {
-      if (next >= ids.length) break;
-      if (ids[next] === id) kept.push(ids[next++]!);
-      else if (!present.has(id) && !known.has(ids[next]!)) kept.push(ids[next++]!);
-      // Gone, nothing in its place.
-      else if (!present.has(id)) continue;
-      // The same files in another order: anew.
-      else return anew(ids);
-    }
-    if (kept.length > 0) rows.push(kept);
-  }
-  const fresh = ids.slice(next);
-  if (fresh.some((id) => known.has(id))) return anew(ids);
-  // A file that took another's place may not fit its row: from that row on, anew.
-  const tight = rows.findIndex((row) => row.length > 1 && row.reduce((sum, id) => sum + sizeOf(id).min, 0) + gap * (row.length - 1) > width);
-  if (tight >= 0) return [...rows.slice(0, tight), ...anew([...rows.slice(tight).flat(), ...fresh])];
-  if (fresh.length === 0) return rows;
-  return [...rows.slice(0, -1), ...anew([...(rows.at(-1) ?? []), ...fresh])];
+  const gone = before.findIndex((row) => row.some((id) => !present.has(id)));
+  const flatBefore = before.flat();
+  // Nothing gone and nothing come: the rows as they are.
+  if (gone < 0 && flatBefore.length === ids.length && flatBefore.every((id, i) => ids[i] === id)) return before.map((row) => [...row]);
+  // Nothing gone: the files come join the last row.
+  const touched = gone >= 0 ? gone : Math.max(0, before.length - 1);
+  const kept = before.slice(0, touched).map((row) => [...row]);
+  const flat = kept.flat();
+  // The same files in another order: anew.
+  if (!flat.every((id, i) => ids[i] === id)) return anew(ids);
+  return [...kept, ...anew(ids.slice(flat.length))];
 }
 
 // The cost of a way to lay the chips: what chipRows makes least (for tests and comparisons).

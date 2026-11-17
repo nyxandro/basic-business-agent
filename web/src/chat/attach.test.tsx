@@ -121,11 +121,12 @@ describe('attaching several files (spec, section 8.9)', () => {
     expect(onSubmitMessage).not.toHaveBeenCalled();
     await held.answerNext(1);
     await waitFor(() => expect(held.answers).toHaveLength(2));
-    expect(screen.queryByText('Загружаю Счёт.pdf…')).not.toBeInTheDocument();
+    // A row leaving fades out first (Motion), then is gone.
+    await waitFor(() => expect(screen.queryByText('Загружаю Счёт.pdf…')).not.toBeInTheDocument());
     expect(sendButton).toBeDisabled();
     await held.answerNext(2);
     await waitFor(() => expect(ex.addAttachment).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText(/Загружаю/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Загружаю/)).not.toBeInTheDocument());
     expect(sendButton).toBeEnabled();
   });
 
@@ -177,7 +178,7 @@ describe('attaching several files (spec, section 8.9)', () => {
     await waitFor(() => expect(ex.onUploadError).toHaveBeenCalled());
     expect(uploads()).toEqual(['Счёт.pdf']);
     expect(shownError(ex).code).toBe('APP_AUTH_SESSION_EXPIRED');
-    expect(screen.queryByText(/Загружаю/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Загружаю/)).not.toBeInTheDocument());
   });
 });
 
