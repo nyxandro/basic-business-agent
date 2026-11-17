@@ -1,5 +1,7 @@
 // Start of the server: read the environment, load and validate the installation, migrate, serve.
 // Any configuration problem stops the start with APP_CONFIG_INVALID and the list of files and fields.
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { recoverProjectFolders, startTrashPurge } from '../projects/trash.ts';
 import { serve } from '@hono/node-server';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +37,9 @@ import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
+import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, startPreviewPurge } from '../preview/cache.ts';
+import { sandboxRunner } from '../preview/convert.ts';
+import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import { realDiscoverDeps } from '../mail/discover.ts';
 import { realEndpoints } from '../mail/oauth.ts';
@@ -92,6 +97,15 @@ async function main(): Promise<void> {
   assertSandboxEnvironment(SKILLS_VENV);
   // Where the files are kept — the disk or the bucket the superadmin connected (spec, section 8.23).
   const files = createFileStorage({ db, box, workspaceRoot: env.APP_WORKSPACE_DIR, keepCopyMs: KEEP_COPY_MS });
+  // PDFs of documents for the viewer: made in the sandbox, kept a week in the temporary folder (spec, 8.27).
+  const previewCache = createPreviewCache({ dir: join(tmpdir(), PREVIEW_CACHE_DIR), maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS });
+  const preview = createPreviewService({
+    storage: files,
+    cache: previewCache,
+    run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation }),
+    limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
+    workRoot: tmpdir(),
+  });
   // The mailboxes of employees (spec, section 8.24).
   const mail = createMailService({ db, box, publicUrl: env.APP_PUBLIC_URL, transport: { trustSelfSigned: false }, discover: realDiscoverDeps, endpoints: realEndpoints, ports: { imap: IMAP_PORTS, smtp: SMTP_PORTS } });
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
@@ -101,13 +115,14 @@ async function main(): Promise<void> {
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone, storage: files });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone, storage: files, preview });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);
   // After the recovery: copies a stopped server left are stored into the bucket by the first pass.
   await files.start();
   const stopTrashPurge = startTrashPurge(db, files);
+  const stopPreviewPurge = startPreviewPurge(previewCache);
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
@@ -125,6 +140,7 @@ async function main(): Promise<void> {
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
     stopTrashPurge();
+    stopPreviewPurge();
     files.stop();
     await mastra.stopWorkers();
     await connections.close();

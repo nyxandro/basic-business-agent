@@ -4,7 +4,7 @@
 // agent, an upload, a download — and the copy goes 10 minutes after the last use. Every place that
 // touches files of an area holds it first (`hold`); while held, no copy is made, merged or removed under
 // it. One server process serves the installation, so the holds are counted in memory.
-import { createReadStream, existsSync, rmSync } from 'node:fs';
+import { createReadStream, existsSync, rmSync, statSync } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { join, relative } from 'node:path';
 import type { StorageConnectInput, StorageKeysInput, StorageStatus } from '@bba/contracts';
@@ -13,7 +13,7 @@ import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
+import { existingInside, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';
 import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, unreadableNames, type CopyDeps } from './copies.ts';
 import { storedAreas, storedRows, storedTotals } from './manifest.ts';
@@ -47,6 +47,9 @@ export interface FileStorage {
   // the copy when there is one, otherwise straight from the bucket. Null when there is no such file.
   openFile(area: Area, rel: string): Promise<{ stream: Readable; bytes: number } | null>;
   exists(area: Area, rel: string): Promise<boolean>;
+  // A file's size and time of change (whole milliseconds, as the list of the bucket keeps them) without
+  // reading it: the viewer looks a ready PDF up by them (spec, section 8.27). Null when there is no file.
+  stat(area: Area, rel: string): Promise<{ bytes: number; modifiedMs: number } | null>;
   // The person's files of the area without making a copy (search, counts): from the copy when there is
   // one, otherwise from the list of the bucket. `visit` returning false stops.
   walkFiles(area: Area, visit: (file: StoredFile) => boolean | void): Promise<void>;
@@ -338,6 +341,21 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
         if (!remote() || existsSync(dir)) return isFileInside(dir, rel);
         const path = relative(dir, resolveInside(dir, rel));
         return (await storedRows(db, areaKey(area), path)).some((r) => r.path === path);
+      });
+    },
+
+    stat(area, rel) {
+      return exclusive(area, async () => {
+        const dir = areaDir(workspaceRoot, area);
+        if (!remote() || existsSync(dir)) {
+          const real = existingInside(dir, rel);
+          if (!real) return null;
+          const file = statSync(real);
+          return file.isFile() ? { bytes: file.size, modifiedMs: Math.trunc(file.mtimeMs) } : null;
+        }
+        const path = relative(dir, resolveInside(dir, rel));
+        const row = (await storedRows(db, areaKey(area), path)).find((r) => r.path === path);
+        return row ? { bytes: row.bytes, modifiedMs: row.mtimeMs } : null;
       });
     },
 

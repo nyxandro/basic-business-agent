@@ -315,7 +315,16 @@ describe('what the review of 17.11 found', () => {
     expect({ text: Buffer.concat(chunks).toString(), bytes: file!.bytes }).toEqual({ text: 'smeta', bytes: 5 });
     expect(await storage.openFile(tender, 'files/нет.xlsx')).toBeNull();
     await expect(storage.exists(tender, '../../x')).rejects.toMatchObject({ code: 'APP_VALIDATION_FAILED' });
+    // Its size and time of change, from the list of the bucket (the viewer looks a ready PDF up by them, 8.27).
+    const stat = await storage.stat(tender, 'files/смета.xlsx');
+    expect(stat).toMatchObject({ bytes: 5 });
+    expect(stat!.modifiedMs).toBeGreaterThan(0);
+    expect(await storage.stat(tender, 'files/нет.xlsx')).toBeNull();
     expect(existsSync(areaDir(root, tender))).toBe(false);
+    // From the copy when there is one: the same size and time.
+    const again = await storage.hold(tender, 'read');
+    expect(await storage.stat(tender, 'files/смета.xlsx')).toEqual(stat);
+    await again();
   });
 
   it('a held area is not moved from under the answer', async () => {

@@ -28,6 +28,7 @@
     "skills:pack": "node tooling/skills-pack.ts",
     "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/sandbox/requirements.txt && mkdir -p .venv-skills/node && cp core/sandbox/node/package.json core/sandbox/node/package-lock.json .venv-skills/node/ && npm ci --prefix .venv-skills/node --omit=dev --no-audit --no-fund && node tooling/sandbox-programs/install.ts",
     "smoke": "bash deploy/smoke.sh",
+    "preview:check": "node tooling/preview-check.ts",
     "stand": "node --env-file=.env tests/e2e/stand.ts",
     "start": "node core/server/main.ts",
     "test": "vitest run && pnpm -C web test",

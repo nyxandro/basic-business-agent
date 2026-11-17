@@ -87,6 +87,16 @@ export const ERROR_CATALOG = {
     userMessage: 'Не удалось запустить рабочую среду агента. Попробуйте ещё раз через минуту; если повторяется — сообщите администратору код ошибки.',
   },
   APP_SANDBOX_BUSY: { status: 503, userMessage: 'Рабочая среда сейчас занята другими задачами. Попробуйте через минуту.' },
+  // Viewing documents (spec, section 8.27).
+  APP_PREVIEW_UNSUPPORTED: { status: 415, userMessage: 'Этот файл нельзя посмотреть здесь — скачайте его.' },
+  APP_PREVIEW_TOO_BIG: { status: 413, userMessage: 'Файл больше 50 МБ — посмотреть его здесь нельзя. Скачайте его.' },
+  APP_PREVIEW_PASSWORD: { status: 422, userMessage: 'Документ защищён паролем — посмотреть его здесь нельзя. Скачайте его.' },
+  APP_PREVIEW_FAILED: {
+    status: 422,
+    userMessage: 'Не получилось показать документ: файл повреждён, защищён паролем или в формате, который сервер не понимает. Скачайте его и откройте у себя.',
+  },
+  APP_PREVIEW_TIMEOUT: { status: 504, userMessage: 'Документ слишком долго готовится к просмотру. Скачайте его или попробуйте позже.' },
+  APP_PREVIEW_BUSY: { status: 503, userMessage: 'Сейчас готовится много документов. Попробуйте через минуту.' },
   APP_UPLOAD_TOO_LARGE: { status: 413, userMessage: 'Файл больше 20 МБ. Сожмите его или разделите на части.' },
   APP_UPLOAD_TYPE_UNSUPPORTED: {
     status: 415,

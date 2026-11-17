@@ -28,6 +28,7 @@ import { registerSearchRoutes } from '../search/routes.ts';
 import { registerVoiceRoutes } from '../voice/routes.ts';
 import { registerSkillRoutes } from '../skills-admin/routes.ts';
 import { registerInterfaceRoutes } from '../interface-settings/routes.ts';
+import type { PreviewService } from '../preview/service.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { registerStorageRoutes } from '../storage/routes.ts';
 import { registerMailRoutes } from '../mail/routes.ts';
@@ -52,6 +53,8 @@ export interface ServerDeps {
   timezone: string;
   // Where the files of conversations and projects are kept (spec, section 8.23).
   storage: FileStorage;
+  // PDFs of Word, Excel and PowerPoint files for the viewer (spec, section 8.27).
+  preview: PreviewService;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {

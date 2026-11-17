@@ -1,7 +1,7 @@
 // Test helper: the real server on a fresh database, with helpers to create people and sign in.
 import { randomInt } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTool } from '@mastra/core/tools';
@@ -46,6 +46,9 @@ import { createAuthPool, createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase } from '../db/test-database.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
+import { createPreviewCache, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES } from '../preview/cache.ts';
+import { sandboxRunner, type RunCommand } from '../preview/convert.ts';
+import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import type { ObjectStore, S3Config } from '../storage/object-store.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import type { checkMailbox } from '../mail/client.ts';
@@ -127,6 +130,13 @@ function testAgent(id: string, name: string, tools: AgentRuntime['tools']): Agen
   };
 }
 
+// LibreOffice's stand-in for the tests of routes: a small PDF naming the file it was made of.
+const stubPdf: RunCommand = (cwd, _program, args) => {
+  mkdirSync(join(cwd, 'out'), { recursive: true });
+  writeFileSync(join(cwd, 'out', 'source.pdf'), `%PDF-1.4 stand-in of ${args.at(-1)}`);
+  return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+};
+
 export async function createTestApp(
   opts: {
     knownAgentIds?: string[];
@@ -167,6 +177,8 @@ export async function createTestApp(
     mailDiscover?: DiscoverDeps;
     mailEndpoints?: EndpointsOf;
     mailCheck?: typeof checkMailbox;
+    // How the viewer's PDF is made (spec, section 8.27): without `sandbox`, a stand-in that writes a small PDF.
+    previewRun?: RunCommand;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -284,7 +296,15 @@ export async function createTestApp(
       };
   const accounts = createChatGptAccounts({ db, box, writer, auth: chatgptAuth, authDir: chatgptAuthDir, timezone: 'Europe/Moscow' });
   const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow', storage: files });
+  const previewRoot = mkdtempSync(join(tmpdir(), 'bba-test-preview-'));
+  const preview = createPreviewService({
+    storage: files,
+    cache: createPreviewCache({ dir: join(previewRoot, 'cache'), maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS }),
+    run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable() }) : (opts.previewRun ?? stubPdf),
+    limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
+    workRoot: previewRoot,
+  });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -353,6 +373,7 @@ export async function createTestApp(
       await mastra.stopWorkers();
       await model.close();
       rmSync(workspaceRoot, { recursive: true, force: true });
+      rmSync(previewRoot, { recursive: true, force: true });
       removeSkillFolder(skillsDir);
       await connections.close();
       await db.end();
