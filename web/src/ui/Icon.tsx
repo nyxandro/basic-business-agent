@@ -176,6 +176,13 @@ const PATHS = {
       <path d="M8 11V8a4 4 0 0 1 8 0v3" />
     </>
   ),
+  // A folder of the person's computer (spec, section 8.25).
+  monitor: (
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </>
+  ),
   term: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

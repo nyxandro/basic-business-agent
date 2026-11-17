@@ -127,13 +127,15 @@ describe('a working copy', () => {
     put(dir, 'отчёт/b.docx', 'two');
     writeFileSync(join(dir, 'a.txt'), 'one more');
     put(dir, '.renders/page-1.png', 'png');
+    // A file of the person's computer brought for an answer (spec, section 8.25) is not stored either.
+    put(dir, '.computer/Договоры/договор.docx', 'docx');
     // Held: the pass leaves it alone.
     await storage.sweep();
     expect(existsSync(dir)).toBe(true);
     await release();
     expect(s3.objects.get('bba/users/olga/files/a.txt')?.toString()).toBe('one more');
     expect(s3.objects.get('bba/users/olga/files/отчёт/b.docx')?.toString()).toBe('two');
-    expect(bucketKeys().some((k) => k.includes('.renders'))).toBe(false);
+    expect(bucketKeys().some((k) => k.includes('.renders') || k.includes('.computer'))).toBe(false);
     await storage.sweep();
     expect(existsSync(dir)).toBe(false);
   });

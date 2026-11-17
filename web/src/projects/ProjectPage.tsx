@@ -26,6 +26,7 @@ import { useLoad } from '../ui/use-load.ts';
 import { accessText } from './AccessPicker.tsx';
 import { archiveProject, deleteProject, fetchProject, fetchProjectFiles, fetchProjectThreads, unarchiveProject, updateProject } from './api.ts';
 import { AccessDialog } from './ProjectDialog.tsx';
+import { ComputerFolderCard } from './ComputerFolderCard.tsx';
 import { ProjectFiles } from './ProjectFiles.tsx';
 import { projectKeys } from './queries.ts';
 import page from '../layout/page.module.css';
@@ -339,6 +340,8 @@ export function ProjectPage() {
               start the field anew (spec, section 8.22). */}
           {owner && !archived ? <Instructions key={`${project.id}:${project.instructions}`} project={project} onSaved={update} /> : <InstructionsText project={project} />}
           <ProjectFiles projectId={project.id} readOnly={archived} shared={project.shared} />
+          {/* A folder of this browser's computer for the agent (spec, section 8.25); not for an archived project. */}
+          {archived ? null : <ComputerFolderCard projectId={project.id} />}
           <Threads project={project} agents={agents ?? []} />
           <AccessDialog
             project={editAccess ? project : null}

@@ -98,6 +98,29 @@ export function saveInFolder(root: string, folder: string, fileName: string, dat
   return { name: placed, path: `${folder}/${placed}`, bytes: data.byteLength };
 }
 
+// A copy kept at a path of its own inside a folder the agent writes into (a file of the person's computer,
+// spec section 8.25): each part of the path made safe, folders reached without following links, an older
+// copy at the same path replaced whole (a link put there is replaced, never followed).
+// `folder` is the server's own (a working folder such as «.computer»), `path` comes from the person.
+export function putInFolder(root: string, folder: string, path: string, data: Uint8Array): { path: string; bytes: number } {
+  const parts = path.split(/[\\/]/).filter((p) => p !== '' && p !== '.');
+  if (parts.length === 0 || parts.some((p) => p === '..')) throw appError('APP_VALIDATION_FAILED', `bad path ${path}`, { userMessage: 'Неверный путь файла.' });
+  if (data.byteLength > MAX_UPLOAD_BYTES) throw appError('APP_UPLOAD_TOO_LARGE', `${path} is ${data.byteLength} bytes`);
+  const clean = [folder, ...parts.map(safeFileName)].join('/');
+  const placed = inFolderOf(root, clean, true, (held, name) => {
+    const temp = join(held, `.upload-${randomUUID()}`);
+    try {
+      writeFileSync(temp, data, { flag: 'wx' });
+      renameSync(temp, join(held, name));
+    } finally {
+      rmSync(temp, { force: true });
+    }
+    return true;
+  });
+  if (placed === null) throw appError('APP_VALIDATION_FAILED', `a folder of ${clean} is not a folder`, { userMessage: 'Не удалось положить файл в рабочую папку: на его месте другая папка или файл.' });
+  return { path: clean, bytes: data.byteLength };
+}
+
 // Files of a folder for people and for the model: hidden working folders (".renders") are skipped.
 export function listFiles(dir: string): { path: string; bytes: number }[] {
   const out: { path: string; bytes: number }[] = [];

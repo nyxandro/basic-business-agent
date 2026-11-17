@@ -1,7 +1,7 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // personal memory and attachments.
 import { basename, relative } from 'node:path';
-import { renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
+import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, renameThreadSchema, retryTurnSchema, type AgentListResponse, type MemoryResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
@@ -16,7 +16,7 @@ import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileDownload } from '../workspace/download.ts';
 import { areaOf, type Area } from '../storage/areas.ts';
-import { contextRoot, isFileInside, resolveInside, saveFile } from '../workspace/layout.ts';
+import { contextRoot, isFileInside, putInFolder, resolveInside, saveFile } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
@@ -56,6 +56,9 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
   const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }));
   const mailSystems = Object.fromEntries(MAIL_TOOL_NAMES.map((name) => [name, MAIL_SYSTEM]));
+  // The tools of the browser for a folder of the person's computer (spec, section 8.25): read-only.
+  const computerActions = Object.fromEntries(Object.entries(COMPUTER_ACTION_TITLES).map(([name, title]) => [name, { title, fields: {}, readOnly: true }]));
+  const computerSystems = Object.fromEntries(Object.values(COMPUTER_TOOLS).map((name) => [name, COMPUTER_SYSTEM]));
   // A failure of a run in our code and words: the text of RUN_ERROR, or the failure Mastra kept in
   // a broken answer (spec, section 9.1).
   async function translate(userId: string, failure: unknown): Promise<TranslatedError> {
@@ -84,12 +87,13 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         actions: {
           ...WORKSPACE_ACTIONS,
           ...mailActions,
+          ...computerActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...agentActions(rt),
           ...subagentCalls(rt),
         },
         systems: {
-          tools: { ...mailSystems, ...rt.toolSystems },
+          tools: { ...mailSystems, ...computerSystems, ...rt.toolSystems },
           prefixes: Object.fromEntries(
             deps.registry.connectors.filter((conn) => rt.connectorIds.includes(conn.id)).map((conn) => [`${serverKey(conn.id)}_`, conn.title]),
           ),
@@ -269,6 +273,19 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const file = await readUploadedFile(c);
     const data = new Uint8Array(await file.arrayBuffer());
     return c.json(await inFolder(found, 'write', (folder) => saveFile(folder, file.name, data)), 201);
+  });
+
+  // A file of the person's computer the agent reads (spec, section 8.25): the browser sends it, it lies in the
+  // hidden folder of the conversation's working folder for the skills — not among the project's files, not
+  // stored in a bucket. A newer copy of the same path replaces the older.
+  app.post('/app/api/threads/:threadId/computer-file', async (c) => {
+    const found = await threadFolders(access(c).userId, c.req.param('threadId'));
+    const file = await readUploadedFile(c);
+    const path = (await c.req.parseBody()).path;
+    if (typeof path !== 'string' || !path.trim()) throw appError('APP_VALIDATION_FAILED', 'no path of the computer file', { userMessage: 'Не указан путь файла.' });
+    const data = new Uint8Array(await file.arrayBuffer());
+    const saved = await inFolder(found, 'write', (folder) => putInFolder(folder, COMPUTER_COPIES, path, data));
+    return c.json(saved, 201);
   });
 
   // What «Скачать» of a file block will find (spec, sections 8.18 and 8.20): the file; or it was

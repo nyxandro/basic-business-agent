@@ -484,3 +484,37 @@ a.rowName:hover {
   white-space: pre-wrap;
   line-height: 1.5;
 }
+
+/* The folder of the computer in the input (spec, section 8.25): the browser asks to confirm access. */
+.chipWarn {
+  background: var(--warn-soft);
+  border-color: var(--warn-soft);
+}
+
+.chipAction {
+  flex: none;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* «Папка на компьютере» on the project's page (spec, section 8.25). */
+.computerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.computerName {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.computerActions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
