@@ -45,7 +45,8 @@ describe('demo installation', () => {
     const { agents } = (await (await t.call('GET', '/app/api/agents', { cookie })).json()) as { agents: { id: string; starters: string[]; systems: { tools: Record<string, string> } }[] };
     expect(agents.map((a) => a.id)).toEqual(['assistant']);
     expect(agents[0]!.starters).toContain('Покажи мои заметки');
-    expect(agents[0]!.systems.tools).toEqual({ notes_list: 'Заметки', notes_add: 'Заметки' });
+    // The notes of the plugin; the mailbox and the folder of the computer are the core's own (spec, 8.24, 8.25).
+    expect(agents[0]!.systems.tools).toMatchObject({ notes_list: 'Заметки', notes_add: 'Заметки', mailbox_send: 'Почта', computer_folder_read: 'Компьютер' });
   });
 
   it('answers, adds a note only after «Да» and lists notes without asking', async () => {

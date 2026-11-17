@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { COMPUTER_TOOLS } from '@bba/contracts';
+import { MAIL_TOOL_NAMES } from '../mail/tools.ts';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { contextRoot } from '../workspace/layout.ts';
@@ -79,15 +81,20 @@ describe('chat', () => {
         starters: ['Покажи мои сделки'],
         // Its own mark (spec, section 8.17): the spark until an admin sets another.
         mark: { kind: 'icon', icon: 'spark' },
-        actions: {
+        actions: expect.objectContaining({
           // The workspace's own tools are named in words too, not mastra_workspace_read_file.
           ...WORKSPACE_ACTIONS,
           crm_search: { title: 'Найти сделки', fields: {}, readOnly: true },
           mail_send: { title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false },
-        },
-        systems: { tools: {}, prefixes: {} },
+          // The mailbox (8.24) and the folder of the computer (8.25) are named for every agent.
+          mailbox_send: expect.objectContaining({ title: 'Отправить письмо из почты сотрудника', readOnly: false }),
+          computer_folder_read: { title: 'Чтение файла из папки с компьютера', fields: {}, readOnly: true },
+        }),
+        systems: { tools: { ...Object.fromEntries(MAIL_TOOL_NAMES.map((n) => [n, 'Почта'])), ...Object.fromEntries(Object.values(COMPUTER_TOOLS).map((n) => [n, 'Компьютер'])) }, prefixes: {} },
       },
     ]);
+    // Nothing else: the agent's own, the workspace's, the mailbox's and the computer folder's actions.
+    expect(Object.keys(agents[0]!.actions).sort()).toEqual([...Object.keys(WORKSPACE_ACTIONS), 'crm_search', 'mail_send', ...MAIL_TOOL_NAMES, ...Object.values(COMPUTER_TOOLS)].sort());
   });
 
   it('refuses an agent outside the employee’s departments with 403', async () => {
