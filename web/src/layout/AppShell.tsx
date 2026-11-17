@@ -150,7 +150,7 @@ export function AppShell() {
     if (target) void navigate(`/agents/${encodeURIComponent(target)}?thread=${crypto.randomUUID()}${project ? `&project=${encodeURIComponent(project)}` : ''}`);
   };
 
-  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, threadNames, onThreadNamed: nameThread, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: () => openSearch('all'), onShowAllThreads: () => openSearch('threads') };
+  const sidebar = { agents, usage, currentAgentId: agentId ?? null, currentThreadId: params.get('thread'), threadsKey, threadNames, onThreadNamed: nameThread, projectsKey, chatProjectId, onProjectsChanged: refreshProjects, onNewThread: newThread, onSearch: () => openSearch('all'), onShowAllThreads: () => openSearch('threads'), onShowAllProjects: () => openSearch('projects') };
   const context: ShellContext = { agents: agents.status === 'ready' ? agents.agents : null, wide, openMenu, refreshThreads, nameThread, refreshProjects, projectsKey, showChatProject };
   return (
     <NotificationsProvider>

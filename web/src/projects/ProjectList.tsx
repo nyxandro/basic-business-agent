@@ -1,6 +1,8 @@
 // «Проекты» of the side panel (spec, scenario 6, sections 8.12 and 8.20): «+» opens the window «Новый
 // проект» — the name and who it is open to (decision of the owner 16.11) — and the project's page
-// opens after it. Under the list, «Архив · N» when the person has archived projects. The pinned projects come first; the person drags a project
+// opens after it. The panel shows the first seven, as «Недавние», and «Ещё» opens all of them in the window of «Поиск»
+// on «Проекты» (request of the owner 17.11); the open project beyond the seven is shown as the eighth, or it could be
+// neither pinned nor dragged up. Under the list, «Архив · N» when the person has archived projects. The pinned projects come first; the person drags a project
 // up and down among its group, and the panel shows the new order at once, before the server keeps
 // it. Saves go one after another, so the server ends with the last order the person made.
 import type { ProjectDto } from '@bba/contracts';
@@ -23,6 +25,16 @@ import { moveProject, pinProject } from './order.ts';
 import { ARCHIVE_PATH, projectPath, ProjectRow } from './ProjectRow.tsx';
 import styles from './projects.module.css';
 
+// How many projects the panel shows, as many as «Недавние» (request of the owner 17.11).
+export const PROJECTS_SHOWN = 7;
+
+// The first ones in the order of the panel, and the open one when it is further down.
+function shownOf(projects: ProjectDto[], current: string | null | undefined): ProjectDto[] {
+  const first = projects.slice(0, PROJECTS_SHOWN);
+  const open = current && !first.some((p) => p.id === current) ? projects.find((p) => p.id === current) : undefined;
+  return open ? [...first, open] : first;
+}
+
 // A mouse drag starts after this many pixels: a click stays a click.
 const DRAG_START_PX = 6;
 // On a touch screen a press held this long picks the project up; a finger that moves sooner scrolls.
@@ -40,7 +52,7 @@ function cancelClick(event: Event) {
   event.preventDefault();
 }
 
-export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }: { refreshKey: number; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void }) {
+export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged, onShowAll }: { refreshKey: number; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void; onShowAll: () => void }) {
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   // The list loads after the saves under way, and once more when a save starts while it loads:
   // it never brings back an order being saved.
@@ -141,7 +153,9 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
     onDragEnd: ({ active, over }) => (over ? ru.projects.dragEnd(nameOf(active.id), placeOf(over.id)) : ru.projects.dragCancel(nameOf(active.id))),
     onDragCancel: ({ active }) => ru.projects.dragCancel(nameOf(active.id)),
   };
-  const groups = projects ? [projects.filter((p) => p.pinned), projects.filter((p) => !p.pinned)] : [];
+  const shown = projects ? shownOf(projects, current) : [];
+  // Dragging and pinning work on the whole list: a shown project moves to the place of another in it.
+  const groups = [shown.filter((p) => p.pinned), shown.filter((p) => !p.pinned)];
 
   return (
     <>
@@ -205,6 +219,11 @@ export function ProjectList({ refreshKey, chatProjectId, onNavigate, onChanged }
             ) : null,
           )}
         </DndContext>
+      ) : null}
+      {projects && projects.length > shown.length ? (
+        <button type="button" className={shell.more} onClick={onShowAll}>
+          {ru.projects.more}
+        </button>
       ) : null}
       {state.status === 'ready' && state.data.archivedCount > 0 ? (
         <Link to={ARCHIVE_PATH} onClick={onNavigate} className={cx(shell.item, styles.archiveRow)} aria-current={archivePage ? 'page' : undefined}>

@@ -41,6 +41,7 @@ export interface SidebarProps {
   onSearch: () => void;
   // «Ещё» under «Недавние»: all conversations in the window of «Поиск».
   onShowAllThreads: () => void;
+  onShowAllProjects: () => void;
   // A phone closes the drawer after a choice.
   onNavigate: () => void;
   // The phone's drawer adds its «Закрыть меню» here and opens «Ждёт подтверждения» as a sheet.
@@ -125,7 +126,7 @@ export function Sidebar(props: SidebarProps) {
       <div className={styles.sectionLabel}>{ru.shell.agents}</div>
       <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
 
-      <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} />
+      <ProjectList refreshKey={props.projectsKey} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
       <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />

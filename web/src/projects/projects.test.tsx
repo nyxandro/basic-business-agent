@@ -505,3 +505,50 @@ describe('projects of conversations', () => {
     expect(await screen.findByText('Проект недоступен. Возможно, его перенесли в архив или закрыли к нему доступ.')).toBeInTheDocument();
   });
 });
+
+// Seven projects in the panel and «Ещё» for the rest, as «Недавние» (request of the owner 17.11).
+describe('seven projects in the panel', () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ ...TENDER, id: `q${i + 1}`, name: `Проект ${i + 1}` }));
+  const panelLinks = () => screen.getAllByRole('link').filter((a) => /^\/projects\/q\d$/.test(a.getAttribute('href') ?? ''));
+
+  function manyServer() {
+    const s = server({ 'GET /app/api/projects': { body: { projects: many, archivedCount: 0 } } });
+    for (const p of many) {
+      s.set(`GET /app/api/projects/${p.id}`, { body: p });
+      s.set(`GET /app/api/projects/${p.id}/files`, { body: { files: [] } });
+      s.set(`GET /app/api/projects/${p.id}/trash`, { body: { batches: [] } });
+      s.set(`GET /app/api/projects/${p.id}/memory`, { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } });
+      s.set(`GET /app/api/threads/${p.id}`, { body: { threads: [], next: null } });
+    }
+    return s;
+  }
+
+  it('shows the first seven in the order of the panel and «Ещё», which opens all of them in the search on «Проекты»', async () => {
+    manyServer();
+    renderApp('/agents/sales?thread=t1');
+    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
+    expect(panelLinks().map((a) => a.textContent)).toEqual(['Проект 1', 'Проект 2', 'Проект 3', 'Проект 4', 'Проект 5', 'Проект 6', 'Проект 7'].map((n) => expect.stringContaining(n) as unknown as string));
+    expect(screen.queryByRole('link', { name: /Проект 8/ })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Ещё' }));
+    const dialog = screen.getByRole('dialog', { name: 'Поиск' });
+    expect(within(dialog).getByRole('button', { name: 'Проекты', pressed: true })).toBeInTheDocument();
+    expect(await within(dialog).findByText('Проект 9')).toBeInTheDocument();
+  });
+
+  it('shows the open project beyond the seven as the eighth, so it can be pinned or dragged up', async () => {
+    manyServer();
+    renderApp('/projects/q9');
+    expect(await screen.findByRole('heading', { name: 'Проект 9' })).toBeInTheDocument();
+    await waitFor(() => expect(panelLinks()).toHaveLength(8));
+    expect(panelLinks().at(-1)?.textContent).toContain('Проект 9');
+    expect(screen.queryByRole('link', { name: /Проект 8/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ещё' })).toBeInTheDocument();
+  });
+
+  it('has no «Ещё» with seven projects or fewer', async () => {
+    server({ 'GET /app/api/projects': { body: { projects: many.slice(0, 7), archivedCount: 0 } } });
+    renderApp('/agents/sales?thread=t1');
+    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ещё' })).not.toBeInTheDocument();
+  });
+});

@@ -202,6 +202,7 @@ export const ru = {
     archiveTitle: 'Архив проектов',
     filesCount: (n: number) => `${n} ${plural(n, ['файл', 'файла', 'файлов'])}`,
     archiveLink: 'Архив',
+    more: 'Ещё',
     archiveEmpty: 'В архиве пусто. Проект, перенесённый в архив, можно вернуть или через 30 дней удалить навсегда.',
     archivedSince: (date: string) => `в архиве с ${date}`,
     archivedBanner: (date: string) => `Проект в архиве с ${date}. Агент не видит его файлы и инструкции, новые разговоры в нём не начать.`,
