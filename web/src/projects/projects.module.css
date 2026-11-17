@@ -236,6 +236,50 @@
   gap: 12px;
 }
 
+/* The tabs of a project page: «Разговоры», «Файлы», and the gear of the settings pushed to the end of the row. */
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tabOn,
+.tabOn:hover {
+  color: var(--acc-text);
+  border-bottom-color: var(--acc);
+}
+
+/* «Переименовать», «В архив», «Настройки проекта» — icons side by side at the end of the title row. */
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.gearOn {
+  color: var(--acc-text);
+  background: var(--acc-soft);
+}
+
 .sectionHead {
   display: flex;
   flex-wrap: wrap;

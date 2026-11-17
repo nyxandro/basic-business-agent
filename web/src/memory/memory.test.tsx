@@ -36,7 +36,7 @@ async function block() {
 describe('the memory of a project', () => {
   it('says what to do when nothing is remembered yet', async () => {
     projectServer(list([]));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText('Агенты пока ничего не запомнили. Скажите агенту в разговоре проекта «Запомни, что…» — или добавьте запись сами.')).toBeInTheDocument();
     expect(screen.getByText(/Что агенты запомнили о проекте между разговорами/)).toBeInTheDocument();
   });
@@ -49,7 +49,7 @@ describe('the memory of a project', () => {
         entry({ id: 'e3', number: 3, text: 'НМЦК 14 862 400 ₽', editor: { name: null, byAgent: false, you: false } }),
       ]),
     );
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText('Подача до 28.11.2026 09:00')).toBeInTheDocument();
     expect(screen.getByText('Анна Смирнова через агента · сегодня')).toBeInTheDocument();
     expect(screen.getByText('Пётр Иванов · сегодня')).toBeInTheDocument();
@@ -58,17 +58,17 @@ describe('the memory of a project', () => {
 
   it('warns from 80 % of the limit and says when it is full', async () => {
     projectServer(list([entry({ id: 'e1', number: 1, text: 'Срок' })], { usedChars: 5000 }));
-    const view = renderApp('/projects/p1');
+    const view = renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText(/^Занято 5\s000 из 6\s000 знаков\. Когда память заполнится, агент будет освобождать место сам/)).toBeInTheDocument();
     view.unmount();
     projectServer(list([entry({ id: 'e1', number: 1, text: 'Срок' })], { usedChars: 6000 }));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText('Память заполнена: агент освобождает место сам, можно удалить лишнее и вручную.')).toBeInTheDocument();
   });
 
   it('of an archived project is only read', async () => {
     projectServer(list([entry({ id: 'e1', number: 1, text: 'Итоги 02.12' })], { readOnly: true }));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText('Итоги 02.12')).toBeInTheDocument();
     expect(screen.getByText('Проект в архиве: память не меняется.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Добавить запись' })).not.toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('the memory of a project', () => {
 
   it('that did not load says so and loads again', async () => {
     const s = projectServer(apiError('APP_INTERNAL', 'Что-то пошло не так.', 500));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     expect(await screen.findByText('Память проекта не загрузилась')).toBeInTheDocument();
     s.set(`GET ${MEMORY}`, { body: list([entry({ id: 'e1', number: 1, text: 'Подача до 28.11' })]) });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Повторить' }));
@@ -86,7 +86,7 @@ describe('the memory of a project', () => {
 
   it('adds an entry and keeps the text when the memory is full', async () => {
     const s = projectServer(list([]), { [`POST ${MEMORY}`]: apiError('APP_MEMORY_FULL', 'Память проекта заполнена. Удалите устаревшие записи и попробуйте снова.', 409) });
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Добавить запись' }));
     await user.type(screen.getByRole('textbox', { name: 'Запись' }), 'Письма заказчику — только через площадку');
@@ -107,7 +107,7 @@ describe('the memory of a project', () => {
 
   it('does not let an entry over 400 signs be saved', async () => {
     projectServer(list([]));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Добавить запись' }));
     await user.click(screen.getByRole('textbox', { name: 'Запись' }));
@@ -126,7 +126,7 @@ describe('the memory of a project', () => {
       s.set(`GET ${MEMORY}`, { body: list([entry({ id: 'e1', number: 1, text: 'Подача до 01.12', version: 3 })]) });
       return { body: entry({ id: 'e1', number: 1, text: 'Подача до 01.12', version: 3 }) };
     });
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Действия с записью 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
@@ -146,7 +146,7 @@ describe('the memory of a project', () => {
 
   it('keeps one field open at a time and does not save an unchanged entry', async () => {
     projectServer(list([entry({ id: 'e1', number: 1, text: 'Подача до 28.11' }), entry({ id: 'e2', number: 2, text: 'Аванс 30 %' })]));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Действия с записью 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
@@ -165,7 +165,7 @@ describe('the memory of a project', () => {
       return apiError('APP_MEMORY_ENTRY_NOT_FOUND', 'Этой записи уже нет: её удалили.', 404);
     });
     s.set(`POST ${MEMORY}`, { body: entry({ id: 'e2', number: 2, text: 'Аванс 20 %' }) });
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Действия с записью 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
@@ -188,7 +188,7 @@ describe('the memory of a project', () => {
       return { body: entry({ id: 'e1', number: 1, text: 'Обеспечение заявки 1 %' }) };
     });
     s.set(`POST ${MEMORY}`, apiError('APP_MEMORY_FULL', 'Память проекта заполнена. Удалите устаревшие записи и попробуйте снова.', 409));
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Действия с записью 1' }));
     await user.click(screen.getByRole('menuitem', { name: 'Удалить' }));

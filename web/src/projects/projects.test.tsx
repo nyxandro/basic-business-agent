@@ -73,7 +73,7 @@ describe('projects of conversations', () => {
     s.set('GET /app/api/projects/p2', () => new Promise((resolve) => (answer = () => resolve({ body: REPORTS }))));
     await userEvent.setup().click(link);
     expect(screen.getByRole('heading', { name: 'Отчёты' })).toBeInTheDocument();
-    expect(screen.getByText('Кратко')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Разговоры проекта' })).toBeInTheDocument();
     if (answer) (answer as () => void)();
   });
 
@@ -231,9 +231,53 @@ describe('projects of conversations', () => {
     });
   });
 
-  it('saves the instructions for the agent', async () => {
+  // The page of a project (requests of the owner 17.11): the tabs «Разговоры» (first) and «Файлы»; in the title row
+  // three icons — «Переименовать», «В архив», and the gear with the instructions, the memory and the folder of the computer.
+  it('has the tabs «Разговоры» and «Файлы» and the icons of the title row, the gear opening the settings', async () => {
+    server();
+    renderApp('/projects/p1');
+    const user = userEvent.setup();
+    const tabs = await screen.findByRole('navigation', { name: 'Разделы проекта' });
+    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Разговоры', 'Файлы']);
+    const gear = screen.getByRole('button', { name: 'Настройки проекта' });
+    expect([...gear.parentElement!.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Переименовать', 'В архив', 'Настройки проекта']);
+    expect(within(tabs).getByRole('link', { name: 'Разговоры' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Новый разговор в проекте' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Файлы проекта' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Инструкции для агента' })).not.toBeInTheDocument();
+
+    await user.click(within(tabs).getByRole('link', { name: 'Файлы' }));
+    expect(await screen.findByRole('heading', { name: 'Файлы проекта' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Новый разговор в проекте' })).not.toBeInTheDocument();
+    expect(within(tabs).getByRole('link', { name: 'Файлы' })).toHaveAttribute('aria-current', 'page');
+
+    await user.click(gear);
+    expect(await screen.findByRole('textbox', { name: 'Инструкции для агента' })).toBeInTheDocument();
+    expect(gear).toHaveAttribute('aria-pressed', 'true');
+    expect(within(tabs).queryByRole('link', { current: 'page' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Память проекта' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Папка на компьютере' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Файлы проекта' })).not.toBeInTheDocument();
+  });
+
+  it('renames the project from the pencil of the title row', async () => {
     const s = server({ 'PUT /app/api/projects/p1': (call) => ({ body: { ...TENDER, ...(call.body as object) } }) });
     renderApp('/projects/p1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Переименовать' }));
+    const field = screen.getByRole('textbox', { name: 'Название проекта' });
+    expect(field).toHaveValue('Тендер Альфа');
+    await user.clear(field);
+    await user.type(field, 'Тендер Бета');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(await screen.findByRole('heading', { name: 'Тендер Бета' })).toBeInTheDocument();
+    expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ name: 'Тендер Бета' });
+    expect(screen.getByRole('button', { name: 'Переименовать' })).toBeInTheDocument();
+  });
+
+  it('saves the instructions for the agent', async () => {
+    const s = server({ 'PUT /app/api/projects/p1': (call) => ({ body: { ...TENDER, ...(call.body as object) } }) });
+    renderApp('/projects/p1?tab=settings');
     const user = userEvent.setup();
     expect(await screen.findByText(/Добавьте инструкции и файлы/)).toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: 'Инструкции для агента' }), 'Заказчик — ООО «Альфа»');
@@ -249,7 +293,7 @@ describe('projects of conversations', () => {
       'DELETE /app/api/projects/p1/file': { body: { ok: true, trashId: 'tr1' } },
       'POST /app/api/projects/p1/trash/restore': { body: { restored: ['смета.xlsx'] } },
     });
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=files');
     const user = userEvent.setup();
     expect(await screen.findByText(/Файлов пока нет/)).toBeInTheDocument();
     s.set('GET /app/api/projects/p1/files', { body: { files: [{ path: 'смета.xlsx', bytes: 2048 }] } });
@@ -270,7 +314,7 @@ describe('projects of conversations', () => {
 
   it('refuses a file over the limit with its own code and no repeat', async () => {
     const s = server();
-    renderApp('/projects/p1');
+    renderApp('/projects/p1?tab=files');
     const user = userEvent.setup();
     await screen.findByText(/Файлов пока нет/);
     const big = new File(['x'], 'огромный.pdf');
@@ -477,10 +521,16 @@ describe('projects of conversations', () => {
     const s = server({ 'DELETE /app/api/projects/p1': { body: { ok: true } } });
     s.set('GET /app/api/projects/p1', { body: { ...TENDER, archivedAt: new Date(Date.now() - 2 * 86_400_000).toISOString() } });
     renderApp('/projects/p1');
+    const user = userEvent.setup();
     expect(await screen.findByText(/Проект в архиве с/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Удалить навсегда' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Загрузить файл' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Новый разговор в проекте' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Файлы' }));
+    expect(await screen.findByRole('heading', { name: 'Файлы проекта' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Загрузить файл' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Переименовать' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Настройки проекта' }));
+    expect(await screen.findByRole('heading', { name: 'Инструкции для агента' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Инструкции для агента' })).not.toBeInTheDocument();
   });
 
@@ -509,7 +559,7 @@ describe('projects of conversations', () => {
 // Seven projects in the panel and «Ещё» for the rest, as «Недавние» (request of the owner 17.11).
 describe('seven projects in the panel', () => {
   const many = Array.from({ length: 9 }, (_, i) => ({ ...TENDER, id: `q${i + 1}`, name: `Проект ${i + 1}` }));
-  const panelLinks = () => screen.getAllByRole('link').filter((a) => /^\/projects\/q\d$/.test(a.getAttribute('href') ?? ''));
+  const panelLinks = () => screen.getAllByRole('link').filter((a) => !a.closest('nav[aria-label="Разделы проекта"]') && /^\/projects\/q\d$/.test(a.getAttribute('href') ?? ''));
 
   function manyServer() {
     const s = server({ 'GET /app/api/projects': { body: { projects: many, archivedCount: 0 } } });

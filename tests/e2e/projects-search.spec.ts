@@ -6,7 +6,9 @@ test('a conversation started in a project carries the project; the project lists
   const page = await pageAs(browser, 'olga@example.com');
   await page.getByRole('link', { name: /Тендер/ }).click();
   await expect(page.getByRole('heading', { name: 'Тендер' })).toBeVisible();
+  await page.getByRole('button', { name: 'Настройки проекта' }).click();
   await expect(page.getByRole('textbox', { name: 'Инструкции для агента' })).toHaveValue('Заказчик — ООО «Пример». Отвечай кратко.');
+  await page.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Разговоры' }).click();
   await page.getByRole('button', { name: 'Новый разговор в проекте' }).click();
   await page.getByRole('menuitem', { name: 'Продажи' }).click();
   await expect(page.getByRole('button', { name: /Тендер/, expanded: false })).toBeVisible();
@@ -48,6 +50,7 @@ test('a colleague finds a document of a shared project by Russian words, opens i
   await create.getByRole('button', { name: /Пётр/ }).click();
   await create.getByRole('button', { name: 'Создать проект' }).click();
   await expect(olga.getByRole('heading', { name: 'Тендер ЖК Северный' })).toBeVisible();
+  await olga.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Файлы' }).click();
   await olga.getByLabel('Загрузить файл', { exact: true }).setInputFiles({ name: 'KP_Yelka_v2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n') });
   await expect(olga.getByRole('link', { name: 'KP_Yelka_v2.pdf' })).toBeVisible();
 

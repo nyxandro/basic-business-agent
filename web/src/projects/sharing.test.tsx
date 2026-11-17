@@ -29,6 +29,7 @@ function server(extra: Record<string, Parameters<typeof mockServer>[0][string]> 
     'GET /app/api/projects/p2': { body: { ...SHARED, unseen: false } },
     'GET /app/api/projects/p1/files': { body: { files: [] } },
     'GET /app/api/projects/p2/files': { body: { files: [] } },
+    'GET /app/api/projects/p2/memory': { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } },
     'GET /app/api/projects/p1/trash': { body: { batches: [] } },
     'GET /app/api/projects/p2/trash': { body: { batches: [] } },
     'GET /app/api/departments': { body: { departments: DEPARTMENTS } },
@@ -85,15 +86,18 @@ describe('shared projects', () => {
   it('shows a colleague the project with its creator and instructions to read, and only their own conversations', async () => {
     server();
     renderApp('/projects/p2');
+    const user = userEvent.setup();
     expect(await screen.findByRole('heading', { name: 'Тендер Игоря' })).toBeInTheDocument();
     expect(screen.getByText('Открыл(а): Игорь Петров')).toBeInTheDocument();
-    expect(screen.getByText('Инструкции меняет создатель проекта.')).toBeInTheDocument();
-    expect(screen.getByText('Заказчик — ООО Пример.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Переименовать' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'В архив' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Настроить доступ' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ваши разговоры в проекте' })).toBeInTheDocument();
-    expect(screen.getByText('Файлы и вложения из разговоров проекта видят все, кому он открыт.')).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Файлы' }));
+    expect(await screen.findByText('Файлы и вложения из разговоров проекта видят все, кому он открыт.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Настройки проекта' }));
+    expect(await screen.findByText('Инструкции меняет создатель проекта.')).toBeInTheDocument();
+    expect(screen.getByText('Заказчик — ООО Пример.')).toBeInTheDocument();
   });
 
   it('lets the creator change who the project is open to', async () => {

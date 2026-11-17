@@ -1,22 +1,22 @@
-// /projects/:id (spec, scenario 6, sections 7 and 8.20): the project's name, who it is open to,
-// «Инструкции для агента», «Файлы проекта» and the person's conversations in it with «Новый разговор
-// в проекте». Its creator renames it, sets who it is open to, archives it; a colleague reads the
-// instructions and works with the files. An archived project is read only, by its creator, with
+// /projects/:id (spec, scenario 6, sections 7, 8.12 and 8.20): the project's name and who it is open to, then the
+// tabs (request of the owner 17.11): «Разговоры» — the person's conversations in it with «Новый разговор в проекте»,
+// «Файлы» — «Файлы проекта», and the gear at their end — «Настройки проекта»: the instructions, the memory and the
+// folder of the computer (ProjectSettings.tsx). The tab is in the address (`?tab=files|settings`). Its creator
+// renames it, sets who it is open to, archives it; a colleague reads the instructions and works with the files. An archived project is read only, by its creator, with
 // «Вернуть из архива» and — 30 days on — «Удалить навсегда». A project the person does not see is
 // «Проект недоступен…».
 import type { AgentSummary, ProjectDto, ThreadSummaryDto } from '@bba/contracts';
 import { useCallback, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ChatHeaderBar } from '../layout/ChatHeader.tsx';
 import { useShell } from '../layout/AppShell.tsx';
 import { threadPath } from '../layout/ThreadRow.tsx';
-import { MemoryEntries } from '../memory/MemoryEntries.tsx';
-import { Button } from '../ui/Button.tsx';
+import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
-import { Input, TextArea } from '../ui/Field.tsx';
+import { Input } from '../ui/Field.tsx';
 import { dateTime, fullDate } from '../ui/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
@@ -27,8 +27,8 @@ import { useLoad } from '../ui/use-load.ts';
 import { accessText } from './AccessPicker.tsx';
 import { archiveProject, deleteProject, fetchProject, fetchProjectFiles, fetchProjectThreads, unarchiveProject, updateProject } from './api.ts';
 import { AccessDialog } from './ProjectDialog.tsx';
-import { ComputerFolderCard } from './ComputerFolderCard.tsx';
 import { ProjectFiles } from './ProjectFiles.tsx';
+import { ProjectSettings } from './ProjectSettings.tsx';
 import { projectKeys } from './queries.ts';
 import page from '../layout/page.module.css';
 import styles from './projects.module.css';
@@ -36,28 +36,17 @@ import styles from './projects.module.css';
 // A project is removed for good this long after it went into the archive (spec, section 8.20).
 const PROJECT_ARCHIVE_MS = 30 * 24 * 60 * 60 * 1000;
 
-function Title({ project, onSaved }: { project: ProjectDto; onSaved: (p: ProjectDto) => void }) {
-  const [editing, setEditing] = useState(false);
+// The name being changed; «Переименовать» is one of the icons of the title row.
+function TitleForm({ project, onSaved, onCancel }: { project: ProjectDto; onSaved: (p: ProjectDto) => void; onCancel: () => void }) {
   const [name, setName] = useState(project.name);
   const [error, setError] = useState<ApiRequestError | null>(null);
   async function save() {
     setError(null);
     try {
       onSaved(await updateProject(project.id, { name }));
-      setEditing(false);
     } catch (raw) {
       setError(asApiError(raw));
     }
-  }
-  if (!editing) {
-    return (
-      <>
-        <h1 className={styles.title}>{project.name}</h1>
-        <Button variant="ghost" icon="edit" onClick={() => setEditing(true)}>
-          {ru.projects.rename}
-        </Button>
-      </>
-    );
   }
   return (
     <form
@@ -68,62 +57,16 @@ function Title({ project, onSaved }: { project: ProjectDto; onSaved: (p: Project
       }}
     >
       <div className={styles.titleRow}>
-        <Input aria-label={ru.projects.name} value={name} onChange={(e) => setName(e.target.value)} className={styles.titleInput} />
+        <Input aria-label={ru.projects.name} value={name} onChange={(e) => setName(e.target.value)} className={styles.titleInput} autoFocus />
         <Button type="submit" variant="primary" disabled={!name.trim()}>
           {ru.projects.save}
         </Button>
-        <Button variant="secondary" onClick={() => (setEditing(false), setName(project.name))}>
+        <Button variant="secondary" onClick={onCancel}>
           {ru.projects.cancel}
         </Button>
       </div>
       {error ? <p className={styles.fieldError}>{error.message}</p> : null}
     </form>
-  );
-}
-
-function InstructionsText({ project }: { project: ProjectDto }) {
-  return (
-    <Card className={styles.section}>
-      <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>{ru.projects.instructions}</h2>
-      </div>
-      {project.role === 'member' ? <p className={styles.empty}>{ru.projects.instructionsByOwner}</p> : null}
-      {project.instructions.trim() ? <p className={styles.instructionsText}>{project.instructions}</p> : <p className={styles.empty}>{ru.projects.noInstructions}</p>}
-    </Card>
-  );
-}
-
-function Instructions({ project, onSaved }: { project: ProjectDto; onSaved: (p: ProjectDto) => void }) {
-  const [text, setText] = useState(project.instructions);
-  const [error, setError] = useState<ApiRequestError | null>(null);
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      onSaved(await updateProject(project.id, { instructions: text }));
-      toast(ru.projects.saved);
-    } catch (raw) {
-      setError(asApiError(raw));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Card className={styles.section}>
-      <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>{ru.projects.instructions}</h2>
-      </div>
-      <p className={styles.empty}>{ru.projects.instructionsHint}</p>
-      <TextArea aria-label={ru.projects.instructions} rows={6} value={text} onChange={(e) => setText(e.target.value)} />
-      {error ? <ErrorBanner error={error} /> : null}
-      <div className={styles.actions}>
-        <Button variant="primary" disabled={busy || text === project.instructions} onClick={() => void save()}>
-          {ru.projects.save}
-        </Button>
-      </div>
-    </Card>
   );
 }
 
@@ -240,9 +183,31 @@ function ArchivedBanner({ project, onBack, onDelete, busy }: { project: ProjectD
   );
 }
 
+type ProjectTab = 'threads' | 'files' | 'settings';
+
+const tabOf = (value: string | null): ProjectTab => (value === 'files' || value === 'settings' ? value : 'threads');
+
+// «Разговоры» and «Файлы»; the settings open from the gear of the title row (request of the owner 17.11). Links,
+// not buttons: the tab is in the address, so a reload, «Назад» and a link keep it.
+function ProjectTabs({ tab }: { tab: ProjectTab }) {
+  const props = (to: 'threads' | 'files') => ({
+    to: { search: to === 'threads' ? '' : `?tab=${to}` },
+    'aria-current': tab === to ? ('page' as const) : undefined,
+    className: cx(styles.tab, tab === to && styles.tabOn),
+  });
+  return (
+    <nav aria-label={ru.projects.tabsLabel} className={styles.tabs}>
+      <Link {...props('threads')}>{ru.projects.tabThreads}</Link>
+      <Link {...props('files')}>{ru.projects.tabFiles}</Link>
+    </nav>
+  );
+}
+
 export function ProjectPage() {
   const { projectId } = useParams();
   if (!projectId) throw new Error('ProjectPage needs the :projectId route parameter');
+  const [params, setParams] = useSearchParams();
+  const tab = tabOf(params.get('tab'));
   const load = useCallback(() => fetchProject(projectId), [projectId]);
   const { state, reload } = useLoad(load, projectKeys.project(projectId));
   // What the page just saved, over the project it was loaded as: the project loaded again has it.
@@ -250,6 +215,7 @@ export function ProjectPage() {
   const [actionError, setActionError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);
   const [editAccess, setEditAccess] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const { agents, wide, openMenu, refreshProjects, projectsKey } = useShell();
   const [seenKey, setSeenKey] = useState(projectsKey);
   if (seenKey !== projectsKey) {
@@ -322,32 +288,34 @@ export function ProjectPage() {
             <span className={styles.titleMark}>
               <Icon name={project.shared ? 'folderShared' : 'folder'} />
             </span>
-            {owner && !archived ? (
-              <>
-                <Title key={project.name} project={project} onSaved={update} />
-                <Button variant="secondary" icon="archive" disabled={busy} onClick={() => void archive()}>
-                  {ru.projects.archive}
-                </Button>
-              </>
+            {renaming ? (
+              <TitleForm
+                project={project}
+                onSaved={(p) => {
+                  update(p);
+                  setRenaming(false);
+                }}
+                onCancel={() => setRenaming(false)}
+              />
             ) : (
               <h1 className={styles.title}>{project.name}</h1>
             )}
+            {/* Three icons in a row (request of the owner 17.11): «Переименовать», «В архив», «Настройки проекта»;
+                a colleague and an archived project have only the settings. */}
+            <span className={styles.titleActions}>
+              {owner && !archived && !renaming ? <IconButton icon="edit" label={ru.projects.rename} onClick={() => setRenaming(true)} /> : null}
+              {owner && !archived ? <IconButton icon="archive" label={ru.projects.archive} disabled={busy} onClick={() => void archive()} /> : null}
+              <IconButton icon="gear" label={ru.projects.settings} aria-pressed={tab === 'settings'} className={cx(tab === 'settings' && styles.gearOn)} onClick={() => setParams({ tab: 'settings' })} />
+            </span>
           </div>
           <AccessLine project={project} onEdit={() => setEditAccess(true)} />
           {archived ? <ArchivedBanner project={project} busy={busy} onBack={() => void unarchive()} onDelete={() => void removeForever()} /> : null}
           {actionError ? <ErrorBanner error={actionError} /> : null}
           {owner && !archived && !project.instructions && project.threadCount === 0 ? <p className={styles.lead}>{ru.projects.empty}</p> : null}
-          {/* The page may show the project from memory first: the server's instructions, when different,
-              start the field anew (spec, section 8.22). */}
-          {owner && !archived ? <Instructions key={`${project.id}:${project.instructions}`} project={project} onSaved={update} /> : <InstructionsText project={project} />}
-          {/* What the agents remember about the project (spec, section 8.26). */}
-          <Card className={styles.section}>
-            <MemoryEntries projectId={project.id} title={ru.memory.projectTitle} hint={ru.memory.projectHint} empty={ru.memory.projectEmpty} failed={ru.memory.projectFailed} readOnlyNote={ru.memory.projectArchived} />
-          </Card>
-          <ProjectFiles projectId={project.id} readOnly={archived} shared={project.shared} />
-          {/* A folder of this browser's computer for the agent (spec, section 8.25); not for an archived project. */}
-          {archived ? null : <ComputerFolderCard projectId={project.id} />}
-          <Threads project={project} agents={agents ?? []} />
+          <ProjectTabs tab={tab} />
+          {tab === 'threads' ? <Threads project={project} agents={agents ?? []} /> : null}
+          {tab === 'files' ? <ProjectFiles projectId={project.id} readOnly={archived} shared={project.shared} /> : null}
+          {tab === 'settings' ? <ProjectSettings project={project} onSaved={update} /> : null}
           <AccessDialog
             project={editAccess ? project : null}
             onClose={() => setEditAccess(false)}

@@ -65,6 +65,7 @@ test('a removed file of a project lies in its trash and comes back', async ({ br
   const olga = await pageAs(browser, 'olga@example.com');
   await olga.getByRole('link', { name: /^Тендер/ }).click();
   await expect(olga.getByRole('heading', { name: 'Тендер' })).toBeVisible();
+  await olga.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Файлы' }).click();
   await olga.getByLabel('Загрузить файл', { exact: true }).setInputFiles({ name: 'смета.txt', mimeType: 'text/plain', buffer: Buffer.from('СМЕТА') });
   await expect(olga.getByRole('link', { name: 'смета.txt' })).toBeVisible();
   await olga.getByRole('button', { name: 'Удалить смета.txt' }).click();

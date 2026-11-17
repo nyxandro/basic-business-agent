@@ -6,7 +6,6 @@ import { pageAs, say } from './helpers.ts';
 test('the agent remembers in the project; the page shows, changes and removes the entry', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');
   await page.getByRole('link', { name: /Тендер/ }).click();
-  await expect(page.getByRole('heading', { name: 'Память проекта' })).toBeVisible();
   await page.getByRole('button', { name: 'Новый разговор в проекте' }).click();
   await page.getByRole('menuitem', { name: 'Продажи' }).click();
   await say(page, 'Запомни: подача заявок до 28.11 в 09:00');
@@ -14,6 +13,7 @@ test('the agent remembers in the project; the page shows, changes and removes th
   await expect(page.getByText('Запомнил.')).toBeVisible();
 
   await page.getByRole('link', { name: /Тендер/ }).click();
+  await page.getByRole('button', { name: 'Настройки проекта' }).click();
   const memory = page.getByRole('heading', { name: 'Память проекта' }).locator('xpath=../..');
   await expect(memory.getByText('подача заявок до 28.11 в 09:00')).toBeVisible();
   await expect(memory.getByText(/Ольга .* через агента · сегодня/)).toBeVisible();

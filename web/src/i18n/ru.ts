@@ -202,6 +202,11 @@ export const ru = {
     archiveTitle: 'Архив проектов',
     filesCount: (n: number) => `${n} ${plural(n, ['файл', 'файла', 'файлов'])}`,
     archiveLink: 'Архив',
+    // The tabs of a project page (request of the owner 17.11).
+    tabsLabel: 'Разделы проекта',
+    tabThreads: 'Разговоры',
+    tabFiles: 'Файлы',
+    settings: 'Настройки проекта',
     more: 'Ещё',
     archiveEmpty: 'В архиве пусто. Проект, перенесённый в архив, можно вернуть или через 30 дней удалить навсегда.',
     archivedSince: (date: string) => `в архиве с ${date}`,
