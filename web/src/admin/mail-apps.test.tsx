@@ -30,7 +30,7 @@ describe('«Почта сотрудников»', () => {
     const user = userEvent.setup();
     expect(await screen.findByText('Подключили: 7')).toBeInTheDocument();
     expect(screen.getByText('Ошибка доступа: 1')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('https://agent.alfa.ru/app/api/mail/oauth/callback')).toBeInTheDocument();
+    expect(screen.getByLabelText('Адрес возврата — укажите его в приложении сервиса')).toHaveValue('https://agent.alfa.ru/app/api/mail/oauth/callback');
     const rows = screen.getAllByRole('listitem');
     const microsoft = rows.find((r) => within(r).queryByText('Microsoft'))!;
     expect(within(microsoft).getByText('Не настроен')).toBeInTheDocument();

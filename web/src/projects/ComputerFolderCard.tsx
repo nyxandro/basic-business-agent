@@ -21,7 +21,7 @@ export function ComputerFolderCard({ projectId }: { projectId: string }) {
       <div className={styles.sectionHead}>
         <h2 className={styles.sectionTitle}>{t.title}</h2>
         {folder ? null : (
-          <Button size="sm" icon="monitor" onClick={() => void state.choose()}>
+          <Button icon="monitor" onClick={() => void state.choose()}>
             {t.connect}
           </Button>
         )}

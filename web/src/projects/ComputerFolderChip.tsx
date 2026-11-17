@@ -30,7 +30,7 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
   }
   if (access !== 'granted') {
     return (
-      <button type="button" className={cx(styles.chip, styles.chipWarn)} title={t.needsAllow} onClick={() => void state.allow()}>
+      <button type="button" className={cx(styles.chip, styles.chipWarn, styles.folderAnchor)} title={t.needsAllow} onClick={() => void state.allow()}>
         <Icon name="monitor" size={15} className={styles.chipIcon} />
         <span className={styles.chipName}>{folder.name}</span>
         <span className={styles.chipAction}>{t.allow}</span>
@@ -38,7 +38,7 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
     );
   }
   return (
-    <MenuAnchor>
+    <MenuAnchor className={styles.folderAnchor}>
       <button type="button" className={cx(styles.chip, styles.chipOn)} aria-haspopup="menu" aria-expanded={open} title={t.chipTitle(folder.name)} aria-label={t.chipTitle(folder.name)} onClick={() => setOpen((o) => !o)}>
         <Icon name="monitor" size={15} className={styles.chipIconOn} />
         <span className={styles.chipName}>{folder.name}</span>

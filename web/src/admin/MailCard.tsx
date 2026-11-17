@@ -13,7 +13,7 @@ import { Field, Input } from '../ui/Field.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
-import { CopyLink, Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
 import styles from './systems.module.css';
 
@@ -85,6 +85,30 @@ function AppRow({ app, onSaved }: { app: AdminMailResponse['apps'][number]; onSa
   );
 }
 
+// The address to give the service: a reference, not news — plain, with «Скопировать».
+function RedirectAddress({ link }: { link: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    navigator.clipboard.writeText(link).then(
+      () => setCopied(true),
+      // Without clipboard access the address stays selectable in the field.
+      (error: unknown) => console.warn('clipboard is not available', error),
+    );
+  return (
+    <div className={styles.redirect}>
+      <label className={styles.redirectLabel} htmlFor="mail-redirect">
+        {t.redirect}
+      </label>
+      <div className={styles.redirectRow}>
+        <input id="mail-redirect" className={styles.redirectLink} readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+        <Button size="sm" icon="copy" onClick={() => void copy()}>
+          {copied ? 'Скопировано' : 'Скопировать'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function MailState({ initial }: { initial: AdminMailResponse }) {
   const [state, setState] = useState(initial);
   return (
@@ -96,7 +120,7 @@ function MailState({ initial }: { initial: AdminMailResponse }) {
       <div className={styles.appsBlock}>
         <div className={styles.name}>{t.appsTitle}</div>
         <p className={section.sub}>{t.appsLead}</p>
-        <CopyLink link={state.redirectUri} text={t.redirect} />
+        <RedirectAddress link={state.redirectUri} />
         <ul className={styles.apps}>
           {state.apps.map((app) => (
             <AppRow key={app.provider} app={app} onSaved={setState} />

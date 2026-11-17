@@ -518,3 +518,13 @@ a.rowName:hover {
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* The folder chip gives way on a narrow screen: its name is cut, the send button stays (spec, 8.25). */
+.folderAnchor {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.folderAnchor .chip {
+  max-width: 100%;
+}
