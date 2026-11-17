@@ -15,6 +15,7 @@ import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { requireContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { logEvent } from '../server/log.ts';
 import { runRoot } from '../sandbox/workspace.ts';
 import { openFileInside, saveInFolder } from '../workspace/layout.ts';
 import type { MailAccount } from './accounts.ts';
@@ -73,7 +74,12 @@ async function inFolder<T>(client: ImapFlow, folder: string, work: () => Promise
   try {
     lock = await client.getMailboxLock(folder, { readOnly: true });
   } catch (error) {
-    throw appError('APP_NOT_FOUND', `no folder ${folder}`, { userMessage: `Папки «${folder}» в почте нет. Список папок — инструмент mailbox_folders.`, cause: error });
+    // Only the server's «no such folder» is that; a broken connection is told as itself (mailError).
+    const e = error as { serverResponseCode?: string; responseText?: string } | undefined;
+    if (e?.serverResponseCode === 'NONEXISTENT' || /doesn.?t exist|does not exist|no such|unknown mailbox|not found/i.test(e?.responseText ?? '')) {
+      throw appError('APP_NOT_FOUND', `no folder ${folder}`, { userMessage: `Папки «${folder}» в почте нет. Список папок — инструмент mailbox_folders.`, cause: error });
+    }
+    throw error;
   }
   try {
     return await work();
@@ -219,7 +225,8 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
         const attachment = letter.attachments[input.number - 1];
         if (!attachment) throw appError('APP_NOT_FOUND', `no attachment ${input.number}`, { userMessage: `У письма нет вложения с номером ${input.number}.` });
         const root = runRoot(deps.workspaceRoot, (ctx as Ctx)?.requestContext);
-        const saved = saveInFolder(root, ATTACHMENTS_FOLDER, attachment.filename ?? `вложение-${input.number}`, new Uint8Array(attachment.content));
+        // Any type: a signature (.p7s), an archive, a letter — it lands only in the working folder.
+        const saved = saveInFolder(root, ATTACHMENTS_FOLDER, attachment.filename ?? `вложение-${input.number}`, new Uint8Array(attachment.content), { anyType: true });
         return { path: saved.path, bytes: saved.bytes };
       }),
   });
@@ -261,47 +268,68 @@ function sendTool(deps: MailToolsDeps): AnyTool {
       const root = runRoot(deps.workspaceRoot, c?.requestContext);
       const files = (input.attachments ?? []).map((p) => readAttachment(root, p));
       if (files.reduce((n, f) => n + f.content.length, 0) > MAX_SEND_BYTES) throw appError('APP_VALIDATION_FAILED', 'attachments over 25 MB', { userMessage: 'Вложения больше 25 МБ — почтовые серверы такое письмо не примут.' });
-      const login = await deps.mail.loginOf(account);
       const { rows } = await deps.db.query<{ name: string }>('SELECT "name" FROM app."user" WHERE "id" = $1', [userId]);
-      return withImap(account.servers, login, account.email, deps.mail.transport, async (client) => {
-        let thread: { inReplyTo?: string; references?: string[]; subject?: string } = {};
-        if (input.replyToUid) {
-          const folder = input.replyFolder ?? 'INBOX';
-          const original = await inFolder(client, folder, () => parsedLetter(client, folder, input.replyToUid!));
-          const refs = [...(Array.isArray(original.references) ? original.references : original.references ? [original.references] : []), ...(original.messageId ? [original.messageId] : [])];
-          thread = { ...(original.messageId ? { inReplyTo: original.messageId } : {}), references: refs, subject: /^re:/i.test(original.subject ?? '') ? original.subject : `Re: ${original.subject ?? ''}` };
-        }
-        const subject = input.subject ?? thread.subject ?? '';
-        // The letter is built once: the same bytes go to the server and into «Отправленные».
-        const built = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
-          from: rows[0]?.name ? { name: rows[0].name, address: account.email } : account.email,
-          to: input.to,
-          ...(input.cc?.length ? { cc: input.cc } : {}),
-          subject,
-          text: input.text,
-          ...(thread.inReplyTo ? { inReplyTo: thread.inReplyTo } : {}),
-          ...(thread.references?.length ? { references: thread.references } : {}),
-          attachments: files,
-        });
-        const raw = built.message as Buffer;
-        const smtp = smtpTransport(account.servers, login, deps.mail.transport);
-        try {
-          await smtp.sendMail({ envelope: { from: account.email, to: [...input.to, ...(input.cc ?? [])] }, raw });
-        } catch (error) {
-          throw mailError(error, account.email, account.servers.smtp.host);
-        } finally {
-          smtp.close();
-        }
-        let savedTo: string | null = null;
-        if (!KEEPS_SENT.has(account.provider)) {
-          savedTo = await sentFolder(client);
-          if (savedTo) await client.append(savedTo, raw, ['\\Seen']);
-        }
-        return { sent: true, from: account.email, to: input.to, subject, messageId: built.messageId, savedTo };
-      }).catch(async (error: unknown) => {
+      const refused = async (error: unknown) => {
         if (isAppError(error) && error.code === 'APP_MAIL_AUTH_FAILED') await deps.mail.refused(account);
-        throw error;
+        return error;
+      };
+      // Before the letter goes: the thread of a reply (its own connection — nothing is sent yet).
+      let thread: { inReplyTo?: string; references?: string[]; subject?: string } = {};
+      if (input.replyToUid) {
+        const folder = input.replyFolder ?? 'INBOX';
+        const original = await withImap(account.servers, await deps.mail.loginOf(account), account.email, deps.mail.transport, (client) => inFolder(client, folder, () => parsedLetter(client, folder, input.replyToUid!))).catch(async (error: unknown) => {
+          throw await refused(error);
+        });
+        const refs = [...(Array.isArray(original.references) ? original.references : original.references ? [original.references] : []), ...(original.messageId ? [original.messageId] : [])];
+        thread = { ...(original.messageId ? { inReplyTo: original.messageId } : {}), references: refs, subject: /^re:/i.test(original.subject ?? '') ? original.subject : `Re: ${original.subject ?? ''}` };
+      }
+      const subject = input.subject ?? thread.subject ?? '';
+      // The letter is built once: the same bytes go to the server and into «Отправленные».
+      const built = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
+        from: rows[0]?.name ? { name: rows[0].name, address: account.email } : account.email,
+        to: input.to,
+        ...(input.cc?.length ? { cc: input.cc } : {}),
+        subject,
+        text: input.text,
+        ...(thread.inReplyTo ? { inReplyTo: thread.inReplyTo } : {}),
+        ...(thread.references?.length ? { references: thread.references } : {}),
+        attachments: files,
       });
+      const raw = built.message as Buffer;
+      const login = await deps.mail.loginOf(account);
+      const smtp = smtpTransport(account.servers, login, deps.mail.transport);
+      try {
+        await smtp.sendMail({ envelope: { from: account.email, to: [...input.to, ...(input.cc ?? [])] }, raw });
+      } catch (error) {
+        throw await refused(mailError(error, account.email, account.servers.smtp.host));
+      } finally {
+        smtp.close();
+      }
+      // The letter is gone: whatever happens with its copy, the answer says it was sent — saying otherwise
+      // would make the agent send it again.
+      let savedTo: string | null = null;
+      let copyFailed = false;
+      if (!KEEPS_SENT.has(account.provider)) {
+        try {
+          savedTo = await withImap(account.servers, login, account.email, deps.mail.transport, async (client) => {
+            const sent = await sentFolder(client);
+            if (sent) await client.append(sent, raw, ['\\Seen']);
+            return sent;
+          });
+        } catch (error) {
+          copyFailed = true;
+          logEvent('warn', 'mail_sent_copy_failed', { code: isAppError(error) ? error.code : 'APP_MAIL_FAILED', userId, error: isAppError(error) ? error.code : (error as Error).name });
+        }
+      }
+      return {
+        sent: true,
+        from: account.email,
+        to: input.to,
+        subject,
+        messageId: built.messageId,
+        savedTo,
+        ...(copyFailed ? { note: 'Письмо отправлено, но его копию не удалось положить в «Отправленные». Не отправляй его повторно.' } : {}),
+      };
     },
   });
   return applyApprovalPolicy(tool as AnyTool, { readOnly: false, db: deps.db });

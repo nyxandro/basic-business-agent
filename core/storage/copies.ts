@@ -7,13 +7,14 @@
 // removed. The agent may plant links in its folder, so files are written and read only through
 // core/workspace/held-folder.ts.
 import { randomUUID } from 'node:crypto';
-import { closeSync, constants, createWriteStream, existsSync, fstatSync, futimesSync, linkSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, createWriteStream, existsSync, fstatSync, futimesSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, type Dirent } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Db } from '../db/pool.ts';
+import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
-import { inFolderOf, openRegular, walkRegularFiles } from '../workspace/held-folder.ts';
-import { areaDir, areaKey, isWorkingPath, markerPath, type Area } from './areas.ts';
+import { inFolderOf, inFolderOfAsync, openRegular, walkRegularFiles } from '../workspace/held-folder.ts';
+import { areaDir, areaKey, filesPrefix, isWorkingPath, markerPath, type Area } from './areas.ts';
 import { forgetStored, rememberStored, storedRows, type StoredRow } from './manifest.ts';
 import type { ObjectStore } from './object-store.ts';
 
@@ -55,11 +56,35 @@ export function removeMarker(workspaceRoot: string, area: Area): void {
   rmSync(markerPath(workspaceRoot, area), { force: true });
 }
 
-// One stored file into `root` at its path: its folders made without following links, the bytes written
-// under a hidden working name and linked to the real name only when whole and only where nothing is
-// (a merge never overwrites a file of the folder, a broken download never leaves half a file), its time
-// of change as stored. A row whose object is gone from the bucket (removed there by hand) is dropped:
-// nothing else can bring the file back.
+// Where a stored file goes when its place in the folder is taken by a folder, a link or a file of another
+// kind (the agent turned a file into a folder between two stores): it is kept, never dropped, in a folder
+// the person sees.
+export const RECOVERED = 'Восстановлено из хранилища';
+
+function recoveredPath(area: Area, path: string): string {
+  const prefix = filesPrefix(area);
+  return `${prefix}${RECOVERED}/${path.startsWith(prefix) ? path.slice(prefix.length) : path}`;
+}
+
+// Links the whole file `temp` of the held root to `target`; false when its place is taken.
+function linkInto(root: string, heldRoot: string, temp: string, target: string): boolean {
+  const placed = inFolderOf(root, target, true, (folder, name) => {
+    try {
+      linkSync(join(heldRoot, temp), join(folder, name));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw error;
+    }
+  });
+  return placed === true;
+}
+
+// One stored file into `root` at its path: the bytes are written whole under a hidden working name at the
+// top of `root` first, then linked to the real name — its folders made without following links, only where
+// nothing is (a merge never overwrites a file of the folder, a broken download never leaves half a file),
+// its time of change as stored. A taken place puts the file into «Восстановлено из хранилища» instead. A
+// row whose object is gone from the bucket (removed there by hand) is dropped: nothing else can bring it back.
 async function download(deps: CopyDeps, area: Area, root: string, row: StoredRow): Promise<void> {
   const body = await deps.store.get(objectKey(area, row.path));
   if (!body) {
@@ -68,27 +93,27 @@ async function download(deps: CopyDeps, area: Area, root: string, row: StoredRow
     return;
   }
   const temp = `.hydrate-${randomUUID()}`;
-  const fd = inFolderOf(root, row.path, true, (folder) => openSync(join(folder, temp), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644));
-  if (fd === null) {
-    // A folder of the path is a link or a file in the folder now (merge): what is there wins.
-    body.destroy();
-    logEvent('warn', 'storage_file_blocked', { area: areaKey(area), path: row.path });
-    return;
-  }
-  try {
-    await pipeline(body, createWriteStream('', { fd, autoClose: false }));
-    const seconds = row.mtimeMs / 1000;
-    futimesSync(fd, seconds, seconds);
-  } finally {
-    closeSync(fd);
-  }
-  inFolderOf(root, row.path, false, (folder, name) => {
+  await inFolderOfAsync(root, temp, false, async (heldRoot, name) => {
+    const fd = openSync(join(heldRoot, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
     try {
-      linkSync(join(folder, temp), join(folder, name));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      try {
+        await pipeline(body, createWriteStream('', { fd, autoClose: false }));
+        const seconds = row.mtimeMs / 1000;
+        futimesSync(fd, seconds, seconds);
+      } finally {
+        closeSync(fd);
+      }
+      if (linkInto(root, heldRoot, name, row.path)) return;
+      for (let i = 1; ; i++) {
+        const target = i === 1 ? recoveredPath(area, row.path) : `${recoveredPath(area, row.path)} (${i})`;
+        if (linkInto(root, heldRoot, name, target)) {
+          logEvent('warn', 'storage_file_recovered', { area: areaKey(area), path: row.path, to: target });
+          return;
+        }
+        if (i >= 20) throw new Error(`storage: no place for ${row.path} of ${areaKey(area)}`);
+      }
     } finally {
-      rmSync(join(folder, temp), { force: true });
+      rmSync(join(heldRoot, name), { force: true });
     }
   });
 }
@@ -148,13 +173,23 @@ export async function storeChanges(deps: CopyDeps, area: Area, removeMissing: bo
     true,
   );
   let stored = 0;
+  // A file the disk will not give (the agent shut it) or the bucket will not take (too long a name, too
+  // big) is left on the disk and named in the log; the others are stored. The service failing as a whole
+  // stops the pass.
+  const refused: string[] = [];
   await inParallel(changed, async (path) => {
-    const fd = inFolderOf(dir, path, false, (folder, name) => openRegular(join(folder, name)));
-    if (fd === null) return; // Gone meanwhile: the next pass sees it missing.
-    const stat = fstatSync(fd);
-    await deps.store.putFile(objectKey(area, path), fd);
-    await rememberStored(deps.db, key, { path, bytes: stat.size, mtimeMs: mtimeOf(stat.mtimeMs) });
-    stored++;
+    try {
+      const fd = inFolderOf(dir, path, false, (folder, name) => openRegular(join(folder, name)));
+      if (fd === null) return; // Gone meanwhile: the next pass sees it missing.
+      const stat = fstatSync(fd);
+      await deps.store.putFile(objectKey(area, path), fd);
+      await rememberStored(deps.db, key, { path, bytes: stat.size, mtimeMs: mtimeOf(stat.mtimeMs) });
+      stored++;
+    } catch (error) {
+      if (isAppError(error) && error.code !== 'APP_STORAGE_FILE_REJECTED') throw error;
+      refused.push(path);
+      logEvent('error', 'storage_file_not_stored', { code: isAppError(error) ? error.code : 'APP_STORAGE_SYNC_INCOMPLETE', area: key, path, error: isAppError(error) ? error.code : (error as NodeJS.ErrnoException).code });
+    }
   });
   if (removeMissing) {
     const gone = [...rows.keys()].filter((path) => !seen.has(path));
@@ -163,18 +198,51 @@ export async function storeChanges(deps: CopyDeps, area: Area, removeMissing: bo
       await deps.store.remove(objectKey(area, path));
     });
   }
+  // The copy must stay on the disk until they are stored.
+  if (refused.length > 0) throw syncIncomplete(key, refused.length);
   return stored;
+}
+
+function syncIncomplete(area: string, files: number): AppError {
+  return new AppError({
+    code: 'APP_STORAGE_SYNC_INCOMPLETE',
+    message: `${files} files of ${area} were not stored`,
+    userMessage: 'Часть файлов не удалось сохранить в хранилище — они остаются на диске сервера.',
+    nextStep: 'Подробности — в журнале сервера (storage_file_not_stored).',
+    status: 500,
+  });
+}
+
+// A name that is not text (a ZIP of Windows with names in an old code page): no walk of the folder sees
+// such a file, so it could be neither stored nor kept — the copy with it never leaves the disk.
+export function unreadableNames(dir: string): number {
+  let count = 0;
+  const walk = (path: Buffer) => {
+    let entries: Dirent<Buffer>[];
+    try {
+      entries = readdirSync(path, { encoding: 'buffer', withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!Buffer.from(entry.name.toString('utf8'), 'utf8').equals(entry.name)) count++;
+      else if (entry.isDirectory()) walk(Buffer.concat([path, Buffer.from('/'), entry.name]));
+    }
+  };
+  if (existsSync(dir)) walk(Buffer.from(dir));
+  return count;
 }
 
 // The copy leaves the disk: moved aside by one rename, then removed.
 export function removeCopy(workspaceRoot: string, area: Area): void {
+  // The note first: a folder made again later without it is merged, never taken for a full copy.
+  removeMarker(workspaceRoot, area);
   const dir = areaDir(workspaceRoot, area);
   if (existsSync(dir)) {
     const aside = join(dirname(dir), `.evict-${randomUUID()}`);
     renameSync(dir, aside);
     rmSync(aside, { recursive: true, force: true });
   }
-  removeMarker(workspaceRoot, area);
 }
 
 // Moving back onto the disk: the files of the area the disk lacks are brought, then the bucket forgets it.

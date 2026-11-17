@@ -4,17 +4,18 @@
 // agent, an upload, a download — and the copy goes 10 minutes after the last use. Every place that
 // touches files of an area holds it first (`hold`); while held, no copy is made, merged or removed under
 // it. One server process serves the installation, so the holds are counted in memory.
-import { existsSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { createReadStream, existsSync, rmSync } from 'node:fs';
+import type { Readable } from 'node:stream';
+import { join, relative } from 'node:path';
 import type { StorageConnectInput, StorageKeysInput, StorageStatus } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { listFiles, MAX_LISTED_FILES, resolveInside } from '../workspace/layout.ts';
+import { isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';
-import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, type CopyDeps } from './copies.ts';
+import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, unreadableNames, type CopyDeps } from './copies.ts';
 import { storedAreas, storedRows, storedTotals } from './manifest.ts';
 import { checkObjectStore, createObjectStore, type ObjectStore, type S3Config } from './object-store.ts';
 import { loadStorageSettings, recordStorageError, saveLocalSettings, saveS3Settings, setStorageState, type StorageSettings } from './settings.ts';
@@ -39,6 +40,13 @@ export interface FileStorage {
   hold(area: Area, how: 'read' | 'write'): Promise<Release>;
   // Work on the area's folder itself (moving a project to another person): nothing else touches it meanwhile.
   exclusive<T>(area: Area, work: () => T | Promise<T>): Promise<T>;
+  // Work on the area's folder that must not run under an answer holding it (a project given to another
+  // person): refused with APP_STORAGE_BUSY while anything holds the area.
+  exclusiveIdle<T>(area: Area, work: () => T | Promise<T>): Promise<T>;
+  // A file of the area (`rel` from the area: «files/…», «trash/…» of a project) without making a copy: from
+  // the copy when there is one, otherwise straight from the bucket. Null when there is no such file.
+  openFile(area: Area, rel: string): Promise<{ stream: Readable; bytes: number } | null>;
+  exists(area: Area, rel: string): Promise<boolean>;
   // The person's files of the area without making a copy (search, counts): from the copy when there is
   // one, otherwise from the list of the bucket. `visit` returning false stops.
   walkFiles(area: Area, visit: (file: StoredFile) => boolean | void): Promise<void>;
@@ -81,6 +89,16 @@ function busy(): AppError {
     message: 'files are being moved between the disk and the bucket',
     userMessage: 'Файлы ещё переносятся. Дождитесь окончания переноса — ход виден в этом разделе.',
     status: 409,
+  });
+}
+
+function namesUnsupported(area: string, files: number): AppError {
+  return new AppError({
+    code: 'APP_STORAGE_NAME_UNSUPPORTED',
+    message: `${files} names in ${area} are not UTF-8`,
+    userMessage: 'В папке есть файлы с именами в старой кодировке (например, из архива Windows) — их не сохранить в хранилище, поэтому папка остаётся на диске сервера.',
+    nextStep: 'Попросите агента переименовать такие файлы.',
+    status: 500,
   });
 }
 
@@ -166,6 +184,8 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
       if (!hasMarker(workspaceRoot, area)) await adopt(copyDeps(), area);
       else await storeChanges(copyDeps(), area, true);
       if (state.holders > 0) return;
+      const unreadable = unreadableNames(areaDir(workspaceRoot, area));
+      if (unreadable > 0) throw namesUnsupported(areaKey(area), unreadable);
       removeCopy(workspaceRoot, area);
       logEvent('info', 'storage_copy_removed', { area: areaKey(area) });
     });
@@ -209,9 +229,17 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
       return;
     }
     const now = Date.now();
+    // A project's folder found with someone other than its creator is a leftover of a move stopped
+    // halfway: the start of the server sorts it out (recoverProjectFolders), the pass leaves it alone.
+    const { rows: owners } = await db.query<{ id: string; user_id: string }>('SELECT id, user_id FROM app.projects');
+    const ownerOf = new Map(owners.map((r) => [r.id, r.user_id]));
     for (const area of localAreas(workspaceRoot)) {
       const state = stateOf(area);
       if (state.holders > 0) continue;
+      if (area.kind === 'project' && ownerOf.get(area.projectId) !== area.ownerId) {
+        logEvent('warn', 'storage_folder_not_of_owner', { area: areaKey(area), folderOf: area.ownerId });
+        continue;
+      }
       if (hasMarker(workspaceRoot, area) && now - state.lastUsed < deps.keepCopyMs) continue;
       try {
         await evict(area);
@@ -278,6 +306,39 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
         out.push({ path: rel, bytes: row.bytes });
       }
       return out.sort((a, b) => a.path.localeCompare(b.path, 'ru')).slice(0, MAX_LISTED_FILES);
+    },
+
+    exclusiveIdle(area, work) {
+      return exclusive(area, () => {
+        if (stateOf(area).holders > 0) {
+          throw new AppError({ code: 'APP_STORAGE_BUSY', message: `${areaKey(area)} is held by an answer`, userMessage: 'С файлами сейчас работает агент. Повторите через минуту.', status: 409 });
+        }
+        return work();
+      });
+    },
+
+    openFile(area, rel) {
+      return exclusive(area, async () => {
+        const dir = areaDir(workspaceRoot, area);
+        if (!remote() || existsSync(dir)) {
+          const file = openFileInside(dir, rel);
+          return file ? { stream: createReadStream('', { fd: file.fd, autoClose: true }), bytes: file.size } : null;
+        }
+        const path = relative(dir, resolveInside(dir, rel));
+        const row = (await storedRows(db, areaKey(area), path)).find((r) => r.path === path);
+        if (!row) return null;
+        const stream = await store!.get(`${areaKey(area)}/${path}`);
+        return stream ? { stream, bytes: row.bytes } : null;
+      });
+    },
+
+    exists(area, rel) {
+      return exclusive(area, async () => {
+        const dir = areaDir(workspaceRoot, area);
+        if (!remote() || existsSync(dir)) return isFileInside(dir, rel);
+        const path = relative(dir, resolveInside(dir, rel));
+        return (await storedRows(db, areaKey(area), path)).some((r) => r.path === path);
+      });
     },
 
     removeFile(area, rel) {

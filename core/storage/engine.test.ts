@@ -54,6 +54,9 @@ beforeAll(async () => {
   database = await createTestDatabase();
   await migrate(database.url);
   db = createPool(database.url);
+  // The project of the tests is known to the database with its creator, as every project is.
+  await db.query(`INSERT INTO app."user" ("id", "name", "email", "emailVerified") VALUES ('olga', 'Ольга', 'olga@example.com', true)`);
+  await db.query("INSERT INTO app.projects (id, user_id, name, access) VALUES ('0b9d1c62-6f4a-4c55-9d43-1d2b6c0e6a11', 'olga', 'Тендер', 'private')");
 });
 afterAll(async () => {
   await db.end();
@@ -245,6 +248,84 @@ describe('when the bucket fails', () => {
   }, 30_000);
 });
 
+describe('what the review of 17.11 found', () => {
+  beforeEach(connected);
+
+  it('a file whose place is taken in the copy is kept in «Восстановлено из хранилища», never dropped', async () => {
+    const release = await storage.hold(olga, 'write');
+    put(areaDir(root, olga), 'a', 'file a');
+    await release();
+    await storage.sweep();
+    // The bucket holds «a» and, from a pass broken halfway, «a/b» too.
+    s3.objects.set('bba/users/olga/files/a/b', Buffer.from('file a/b'));
+    await db.query("INSERT INTO app.storage_objects (area, path, bytes, mtime_ms) VALUES ('users/olga/files', 'a/b', 8, 1)");
+    const again = await storage.hold(olga, 'write');
+    const placed = [read(areaDir(root, olga), 'a'), read(areaDir(root, olga), 'Восстановлено из хранилища/a/b')].sort();
+    expect(placed).toEqual(['file a', 'file a/b']);
+    await again();
+    expect(bucketKeys()).toEqual(['bba/users/olga/files/a', 'bba/users/olga/files/Восстановлено из хранилища/a/b']);
+  });
+
+  it('a missing bucket fails the hold and keeps the list of what it held', async () => {
+    put(areaDir(root, olga), 'a.txt', 'one');
+    await (await storage.hold(olga, 'write'))();
+    await storage.sweep();
+    s3.failWith({ status: 404, code: 'NoSuchBucket' });
+    try {
+      await expect(storage.hold(olga, 'read')).rejects.toMatchObject({ code: 'APP_STORAGE_BUCKET_NOT_FOUND' });
+    } finally {
+      s3.failWith(null);
+    }
+    expect((await storage.status()).stored.files).toBe(1);
+    const release = await storage.hold(olga, 'read');
+    expect(read(areaDir(root, olga), 'a.txt')).toBe('one');
+    await release();
+  });
+
+  it('a file the bucket refuses or a name in an old code page keeps the copy on the disk; the rest is stored', async () => {
+    const release = await storage.hold(olga, 'write');
+    put(areaDir(root, olga), 'ok.txt', 'fine');
+    put(areaDir(root, olga), 'huge.bin', 'refused');
+    // «Договор» in cp866, as unzip leaves a ZIP of Windows.
+    writeFileSync(Buffer.concat([Buffer.from(`${areaDir(root, olga)}/`), Buffer.from([0x84, 0xae, 0xa3, 0xae, 0xa2, 0xae, 0xe0])]), 'cp866');
+    s3.refuseKeys('huge.bin');
+    await release();
+    expect(bucketKeys()).toEqual(['bba/users/olga/files/ok.txt']);
+    await storage.sweep();
+    expect(read(areaDir(root, olga), 'huge.bin')).toBe('refused');
+    expect((await storage.status()).lastError?.code).toBe('APP_STORAGE_SYNC_INCOMPLETE');
+    s3.refuseKeys(null);
+    await storage.sweep();
+    // Stored now, but the name nobody can read keeps the copy.
+    expect(bucketKeys()).toContain('bba/users/olga/files/huge.bin');
+    expect(existsSync(areaDir(root, olga))).toBe(true);
+    expect((await storage.status()).lastError?.code).toBe('APP_STORAGE_NAME_UNSUPPORTED');
+  });
+
+  it('one file is read and found without bringing the area to the disk', async () => {
+    const release = await storage.hold(tender, 'write');
+    put(areaDir(root, tender), 'files/смета.xlsx', 'smeta');
+    await release();
+    await storage.sweep();
+    expect(await storage.exists(tender, 'files/смета.xlsx')).toBe(true);
+    expect(await storage.exists(tender, 'files/нет.xlsx')).toBe(false);
+    const file = await storage.openFile(tender, 'files/смета.xlsx');
+    const chunks: Buffer[] = [];
+    for await (const c of file!.stream) chunks.push(Buffer.from(c as Uint8Array));
+    expect({ text: Buffer.concat(chunks).toString(), bytes: file!.bytes }).toEqual({ text: 'smeta', bytes: 5 });
+    expect(await storage.openFile(tender, 'files/нет.xlsx')).toBeNull();
+    await expect(storage.exists(tender, '../../x')).rejects.toMatchObject({ code: 'APP_VALIDATION_FAILED' });
+    expect(existsSync(areaDir(root, tender))).toBe(false);
+  });
+
+  it('a held area is not moved from under the answer', async () => {
+    const release = await storage.hold(tender, 'write');
+    await expect(storage.exclusiveIdle(tender, () => 'moved')).rejects.toMatchObject({ code: 'APP_STORAGE_BUSY' });
+    await release();
+    expect(await storage.exclusiveIdle(tender, () => 'moved')).toBe('moved');
+  });
+});
+
 describe('disconnecting', () => {
   beforeEach(connected);
 
@@ -260,7 +341,7 @@ describe('disconnecting', () => {
     await expect(storage.disconnect()).rejects.toMatchObject({ code: 'APP_STORAGE_BUSY' });
     await storage.sweep();
     expect(read(areaDir(root, olga), 'a.txt')).toBe('one');
-    // A project the database does not know is not brought back: its files are dropped from the bucket.
+    expect(read(areaDir(root, tender), 'files/b.txt')).toBe('two');
     expect(bucketKeys()).toEqual([]);
     expect(await storage.status()).toMatchObject({ mode: 'local', state: 'active', bucket: null });
   });

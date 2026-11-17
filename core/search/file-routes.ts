@@ -10,9 +10,9 @@ import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { logEvent } from '../server/log.ts';
 import { access, type AppEnv } from '../server/http.ts';
-import { fileDownload } from '../workspace/download.ts';
-import { areaOf, userArea } from '../storage/areas.ts';
-import { filesRoot, isFileInside, resolveInside } from '../workspace/layout.ts';
+import { fileResponse } from '../workspace/download.ts';
+import { areaOf, filesPrefix, userArea } from '../storage/areas.ts';
+import { filesRoot, resolveInside } from '../workspace/layout.ts';
 import { recentFiles } from './files.ts';
 
 const statusQuery = z.object({ path: z.string().min(1), projectId: z.uuid().optional() });
@@ -37,15 +37,9 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps):
     const project = projectId ? requireActive(await visibleProject(deps.db, userId, projectId)) : null;
     const folder = filesRoot(deps.workspaceRoot, project?.user_id ?? userId, project?.id ?? null);
     const name = basename(resolveInside(folder, path));
-    // The folder is on the disk for the check (an S3 bucket keeps the files, spec section 8.23).
-    const release = await deps.storage.hold(areaOf(userId, project), 'read');
-    let present: boolean;
-    try {
-      present = isFileInside(folder, path);
-    } finally {
-      await release();
-    }
-    if (present) return c.json<SearchFileStatus>({ state: 'ok' });
+    const area = areaOf(userId, project);
+    // From the copy, or from the list of the bucket: a check brings nothing to the disk (spec, 8.23).
+    if (await deps.storage.exists(area, `${filesPrefix(area)}${relative(folder, resolveInside(folder, path))}`)) return c.json<SearchFileStatus>({ state: 'ok' });
     const trashed = project ? await trashedAt(deps.db, project.id, relative(folder, resolveInside(folder, path))) : null;
     if (project && trashed) return c.json<SearchFileStatus>({ state: 'trash', name, projectId: project.id, trashId: trashed.id, expiresAt: trashed.expiresAt.toISOString() });
     return c.json<SearchFileStatus>({ state: 'deleted', name });
@@ -54,11 +48,8 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps):
   // A file of the person's conversations outside projects: only their own folder.
   app.get('/app/api/files/file', async (c) => {
     const userId = access(c).userId;
-    const release = await deps.storage.hold(userArea(userId), 'read');
-    try {
-      return fileDownload(filesRoot(deps.workspaceRoot, userId, null), c.req.query('path') ?? '', 'Файл не найден.', undefined, c.req.query('inline') === '1');
-    } finally {
-      await release();
-    }
+    const folder = filesRoot(deps.workspaceRoot, userId, null);
+    const rel = relative(folder, resolveInside(folder, c.req.query('path') ?? ''));
+    return fileResponse(await deps.storage.openFile(userArea(userId), rel), 'Файл не найден.', basename(rel), c.req.query('inline') === '1');
   });
 }

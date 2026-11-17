@@ -1,18 +1,18 @@
 // Projects, their files and the list of conversations (spec, sections 8.12, 8.20 and 17.5). A project
 // is reached only through the rule of ./access.ts: one the person does not see is "not found".
-import { basename } from 'node:path';
+import { basename, relative } from 'node:path';
 import { MAX_UPLOAD_BYTES, projectAccessInputSchema, projectCreateSchema, trashRestoreSchema, type ThreadProjectResponse } from '@bba/contracts';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { fileDownload } from '../workspace/download.ts';
-import { contextRoot, saveFile } from '../workspace/layout.ts';
+import { fileResponse } from '../workspace/download.ts';
+import { contextRoot, filesRoot, resolveInside, saveFile } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';
 import { requireActive, threadProjectState, visibleProject } from './access.ts';
 import { registerDirectoryRoutes } from './directory.ts';
-import { listTrash, restoreFromTrash, trashDir, trashFromPage, trashItem } from './trash.ts';
+import { listTrash, restoreFromTrash, TRASH_FOLDER, trashFromPage, trashItem } from './trash.ts';
 import { archiveProject, createProject, deleteProject, listArchive, listProjects, listThreadPage, markSeen, orderProjects, projectDto, setProjectAccess, setThreadProject, THREAD_PAGE_MAX, updateProject, type ProjectsDeps } from './projects.ts';
 
 // A multipart body carries the file plus its headers; requests above this are refused unread.
@@ -41,6 +41,8 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   // The files folder of a project: it lives with its creator, whoever works in it.
   const folderOf = (project: { id: string; user_id: string }) => contextRoot(deps.workspaceRoot, project.user_id, project.id);
   const areaOf = (project: { id: string; user_id: string }) => projectArea(project.id, project.user_id);
+  // Where the files folder of a project would be — not made: for paths only.
+  const filesOf = (project: { id: string; user_id: string }) => filesRoot(deps.workspaceRoot, project.user_id, project.id);
   // The project's folder is on the disk while `work` runs (an S3 bucket keeps the files, spec 8.23).
   async function inProject<T>(project: { id: string; user_id: string }, how: 'read' | 'write', work: () => T | Promise<T>): Promise<T> {
     const release = await deps.storage.hold(areaOf(project), how);
@@ -122,7 +124,9 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
   app.get('/app/api/projects/:id/file', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
     const path = c.req.query('path') ?? '';
-    return inProject(project, 'read', () => fileDownload(folderOf(project), path, 'Файл не найден.', undefined, c.req.query('inline') === '1'));
+    // From the copy, or straight from the bucket: one file does not bring the whole project (spec, 8.23).
+    const inArea = `files/${relative(filesOf(project), resolveInside(filesOf(project), path))}`;
+    return fileResponse(await deps.storage.openFile(areaOf(project), inArea), 'Файл не найден.', basename(inArea), c.req.query('inline') === '1');
   });
 
   // «Удалить» of the page: into the project's trash (spec, section 8.20).
@@ -150,7 +154,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps): vo
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
     const item = await trashItem(deps.db, project.id, c.req.param('trashId'));
     if (!item) throw appError('APP_NOT_FOUND', 'no such trash item', { userMessage: 'Этого файла в корзине уже нет.' });
-    return inProject(project, 'read', () => fileDownload(trashDir(deps.workspaceRoot, project.user_id, project.id), item.id, 'Этого файла в корзине уже нет.', basename(item.path)));
+    return fileResponse(await deps.storage.openFile(areaOf(project), `${TRASH_FOLDER}/${item.id}`), 'Этого файла в корзине уже нет.', basename(item.path));
   });
 
   // The project of a conversation, also of one that has no messages yet (chosen beforehand), or why

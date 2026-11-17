@@ -136,7 +136,7 @@ describe('«Почта» in «Подключения»', () => {
     server({ 'GET /app/api/me/mail': { body: { accounts: [{ ...CONNECTED.accounts[0], status: 'auth_error' }], oauth: [] } } });
     renderApp('/settings/connections?mailError=APP_MAIL_AUTH_FAILED');
     expect(await screen.findByText('Ошибка доступа')).toBeInTheDocument();
-    expect(screen.getByText('Не удалось подключить почту.')).toBeInTheDocument();
+    expect(screen.getByText(/Почтовый сервер не принял вход: на сайте сервиса выбран другой аккаунт/)).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Подключить заново' }));
     expect(within(await screen.findByRole('dialog')).getByLabelText('Адрес почты')).toHaveValue('olga@yandex.ru');

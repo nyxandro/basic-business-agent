@@ -108,6 +108,29 @@ export function inFolderOf<T>(root: string, rel: string, make: boolean, work: (f
   }
 }
 
+// The same for work that waits (a download written into the held folder): the folder stays held until
+// the work is done.
+export async function inFolderOfAsync<T>(root: string, rel: string, make: boolean, work: (folder: string, name: string) => Promise<T>): Promise<T | null> {
+  const parts = rel.split('/').filter(Boolean);
+  const name = parts.pop();
+  if (!name) return null;
+  let held = hold(realpathSync(root));
+  if (!held) return null;
+  try {
+    for (const part of parts) {
+      const next = join(held.path, part);
+      if (make && !lstatSync(next, { throwIfNoEntry: false })) mkdirSync(next);
+      const sub = hold(next);
+      if (!sub) return null;
+      release(held);
+      held = sub;
+    }
+    return await work(held.path, name);
+  } finally {
+    release(held);
+  }
+}
+
 // A regular file opened without waiting and without following a link, or null.
 export function openRegular(path: string): number | null {
   let fd: number;

@@ -52,20 +52,47 @@ function privateAddress(address: string): boolean {
   return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
 }
 
+// A host the server may reach while guessing: every address of it is public.
+async function publicHost(host: string): Promise<string | null> {
+  const addresses = await lookup(host, { all: true }).catch(() => []);
+  if (addresses.length === 0 || addresses.some((a) => privateAddress(a.address))) return null;
+  return addresses[0]!.address;
+}
+
+// The body up to the limit, read as it comes: a huge answer is not taken into memory.
+async function limitedText(res: Response): Promise<string | null> {
+  if (!res.body) return null;
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    bytes += chunk.byteLength;
+    if (bytes > CONFIG_MAX_BYTES) return null;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+// What the server finds by guessing goes only to public addresses: the person's domain must not lead the
+// server into its own network. A server the person types by hand may be inside it (mail of the company's
+// own server) — only its mail ports are reachable then (IMAP_PORTS, SMTP_PORTS).
 export const realDiscoverDeps: DiscoverDeps = {
   resolveMx: (domain) => resolveMx(domain),
-  resolveSrv: (name) => resolveSrv(name),
+  resolveSrv: async (name) => {
+    const records = await resolveSrv(name);
+    const open = await Promise.all(records.map(async (r) => ((await publicHost(r.name)) ? r : null)));
+    return open.filter((r): r is NonNullable<typeof r> => r !== null);
+  },
   async fetchConfig(url) {
-    const host = new URL(url).hostname;
-    const addresses = await lookup(host, { all: true }).catch(() => []);
-    if (addresses.length === 0 || addresses.some((a) => privateAddress(a.address))) return null;
+    const address = await publicHost(new URL(url).hostname);
+    if (!address) return null;
     const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(LOOKUP_MS) }).catch(() => null);
     if (!res?.ok) return null;
-    const text = await res.text();
-    return text.length > CONFIG_MAX_BYTES ? null : text;
+    return limitedText(res).catch(() => null);
   },
-  answers: (host, port) =>
-    new Promise((resolve) => {
+  async answers(host, port) {
+    const address = await publicHost(host);
+    if (!address) return false;
+    return new Promise((resolve) => {
       const socket = new Socket();
       const done = (ok: boolean) => {
         socket.destroy();
@@ -73,8 +100,10 @@ export const realDiscoverDeps: DiscoverDeps = {
       };
       socket.setTimeout(LOOKUP_MS, () => done(false));
       socket.once('error', () => done(false));
-      socket.connect(port, host, () => done(true));
-    }),
+      // To the address checked, not the name again: the name cannot turn private in between.
+      socket.connect(port, address, () => done(true));
+    });
+  },
 };
 
 const presetById = (id: string): MailPreset | undefined => MAIL_PRESETS.find((p) => p.id === id);

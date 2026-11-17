@@ -72,7 +72,7 @@ function ReturnNotice({ params }: { params: URLSearchParams }) {
   const email = params.get('mail');
   const code = params.get('mailError');
   if (email) return <Notice>{t.connected(email)}</Notice>;
-  if (code) return <ErrorBanner error={new ApiRequestError({ code, message: t.returnFailed, status: 0 })} />;
+  if (code) return <ErrorBanner error={new ApiRequestError({ code, message: t.returnErrors[code] ?? t.returnFailed, status: 0 })} />;
   return null;
 }
 

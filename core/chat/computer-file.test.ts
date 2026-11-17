@@ -2,7 +2,8 @@
 // folder «.computer» of the conversation's working folder — for the skills, not among the project's files;
 // a newer copy of the same path replaces the older; nothing leads out of the folder.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectDto } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,13 +40,35 @@ describe('a file of the computer', () => {
     await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } });
     const first = await send(olga, threadId, 'Договоры/2026/смета.xlsx', 'v1');
     expect(first.status).toBe(201);
-    expect(await first.json()).toEqual({ path: '.computer/Договоры/2026/смета.xlsx', bytes: 2 });
+    expect(await first.json()).toEqual({ path: `.computer/${olgaId}/Договоры/2026/смета.xlsx`, bytes: 2 });
     const root = contextRoot(t.workspaceRoot, olgaId, project.id);
-    expect(readFileSync(join(root, '.computer/Договоры/2026/смета.xlsx'), 'utf8')).toBe('v1');
+    expect(readFileSync(join(root, `.computer/${olgaId}/Договоры/2026/смета.xlsx`), 'utf8')).toBe('v1');
     await send(olga, threadId, 'Договоры/2026/смета.xlsx', 'v2');
-    expect(readFileSync(join(root, '.computer/Договоры/2026/смета.xlsx'), 'utf8')).toBe('v2');
+    expect(readFileSync(join(root, `.computer/${olgaId}/Договоры/2026/смета.xlsx`), 'utf8')).toBe('v2');
+    // An hour later the copy goes with the next one brought.
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    utimesSync(join(root, `.computer/${olgaId}/Договоры/2026/смета.xlsx`), old, old);
+    await send(olga, threadId, 'readme.txt', 'r');
+    expect(existsSync(join(root, `.computer/${olgaId}/Договоры/2026/смета.xlsx`))).toBe(false);
+    expect(existsSync(join(root, `.computer/${olgaId}/readme.txt`))).toBe(true);
     const files = (await (await t.call('GET', `/app/api/projects/${project.id}/files`, { cookie: olga })).json()) as { files: unknown[] };
     expect(files.files).toEqual([]);
+  });
+
+  it('a link the agent put in place of the folder of copies is not followed', async () => {
+    const project = (await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Ссылки', access: { mode: 'private', departmentIds: [], userIds: [] } } })).json()) as ProjectDto;
+    const threadId = randomUUID();
+    await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: project.id } });
+    const root = contextRoot(t.workspaceRoot, olgaId, project.id);
+    const outside = mkdtempSync(join(tmpdir(), 'bba-outside-'));
+    mkdirSync(join(outside, olgaId));
+    writeFileSync(join(outside, olgaId, 'server.txt'), 'keep');
+    const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    utimesSync(join(outside, olgaId, 'server.txt'), old, old);
+    symlinkSync(outside, join(root, '.computer'));
+    expect((await send(olga, threadId, 'a.txt', 'x')).status).toBe(400);
+    expect(readFileSync(join(outside, olgaId, 'server.txt'), 'utf8')).toBe('keep');
+    rmSync(outside, { recursive: true, force: true });
   });
 
   it('nothing leads out of the folder; another person’s conversation is not found', async () => {

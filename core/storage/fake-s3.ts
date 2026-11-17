@@ -11,6 +11,10 @@ export interface FakeS3 {
   objects: Map<string, Buffer>;
   // Every request answers 503 while on.
   outage(on: boolean): void;
+  // Every request answers with this S3 error while set (e.g. 404 NoSuchBucket); null — normal again.
+  failWith(failure: { status: number; code: string } | null): void;
+  // Uploads of keys ending so are refused with this code (a file the service will not take).
+  refuseKeys(ending: string | null, code?: string): void;
   // How many requests of each kind came («PUT», «GET», «DELETE», «LIST»).
   calls: Record<string, number>;
   close(): Promise<void>;
@@ -38,6 +42,8 @@ export async function startFakeS3(options: { bucket?: string; accessKeyId?: stri
   const objects = new Map<string, Buffer>();
   const calls: Record<string, number> = {};
   let down = false;
+  let failure: { status: number; code: string } | null = null;
+  let refused: { ending: string; code: string } | null = null;
   const count = (kind: string) => (calls[kind] = (calls[kind] ?? 0) + 1);
 
   const server = createServer((req, res) => {
@@ -46,6 +52,7 @@ export async function startFakeS3(options: { bucket?: string; accessKeyId?: stri
       const [, name, ...rest] = url.pathname.split('/');
       const key = decodeURIComponent(rest.join('/'));
       if (down) return error(res, 503, 'ServiceUnavailable');
+      if (failure) return error(res, failure.status, failure.code);
       if (!(req.headers.authorization ?? '').includes(`Credential=${accessKeyId}/`)) return error(res, 403, 'InvalidAccessKeyId');
       if (name !== bucket) return error(res, 404, 'NoSuchBucket');
       if (req.method === 'GET' && !key && url.searchParams.get('list-type') === '2') {
@@ -64,6 +71,10 @@ export async function startFakeS3(options: { bucket?: string; accessKeyId?: stri
       if (!key) return error(res, 400, 'InvalidRequest');
       if (req.method === 'PUT') {
         count('PUT');
+        if (refused && key.endsWith(refused.ending)) {
+          await bodyOf(req);
+          return error(res, 400, refused.code);
+        }
         const data = await bodyOf(req);
         if (req.headers['content-length'] !== undefined && Number(req.headers['content-length']) !== data.length) return error(res, 400, 'IncompleteBody');
         objects.set(key, data);
@@ -93,6 +104,12 @@ export async function startFakeS3(options: { bucket?: string; accessKeyId?: stri
     objects,
     outage: (on) => {
       down = on;
+    },
+    failWith: (next) => {
+      failure = next;
+    },
+    refuseKeys: (ending, code = 'KeyTooLongError') => {
+      refused = ending === null ? null : { ending, code };
     },
     calls,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),

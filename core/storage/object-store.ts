@@ -40,6 +40,8 @@ const CONNECT_TIMEOUT_MS = 10_000;
 // The codes the service gives for a wrong key, a wrong bucket or no rights: the admin's to fix.
 const ACCESS_CODES = new Set(['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'AccessDenied', 'Forbidden', 'AuthorizationHeaderMalformed', 'InvalidToken', 'ExpiredToken']);
 const BUCKET_CODES = new Set(['NoSuchBucket', 'PermanentRedirect', 'IllegalLocationConstraintException']);
+// The service refuses this one file, not every request: the others are stored.
+const FILE_CODES = new Set(['KeyTooLongError', 'EntityTooLarge', 'InvalidObjectName']);
 
 export function storageUnavailable(cause: unknown, operation: string): AppError {
   const code = cause instanceof S3ServiceException ? cause.name : (cause as NodeJS.ErrnoException | undefined)?.code;
@@ -63,6 +65,9 @@ export function storageUnavailable(cause: unknown, operation: string): AppError 
       cause,
     });
   }
+  if (code && FILE_CODES.has(code)) {
+    return new AppError({ code: 'APP_STORAGE_FILE_REJECTED', message: `S3 ${operation} refused the object: ${code}`, userMessage: 'Хранилище не приняло файл: слишком длинное имя или слишком большой файл.', status: 502, cause });
+  }
   return new AppError({
     code: 'APP_STORAGE_UNAVAILABLE',
     message: `S3 ${operation} failed: ${code ?? (cause instanceof Error ? cause.name : 'unknown')}`,
@@ -73,7 +78,8 @@ export function storageUnavailable(cause: unknown, operation: string): AppError 
   });
 }
 
-const isMissing = (error: unknown) => error instanceof S3ServiceException && (error.name === 'NoSuchKey' || error.name === 'NotFound' || error.$metadata.httpStatusCode === 404);
+// Only «no such object»: a missing bucket (also a 404) is a failure of the service, never an empty place.
+const isMissing = (error: unknown) => error instanceof S3ServiceException && error.name === 'NoSuchKey';
 
 export function createObjectStore(config: S3Config): ObjectStore {
   const client = new S3Client({

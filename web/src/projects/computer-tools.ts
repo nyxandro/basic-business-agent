@@ -73,5 +73,7 @@ export function computerTools(folder: ComputerFolder, threadId: string) {
 
 export function useComputerTools(folder: ComputerFolder | null, threadId: string): void {
   const tools = useMemo(() => (folder ? computerTools(folder, threadId) : []), [folder, threadId]);
-  useFrontendTools(tools);
+  // CopilotKit registers a tool again only when its name or description changes: another folder of the same
+  // name must replace the handlers too.
+  useFrontendTools(tools, [folder, threadId]);
 }

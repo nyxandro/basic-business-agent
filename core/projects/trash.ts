@@ -21,7 +21,9 @@ import type { FileStorage } from '../storage/engine.ts';
 
 export const TRASH_KEEP_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const TRASH = 'trash';
+// The trash of a project: next to its files, inside the project's folder.
+export const TRASH_FOLDER = 'trash';
+const TRASH = TRASH_FOLDER;
 const SNAPSHOTS = '.snapshots';
 // The name of a previous version brought back next to the file it was replaced by.
 const PREVIOUS_VERSION = ' (прежняя версия)';

@@ -2,11 +2,9 @@
 // file block of the chat and the search. An attachment with the type from the extension and `nosniff`, so a
 // file the agent wrote (HTML, SVG) is saved, never opened as a page of our address; only a PDF may be shown
 // in place («Посмотреть»): the browser opens it in its own viewer.
-import { createReadStream } from 'node:fs';
-import { basename, extname } from 'node:path';
+import { extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { appError } from '../errors/catalog.ts';
-import { openFileInside, resolveInside } from './layout.ts';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -27,16 +25,15 @@ const CONTENT_TYPES: Record<string, string> = {
 const OTHER = 'application/octet-stream';
 
 // `missing`: what the person reads when there is no such file (it was removed, or the folder changed).
-// `name`: the name the person gets — by default the one in the folder (a link inside it keeps its own
-// name); a file of the trash lies under its id and is given under the name it had.
-export function fileDownload(dir: string, path: string, missing: string, name: string = basename(resolveInside(dir, path)), inline = false): Response {
-  const file = openFileInside(dir, path);
+// `name`: the name the person gets; a file of the trash lies under its id and is given under the name it had.
+// The file comes from the disk or straight from the bucket (core/storage, spec section 8.23) and is streamed:
+// a big file does not fill the memory of the server.
+export function fileResponse(file: { stream: Readable; bytes: number } | null, missing: string, name: string, inline = false): Response {
   if (!file) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
-  // Streamed from the opened file: a big file does not fill the memory of the server.
-  const body = Readable.toWeb(createReadStream('', { fd: file.fd, autoClose: true })) as ReadableStream<Uint8Array>;
+  const body = Readable.toWeb(file.stream) as ReadableStream<Uint8Array>;
   return new Response(body, {
     headers: {
-      'content-length': String(file.size),
+      'content-length': String(file.bytes),
       'content-type': CONTENT_TYPES[extname(name).toLowerCase()] ?? OTHER,
       'content-disposition': `${inline && extname(name).toLowerCase() === '.pdf' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`,
       'x-content-type-options': 'nosniff',

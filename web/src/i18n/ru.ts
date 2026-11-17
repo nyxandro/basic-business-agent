@@ -416,6 +416,14 @@ export const ru = {
       connected: (email: string) => `Почта ${email} подключена.`,
       disconnected: 'Почта отключена',
       returnFailed: 'Не удалось подключить почту.',
+      // Why the sign-in on the service's site did not connect the mailbox (the server sends only the code back).
+      returnErrors: {
+        APP_MAIL_AUTH_FAILED: 'Почтовый сервер не принял вход: на сайте сервиса выбран другой аккаунт или доступ к почте по IMAP выключен в её настройках.',
+        APP_VALIDATION_FAILED: 'Вход отменён или ссылка входа устарела. Нажмите «Подключить почту» ещё раз.',
+        APP_MAIL_OAUTH_NOT_CONFIGURED: 'Вход через этот сервис в установке выключен. Попросите администратора включить его или подключите почту паролем приложения.',
+        APP_MAIL_OAUTH_FAILED: 'Сервис входа не ответил. Попробуйте через минуту.',
+        APP_MAIL_SERVER_UNREACHABLE: 'Почтовый сервер не отвечает. Попробуйте позже.',
+      } as Record<string, string>,
       services: { google: 'Google', microsoft: 'Microsoft', yandex: 'Яндекс' },
     },
   },

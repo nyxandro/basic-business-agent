@@ -22,7 +22,7 @@ export interface DeletionDeps {
   gateway: Pick<ModelGateway, 'forgetUser'>;
   workspaceRoot: string;
   // Where the files are kept (spec, section 8.23): the person's files go from the bucket too.
-  storage: Pick<FileStorage, 'drop' | 'exclusive'>;
+  storage: Pick<FileStorage, 'drop' | 'exclusiveIdle'>;
 }
 
 async function startDeletion(db: Db, actorUserId: string, userId: string): Promise<void> {

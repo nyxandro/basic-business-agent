@@ -4,7 +4,7 @@
 // A conversation's sandbox root is one of these files folders: the agent works freely inside it,
 // cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { inFolderOf } from './held-folder.ts';
+import { inFolderOf, walkRegularFiles } from './held-folder.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
@@ -119,6 +119,20 @@ export function putInFolder(root: string, folder: string, path: string, data: Ui
   });
   if (placed === null) throw appError('APP_VALIDATION_FAILED', `a folder of ${clean} is not a folder`, { userMessage: 'Не удалось положить файл в рабочую папку: на его месте другая папка или файл.' });
   return { path: clean, bytes: data.byteLength };
+}
+
+// Removes the files of a working subfolder changed longer ago than `ms` (copies of the person's computer).
+// Walked without following links; a missing subfolder is nothing to do.
+export function pruneOlderThan(root: string, folder: string, ms: number): number {
+  // Where the subfolder really is, and only inside `root`: the agent may have made a part of it a link.
+  const base = existingInside(root, folder);
+  if (!base || !statSync(base).isDirectory()) return 0;
+  const before = Date.now() - ms;
+  const old: string[] = [];
+  walkRegularFiles(base, (file) => void (file.modifiedMs < before && old.push(file.rel)), true);
+  let removed = 0;
+  for (const rel of old) if (removeFileInside(base, rel)) removed++;
+  return removed;
 }
 
 // Files of a folder for people and for the model: hidden working folders (".renders") are skipped.

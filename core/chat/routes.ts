@@ -14,9 +14,9 @@ import { agentMarks, chatMark, DEFAULT_MARK } from '../interface-settings/agent-
 import { threadProjectState, type ThreadProjectState } from '../projects/access.ts';
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
-import { fileDownload } from '../workspace/download.ts';
-import { areaOf, type Area } from '../storage/areas.ts';
-import { contextRoot, isFileInside, putInFolder, resolveInside, saveFile } from '../workspace/layout.ts';
+import { fileResponse } from '../workspace/download.ts';
+import { areaOf, filesPrefix, type Area } from '../storage/areas.ts';
+import { contextRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
@@ -51,6 +51,9 @@ function dayMonth(date: Date, timezone: string): string {
 function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): AppError {
   return appError('APP_PROJECT_ACCESS_LOST', `file of a project gone for the person (${reason})`, { userMessage: LOST_FILE_TEXT[reason](name) });
 }
+
+// A copy of a file of the person's computer stays this long after it was brought (spec, section 8.25).
+const COMPUTER_COPY_KEEP_MS = 60 * 60 * 1000;
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler }): void {
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
@@ -246,14 +249,26 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // folder — with its creator — when the person sees the project, otherwise the person's own. Only the
   // person's own conversation or their draft check of a prompt; a conversation not saved yet (a file
   // attached before the first message) is their own.
-  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; area: Area; folder: () => string }> {
+  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; area: Area; folder: () => string; inArea: (path: string) => string }> {
     const thread = await deps.memory.getThreadById({ threadId });
     if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
       throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
     }
     const state = await threadProjectState(deps.db, userId, threadId);
     const area = areaOf(userId, state.state === 'active' ? state.project : null);
-    return { state, area, folder: () => (state.state === 'active' ? contextRoot(deps.workspaceRoot, state.project.user_id, state.project.id) : contextRoot(deps.workspaceRoot, userId, null)) };
+    const owner = state.state === 'active' ? state.project.user_id : userId;
+    const projectId = state.state === 'active' ? state.project.id : null;
+    return {
+      state,
+      area,
+      // Made on first use, so only while the area is held.
+      folder: () => contextRoot(deps.workspaceRoot, owner, projectId),
+      // A path from the files folder as the path of the area (core/storage).
+      inArea: (path: string) => {
+        const files = filesRoot(deps.workspaceRoot, owner, projectId);
+        return `${filesPrefix(area)}${relative(files, resolveInside(files, path))}`;
+      },
+    };
   }
 
   // The folder is on the disk while `work` runs (an S3 bucket keeps the files, spec section 8.23).
@@ -284,7 +299,13 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const path = (await c.req.parseBody()).path;
     if (typeof path !== 'string' || !path.trim()) throw appError('APP_VALIDATION_FAILED', 'no path of the computer file', { userMessage: 'Не указан путь файла.' });
     const data = new Uint8Array(await file.arrayBuffer());
-    const saved = await inFolder(found, 'write', (folder) => putInFolder(folder, COMPUTER_COPIES, path, data));
+    const userId = access(c).userId;
+    // Each person's copies apart, and gone an hour later: in a shared project colleagues' agents share the
+    // working folder (spec, section 8.25).
+    const saved = await inFolder(found, 'write', (folder) => {
+      pruneOlderThan(folder, `${COMPUTER_COPIES}/${userId}`, COMPUTER_COPY_KEEP_MS);
+      return putInFolder(folder, `${COMPUTER_COPIES}/${userId}`, path, data);
+    });
     return c.json(saved, 201);
   });
 
@@ -294,9 +315,11 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   async function fileStatus(userId: string, threadId: string, path: string): Promise<ThreadFileStatus> {
     const found = await threadFolders(userId, threadId);
     const { state } = found;
-    const { full, present } = await inFolder(found, 'read', (folder) => ({ full: relative(folder, resolveInside(folder, path)), present: isFileInside(folder, path) }));
+    const inArea = found.inArea(path);
+    const full = inArea.slice(filesPrefix(found.area).length);
     const name = basename(full);
-    if (present) return { state: 'ok' };
+    // From the copy, or from the list of the bucket: a check brings nothing to the disk (spec, 8.23).
+    if (await deps.storage.exists(found.area, inArea)) return { state: 'ok' };
     if (state.state === 'lost') return { state: 'lost', name, projectName: state.name, reason: state.reason };
     if (state.state === 'active') {
       const trashed = await trashedAt(deps.db, state.project.id, full);
@@ -317,6 +340,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       throw appError('APP_FILE_IN_TRASH', 'the file was removed into the project trash', { userMessage: `Файл «${status.name}» удалён из рабочей папки. Он в корзине проекта до ${dayMonth(new Date(status.expiresAt), deps.timezone)}.` });
     }
     if (status.state === 'deleted') throw appError('APP_FILE_DELETED', 'the file is gone', { userMessage: `Файл «${status.name}» удалён из рабочей папки — скачать его нельзя.` });
-    return inFolder(await threadFolders(userId, c.req.param('threadId')), 'read', (folder) => fileDownload(folder, path, `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`));
+    const found = await threadFolders(userId, c.req.param('threadId'));
+    const inArea = found.inArea(path);
+    return fileResponse(await deps.storage.openFile(found.area, inArea), `Файл «${basename(path)}» удалён из рабочей папки — скачать его нельзя.`, basename(inArea));
   });
 }

@@ -167,7 +167,17 @@ export async function freshMailSecret(deps: OAuthDeps, account: MailAccount): Pr
     };
     if (!latest.refreshToken) throw await refused(new Error('no refresh token'));
     const res = await tokenRequest(deps, await appOf(deps, latest.provider), { grant_type: 'refresh_token', refresh_token: latest.refreshToken });
-    if (!res.ok) throw await refused(new Error(`refresh answered ${res.status}: ${res.error ?? 'no access_token'}`));
+    // Only a refusal of the sign-in itself breaks the mailbox; a busy or failing service is tried next time.
+    if (!res.ok && (res.status === 400 || res.status === 401 || res.error === 'invalid_grant')) throw await refused(new Error(`refresh answered ${res.status}: ${res.error ?? 'no access_token'}`));
+    if (!res.ok) {
+      throw new AppError({
+        code: 'APP_MAIL_OAUTH_FAILED',
+        message: `token refresh of ${latest.provider} answered ${res.status}`,
+        userMessage: `Сервис входа ${PROVIDER_TITLES[latest.provider]} сейчас не отвечает.`,
+        nextStep: 'Попробуйте через минуту.',
+        status: 502,
+      });
+    }
     const next: SealedMailSecret = { ...latest, accessToken: res.access_token!, refreshToken: res.refresh_token ?? latest.refreshToken, expiresAt: expiresAt(res.expires_in) };
     await replaceSecret(deps.db, deps.box, account.id, next);
     return next;

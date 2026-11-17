@@ -30,7 +30,7 @@ async function freeProjectName(db: Pick<Db, 'query'>, userId: string, name: stri
   throw new Error(`no free name for project "${name}" of user ${userId} after ${NAME_TRIES} tries`);
 }
 
-export async function transferProjects(db: Db, storage: Pick<FileStorage, 'exclusive'>, workspaceRoot: string, fromUserId: string, toUserId: string): Promise<number> {
+export async function transferProjects(db: Db, storage: Pick<FileStorage, 'exclusiveIdle'>, workspaceRoot: string, fromUserId: string, toUserId: string): Promise<number> {
   const { rows: former } = await db.query<{ name: string }>('SELECT "name" FROM app."user" WHERE "id" = $1', [fromUserId]);
   const formerOwner = former[0]?.name ?? fromUserId;
   const { rows } = await db.query<{ id: string; name: string }>('SELECT id, name FROM app.projects WHERE user_id = $1 ORDER BY created_at', [fromUserId]);
@@ -39,9 +39,10 @@ export async function transferProjects(db: Db, storage: Pick<FileStorage, 'exclu
     // there would go with it.
     const from = projectRoot(workspaceRoot, fromUserId, project.id);
     const to = projectRoot(workspaceRoot, toUserId, project.id);
-    // Nothing makes or removes a copy of the project meanwhile (spec, section 8.23); in the bucket the
-    // project is found by its id alone, so only a copy on the disk moves.
-    const moved = await storage.exclusive(projectArea(project.id, fromUserId), () => {
+    // Nothing makes or removes a copy of the project meanwhile, and no answer works in it — its folder would
+    // move from under it (spec, section 8.23; the removal is repeated later). In the bucket the project is
+    // found by its id alone, so only a copy on the disk moves.
+    const moved = await storage.exclusiveIdle(projectArea(project.id, fromUserId), () => {
       if (!existsSync(from)) return false;
       if (existsSync(to)) throw new Error(`project folder ${to} is already there`);
       mkdirSync(dirname(to), { recursive: true });

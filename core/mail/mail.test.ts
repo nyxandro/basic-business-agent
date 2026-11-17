@@ -281,6 +281,10 @@ describe('sign-in on the service’s site', () => {
     expect(tokenCalls.at(-1)?.get('grant_type')).toBe('refresh_token');
     expect((await t.mail.loginOf(account)).secret).toEqual({ kind: 'oauth', accessToken: 'access-2' });
     await replaceSecret(t.db, box, account.id, { kind: 'oauth', provider: 'google', accessToken: 'old', refreshToken: 'refresh-1', expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    // A busy service is no refusal: the mailbox stays as it was, the next action tries again.
+    tokenAnswer = { status: 503, body: { error: 'temporarily_unavailable' } };
+    await expect(t.mail.loginOf(account)).rejects.toMatchObject({ code: 'APP_MAIL_OAUTH_FAILED' });
+    expect((await t.mail.accounts(olgaId)).accounts.find((a) => a.id === account.id)?.status).toBe('connected');
     tokenAnswer = { status: 400, body: { error: 'invalid_grant' } };
     await expect(t.mail.loginOf(account)).rejects.toMatchObject({ code: 'APP_MAIL_AUTH_FAILED' });
     expect((await t.mail.accounts(olgaId)).accounts.find((a) => a.id === account.id)?.status).toBe('auth_error');
