@@ -96,8 +96,9 @@ describe('«Моя память»', () => {
     // Someone else's entry is not found in one's own memory.
     expect(await code(await t.call('DELETE', `/app/api/me/memory/${a.id}`, { cookie: petr }), 404)).toBe('APP_MEMORY_ENTRY_NOT_FOUND');
 
-    await t.db.query(`INSERT INTO mastra.mastra_resources (id, "workingMemory", "createdAt", "updatedAt") VALUES ($1, 'старая память', now(), now())`, [olgaId]);
+    await t.db.query(`INSERT INTO mastra.mastra_resources (id, "workingMemory", "createdAt", "updatedAt") VALUES ($1, 'старая память', now(), now()), ($2, 'память черновика', now(), now())`, [olgaId, `draft:${olgaId}`]);
     await json(await t.call('DELETE', '/app/api/me/memory', { cookie: olga }));
+    expect((await t.db.query('SELECT 1 FROM mastra.mastra_resources WHERE id = $1', [`draft:${olgaId}`])).rowCount).toBe(0);
     expect((await json<MemoryListDto>(await t.call('GET', '/app/api/me/memory', { cookie: olga }))).entries).toEqual([]);
     expect((await t.db.query('SELECT 1 FROM mastra.mastra_resources WHERE id = $1', [olgaId])).rowCount).toBe(0);
     expect((await json<MemoryListDto>(await t.call('GET', '/app/api/me/memory', { cookie: petr }))).entries.map((e) => e.text)).toEqual(['Ведёт бухгалтерию']);

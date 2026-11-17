@@ -85,10 +85,11 @@ export async function deleteThread(memory: Memory, db: Db, userId: string, threa
   await db.query('DELETE FROM app.thread_projects WHERE thread_id = $1', [threadId]);
 }
 
-// The working memory Mastra kept of the person before 8.26 (`mastra.mastra_resources`): nothing reads it any
-// more, but it is still the person's memory — «Забыть всё» and the removal of the person take it away too.
-// The table is Mastra's: it is there once Mastra's storage started.
+// The working memory Mastra kept of the person before 8.26 (`mastra.mastra_resources`), of their conversations
+// and of their draft checks of prompts: nothing reads it any more, but it is still the person's memory —
+// «Забыть всё» and the removal of the person take it away too. The table is Mastra's: it is there once Mastra's
+// storage started.
 export async function forgetLegacyWorkingMemory(db: Db, userId: string): Promise<void> {
   const { rows } = await db.query<{ present: boolean }>(`SELECT to_regclass('mastra.mastra_resources') IS NOT NULL AS present`);
-  if (rows[0]?.present) await db.query('DELETE FROM mastra.mastra_resources WHERE id = $1', [userId]);
+  if (rows[0]?.present) await db.query('DELETE FROM mastra.mastra_resources WHERE id = ANY($1)', [[userId, draftResourceId(userId)]]);
 }

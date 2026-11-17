@@ -13,6 +13,7 @@ import {
   listEntries,
   MEMORY_ENTRY_MAX_CHARS,
   PERSONAL_MEMORY_MAX_CHARS,
+  PERSONAL_MEMORY_MAX_ENTRIES,
   PROJECT_MEMORY_MAX_CHARS,
   removeEntry,
   type MemoryScope,
@@ -68,7 +69,7 @@ describe('entries', () => {
 
   it('lists entries with who changed them last, newest change first, and the signs used', async () => {
     await addEntry(db, project, olga, 'Первая');
-    await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Вторая' }], new Map());
+    await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Вторая' }], {});
     const list = await listEntries(db, project);
     expect(list.entries.map((e) => [e.text, e.author.name, e.author.byAgent])).toEqual([
       ['Вторая', 'Пётр Иванов', true],
@@ -87,12 +88,20 @@ describe('entries', () => {
     await addEntry(db, project, olga, 'х'.repeat(MEMORY_ENTRY_MAX_CHARS - 100));
     await expect(addEntry(db, project, olga, 'х'.repeat(200))).rejects.toMatchObject({ code: 'APP_MEMORY_FULL' });
     const fresh = `Новый срок 01.12 ${'х'.repeat(150)}`;
-    await expect(applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: fresh }], new Map())).rejects.toMatchObject({ code: 'APP_MEMORY_FULL' });
+    await expect(applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: fresh }], {})).rejects.toMatchObject({ code: 'APP_MEMORY_FULL' });
 
     const seen = await seenOf(project);
     const result = await applyAgentOperations(db, project, petrAgent, [{ action: 'remove', number: 1 }, { action: 'add', text: fresh }], seen);
     expect(result.results.map((r) => r.action)).toEqual(['remove', 'add']);
     expect((await listEntries(db, project)).entries.some((e) => e.text === fresh)).toBe(true);
+  });
+
+  it('counts entries too: many short ones cannot grow the prompt past the limit', async () => {
+    for (let i = 1; i <= PERSONAL_MEMORY_MAX_ENTRIES; i++) await addEntry(db, { kind: 'personal', userId: 'petr' }, petrAgent, `Факт ${i}`);
+    await expect(addEntry(db, { kind: 'personal', userId: 'petr' }, petrAgent, 'Ещё один')).rejects.toMatchObject({ code: 'APP_MEMORY_FULL', details: { maxEntries: PERSONAL_MEMORY_MAX_ENTRIES } });
+    // What frees the place passes on a memory over its limit.
+    await applyAgentOperations(db, { kind: 'personal', userId: 'petr' }, petrAgent, [{ action: 'remove', number: 1 }, { action: 'add', text: 'Ещё один' }], await seenOf({ kind: 'personal', userId: 'petr' }));
+    expect((await listEntries(db, { kind: 'personal', userId: 'petr' })).entries).toHaveLength(PERSONAL_MEMORY_MAX_ENTRIES);
   });
 
   it('runs the operations of one call as a whole: a failed one leaves none of them', async () => {
@@ -104,8 +113,8 @@ describe('entries', () => {
   });
 
   it('gives no second entry for the same text', async () => {
-    const first = await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Подача до 28.11' }], new Map());
-    const again = await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Подача  до 28.11' }], new Map());
+    const first = await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Подача до 28.11' }], {});
+    const again = await applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Подача  до 28.11' }], {});
     expect(again.results[0]).toMatchObject({ action: 'add', number: first.results[0]!.number, duplicate: true });
     await expect(addEntry(db, project, olga, 'Подача до 28.11')).rejects.toMatchObject({ code: 'APP_MEMORY_DUPLICATE' });
     expect((await listEntries(db, project)).entries).toHaveLength(1);
@@ -153,8 +162,8 @@ describe('entries', () => {
     const filler = 'ф'.repeat(MEMORY_ENTRY_MAX_CHARS);
     for (let i = 0; i < PROJECT_MEMORY_MAX_CHARS / MEMORY_ENTRY_MAX_CHARS - 1; i++) await addEntry(db, project, olga, `${i}${filler}`.slice(0, MEMORY_ENTRY_MAX_CHARS));
     const settled = await Promise.allSettled([
-      applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'а'.repeat(300) }], new Map()),
-      applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'б'.repeat(300) }], new Map()),
+      applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'а'.repeat(300) }], {}),
+      applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'б'.repeat(300) }], {}),
     ]);
     expect(settled.map((s) => s.status).sort()).toEqual(['fulfilled', 'rejected']);
     const list = await listEntries(db, project);
@@ -167,7 +176,7 @@ describe('entries', () => {
     await db.query('UPDATE app.projects SET archived_at = now() WHERE id = $1', [(project as { projectId: string }).projectId]);
     expect((await listEntries(db, project)).entries).toHaveLength(1);
     await expect(addEntry(db, project, olga, 'Ещё')).rejects.toMatchObject({ code: 'APP_PROJECT_ARCHIVED' });
-    await expect(applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Ещё' }], new Map())).rejects.toMatchObject({ code: 'APP_PROJECT_ARCHIVED' });
+    await expect(applyAgentOperations(db, project, petrAgent, [{ action: 'add', text: 'Ещё' }], {})).rejects.toMatchObject({ code: 'APP_PROJECT_ARCHIVED' });
   });
 
   it('goes away with its project; an author removed from the installation becomes nobody', async () => {
@@ -192,5 +201,5 @@ describe('entries', () => {
 });
 
 async function seenOf(scope: MemoryScope): Promise<SeenVersions> {
-  return new Map((await listEntries(db, scope)).entries.map((e) => [e.number, e.version]));
+  return Object.fromEntries((await listEntries(db, scope)).entries.map((e) => [String(e.number), e.version]));
 }

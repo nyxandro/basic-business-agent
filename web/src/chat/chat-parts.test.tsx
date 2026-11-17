@@ -170,6 +170,10 @@ describe('a line of the memory', () => {
     cleanup();
     memoryRow('personal_memory', [{ action: 'add', text: 'Факт' }], { error: true, code: 'APP_MEMORY_SAVE_FAILED', message: 'Не удалось…' });
     expect(screen.getByText(/Не удалось записать в память о вас/)).toBeInTheDocument();
+    cleanup();
+    // The adapter's word for a call the broken answer left without a result.
+    memoryRow('project_memory', [{ action: 'add', text: 'Срок' }], 'The tool call ended without a result.');
+    expect(screen.getByText(/Не удалось записать в память проекта/)).toBeInTheDocument();
   });
 });
 

@@ -68,7 +68,7 @@ function operationsOf(input: z.infer<typeof inputSchema>): MemoryOperation[] | F
 
 async function failureOf(error: unknown, db: Db, scope: MemoryScope, seen: SeenVersions): Promise<Failure> {
   if (!isAppError(error)) throw error;
-  const details = (error.details ?? {}) as { operation?: number; number?: number; text?: string; version?: number; chars?: number; usedChars?: number; maxChars?: number; wouldBe?: number };
+  const details = (error.details ?? {}) as { operation?: number; number?: number; text?: string; version?: number; chars?: number; usedChars?: number; maxChars?: number; wouldBe?: number; entries?: number; maxEntries?: number };
   const at = details.operation ? `Операция ${details.operation}: ` : '';
   const nothing = 'Ничего из этого вызова не сохранено.';
   const memory = scope.kind === 'project' ? 'Память проекта' : 'Память о сотруднике';
@@ -78,7 +78,7 @@ async function failureOf(error: unknown, db: Db, scope: MemoryScope, seen: SeenV
       return {
         error: true,
         code: error.code,
-        message: `${memory} заполнена: занято ${details.usedChars} из ${details.maxChars} знаков, после вызова было бы ${details.wouldBe}. ${nothing} Объедини близкие записи (change) и убери устаревшие (remove), потом добавь новое — можно одним вызовом: сначала remove и change, потом add. Действующее — сроки, суммы, договорённости — не убирай.`,
+        message: `${memory} заполнена: занято ${details.usedChars} из ${details.maxChars} знаков, после вызова было бы ${details.wouldBe} знаков и ${details.entries} записей из ${details.maxEntries}. ${nothing} Объедини близкие записи (change) и убери устаревшие (remove), потом добавь новое — можно одним вызовом: сначала remove и change, потом add. Действующее — сроки, суммы, договорённости — не убирай.`,
       };
     case 'APP_MEMORY_ENTRY_TOO_LONG':
       return { error: true, code: error.code, message: `${at}запись длиннее ${MEMORY_ENTRY_MAX_CHARS} знаков (${details.chars}). Сократи её или раздели на две. ${nothing}` };
@@ -88,7 +88,7 @@ async function failureOf(error: unknown, db: Db, scope: MemoryScope, seen: SeenV
     }
     case 'APP_MEMORY_CONFLICT':
       // The agent has now seen what is there: a decision made on it may be saved.
-      if (details.number !== undefined && details.version !== undefined) seen.set(details.number, details.version);
+      if (details.number !== undefined && details.version !== undefined) seen[String(details.number)] = details.version;
       return { error: true, code: error.code, message: `${at}запись №${details.number} изменили после того, как ты её видел. Сейчас в ней: «${details.text}». ${nothing} Реши заново с этим текстом.` };
     case 'APP_PROJECT_ARCHIVED':
       return { error: true, code: error.code, message: `Проект перенесён в архив: его память больше не меняется. ${nothing} Скажи сотруднику, что не запомнил это.` };
@@ -107,13 +107,15 @@ function memoryTool(db: Db, kind: MemoryScope['kind']): AnyTool {
     description: kind === 'project' ? PROJECT_DESCRIPTION : PERSONAL_DESCRIPTION,
     inputSchema,
     execute: async (input, context) => {
-      const ctx = context?.requestContext as Ctx;
+      const ctx = context?.requestContext;
+      if (!ctx) throw new Error('memory tool called without a request context: the run was started outside a core entry point');
       const userId = requireContextValue(ctx, REQUEST_KEYS.userId);
       const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
       if (kind === 'project' && !projectId) return { error: true, code: 'APP_VALIDATION_FAILED', message: 'Этот разговор не в проекте: памяти проекта здесь нет.' } satisfies Failure;
       const scope: MemoryScope = kind === 'project' ? { kind, projectId: projectId! } : { kind, userId };
       const remembered = memorySeenOf(ctx);
-      const seen: SeenVersions = kind === 'project' ? (remembered.project ?? new Map<number, number>()) : remembered.personal;
+      if (kind === 'project' && !remembered.project) remembered.project = {};
+      const seen: SeenVersions = kind === 'project' ? remembered.project! : remembered.personal;
       const operations = operationsOf(input);
       if (!Array.isArray(operations)) return operations;
       try {

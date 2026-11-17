@@ -11,6 +11,10 @@ import { appError } from '../errors/catalog.ts';
 
 export const PROJECT_MEMORY_MAX_CHARS = 6000;
 export const PERSONAL_MEMORY_MAX_CHARS = 3000;
+// Entries too: each line in the prompt carries its number, author and date, so a memory of many one-word entries
+// would grow the prompt of every conversation far past its signs.
+export const PROJECT_MEMORY_MAX_ENTRIES = 60;
+export const PERSONAL_MEMORY_MAX_ENTRIES = 30;
 export const MEMORY_ENTRY_MAX_CHARS = 400;
 // Operations in one call of the agent's tool.
 export const MEMORY_OPERATIONS_MAX = 10;
@@ -40,8 +44,9 @@ export interface MemoryList {
 
 export type MemoryOperation = { action: 'add'; text: string } | { action: 'change'; number: number; text: string } | { action: 'remove'; number: number };
 
-// Number of an entry → its version, as the agent saw it in this turn.
-export type SeenVersions = Map<number, number>;
+// Number of an entry → its version, as the agent saw it in this turn. A plain object, not a Map: Mastra keeps the
+// request context of a turn that waits for «Да» as JSON and gives it back when the turn goes on.
+export type SeenVersions = Record<string, number>;
 
 export interface OperationResult {
   action: MemoryOperation['action'];
@@ -122,19 +127,27 @@ async function lockMemory(client: Client, scope: MemoryScope): Promise<void> {
   );
 }
 
-async function usedChars(client: Client, scope: MemoryScope): Promise<number> {
-  const { column, value } = ownerOf(scope);
-  const { rows } = await client.query<{ used: number }>(`SELECT coalesce(sum(char_length(text)), 0)::int AS used FROM app.memory_entries WHERE ${column} = $1`, [value]);
-  return rows[0]!.used;
+interface Usage {
+  chars: number;
+  entries: number;
 }
 
-// The limit stops what makes a full memory bigger; what only frees the place always passes.
-function checkLimit(scope: MemoryScope, before: number, after: number, operation?: number): void {
-  const max = maxCharsOf(scope);
-  if (after <= max || after <= before) return;
-  throw appError('APP_MEMORY_FULL', `memory of ${scope.kind} would hold ${after} of ${max} chars`, {
+async function usage(client: Client, scope: MemoryScope): Promise<Usage> {
+  const { column, value } = ownerOf(scope);
+  const { rows } = await client.query<Usage>(`SELECT coalesce(sum(char_length(text)), 0)::int AS chars, count(*)::int AS entries FROM app.memory_entries WHERE ${column} = $1`, [value]);
+  return rows[0]!;
+}
+
+// The limits stop what makes a full memory bigger; what only frees the place always passes.
+function checkLimit(scope: MemoryScope, before: Usage, after: Usage, operation?: number): void {
+  const maxChars = maxCharsOf(scope);
+  const maxEntries = scope.kind === 'project' ? PROJECT_MEMORY_MAX_ENTRIES : PERSONAL_MEMORY_MAX_ENTRIES;
+  const overChars = after.chars > maxChars && after.chars > before.chars;
+  const overEntries = after.entries > maxEntries && after.entries > before.entries;
+  if (!overChars && !overEntries) return;
+  throw appError('APP_MEMORY_FULL', `memory of ${scope.kind} would hold ${after.chars} of ${maxChars} chars, ${after.entries} of ${maxEntries} entries`, {
     userMessage: scope.kind === 'project' ? 'Память проекта заполнена. Удалите устаревшие записи и попробуйте снова.' : 'Память заполнена. Удалите лишнее и попробуйте снова.',
-    details: { usedChars: before, wouldBe: after, maxChars: max, ...(operation ? { operation } : {}) },
+    details: { usedChars: before.chars, wouldBe: after.chars, maxChars, entries: after.entries, maxEntries, ...(operation ? { operation } : {}) },
   });
 }
 
@@ -172,10 +185,10 @@ export async function addEntry(db: Db, scope: MemoryScope, actor: MemoryActor, r
   const text = normaliseText(raw);
   return inTransaction(db, async (client) => {
     await lockMemory(client, scope);
-    const before = await usedChars(client, scope);
+    const before = await usage(client, scope);
     const { entry, duplicate } = await insertEntry(client, scope, actor, text);
     if (duplicate) throw appError('APP_MEMORY_DUPLICATE', `memory entry ${entry.number} has the same text`, { details: { entry } });
-    checkLimit(scope, before, await usedChars(client, scope));
+    checkLimit(scope, before, await usage(client, scope));
     return entry;
   });
 }
@@ -188,9 +201,9 @@ export async function changeEntry(db: Db, scope: MemoryScope, actor: MemoryActor
     const current = await entryBy(client, scope, { id: entryId }, true);
     if (!current) throw notFound(scope, entryId);
     if (current.version !== version) throw appError('APP_MEMORY_CONFLICT', `memory entry ${entryId} is in version ${current.version}, not ${version}`, { details: { entry: current } });
-    const before = await usedChars(client, scope);
+    const before = await usage(client, scope);
     const entry = await updateEntry(client, scope, actor, entryId, text);
-    checkLimit(scope, before, await usedChars(client, scope));
+    checkLimit(scope, before, await usage(client, scope));
     return entry;
   });
 }
@@ -212,7 +225,7 @@ export async function forgetPersonal(db: Db, userId: string): Promise<void> {
 }
 
 // The agent's tool: the operations of one call go in order and as a whole — a failed one leaves none of them.
-// `seen` is updated only after the call is saved.
+// `seen` gets this call's changes only after the call is saved, in place: two calls of one step both land.
 export async function applyAgentOperations(db: Db, scope: MemoryScope, actor: MemoryActor, operations: MemoryOperation[], seen: SeenVersions): Promise<AgentOperationsResult> {
   if (operations.length === 0 || operations.length > MEMORY_OPERATIONS_MAX) {
     throw appError('APP_VALIDATION_FAILED', `${operations.length} memory operations in one call`, { userMessage: `За один вызов — от 1 до ${MEMORY_OPERATIONS_MAX} операций.` });
@@ -225,39 +238,43 @@ export async function applyAgentOperations(db: Db, scope: MemoryScope, actor: Me
       throw Object.assign(error as Error, { details: { ...((error as { details?: object }).details ?? {}), operation: i + 1 } });
     }
   });
-  const known = new Map(seen);
+  // This call's own view on top of what the agent saw: number → version, null once removed.
+  const mine = new Map<number, number | null>();
+  const versionSeen = (n: number) => (mine.has(n) ? mine.get(n) : seen[String(n)]);
   const saved = await inTransaction(db, async (client) => {
     await lockMemory(client, scope);
-    const before = await usedChars(client, scope);
+    const before = await usage(client, scope);
     const results: OperationResult[] = [];
     for (const [i, op] of operations.entries()) {
       const operation = i + 1;
       if (op.action === 'add') {
         const { entry, duplicate } = await insertEntry(client, scope, actor, texts[i]!);
-        known.set(entry.number, entry.version);
+        mine.set(entry.number, entry.version);
         results.push({ action: 'add', number: entry.number, text: entry.text, ...(duplicate ? { duplicate: true as const } : {}) });
         continue;
       }
       const current = await entryBy(client, scope, { number: op.number }, true);
       if (!current) throw notFound(scope, `№${op.number}`, { operation, number: op.number });
-      if (known.get(op.number) !== current.version) {
+      if (versionSeen(op.number) !== current.version) {
         throw appError('APP_MEMORY_CONFLICT', `memory entry №${op.number} changed after the agent saw it`, { details: { operation, number: op.number, text: current.text, version: current.version } });
       }
       if (op.action === 'change') {
         const entry = await updateEntry(client, scope, actor, current.id, texts[i]!);
-        known.set(entry.number, entry.version);
+        mine.set(entry.number, entry.version);
         results.push({ action: 'change', number: entry.number, text: entry.text, previousText: current.text });
       } else {
         await client.query('DELETE FROM app.memory_entries WHERE id = $1', [current.id]);
-        known.delete(op.number);
+        mine.set(op.number, null);
         results.push({ action: 'remove', number: op.number, text: current.text });
       }
     }
-    const after = await usedChars(client, scope);
+    const after = await usage(client, scope);
     checkLimit(scope, before, after, operations.findIndex((op) => op.action !== 'remove') + 1);
-    return { results, usedChars: after, maxChars: maxCharsOf(scope) };
+    return { results, usedChars: after.chars, maxChars: maxCharsOf(scope) };
   });
-  seen.clear();
-  for (const [number, version] of known) seen.set(number, version);
+  for (const [number, version] of mine) {
+    if (version === null) delete seen[String(number)];
+    else seen[String(number)] = version;
+  }
   return saved;
 }

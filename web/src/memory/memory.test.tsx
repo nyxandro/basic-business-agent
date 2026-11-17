@@ -144,6 +144,20 @@ describe('the memory of a project', () => {
     ]);
   });
 
+  it('keeps one field open at a time and does not save an unchanged entry', async () => {
+    projectServer(list([entry({ id: 'e1', number: 1, text: 'Подача до 28.11' }), entry({ id: 'e2', number: 2, text: 'Аванс 30 %' })]));
+    renderApp('/projects/p1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Действия с записью 1' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Изменить' }));
+    const memory = await block();
+    expect(within(memory).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    expect(within(memory).queryByRole('button', { name: 'Действия с записью 2' })).not.toBeInTheDocument();
+    expect(within(memory).queryByRole('button', { name: 'Добавить запись' })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Запись' }), ' 09:00');
+    expect(within(memory).getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+  });
+
   it('offers to save the text as a new entry when the entry was removed meanwhile', async () => {
     const s = projectServer(list([entry({ id: 'e1', number: 1, text: 'Аванс 30 %' })]));
     s.set(`PUT ${MEMORY}/e1`, () => {

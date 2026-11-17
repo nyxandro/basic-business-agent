@@ -25,11 +25,14 @@ const FULL = 'APP_MEMORY_FULL';
 interface Draft {
   id: string | null;
   text: string;
+  // The text as it stands now: saving it unchanged would only move the entry to the person.
+  original: string;
   version: number;
   // What happened to the entry while the person was changing it.
   notice: { kind: 'conflict'; current: string } | { kind: 'gone' } | null;
 }
 
+const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 const chars = (text: string) => [...text].length;
 
 function editorLine(entry: MemoryEntryDto, target: MemoryTarget): string {
@@ -46,8 +49,9 @@ function Usage({ list }: { list: MemoryListDto }) {
 }
 
 function Field({ draft, busy, onText, onSave, onCancel, onSaveAsNew }: { draft: Draft; busy: boolean; onText: (text: string) => void; onSave: () => void; onCancel: () => void; onSaveAsNew: () => void }) {
-  const length = chars(draft.text.replace(/\s+/g, ' ').trim());
+  const length = chars(oneLine(draft.text));
   const over = length > MEMORY_ENTRY_MAX_CHARS;
+  const unchanged = oneLine(draft.text) === oneLine(draft.original);
   return (
     <div className={styles.field}>
       {draft.notice?.kind === 'conflict' ? (
@@ -71,7 +75,7 @@ function Field({ draft, busy, onText, onSave, onCancel, onSaveAsNew }: { draft: 
             {ru.memory.saveAsNew}
           </Button>
         ) : (
-          <Button variant="primary" disabled={busy || length === 0 || over} onClick={onSave}>
+          <Button variant="primary" disabled={busy || length === 0 || over || unchanged} onClick={onSave}>
             {ru.memory.save}
           </Button>
         )}
@@ -111,7 +115,8 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
   const readOnly = state.status === 'ready' && state.data.readOnly;
   // A new entry, or one removed while the person was changing it: its field stands above the list.
   const loose = draft !== null && (draft.id === null || (state.status === 'ready' && !state.data.entries.some((e) => e.id === draft.id)));
-  const canAdd = state.status === 'ready' && !readOnly && !loose;
+  // One field at a time: another «Изменить» or «Добавить запись» would drop what is typed in the open one.
+  const canAdd = state.status === 'ready' && !readOnly && draft === null;
 
   async function act(work: () => Promise<void>) {
     setBusy(true);
@@ -142,7 +147,7 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
         const failure = asApiError(raw);
         if (failure.code !== CONFLICT && failure.code !== GONE) throw failure;
         const now = (await fetchMemory(target)).entries.find((e) => e.id === d.id);
-        setDraft({ ...d, ...(now ? { version: now.version, notice: { kind: 'conflict', current: now.text } } : { notice: { kind: 'gone' } }) });
+        setDraft({ ...d, ...(now ? { version: now.version, original: now.text, notice: { kind: 'conflict', current: now.text } } : { notice: { kind: 'gone' } }) });
         reload();
         return;
       }
@@ -181,7 +186,7 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
         <div className={styles.head}>
           {title ? <h2 className={styles.title}>{title}</h2> : <span className={styles.title} />}
           {canAdd ? (
-            <Button icon="plus" disabled={busy} onClick={() => setDraft({ id: null, text: '', version: 0, notice: null })}>
+            <Button icon="plus" disabled={busy} onClick={() => setDraft({ id: null, text: '', original: '', version: 0, notice: null })}>
               {ru.memory.add}
             </Button>
           ) : null}
@@ -211,7 +216,7 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
                           {editorLine(entry, target)} · {dayLabel(entry.updatedAt)}
                         </span>
                       </span>
-                      {readOnly ? null : <RowMenu entry={entry} onEdit={() => setDraft({ id: entry.id, text: entry.text, version: entry.version, notice: null })} onRemove={() => void remove(entry)} />}
+                      {readOnly || draft !== null ? null : <RowMenu entry={entry} onEdit={() => setDraft({ id: entry.id, text: entry.text, original: entry.text, version: entry.version, notice: null })} onRemove={() => void remove(entry)} />}
                     </>
                   )}
                 </li>

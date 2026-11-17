@@ -61,6 +61,8 @@ function memorySummary(where: 'project' | 'personal', status: ToolStatus, result
   if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.memoryFailed(where), code: outcome.code };
   const results = ((outcome.value as { results?: MemoryResult[] } | null)?.results ?? []).filter((r) => typeof r?.text === 'string');
+  // A call that ended without our result (the answer broke off in it) remembered nothing the line could name.
+  if (results.length === 0) return { state: 'failed', text: ru.chat.memoryFailed(where), code: null };
   const line = { add: ru.chat.memoryAdded, change: ru.chat.memoryChanged, remove: ru.chat.memoryRemoved };
   const actions = new Set(results.map((r) => r.action));
   let text: string;

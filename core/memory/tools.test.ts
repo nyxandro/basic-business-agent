@@ -31,6 +31,21 @@ async function run(threadId: string, text: string): Promise<void> {
   await res.text();
 }
 
+type Interrupt = { id: string };
+
+async function runWith(threadId: string, text: string | null, resume?: unknown): Promise<Interrupt | null> {
+  const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
+    cookie: olga,
+    body: { threadId, runId: randomUUID(), messages: text ? [{ id: randomUUID(), role: 'user', content: text }] : [], tools: [], context: [], state: {}, forwardedProps: {}, ...(resume ? { resume } : {}) },
+  });
+  expect(res.status).toBe(200);
+  const events = (await res.text())
+    .split('\n')
+    .filter((l) => l.startsWith('data:'))
+    .map((l) => JSON.parse(l.slice(5)) as { type: string; outcome?: { interrupts?: Interrupt[] } });
+  return events.find((e) => e.type === 'RUN_FINISHED')?.outcome?.interrupts?.[0] ?? null;
+}
+
 async function projectThread(name: string): Promise<{ projectId: string; threadId: string }> {
   const created = await t.call('POST', '/app/api/projects', { cookie: olga, body: { name, access: { mode: 'private', departmentIds: [], userIds: [] } } });
   const projectId = ((await created.json()) as ProjectDto).id;
@@ -97,6 +112,18 @@ describe('the memory tools of the agent', () => {
     expect(JSON.parse(toolOutput(t.model.requests.at(-1)!))).toMatchObject({ results: [{ action: 'change', number: 1, text: 'Срок поставки 15 дней', previousText: 'Срок поставки 12 дней' }] });
     const entry = (await listEntries(t.db, { kind: 'project', projectId })).entries[0]!;
     expect(entry).toMatchObject({ text: 'Срок поставки 15 дней', author: { id: olgaId, byAgent: true } });
+  });
+
+  it('keep working after «Да»: the answer that waited for it changes what the agent saw before the question', async () => {
+    const { projectId, threadId } = await projectThread('После подтверждения');
+    await t.call('POST', `/app/api/projects/${projectId}/memory`, { cookie: olga, body: { text: 'КП ещё не отправлено' } });
+    t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'client@example.com', text: 'КП во вложении' } }] });
+    const question = await runWith(threadId, 'Отправь КП заказчику и отметь это в памяти');
+    expect(question).not.toBeNull();
+    t.model.script(memoryCall('project_memory', [{ action: 'change', number: 1, text: 'КП отправлено заказчику 17.11' }, { action: 'add', text: 'Ждём ответа заказчика по КП' }]), (req) => ({ text: toolOutput(req) }));
+    await runWith(threadId, null, [{ interruptId: question!.id, status: 'resolved', payload: { approved: true } }]);
+    expect(JSON.parse(toolOutput(t.model.requests.at(-1)!))).toMatchObject({ results: [{ action: 'change', previousText: 'КП ещё не отправлено' }, { action: 'add' }] });
+    expect((await listEntries(t.db, { kind: 'project', projectId })).entries.map((e) => e.text).sort()).toEqual(['Ждём ответа заказчика по КП', 'КП отправлено заказчику 17.11']);
   });
 
   it('tell the model what went wrong and what to do; nothing of the failed call is saved', async () => {
