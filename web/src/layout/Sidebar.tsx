@@ -94,7 +94,7 @@ function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asShee
 function SideMark({ mark }: { mark: AgentSummary['mark'] }) {
   return (
     <span className={cx(styles.agentMark, mark.kind === 'image' && styles.agentMarkPicture)} aria-hidden="true" data-side-mark={mark.kind} {...(mark.kind === 'icon' ? { 'data-icon': mark.icon } : {})}>
-      {/* alt="" — decorative: a picture that did not load leaves an empty square, not a broken-image sign. */}
+      {/* alt="" — decorative: a picture that did not load leaves an empty circle, not a broken-image sign. */}
       {mark.kind === 'image' ? <img src={mark.url} alt="" className={styles.agentMarkImg} draggable={false} /> : <Icon name={mark.icon} size={14} />}
     </span>
   );

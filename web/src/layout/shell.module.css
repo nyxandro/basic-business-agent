@@ -142,11 +142,12 @@
   text-overflow: ellipsis;
 }
 
-/* The agent's own mark (spec, section 8.17): its icon on the grey square, on the accent for the open agent. */
+/* The agent's own mark (spec, section 8.17): a circle like an avatar (decision of the owner 17.11), its icon on grey,
+   on the accent for the open agent. */
 .agentMark {
   width: 22px;
   height: 22px;
-  border-radius: 7px;
+  border-radius: 50%;
   background: var(--surface2);
   color: var(--muted);
   display: grid;
@@ -154,12 +155,18 @@
   flex: none;
 }
 
+/* The circle stays seen on the panel: a thin round outline; the open agent's is filled with the accent instead. */
+.agentMark:not(.agentMarkPicture) {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
 .itemCurrent .agentMark {
   background: var(--acc);
   color: var(--on-acc);
+  box-shadow: none;
 }
 
-/* A picture set on the agent fills the square; its background shows only while it loads. */
+/* A picture set on the agent fills the circle; its background shows only while it loads. */
 .agentMarkPicture {
   overflow: hidden;
 }
