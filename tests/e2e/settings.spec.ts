@@ -2,18 +2,19 @@
 import { expect, test } from '@playwright/test';
 import { pageAs } from './helpers.ts';
 
-test('memory is edited and forgotten only after the question', async ({ browser }) => {
+test('memory is added by hand and forgotten only after the question', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');
   await page.goto('/settings/memory');
-  await page.getByRole('button', { name: 'Изменить' }).click();
-  await page.getByRole('textbox', { name: 'Изменить' }).fill('# О сотруднике\n- ведёт только юрлиц');
+  await page.getByRole('button', { name: 'Добавить запись' }).click();
+  await page.getByRole('textbox', { name: 'Запись' }).fill('Ведёт только юрлиц');
   await page.getByRole('button', { name: 'Сохранить' }).click();
-  await expect(page.getByText('Сохранено')).toBeVisible();
-  await expect(page.getByText(/ведёт только юрлиц/)).toBeVisible();
+  await expect(page.getByText('Запись добавлена')).toBeVisible();
+  await expect(page.getByText('Ведёт только юрлиц')).toBeVisible();
+  await expect(page.getByText('Вы · сегодня')).toBeVisible();
 
   await page.getByRole('button', { name: 'Забыть всё' }).click();
   await page.getByRole('alertdialog', { name: 'Забыть всё?' }).getByRole('button', { name: 'Отмена' }).click();
-  await expect(page.getByText(/ведёт только юрлиц/)).toBeVisible();
+  await expect(page.getByText('Ведёт только юрлиц')).toBeVisible();
 
   await page.getByRole('button', { name: 'Забыть всё' }).click();
   await page.getByRole('alertdialog', { name: 'Забыть всё?' }).getByRole('button', { name: 'Забыть всё' }).click();

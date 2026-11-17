@@ -87,6 +87,8 @@ function standModel(req: FakeRequest): FakeTurn {
   if (last?.role === 'tool') {
     const result = textOf(last.content);
     if (lastCallName(req)?.endsWith('execute_command')) return call('show_file', { path: STAND_DOCUMENT });
+    // The memory of the project or of the person (spec, section 8.26).
+    if (lastCallName(req)?.endsWith('_memory')) return { text: /"error":\s*true/.test(result) ? 'Не получилось запомнить.' : 'Запомнил.' };
     if (lastCallName(req) === 'show_file') return { text: /"shown":\s*true/.test(result) ? 'Готово: документ ниже, его можно скачать.' : 'Не получилось сделать документ.' };
     if (/not approved|declin|отклон|отмен/i.test(result)) return { text: 'Хорошо, не отправляю.' };
     if (/waitForAnswer/.test(result)) return { text: 'Жду вашего ответа.' };
@@ -94,6 +96,12 @@ function standModel(req: FakeRequest): FakeTurn {
     return { text: 'Готово, показал выше.' };
   }
   const text = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).toLowerCase();
+  // «Запомни: …» — into the project's memory in its conversation; outside a project the agent says where it can.
+  if (text.startsWith('запомни')) {
+    const fact = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).split('\n')[0]!.replace(/^запомни[:,]?\s*/i, '').trim();
+    if (!req.tools?.some((x) => x.function.name === 'project_memory')) return { text: 'Факты о работе могу запомнить в проекте.' };
+    return call('project_memory', { operations: [{ action: 'add', text: fact }] });
+  }
   if (text.includes('документ word')) {
     const tool = req.tools?.map((x) => x.function.name).find((n) => n.endsWith('execute_command'));
     if (!tool) return { text: 'У этого стенда нет рабочей папки.' };
