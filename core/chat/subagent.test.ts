@@ -48,3 +48,14 @@ it('names the call of a sub-agent in the chat by the sub-agent’s name', async 
   const { agents } = (await res.json()) as { agents: { id: string; actions: Record<string, unknown> }[] };
   expect(agents.find((a) => a.id === 'assistant')!.actions['agent-mailer']).toEqual({ title: 'Поручение агенту «Почтальон»', fields: {}, readOnly: false });
 });
+
+it('gives the memory tools to the agent the person talks to, not to its sub-agent (spec, 8.26)', async () => {
+  const threadId = randomUUID();
+  t.model.script({ toolCalls: [{ name: 'agent-mailer', args: { prompt: 'Посмотри почту' } }] }, { text: 'Писем нет.' }, { text: 'Почтальон говорит: писем нет.' });
+  await run(threadId, 'Попроси почтальона посмотреть почту');
+  const toolsOf = (i: number) => (t.model.requests.at(i)!.tools ?? []).map((x) => x.function.name);
+  const sub = t.model.requests.findLastIndex((r) => (r.tools ?? []).some((x) => x.function.name === 'mail_send'));
+  expect(sub).toBeGreaterThanOrEqual(0);
+  expect(toolsOf(sub)).not.toContain('personal_memory');
+  expect(toolsOf(sub - 1)).toContain('personal_memory');
+});

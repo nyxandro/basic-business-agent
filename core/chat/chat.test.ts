@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { COMPUTER_TOOLS } from '@bba/contracts';
 import { MAIL_TOOL_NAMES } from '../mail/tools.ts';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MEMORY_ACTIONS } from '../memory/tools.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { contextRoot } from '../workspace/layout.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
@@ -93,8 +94,8 @@ describe('chat', () => {
         systems: { tools: { ...Object.fromEntries(MAIL_TOOL_NAMES.map((n) => [n, 'Почта'])), ...Object.fromEntries(Object.values(COMPUTER_TOOLS).map((n) => [n, 'Компьютер'])) }, prefixes: {} },
       },
     ]);
-    // Nothing else: the agent's own, the workspace's, the mailbox's and the computer folder's actions.
-    expect(Object.keys(agents[0]!.actions).sort()).toEqual([...Object.keys(WORKSPACE_ACTIONS), 'crm_search', 'mail_send', ...MAIL_TOOL_NAMES, ...Object.values(COMPUTER_TOOLS)].sort());
+    // Nothing else: the agent's own, the workspace's, the memory's, the mailbox's and the computer folder's actions.
+    expect(Object.keys(agents[0]!.actions).sort()).toEqual([...Object.keys(WORKSPACE_ACTIONS), ...Object.keys(MEMORY_ACTIONS), 'crm_search', 'mail_send', ...MAIL_TOOL_NAMES, ...Object.values(COMPUTER_TOOLS)].sort());
   });
 
   it('refuses an agent outside the employee’s departments with 403', async () => {

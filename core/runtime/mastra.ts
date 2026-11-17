@@ -4,6 +4,7 @@ import { Mastra } from '@mastra/core';
 import type { Agent } from '@mastra/core/agent';
 import { MastraEditor } from '@mastra/editor';
 import type { Memory } from '@mastra/memory';
+import { createMemoryTools } from '../memory/tools.ts';
 import type { PostgresStore } from '@mastra/pg';
 import type { AppConfig } from '../config/schemas.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -49,6 +50,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
   const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
   const mailActions = mailTools ? describeTools(mailTools) : {};
+  const memoryTools = createMemoryTools(deps.db);
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);
@@ -60,6 +62,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       firstChunkMs: deps.firstChunkMs ?? FALLBACK_FIRST_CHUNK_MS,
       stepMs: deps.stepMs ?? MODEL_CALL_MAX_MS,
       memory,
+      memoryTools,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),

@@ -27,6 +27,7 @@ import { toHistory, toolCallArgsOf } from './history.ts';
 import { takeBack, turnToAnswerAgain } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
+import { MEMORY_ACTIONS } from '../memory/tools.ts';
 
 export const DRAFT_HEADER = 'x-bba-draft';
 const INFO_PATH = '/info';
@@ -87,6 +88,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         mark: chatMark(marks.get(rt.passport.id) ?? DEFAULT_MARK),
         actions: {
           ...WORKSPACE_ACTIONS,
+          ...MEMORY_ACTIONS,
           ...mailActions,
           ...computerActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
