@@ -111,6 +111,7 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
   const readOnly = state.status === 'ready' && state.data.readOnly;
   // A new entry, or one removed while the person was changing it: its field stands above the list.
   const loose = draft !== null && (draft.id === null || (state.status === 'ready' && !state.data.entries.some((e) => e.id === draft.id)));
+  const canAdd = state.status === 'ready' && !readOnly && !loose;
 
   async function act(work: () => Promise<void>) {
     setBusy(true);
@@ -176,14 +177,16 @@ export function MemoryEntries({ projectId, title, hint, empty, failed, readOnlyN
 
   return (
     <div className={styles.memory}>
-      <div className={styles.head}>
-        {title ? <h2 className={styles.title}>{title}</h2> : <span className={styles.title} />}
-        {state.status === 'ready' && !readOnly && !loose ? (
-          <Button icon="plus" disabled={busy} onClick={() => setDraft({ id: null, text: '', version: 0, notice: null })}>
-            {ru.memory.add}
-          </Button>
-        ) : null}
-      </div>
+      {title || canAdd ? (
+        <div className={styles.head}>
+          {title ? <h2 className={styles.title}>{title}</h2> : <span className={styles.title} />}
+          {canAdd ? (
+            <Button icon="plus" disabled={busy} onClick={() => setDraft({ id: null, text: '', version: 0, notice: null })}>
+              {ru.memory.add}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <p className={styles.hint}>{hint}</p>
       {readOnly && readOnlyNote ? <p className={styles.hint}>{readOnlyNote}</p> : null}
       {error ? <ErrorBanner error={error} /> : null}
