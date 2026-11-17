@@ -32,6 +32,24 @@ function server(me: object = ME, agents: unknown = { agents: AGENTS }) {
 }
 
 describe('the frame of the application', () => {
+  // The agents of the panel carry the mark set on each agent — an icon or a picture, the spark when none was set —
+  // even with «Показывать значок агента в чате» off: that switch is about the chat (request of the owner 17.11).
+  it('shows each agent in the panel with its own mark, whatever the switch of the chat', async () => {
+    const marked = [
+      { ...AGENTS[0], mark: { kind: 'icon', icon: 'chart' } },
+      { ...AGENTS[1], mark: { kind: 'image', url: '/app/api/agents/assistant/mark?v=abc' } },
+      { ...AGENTS[0], id: 'tenders', name: 'Тендерный специалист', mark: { kind: 'icon', icon: 'spark' } },
+    ];
+    server({ ...ME, interface: { showAgentMark: false } }, { agents: marked });
+    renderApp('/agents/sales');
+    const markOf = async (name: string) => (await screen.findByRole('link', { name })).querySelector('[data-side-mark]');
+    expect(await markOf('Продажи')).toHaveAttribute('data-icon', 'chart');
+    expect((await markOf('Общий помощник'))?.querySelector('img')).toHaveAttribute('src', '/app/api/agents/assistant/mark?v=abc');
+    expect(await markOf('Тендерный специалист')).toHaveAttribute('data-icon', 'spark');
+    // No initials any more.
+    expect(screen.queryByText('ТС')).not.toBeInTheDocument();
+  });
+
   it('opens a new conversation with the last agent on «/»', async () => {
     localStorage.setItem(LAST_AGENT_KEY, 'assistant');
     server();

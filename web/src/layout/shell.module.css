@@ -142,6 +142,7 @@
   text-overflow: ellipsis;
 }
 
+/* The agent's own mark (spec, section 8.17): its icon on the grey square, on the accent for the open agent. */
 .agentMark {
   width: 22px;
   height: 22px;
@@ -150,14 +151,24 @@
   color: var(--muted);
   display: grid;
   place-items: center;
-  font-size: 11px;
-  font-weight: 700;
   flex: none;
 }
 
 .itemCurrent .agentMark {
   background: var(--acc);
   color: var(--on-acc);
+}
+
+/* A picture set on the agent fills the square; its background shows only while it loads. */
+.agentMarkPicture {
+  overflow: hidden;
+}
+
+.agentMarkImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 /* A conversation of «Недавние»: the row takes the hover, three dots come up at its right end

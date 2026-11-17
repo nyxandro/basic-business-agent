@@ -8,7 +8,7 @@ import type { ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
-import { Avatar, initials } from '../ui/Display.tsx';
+import { Avatar } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
@@ -89,15 +89,24 @@ function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asShee
   );
 }
 
+// The agent's own mark — its icon or picture, the spark when none was set (spec, section 8.17) — always, whatever
+// «Показывать значок агента в чате»: that switch is about the chat (request of the owner 17.11).
+function SideMark({ mark }: { mark: AgentSummary['mark'] }) {
+  return (
+    <span className={cx(styles.agentMark, mark.kind === 'image' && styles.agentMarkPicture)} aria-hidden="true" data-side-mark={mark.kind} {...(mark.kind === 'icon' ? { 'data-icon': mark.icon } : {})}>
+      {/* alt="" — decorative: a picture that did not load leaves an empty square, not a broken-image sign. */}
+      {mark.kind === 'image' ? <img src={mark.url} alt="" className={styles.agentMarkImg} draggable={false} /> : <Icon name={mark.icon} size={14} />}
+    </span>
+  );
+}
+
 function AgentList({ agents, currentAgentId, onNavigate }: Pick<SidebarProps, 'agents' | 'currentAgentId' | 'onNavigate'>) {
   if (agents.status === 'loading') return <DelayedBar />;
   if (agents.status === 'error') return <ErrorBanner title={ru.agents.loadFailed} error={agents.error} onRetry={agents.retry} />;
   if (agents.agents.length === 0) return <p className={styles.empty}>{ru.shell.noAgents}</p>;
   return agents.agents.map((a) => (
     <Link key={a.id} to={`/agents/${encodeURIComponent(a.id)}`} onClick={onNavigate} className={cx(styles.item, a.id === currentAgentId && styles.itemCurrent)} aria-current={a.id === currentAgentId ? 'page' : undefined}>
-      <span className={styles.agentMark} aria-hidden="true">
-        {initials(a.name)}
-      </span>
+      <SideMark mark={a.mark} />
       <span className={styles.itemText}>{a.name}</span>
     </Link>
   ));
