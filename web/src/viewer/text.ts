@@ -1,8 +1,5 @@
 // Text files in the viewer (spec, section 8.27): the encoding as a person's tools write it — UTF-8, the
-// Windows-1251 of Russian Excel, UTF-16 by its mark — and Markdown that never makes the browser fetch a
-// picture from the internet (the data of the person would go with it: the rule «the browser talks only
-// to the installation»).
-import { ru } from '../i18n/ru.ts';
+// Windows-1251 of Russian Excel, UTF-16 by its mark.
 
 const UTF8_MARK = [0xef, 0xbb, 0xbf];
 
@@ -25,10 +22,4 @@ export function decodeText(bytes: Uint8Array, cut: boolean): string {
     }
   }
   return new TextDecoder('windows-1251').decode(body);
-}
-
-export function safeMarkdown(text: string): string {
-  return text
-    .replace(/!\[([^\]]*)\]\((https?:[^)\s]*)[^)]*\)/gi, (_all, alt: string, url: string) => `[${ru.viewer.externalImage(alt)}](${url})`)
-    .replace(/<img\b[^>]*\bsrc\s*=\s*["']?https?:[^>]*>/gi, ru.viewer.externalImage(''));
 }

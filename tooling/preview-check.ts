@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { isAppError } from '../core/errors/app-error.ts';
 import { createPreviewCache } from '../core/preview/cache.ts';
 import { sandboxRunner } from '../core/preview/convert.ts';
-import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../core/preview/service.ts';
+import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../core/preview/service.ts';
 import { sandboxPath } from '../core/sandbox/environment.ts';
 import { createLimiter } from '../core/sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../core/sandbox/workspace.ts';
@@ -50,6 +50,7 @@ try {
     run: sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable() }),
     limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
     workRoot: root,
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   for (const want of EXPECTED) {
     const started = Date.now();

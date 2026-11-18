@@ -59,10 +59,21 @@ function failed(reason: string, details: Record<string, unknown>) {
   return appError('APP_PREVIEW_FAILED', `document not converted: ${reason}`, { details: { reason, ...details } });
 }
 
+// The exit code of a program killed by SIGKILL: bubblewrap passes on so a program the system killed.
+const KILLED_EXIT_CODE = 137;
+
 function checkRun(result: RunResult, step: string): void {
   if (result.timedOut) throw appError('APP_PREVIEW_TIMEOUT', `${step} ran out of ${CONVERT_TIMEOUT_MS} ms`, { details: { reason: 'timeout', step } });
   // Killed by the system — most likely the memory of the container ran out.
-  if (result.killed) throw appError('APP_PREVIEW_BUSY', `${step} was killed`, { details: { reason: 'killed', step } });
+  if (result.killed || result.exitCode === KILLED_EXIT_CODE) throw appError('APP_PREVIEW_BUSY', `${step} was killed`, { details: { reason: 'killed', step } });
+}
+
+async function soffice(run: RunCommand, dir: string, filter: string, ext: string): Promise<string> {
+  const converted = await run(dir, 'soffice', [PROFILE, '--headless', '--convert-to', filter, '--outdir', OUT, `${SOURCE}${ext}`], CONVERT_TIMEOUT_MS);
+  checkRun(converted, 'soffice');
+  const pdf = join(dir, OUT, `${SOURCE}.pdf`);
+  if (!isPdf(pdf)) throw failed('no_pdf', { exitCode: converted.exitCode });
+  return pdf;
 }
 
 export interface ConvertInput {
@@ -77,10 +88,7 @@ export interface ConvertInput {
 // The path of the PDF in `dir`.
 export async function convertToPdf(run: RunCommand, { dir, ext, kind, plan }: ConvertInput): Promise<string> {
   const wholeSheets = kind === 'sheet' && plan?.singlePage === true;
-  const converted = await run(dir, 'soffice', [PROFILE, '--headless', '--convert-to', wholeSheets ? SINGLE_SHEETS_FILTER : 'pdf', '--outdir', OUT, `${SOURCE}${ext}`], CONVERT_TIMEOUT_MS);
-  checkRun(converted, 'soffice');
-  const pdf = join(dir, OUT, `${SOURCE}.pdf`);
-  if (!isPdf(pdf)) throw failed('no_pdf', { exitCode: converted.exitCode });
+  const pdf = await soffice(run, dir, wholeSheets ? SINGLE_SHEETS_FILTER : 'pdf', ext);
   if (!wholeSheets || plan.hiddenPages.length === 0) return pdf;
 
   // A page a sheet, hidden ones too, in the order of the sheets: the visible pages are listed (qpdf 11.3 of
@@ -89,6 +97,8 @@ export async function convertToPdf(run: RunCommand, { dir, ext, kind, plan }: Co
   checkRun(counted, 'qpdf');
   const pages = Number(counted.stdout.trim());
   if (counted.exitCode !== 0 || !Number.isInteger(pages) || pages < 1) throw failed('pages_not_counted', { exitCode: counted.exitCode });
+  // Not a page a sheet: which page is which sheet is not known — the workbook in pages, as it prints.
+  if (pages !== plan.sheets) return soffice(run, dir, 'pdf', ext);
   const hidden = new Set(plan.hiddenPages);
   const visible = Array.from({ length: pages }, (_, i) => i + 1).filter((page) => !hidden.has(page));
   if (visible.length === 0) throw failed('no_visible_sheet', { pages });

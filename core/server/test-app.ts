@@ -48,7 +48,7 @@ import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
 import { createPreviewCache, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES } from '../preview/cache.ts';
 import { sandboxRunner, type RunCommand } from '../preview/convert.ts';
-import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
+import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import type { ObjectStore, S3Config } from '../storage/object-store.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import type { checkMailbox } from '../mail/client.ts';
@@ -303,6 +303,7 @@ export async function createTestApp(
     run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable() }) : (opts.previewRun ?? stubPdf),
     limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
     workRoot: previewRoot,
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
 

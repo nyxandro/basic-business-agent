@@ -4,6 +4,8 @@
 // hidden ones too, in the order of the sheets. So the sizes of the visible sheets are read from the file
 // first: all fit — whole sheets, and the pages of the hidden sheets are dropped afterwards; one does not —
 // the whole workbook in pages, as it prints (that loses nothing and leaves hidden sheets out by itself).
+// Whatever cannot be measured — a sheet not found, a part too big to unpack, a file not read — prints in
+// pages too. Parts are unpacked in the server's own thread, so a big one is never unpacked at all.
 import { strFromU8, unzipSync } from 'fflate';
 
 // A little under the page limit of a PDF, where LibreOffice starts to shrink the sheet.
@@ -11,21 +13,33 @@ export const SHEET_PAGE_LIMIT_PT = 14_000;
 // Excel's defaults when the sheet names none: a row of 15 pt, a column of 8.43 characters.
 const DEFAULT_ROW_PT = 15;
 const DEFAULT_COLUMN_CHARS = 8.43;
+// A part of a workbook bigger than this unpacked is not read: a sheet whose description takes megabytes is
+// far taller than a page anyway (a measured sheet of 900 rows takes ~150 KB), and a crafted one would hold
+// the server for seconds and gigabytes.
+const PART_MAX_BYTES = 2 * 1024 * 1024;
+// Any prefix of a namespace: Excel writes «<sheet», the Open XML SDK «<x:sheet».
+const NS = '(?:[\\w-]+:)?';
 
 export interface SheetPlan {
   // Every visible sheet fits a page: «whole sheet on one page»; otherwise the workbook in pages.
   singlePage: boolean;
   // Pages (from 1) of the hidden sheets in the «whole sheet» PDF.
   hiddenPages: number[];
+  // Sheets of the workbook: a page each in the «whole sheet» PDF.
+  sheets: number;
 }
 
+const tags = (xml: string, name: string) => xml.matchAll(new RegExp(`<${NS}${name}\\b([^>]*)>`, 'g'));
+
 function attr(tag: string, name: string): string | undefined {
-  return new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(tag)?.[1];
+  const match = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag);
+  return match ? (match[1] ?? match[2]) : undefined;
 }
 
 // «r:id» with whatever prefix the writer chose for the relationships' namespace.
 function relationId(tag: string): string | undefined {
-  return /(?:^|\s)[\w-]+:id="([^"]*)"/.exec(tag)?.[1];
+  const match = /(?:^|\s)[\w-]+:id\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(tag);
+  return match ? (match[1] ?? match[2]) : undefined;
 }
 
 function columnIndex(letters: string): number {
@@ -39,12 +53,12 @@ function columnPt(chars: number): number {
 }
 
 function sheetHeight(xml: string): number {
-  const format = /<sheetFormatPr\b([^>]*)>/.exec(xml)?.[1] ?? '';
+  const format = tags(xml, 'sheetFormatPr').next().value?.[1] ?? '';
   const rowPt = Number(attr(format, 'defaultRowHeight') ?? DEFAULT_ROW_PT);
   let last = 0;
   let custom = 0;
   let customPt = 0;
-  for (const match of xml.matchAll(/<row\b([^>]*)>/g)) {
+  for (const match of tags(xml, 'row')) {
     const tag = match[1]!;
     const r = attr(tag, 'r');
     last = r ? Number(r) : last + 1;
@@ -58,21 +72,21 @@ function sheetHeight(xml: string): number {
 }
 
 function lastColumn(xml: string): number {
-  const dimension = /<dimension\b[^>]*\bref="[A-Z]+\d+:([A-Z]+)\d+"/.exec(xml)?.[1];
+  const dimension = /^[A-Z]+\d+:([A-Z]+)\d+$/.exec(attr(tags(xml, 'dimension').next().value?.[1] ?? '', 'ref') ?? '')?.[1];
   if (dimension) return columnIndex(dimension);
   let last = 0;
-  for (const match of xml.matchAll(/\bspans="\d+:(\d+)"/g)) last = Math.max(last, Number(match[1]));
+  for (const match of tags(xml, 'row')) last = Math.max(last, Number(/^\d+:(\d+)$/.exec(attr(match[1]!, 'spans') ?? '')?.[1] ?? 0));
   if (last > 0) return last;
-  for (const match of xml.matchAll(/<c\b[^>]*\br="([A-Z]+)\d+"/g)) last = Math.max(last, columnIndex(match[1]!));
+  for (const match of tags(xml, 'c')) last = Math.max(last, columnIndex(/^([A-Z]+)\d+$/.exec(attr(match[1]!, 'r') ?? '')?.[1] ?? ''));
   return last;
 }
 
 function sheetWidth(xml: string): number {
-  const format = /<sheetFormatPr\b([^>]*)>/.exec(xml)?.[1] ?? '';
+  const format = tags(xml, 'sheetFormatPr').next().value?.[1] ?? '';
   const defaultChars = Number(attr(format, 'defaultColWidth') ?? DEFAULT_COLUMN_CHARS);
   const columns = lastColumn(xml);
   const widths = new Map<number, number>();
-  for (const match of xml.matchAll(/<col\b([^>]*)>/g)) {
+  for (const match of tags(xml, 'col')) {
     const tag = match[1]!;
     const width = Number(attr(tag, 'width') ?? defaultChars);
     for (let i = Number(attr(tag, 'min')); i <= Math.min(Number(attr(tag, 'max')), columns); i++) widths.set(i, width);
@@ -87,40 +101,57 @@ function partPath(target: string): string {
   return target.startsWith('/') ? target.slice(1) : `xl/${target}`;
 }
 
-// The plan of an `.xlsx`/`.xlsm`; null when the file is not one (LibreOffice then prints it in pages, or
-// says it cannot read it).
+// The plan of an `.xlsx`/`.xlsm`; null when the file is not one or cannot be read (LibreOffice then prints
+// it in pages, or says it cannot read it).
 export function planSheets(bytes: Uint8Array): SheetPlan | null {
-  let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(bytes, { filter: (file) => file.name.startsWith('xl/') && (file.name.endsWith('.xml') || file.name.endsWith('.rels')) });
+    return plan(bytes);
   } catch {
-    // Not a zip archive: there is nothing to plan by.
+    // A part that is not text, a zip that is not one: nothing to measure by — the workbook prints in pages.
     return null;
   }
+}
+
+function plan(bytes: Uint8Array): SheetPlan | null {
+  const tooBig = new Set<string>();
+  const files = unzipSync(bytes, {
+    filter: (file) => {
+      if (!file.name.startsWith('xl/') || !(file.name.endsWith('.xml') || file.name.endsWith('.rels'))) return false;
+      if (file.originalSize <= PART_MAX_BYTES) return true;
+      tooBig.add(file.name);
+      return false;
+    },
+  });
   const book = files['xl/workbook.xml'];
   const rels = files['xl/_rels/workbook.xml.rels'];
   if (!book || !rels) return null;
-  const targets = new Map<string, string>();
-  for (const match of strFromU8(rels).matchAll(/<Relationship\b([^>]*)>/g)) {
+  const targets = new Map<string, { path: string; worksheet: boolean }>();
+  for (const match of tags(strFromU8(rels), 'Relationship')) {
     const id = attr(match[1]!, 'Id');
     const target = attr(match[1]!, 'Target');
-    if (id && target) targets.set(id, partPath(target));
+    const type = attr(match[1]!, 'Type') ?? '';
+    if (id && target) targets.set(id, { path: partPath(target), worksheet: type.endsWith('/worksheet') });
   }
+  const sheets = [...tags(strFromU8(book), 'sheet')].map((match) => match[1]!);
   const hiddenPages: number[] = [];
-  let singlePage = true;
-  [...strFromU8(book).matchAll(/<sheet\b([^>]*)>/g)].forEach((match, i) => {
-    const tag = match[1]!;
+  let singlePage = sheets.length > 0;
+  sheets.forEach((tag, i) => {
     const state = attr(tag, 'state');
     if (state === 'hidden' || state === 'veryHidden') {
       hiddenPages.push(i + 1);
       return;
     }
-    const id = relationId(tag);
-    const part = id ? files[targets.get(id) ?? ''] : undefined;
-    // A chart sheet (no cells) or a part that is not there takes one page of its own size.
-    if (!part || !targets.get(id!)?.includes('worksheets/')) return;
+    const target = targets.get(relationId(tag) ?? '');
+    // A chart sheet (no cells) takes one page of its own size.
+    if (target && !target.worksheet && !tooBig.has(target.path)) return;
+    const part = target ? files[target.path] : undefined;
+    if (!part) {
+      // Not found or too big to read: it cannot be measured.
+      singlePage = false;
+      return;
+    }
     const xml = strFromU8(part);
     if (sheetHeight(xml) > SHEET_PAGE_LIMIT_PT || sheetWidth(xml) > SHEET_PAGE_LIMIT_PT) singlePage = false;
   });
-  return { singlePage, hiddenPages };
+  return { singlePage, hiddenPages, sheets: sheets.length };
 }

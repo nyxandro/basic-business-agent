@@ -39,7 +39,7 @@ import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
 import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, startPreviewPurge } from '../preview/cache.ts';
 import { sandboxRunner } from '../preview/convert.ts';
-import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
+import { cleanWorkRoot, createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import { realDiscoverDeps } from '../mail/discover.ts';
 import { realEndpoints } from '../mail/oauth.ts';
@@ -105,7 +105,9 @@ async function main(): Promise<void> {
     run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation }),
     limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
     workRoot: tmpdir(),
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
+  cleanWorkRoot(tmpdir());
   // The mailboxes of employees (spec, section 8.24).
   const mail = createMailService({ db, box, publicUrl: env.APP_PUBLIC_URL, transport: { trustSelfSigned: false }, discover: realDiscoverDeps, endpoints: realEndpoints, ports: { imap: IMAP_PORTS, smtp: SMTP_PORTS } });
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);

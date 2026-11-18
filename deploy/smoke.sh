@@ -64,6 +64,11 @@ check "/api/agents is 404" 404 "$(status "$BASE/api/agents")"
 check "/app/api/internal/usage is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/usage")"
 check "/app/api/internal/account-events is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/account-events")"
 check "an interface page is served" 200 "$(status "$BASE/login")"
+# PDF.js of the document viewer (spec, section 8.27): Caddy answers an unknown path with the page itself
+# (try_files), so a font or decoder missing from the build would fail silently — each must come as a file.
+for asset in pdfjs/standard_fonts/LiberationSans-Regular.ttf pdfjs/wasm/openjpeg.wasm pdfjs/cmaps/78-H.bcmap pdfjs/iccs/CGATS001Compat-v2-micro.icc; do
+  check "PDF.js file ${asset} is served as a file" ok "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/${asset}" | grep -qE '^200 ' && ! curl --noproxy '*' -s "$BASE/${asset}" | head -c 200 | grep -qi '<!doctype html' && echo ok || echo missing)"
+done
 check "/app/api without a session is 401" 401 "$(status "$BASE/app/api/me")"
 
 echo "== sandbox of skill scripts"

@@ -339,6 +339,6 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // «Открыть» of the file block: the PDF of a Word, Excel or PowerPoint file (spec, section 8.27).
   app.get('/app/api/threads/:threadId/file/preview', async (c) => {
     const file = await presentFile(access(c).userId, c.req.param('threadId'), c.req.query('path') ?? '');
-    return pdfResponse(await deps.preview.pdf(file.area, file.inArea, file.missing), basename(file.inArea), c.req.header('range'));
+    return pdfResponse(await deps.preview.pdf(file.area, file.inArea, file.missing, c.req.header('range') !== undefined), basename(file.inArea), c.req.header('range'));
   });
 }

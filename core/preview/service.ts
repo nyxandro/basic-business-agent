@@ -1,13 +1,38 @@
+// The folders of conversions a stopped server left hold copies of people's documents: removed at the start.
+export function cleanWorkRoot(workRoot: string): void {
+  for (const name of readdirSync(workRoot)) {
+    if (name.startsWith(WORK_PREFIX)) rmSync(join(workRoot, name), { recursive: true, force: true });
+  }
+}
+
+// What the archive of a document says it unpacks into, read from its directory without unpacking.
+function unpackedBytes(bytes: Uint8Array): number | null {
+  let total = 0;
+  try {
+    unzipSync(bytes, {
+      filter: (file) => {
+        total += file.originalSize;
+        return false;
+      },
+    });
+  } catch {
+    // Not a zip archive: LibreOffice says what it is.
+    return null;
+  }
+  return total;
+}
+
 // The PDF of a Word, Excel or PowerPoint file for the viewer (spec, section 8.27; decisions of the owner
 // 18.11): made on the first opening of a version of the file — never ahead — and then taken from the cache
 // (core/preview/cache.ts) without reading the file again. At most two conversions run at once; the rest
 // wait in a queue, and one waiting too long is told the server is busy. Two people opening one new
 // document wait for one conversion. The route checks the right to the file before asking.
-import { createWriteStream, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createWriteStream, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { CONVERTED_KINDS, previewKindOf, PREVIEW_MAX_BYTES, type PreviewKind } from '@bba/contracts';
+import { unzipSync } from 'fflate';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Limiter } from '../sandbox/limiter.ts';
@@ -18,6 +43,10 @@ import { previewKey, type PreviewCache } from './cache.ts';
 import { convertToPdf, type RunCommand } from './convert.ts';
 import { planSheets } from './sheets.ts';
 
+function failed(reason: string, details: Record<string, unknown>) {
+  return appError('APP_PREVIEW_FAILED', `document not shown: ${reason}`, { details: { reason, ...details } });
+}
+
 // Conversions at once (step 114: ~450 MB of memory each, the app has 3 GB) and how long one may wait.
 export const PREVIEW_MAX_CONCURRENT = 2;
 export const PREVIEW_QUEUE_WAIT_MS = 60_000;
@@ -25,6 +54,12 @@ export const PREVIEW_QUEUE_WAIT_MS = 60_000;
 const ZIPPED_OFFICE = new Set(['.docx', '.docm', '.dotx', '.xlsx', '.xlsm', '.pptx', '.ppsx']);
 const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
 const PLANNED_SHEETS = new Set(['.xlsx', '.xlsm']);
+// Formats that are zip archives: what their archive says it unpacks into is checked first.
+const ZIPPED = new Set([...ZIPPED_OFFICE, '.odt', '.ods', '.odp']);
+// A document unpacking into more than this would hold LibreOffice and the 3 GB of the container (a crafted
+// archive of 1 MB can hold gigabytes); real documents up to 50 MB unpack into far less.
+export const PREVIEW_MAX_UNPACKED_BYTES = 300 * 1024 * 1024;
+const WORK_PREFIX = 'bba-preview-';
 
 export interface PreviewDeps {
   storage: Pick<FileStorage, 'stat' | 'openFile'>;
@@ -33,12 +68,14 @@ export interface PreviewDeps {
   limiter: Limiter;
   // Where the folders of conversions are made.
   workRoot: string;
+  maxUnpackedBytes: number;
 }
 
 export interface PreviewService {
   // The ready PDF of a file of the area (`rel` from the area: «files/…»). `missing` — what the person reads
   // when the file is gone, the same as for its download.
-  pdf(area: Area, rel: string, missing: string): Promise<{ path: string; bytes: number }>;
+  // `partial`: a part of a PDF already shown is asked (PDF.js reads in parts) — not logged again.
+  pdf(area: Area, rel: string, missing: string, partial?: boolean): Promise<{ path: string; bytes: number }>;
 }
 
 async function startsWith(path: string, magic: Buffer): Promise<boolean> {
@@ -57,7 +94,7 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
 
   async function make(area: Area, rel: string, ext: string, kind: PreviewKind, key: string, missing: string): Promise<string> {
     const started = Date.now();
-    const dir = mkdtempSync(join(deps.workRoot, 'bba-preview-'));
+    const dir = mkdtempSync(join(deps.workRoot, WORK_PREFIX));
     let bytes = 0;
     try {
       const file = await deps.storage.openFile(area, rel);
@@ -66,7 +103,10 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
       const source = join(dir, `source${ext}`);
       await pipeline(file.stream, createWriteStream(source));
       if (ZIPPED_OFFICE.has(ext) && (await startsWith(source, OLE_MAGIC))) throw appError('APP_PREVIEW_PASSWORD', 'the document is encrypted');
-      const plan = PLANNED_SHEETS.has(ext) ? planSheets(await readFile(source)) : null;
+      const archive = ZIPPED.has(ext) ? await readFile(source) : null;
+      const unpacked = archive ? unpackedBytes(archive) : null;
+      if (unpacked !== null && unpacked > deps.maxUnpackedBytes) throw failed('unpacked_too_big', { unpacked });
+      const plan = archive && PLANNED_SHEETS.has(ext) ? planSheets(archive) : null;
       const pdf = deps.cache.put(key, await convertToPdf(deps.run, { dir, ext, kind, plan }));
       logEvent('info', 'preview_converted', { ext, kind, bytes, ms: Date.now() - started, wholeSheets: plan?.singlePage ?? null });
       return pdf;
@@ -82,7 +122,7 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
   }
 
   return {
-    async pdf(area, rel, missing) {
+    async pdf(area, rel, missing, partial = false) {
       const ext = extname(rel).toLowerCase();
       const kind = previewKindOf(basename(rel));
       if (!kind || !CONVERTED_KINDS.has(kind)) throw appError('APP_PREVIEW_UNSUPPORTED', `no conversion for ${ext || 'a file without extension'}`);
@@ -92,7 +132,7 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
       const key = previewKey({ area: areaKey(area), rel, ...version });
       const ready = deps.cache.get(key);
       if (ready) {
-        logEvent('info', 'preview_cache_hit', { ext, kind });
+        if (!partial) logEvent('info', 'preview_cache_hit', { ext, kind });
         return { path: ready, bytes: statSync(ready).size };
       }
       let made = running.get(key);

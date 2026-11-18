@@ -660,7 +660,7 @@ export const ru = {
     scale: (value: string) => `Масштаб ${value}`,
     preparing: 'Готовлю документ к просмотру…',
     textCut: 'Показано начало файла — 1 МБ. Весь файл — «Скачать».',
-    externalImage: (alt: string) => `Картинка из интернета не загружается${alt ? `: ${alt}` : ''}`,
+    imageNotShown: (alt: string) => `Картинка не показывается${alt ? `: ${alt}` : ''}`,
     openFile: (name: string) => `Открыть ${name}`,
   },
   clientErrors: {

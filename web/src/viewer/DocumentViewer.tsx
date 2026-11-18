@@ -3,7 +3,7 @@
 // the document, edge to edge. Word, Excel and PowerPoint the server turns into PDF first: a request of one
 // byte starts it and brings back its refusal as a code and a text; PDF.js then reads the PDF in parts.
 import { CONVERTED_KINDS, previewKindOf } from '@bba/contracts';
-import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiRequestError, toError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -99,8 +99,25 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
   const failure = typeof state === 'object' ? state : null;
   const ready = state === 'ready';
 
+  // Ctrl/⌘ with «+», «−», «0» scale the document, not the page of the browser; Ctrl+K of the search does
+  // not open the search under the viewer.
+  const keys = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const act = { '=': 'zoomIn', '+': 'zoomIn', '-': 'zoomOut', '0': 'fit' }[event.key] as keyof ZoomControl | undefined;
+    // The key itself, in any layout — as the search listens for it (layout/AppShell.tsx).
+    if (event.code === 'KeyK') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!act) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (ready) zoom.current?.[act]();
+  };
+
   return createPortal(
-    <div ref={box} className={styles.layer} role="dialog" aria-modal="true" aria-label={source.name} tabIndex={-1}>
+    <div ref={box} className={styles.layer} role="dialog" aria-modal="true" aria-label={source.name} tabIndex={-1} onKeyDown={keys}>
       <div className={styles.bar}>
         <span className={styles.name} title={source.name}>
           {source.name}

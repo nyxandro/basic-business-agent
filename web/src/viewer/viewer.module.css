@@ -97,6 +97,15 @@
   font-size: inherit;
 }
 
+.imageNote {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
 .cut {
   margin: 0 0 12px;
   padding: 8px 12px;

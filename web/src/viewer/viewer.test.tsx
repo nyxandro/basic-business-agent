@@ -80,6 +80,22 @@ describe('the document viewer', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('Ctrl with «+», «−» and «0» scale the document; Ctrl+K opens nothing under it', async () => {
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
+    // What the search listens for (layout/AppShell.tsx): K with Ctrl, on the window.
+    const opened = vi.fn();
+    const search = (event: KeyboardEvent) => {
+      if (event.code === 'KeyK') opened();
+    };
+    window.addEventListener('keydown', search);
+    const user = show(DOCX);
+    await user.click(screen.getByRole('button', { name: 'открыть' }));
+    await screen.findByTestId('pdf-pages');
+    await user.keyboard('{Control>}k{/Control}');
+    expect(opened).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', search);
+  });
+
   it('says what the server says; «Повторить» only where trying again helps', async () => {
     const s = mockServer({ 'GET /app/api/threads/t1/file/preview': apiError('APP_PREVIEW_BUSY', 'Сейчас готовится много документов. Попробуйте через минуту.', 503) });
     const user = show(DOCX);
@@ -124,13 +140,12 @@ describe('the document viewer', () => {
 
 describe('Markdown in the viewer', () => {
   it('is formatted and loads nothing from the internet', async () => {
-    mockServer({ 'GET /app/api/files/file': { raw: '# Отчёт\n\n![трекер](https://tracker.example/p.gif)' } });
+    mockServer({ 'GET /app/api/files/file': { raw: '# Отчёт\n\n![трекер](https://tracker.example/p.gif) ![b](//evil.example/x.gif) ![c]( https://evil.example/y.gif) ![d](<https://evil.example/z.gif>)' } });
     const user = show({ name: 'отчёт.md', downloadUrl: '/app/api/files/file?path=report.md', previewUrl: '-' });
     await user.click(screen.getByRole('button', { name: 'открыть' }));
     expect(await screen.findByRole('heading', { name: 'Отчёт' })).toBeInTheDocument();
-    expect(document.querySelector('img[src^="https:"]')).toBeNull();
-    // The renderer puts each word in an element of its own: the link is found by its text.
-    const link = screen.getAllByRole('link').find((a) => a.textContent === 'Картинка из интернета не загружается: трекер');
-    expect(link).toHaveAttribute('href', 'https://tracker.example/p.gif');
+    // No picture at all, whatever its address (by the independent review of 18.11): only its description.
+    expect(document.querySelectorAll('img')).toHaveLength(0);
+    expect(screen.getByText('Картинка не показывается: трекер')).toBeInTheDocument();
   });
 });

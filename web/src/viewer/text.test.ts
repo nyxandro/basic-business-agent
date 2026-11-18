@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { decodeText, safeMarkdown } from './text.ts';
+import { decodeText } from './text.ts';
 
 const cp1251 = (text: string) => new Uint8Array([...text].map((ch) => (ch >= 'А' && ch <= 'я' ? ch.charCodeAt(0) - 0x410 + 0xc0 : ch.charCodeAt(0))));
 
@@ -27,10 +27,5 @@ describe('text files in the viewer (spec, section 8.27)', () => {
         expect(text.startsWith(read)).toBe(true);
       }),
     );
-  });
-
-  it('does not let Markdown load pictures from the internet', () => {
-    expect(safeMarkdown('Схема: ![план](https://tracker.example/p.png?id=1) и ![лого](logo.png)')).toBe('Схема: [Картинка из интернета не загружается: план](https://tracker.example/p.png?id=1) и ![лого](logo.png)');
-    expect(safeMarkdown('<img src="http://tracker.example/x.gif">')).toBe('Картинка из интернета не загружается');
   });
 });

@@ -135,7 +135,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps & { 
   app.get('/app/api/projects/:id/file/preview', async (c) => {
     const { project } = await visibleProject(deps.db, access(c).userId, c.req.param('id'), 'owner');
     const inArea = `files/${relative(filesOf(project), resolveInside(filesOf(project), c.req.query('path') ?? ''))}`;
-    return pdfResponse(await deps.preview.pdf(areaOf(project), inArea, 'Файл не найден.'), basename(inArea), c.req.header('range'));
+    return pdfResponse(await deps.preview.pdf(areaOf(project), inArea, 'Файл не найден.', c.req.header('range') !== undefined), basename(inArea), c.req.header('range'));
   });
 
   // «Удалить» of the page: into the project's trash (spec, section 8.20).

@@ -40,7 +40,7 @@ function rows(count: number, attrs = '', format = ''): string {
 describe('which way a workbook is shown (spec, section 8.27)', () => {
   it('shows small sheets whole and drops the pages of the hidden ones, in the order of the sheets', () => {
     const plan = planSheets(workbook([{ name: 'Альфа' }, { name: 'Бета', state: 'hidden' }, { name: 'Пустой', xml: '<worksheet><sheetData/></worksheet>' }, { name: 'Дельта' }, { name: 'Совсем', state: 'veryHidden' }]));
-    expect(plan).toEqual({ singlePage: true, hiddenPages: [2, 5] });
+    expect(plan).toEqual({ singlePage: true, hiddenPages: [2, 5], sheets: 5 });
   });
 
   it('prints the workbook in pages when a visible sheet is taller than the page limit', () => {
@@ -56,7 +56,7 @@ describe('which way a workbook is shown (spec, section 8.27)', () => {
   it('counts the empty rows up to the last one, and only visible sheets', () => {
     const sparse = '<worksheet><sheetData><row r="1"><c r="A1"/></row><row r="2000"><c r="A2000"/></row></sheetData></worksheet>';
     expect(planSheets(workbook([{ name: 'A', xml: sparse }]))?.singlePage).toBe(false);
-    expect(planSheets(workbook([{ name: 'A' }, { name: 'Скрытый', state: 'hidden', xml: rows(5000) }]))).toEqual({ singlePage: true, hiddenPages: [2] });
+    expect(planSheets(workbook([{ name: 'A' }, { name: 'Скрытый', state: 'hidden', xml: rows(5000) }]))).toEqual({ singlePage: true, hiddenPages: [2], sheets: 2 });
   });
 
   it('prints in pages a sheet wider than the limit, by the widths of its columns', () => {
@@ -68,7 +68,28 @@ describe('which way a workbook is shown (spec, section 8.27)', () => {
 
   it('keeps a chart sheet in the order of the pages, and finds sheets by an absolute path', () => {
     const plan = planSheets(workbook([{ name: 'Диаграмма', chart: true, state: 'hidden' }, { name: 'Данные', target: '/xl/worksheets/data.xml' }]));
-    expect(plan).toEqual({ singlePage: true, hiddenPages: [1] });
+    expect(plan).toEqual({ singlePage: true, hiddenPages: [1], sheets: 2 });
+  });
+
+  // By the independent review of 18.11: what is written otherwise is still read, and what cannot be read
+  // or is too big to unpack prints in pages — «whole sheet» on a sheet it cannot measure would cut rows.
+  it('reads workbooks written with a prefix of the namespace and single quotes', () => {
+    const prefixed = (count: number) => `<x:worksheet><x:sheetData>${Array.from({ length: count }, (_, i) => `<x:row r='${i + 1}'><x:c r='A${i + 1}'/></x:row>`).join('')}</x:sheetData></x:worksheet>`;
+    const files: Zippable = {
+      'xl/workbook.xml': strToU8(`<x:workbook xmlns:x="m" xmlns:r="r"><x:sheets><x:sheet name='A' sheetId='1' r:id='rId1'/><x:sheet name='B' sheetId='2' state='hidden' r:id='rId2'/></x:sheets></x:workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(`<Relationships><Relationship Id='rId1' Type='http://x/worksheet' Target='worksheets/sheet1.xml'/><Relationship Id='rId2' Type='http://x/worksheet' Target='worksheets/sheet2.xml'/></Relationships>`),
+      'xl/worksheets/sheet1.xml': strToU8(prefixed(3000)),
+      'xl/worksheets/sheet2.xml': strToU8(prefixed(1)),
+    };
+    expect(planSheets(zipSync(files))).toEqual({ singlePage: false, hiddenPages: [2], sheets: 2 });
+  });
+
+  it('prints in pages a workbook whose sheet it cannot find or would not unpack', () => {
+    const lost = planSheets(workbook([{ name: 'A', target: 'worksheets/нет.xml' }]));
+    expect(lost?.singlePage).toBe(false);
+    // A part of over 2 MB unpacked: not read into the memory of the server at all.
+    const huge = `<worksheet><sheetData><row r="1"><c r="A1"><v>${' '.repeat(3 * 1024 * 1024)}</v></c></row></sheetData></worksheet>`;
+    expect(planSheets(workbook([{ name: 'A', xml: huge }]))?.singlePage).toBe(false);
   });
 
   it('has no plan for what is not a workbook: the converter prints it in pages', () => {

@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { strToU8, zipSync } from 'fflate';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -7,7 +8,7 @@ import { createLimiter } from '../sandbox/limiter.ts';
 import { userArea } from '../storage/areas.ts';
 import { createPreviewCache } from './cache.ts';
 import type { RunCommand } from './convert.ts';
-import { createPreviewService } from './service.ts';
+import { cleanWorkRoot, createPreviewService } from './service.ts';
 
 const OLGA = userArea('olga');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,10 +50,10 @@ function libreOffice(waitMs = 0) {
   return { run, runs };
 }
 
-function service(files: Parameters<typeof storageOf>[0], run: RunCommand, { max = 2, waitMs = 60_000 } = {}) {
+function service(files: Parameters<typeof storageOf>[0], run: RunCommand, { max = 2, waitMs = 60_000, maxUnpackedBytes = 1_000_000 } = {}) {
   const { storage, opened } = storageOf(files);
   const cache = createPreviewCache({ dir: join(root, 'cache'), maxBytes: 1_000_000, maxAgeMs: 7 * DAY_MS });
-  const preview = createPreviewService({ storage, cache, run, limiter: createLimiter(max, waitMs), workRoot: root });
+  const preview = createPreviewService({ storage, cache, run, limiter: createLimiter(max, waitMs), workRoot: root, maxUnpackedBytes });
   return { preview, opened };
 }
 
@@ -115,6 +116,25 @@ describe('the PDF of a document for the viewer (spec, section 8.27)', () => {
     await expect(preview.pdf(OLGA, 'files/нет.docx', 'Файл «нет.docx» удалён.')).rejects.toMatchObject({ code: 'APP_NOT_FOUND', userMessage: 'Файл «нет.docx» удалён.' });
     await expect(preview.pdf(OLGA, 'files/secret.docx', '-')).rejects.toMatchObject({ code: 'APP_PREVIEW_PASSWORD' });
     expect(lo.runs).toEqual([]);
+  });
+
+  // By the independent review of 18.11: a small archive that unpacks into gigabytes would hold LibreOffice and
+  // the memory of the container — refused by the sizes its archive tells, before anything is unpacked.
+  it('refuses an archive of Office that unpacks into more than the limit, without running LibreOffice', async () => {
+    const lo = libreOffice();
+    const bomb = zipSync({ 'xl/worksheets/sheet1.xml': strToU8(' '.repeat(5_000)) });
+    const { preview } = service({ 'files/бомба.xlsx': { bytes: [...bomb] }, 'files/обычный.xlsx': { bytes: [...zipSync({ 'xl/workbook.xml': strToU8('<x/>') })] } }, lo.run, { maxUnpackedBytes: 1_000 });
+    await expect(preview.pdf(OLGA, 'files/бомба.xlsx', '-')).rejects.toMatchObject({ code: 'APP_PREVIEW_FAILED', details: { reason: 'unpacked_too_big' } });
+    await preview.pdf(OLGA, 'files/обычный.xlsx', '-');
+    expect(lo.runs).toEqual(['source.xlsx']);
+  });
+
+  it('clears the folders of conversions a stopped server left', () => {
+    mkdirSync(join(root, 'bba-preview-left'));
+    mkdirSync(join(root, 'other'));
+    cleanWorkRoot(root);
+    expect(existsSync(join(root, 'bba-preview-left'))).toBe(false);
+    expect(existsSync(join(root, 'other'))).toBe(true);
   });
 
   it('an old Word file in its own binary format is converted, not taken for one with a password', async () => {

@@ -2,7 +2,7 @@
 // conversation — its icon, name, size, «Открыть» (the document viewer, for what it shows) and «Скачать»; a file removed since then is said so. Drawn from the result of show_file, where the server says the file
 // is there; a call that found no file draws nothing (the model is told and tries again).
 import { fileBlockResultSchema, previewKindOf, type ThreadFileStatus } from '@bba/contracts';
-import { useState, type MouseEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { asApiError } from '../api/client.ts';
 import { fetchThreadFileStatus, threadFilePreviewUrl, threadFileUrl } from '../chat/api.ts';
 import { restoreFromTrash, trashFileUrl } from '../projects/api.ts';
@@ -56,8 +56,12 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { n
   const [note, setNote] = useState<Exclude<ThreadFileStatus, { state: 'ok' }> | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { open, viewer } = useDocumentViewer();
+  // While the file is asked about, a second press does nothing: a double tap opens one viewer.
+  const asking = useRef(false);
   // «Открыть» and «Скачать» ask first what they will find: a file removed is said so, as before.
   async function whenThere(then: () => void) {
+    if (asking.current) return;
+    asking.current = true;
     setFailed(null);
     try {
       const status = await checkFile();
@@ -66,6 +70,8 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { n
       then();
     } catch (raw) {
       setFailed(asApiError(raw).message);
+    } finally {
+      asking.current = false;
     }
   }
   function download(e: MouseEvent<HTMLAnchorElement>) {

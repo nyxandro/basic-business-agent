@@ -42,7 +42,7 @@ describe('turning a document into PDF (spec, section 8.27)', () => {
 
   it('a small workbook goes whole sheet a page, the pages of its hidden sheets dropped', async () => {
     const { run, calls } = fakeRun([writes('out/source.pdf', '%PDF whole sheets'), () => ({ ...OK, stdout: '5\n' }), writes('out/visible.pdf', '%PDF visible')]);
-    const pdf = await convertToPdf(run, { dir, ext: '.xlsx', kind: 'sheet', plan: { singlePage: true, hiddenPages: [2, 5] } });
+    const pdf = await convertToPdf(run, { dir, ext: '.xlsx', kind: 'sheet', plan: { singlePage: true, hiddenPages: [2, 5], sheets: 5 } });
     expect(pdf).toBe(join(dir, 'out/visible.pdf'));
     expect(calls[0]!.args).toContain(SINGLE_SHEETS_FILTER);
     expect(calls.slice(1)).toEqual([
@@ -52,7 +52,7 @@ describe('turning a document into PDF (spec, section 8.27)', () => {
   });
 
   it('a big workbook, an old one or one without a plan prints in pages', async () => {
-    for (const plan of [{ singlePage: false, hiddenPages: [2] }, null]) {
+    for (const plan of [{ singlePage: false, hiddenPages: [2], sheets: 2 }, null]) {
       const { run, calls } = fakeRun([writes('out/source.pdf', '%PDF pages')]);
       await convertToPdf(run, { dir, ext: '.xls', kind: 'sheet', plan });
       expect(calls).toHaveLength(1);
@@ -64,6 +64,8 @@ describe('turning a document into PDF (spec, section 8.27)', () => {
     const cases: [RunResult, string][] = [
       [{ ...OK, exitCode: 124, timedOut: true }, 'APP_PREVIEW_TIMEOUT'],
       [{ ...OK, exitCode: 137, killed: true }, 'APP_PREVIEW_BUSY'],
+      // bubblewrap gives the program killed for memory as exit code 137, not as a signal of its own.
+      [{ ...OK, exitCode: 137 }, 'APP_PREVIEW_BUSY'],
       // A file with a password or a cut archive: exit code 0 and no PDF (step 114).
       [OK, 'APP_PREVIEW_FAILED'],
     ];
@@ -75,8 +77,19 @@ describe('turning a document into PDF (spec, section 8.27)', () => {
     await expect(convertToPdf(run, { dir, ext: '.docx', kind: 'document', plan: null })).rejects.toMatchObject({ code: 'APP_PREVIEW_FAILED' });
   });
 
+  it('prints the workbook in pages when the PDF has not a page a sheet', async () => {
+    const { run, calls } = fakeRun([writes('out/source.pdf', '%PDF whole'), () => ({ ...OK, stdout: '4\n' }), writes('out/source.pdf', '%PDF pages')]);
+    const pdf = await convertToPdf(run, { dir, ext: '.xlsx', kind: 'sheet', plan: { singlePage: true, hiddenPages: [2], sheets: 3 } });
+    expect(pdf).toBe(join(dir, 'out/source.pdf'));
+    expect(calls.map((c) => [c.program, c.args[3] ?? c.args[0]])).toEqual([
+      ['soffice', SINGLE_SHEETS_FILTER],
+      ['qpdf', '--show-npages'],
+      ['soffice', 'pdf'],
+    ]);
+  });
+
   it('fails rather than show hidden sheets when their pages cannot be dropped', async () => {
     const { run } = fakeRun([writes('out/source.pdf', '%PDF whole'), () => ({ ...OK, exitCode: 2, stderr: 'damaged' })]);
-    await expect(convertToPdf(run, { dir, ext: '.xlsx', kind: 'sheet', plan: { singlePage: true, hiddenPages: [2] } })).rejects.toMatchObject({ code: 'APP_PREVIEW_FAILED' });
+    await expect(convertToPdf(run, { dir, ext: '.xlsx', kind: 'sheet', plan: { singlePage: true, hiddenPages: [2], sheets: 2 } })).rejects.toMatchObject({ code: 'APP_PREVIEW_FAILED' });
   });
 });

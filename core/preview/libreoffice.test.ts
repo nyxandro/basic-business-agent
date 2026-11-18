@@ -14,7 +14,7 @@ import { areaDir, userArea } from '../storage/areas.ts';
 import { createFileStorage } from '../storage/engine.ts';
 import { createPreviewCache } from './cache.ts';
 import { sandboxRunner } from './convert.ts';
-import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS, type PreviewService } from './service.ts';
+import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS, type PreviewService } from './service.ts';
 
 const VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
 const FIXTURES = fileURLToPath(new URL('./fixtures', import.meta.url));
@@ -38,6 +38,7 @@ beforeAll(() => {
     run: sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable() }),
     limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
     workRoot: root,
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
