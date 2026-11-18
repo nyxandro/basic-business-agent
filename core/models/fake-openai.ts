@@ -40,7 +40,8 @@ export type FakeTurn =
   // away (what LiteLLM sees), an error frame is what LiteLLM then sends on, 'hang' goes silent with
   // the connection open.
   | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut }
-  | { toolCalls: { name: string; args: Record<string, unknown> }[] }
+  // `text` comes before the calls in the same answer, as a model that writes its answer and calls a tool at once.
+  | { toolCalls: { name: string; args: Record<string, unknown> }[]; text?: string }
   | { status: number; error: string }
   // The connection closes before any answer, as a provider or a proxy that restarted.
   | { reset: true };
@@ -109,9 +110,10 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
   }
   if ('toolCalls' in turn) {
     const calls = turn.toolCalls.map((c, i) => ({ id: `call_${Date.now()}_${i}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
-    if (stream) return sse(res, [{ role: 'assistant', tool_calls: calls.map((c, index) => ({ index, ...c })) }], 'tool_calls');
+    const toolCalls = calls.map((c, index) => ({ index, ...c }));
+    if (stream) return sse(res, turn.text ? [{ role: 'assistant', content: turn.text }, { tool_calls: toolCalls }] : [{ role: 'assistant', tool_calls: toolCalls }], 'tool_calls');
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: USAGE, service_tier: SERVICE_TIER }));
+    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text ?? null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: USAGE, service_tier: SERVICE_TIER }));
     return;
   }
   if (stream) {

@@ -99,6 +99,31 @@ describe('the memory tools of the agent', () => {
     expect(JSON.stringify(t.model.requests.at(-1)!.messages)).toContain('- [1] Подача до 28.11.2026 09:00 — Ольга Смирнова через агента');
   });
 
+  it('give the model, with a saved write, the note on what to write after it; a last step without words ends the turn cleanly', async () => {
+    const { threadId } = await projectThread('Порядок записи');
+    // As Qwen 3.6 did on M7 (18.11): the answer and the write in one step, then one more call of the model.
+    t.model.script({ text: 'Аванс — 30 %, остаток — по актам.', toolCalls: memoryCall('project_memory', [{ action: 'add', text: 'Аванс 30 %, остаток по актам' }]).toolCalls }, { text: '' });
+    const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
+      cookie: olga,
+      body: { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: 'Что решили по авансу?' }], tools: [], context: [], state: {}, forwardedProps: {} },
+    });
+    const events = (await res.text())
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => JSON.parse(l.slice(5)) as { type: string });
+    expect(events.map((e) => e.type)).toContain('RUN_FINISHED');
+    expect(events.map((e) => e.type)).not.toContain('RUN_ERROR');
+
+    const note = (JSON.parse(toolOutput(t.model.requests.at(-1)!)) as { note?: string }).note;
+    expect(note).toMatch(/строкой в чате/);
+    expect(note).toMatch(/уже ответил по существу и работа закончена/);
+
+    const stored = await t.db.query<{ content: string }>(`SELECT content FROM mastra.mastra_messages WHERE thread_id = $1 AND role = 'assistant'`, [threadId]);
+    const parts = stored.rows.flatMap((r) => (JSON.parse(r.content) as { parts: { type: string; text?: string; toolInvocation?: { toolName: string } }[] }).parts);
+    expect(parts.filter((p) => p.type === 'text' && p.text!.trim()).map((p) => p.text!.trim())).toEqual(['Аванс — 30 %, остаток — по актам.']);
+    expect(parts.filter((p) => p.toolInvocation).map((p) => p.toolInvocation!.toolName)).toEqual(['project_memory']);
+  });
+
   it('change an entry in the version the agent saw, and again in the same answer', async () => {
     const { projectId, threadId } = await projectThread('Горбольница');
     const added = await t.call('POST', `/app/api/projects/${projectId}/memory`, { cookie: olga, body: { text: 'Срок поставки 10 дней' } });
