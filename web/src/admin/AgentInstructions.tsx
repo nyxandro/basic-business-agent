@@ -16,7 +16,7 @@ import styles from './agents.module.css';
 import { Feedback, useAction } from './parts.tsx';
 
 // The order the server puts the layers in on every request (spec, section 9).
-const LAYERS = ['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект и его память', 'Личная память'];
+const LAYERS = ['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект: память, разговоры, файлы', 'Личная память'];
 const EDITED_LAYER = 'Промпт агента';
 
 function status(state: PromptState): { text: string; tone: 'accent' | 'warn' | 'neutral' } {

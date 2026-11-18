@@ -177,6 +177,44 @@ describe('a line of the memory', () => {
   });
 });
 
+describe('a line of past conversations', () => {
+  const HISTORY_AGENT = { systems: SYSTEMS, actions: { conversations: { title: 'Прошлые разговоры', fields: {}, readOnly: true } } };
+  const historyRow = (parameters: unknown, result?: unknown, status: ToolRowProps['status'] = 'complete') =>
+    render(<ToolRow name="conversations" status={status} parameters={parameters} {...(result === undefined ? {} : { result: JSON.stringify(result) })} agent={HISTORY_AGENT} />);
+  const item = (title: string) => ({ ref: '7c1e9a02', title, project: 'вне проекта', agent: 'Продажи', started: '12.11.2026', last: '12.11.2026', messages: 4 });
+
+  it('says what the agent looked at: the list, a search, a conversation it read — reading only', () => {
+    historyRow({ mode: 'list' }, { scope: 'project', page: 1, total: 23, more: true, conversations: [item('КП')] });
+    expect(screen.getByRole('button', { name: /Прошлые разговоры: 23/ })).toBeInTheDocument();
+    expect(screen.getByText('только чтение')).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'search', query: 'аванс' }, { scope: 'all', conversations: [item('Договор'), item('Кровля')] });
+    expect(screen.getByRole('button', { name: /Поиск по разговорам «аванс»: 2/ })).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'search', query: 'аванс' }, { scope: 'all', conversations: [], note: 'Ничего не нашлось.' });
+    expect(screen.getByRole('button', { name: /Поиск по разговорам «аванс»: ничего не нашлось/ })).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'read', conversation: '7c1e9a02' }, { title: 'КП для ЖК Северный', ref: '7c1e9a02', transcript: '…' });
+    expect(screen.getByRole('button', { name: /Прочитал разговор «КП для ЖК Северный»/ })).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'read', conversation: 'current' }, { title: 'Этот', ref: 'aaaaaaaa', transcript: '…' });
+    expect(screen.getByRole('button', { name: /Перечитал ранние сообщения разговора/ })).toBeInTheDocument();
+  });
+
+  it('says it is looking while it runs, and what failed with the code', () => {
+    historyRow({ mode: 'list' }, undefined, 'executing');
+    expect(screen.getByText('Смотрю прошлые разговоры…')).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'read', conversation: 'ffffffff' }, { error: true, code: 'APP_NOT_FOUND', message: 'Разговор не найден…' });
+    expect(screen.getByText(/Не получилось посмотреть прошлые разговоры/)).toBeInTheDocument();
+    expect(screen.getByText(/APP_NOT_FOUND/)).toBeInTheDocument();
+    cleanup();
+    // The adapter's word for a call the broken answer left without a result.
+    historyRow({ mode: 'read', conversation: '7c1e9a02' }, 'The tool call ended without a result.');
+    expect(screen.getByText(/Не получилось посмотреть прошлые разговоры/)).toBeInTheDocument();
+  });
+});
+
 describe('stack of status lines', () => {
   const COMMAND = 'mastra_workspace_execute_command';
   const STACK_AGENT = { systems: SYSTEMS, actions: { ...AGENT.actions, [COMMAND]: { title: 'Команда в рабочей папке', fields: {}, readOnly: false } } };

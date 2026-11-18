@@ -72,12 +72,46 @@ function memorySummary(where: 'project' | 'personal', status: ToolStatus, result
   return { state: 'done', text, readOnly: false, count: null, value: outcome.value };
 }
 
+// The agent's tool of past conversations (spec, section 8.28): the line says what it looked at — the list, a
+// search and how many it found, the conversation it read; it only reads.
+const CONVERSATIONS_TOOL = 'conversations';
+
+interface ConversationsAsked {
+  mode?: unknown;
+  query?: unknown;
+  conversation?: unknown;
+}
+
+interface ConversationsResult {
+  total?: unknown;
+  conversations?: unknown;
+  title?: unknown;
+}
+
+function conversationsSummary(status: ToolStatus, result: string | undefined, parameters: unknown): ToolSummary {
+  if (status !== 'complete') return { state: 'running', text: ru.chat.conversationsRunning };
+  const outcome = parseToolResult(result);
+  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.conversationsFailed, code: outcome.code };
+  const value = (typeof outcome.value === 'object' && outcome.value !== null ? outcome.value : null) as ConversationsResult | null;
+  // A call that ended without our result (the answer broke off in it) looked at nothing the line could name.
+  if (!value) return { state: 'failed', text: ru.chat.conversationsFailed, code: null };
+  const asked = (parameters ?? {}) as ConversationsAsked;
+  const found = Array.isArray(value.conversations) ? value.conversations.length : 0;
+  let text: string;
+  if (asked.mode === 'read') text = asked.conversation === 'current' ? ru.chat.conversationReadCurrent : ru.chat.conversationRead(typeof value.title === 'string' ? value.title : '');
+  else if (asked.mode === 'search') text = ru.chat.conversationsFound(typeof asked.query === 'string' ? asked.query : '', found);
+  else text = ru.chat.conversationsListed(typeof value.total === 'number' ? value.total : found);
+  return { state: 'done', text, readOnly: true, count: null, value: outcome.value };
+}
+
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
   if (skill) return skill;
   const memory = MEMORY_TOOLS[name];
   if (memory) return memorySummary(memory, status, result);
+  if (name === CONVERSATIONS_TOOL) return conversationsSummary(status, result, parameters);
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };

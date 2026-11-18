@@ -289,6 +289,13 @@ export const ru = {
     memoryUpdated: (where: 'project' | 'personal', n: number) => `${where === 'project' ? 'Обновил память проекта' : 'Обновил память о вас'}: ${n} ${plural(n, ['изменение', 'изменения', 'изменений'])}`,
     memoryEntries: (n: number) => `${n} ${plural(n, ['запись', 'записи', 'записей'])}`,
     memoryFailed: (where: 'project' | 'personal') => (where === 'project' ? 'Не удалось записать в память проекта' : 'Не удалось записать в память о вас'),
+    // What the agent looked at in the person's past conversations (spec, section 8.28).
+    conversationsRunning: 'Смотрю прошлые разговоры…',
+    conversationsListed: (n: number) => `Прошлые разговоры: ${n}`,
+    conversationsFound: (query: string, n: number) => `Поиск по разговорам «${query}»: ${n > 0 ? n : 'ничего не нашлось'}`,
+    conversationRead: (title: string) => `Прочитал разговор «${title}»`,
+    conversationReadCurrent: 'Перечитал ранние сообщения разговора',
+    conversationsFailed: 'Не получилось посмотреть прошлые разговоры',
     toolDone: 'Действие выполнено',
     toolDoneIn: (system: string) => `Готово: «${system}»`,
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,
