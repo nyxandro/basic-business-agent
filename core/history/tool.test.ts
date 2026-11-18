@@ -179,8 +179,20 @@ describe('conversations tool', () => {
       `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at) VALUES ($1, 'sales', $2, 'r1', $3, 'mail_send', 'Отправить письмо клиенту', 'approved', now() + interval '1 day')`,
       [olgaId, sent, callId],
     );
+    const late = randomUUID();
+    await t.db.query(`UPDATE mastra.mastra_messages SET content = jsonb_set(content::jsonb, '{parts}', (content::jsonb->'parts') || $2::jsonb)::text WHERE thread_id = $1 AND role = 'assistant'`, [
+      sent,
+      JSON.stringify([{ type: 'tool-invocation', toolInvocation: { state: 'call', toolCallId: late, toolName: 'mail_send', args: {} } }]),
+    ]);
+    // A question in a chat nobody answered in time stays «pending» in the table: only a press finds it out of date.
+    await t.db.query(
+      `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at) VALUES ($1, 'sales', $2, 'r2', $3, 'mail_send', 'Отправить письмо клиенту', 'pending', now() - interval '1 hour')`,
+      [olgaId, sent, late],
+    );
     const out = parsed(await ask(olga, { mode: 'read', conversation: ref(sent) }));
     expect(out.transcript).toContain('не выполнено после «Да»: Отправить письмо клиенту (APP_MAIL_SEND_FAILED)');
+    expect(out.transcript).toContain('не подтверждено вовремя: Отправить письмо клиенту');
+    expect(out.transcript).not.toContain('ждёт «Да»');
   });
 
   it('reads in portions from a message number or from the end, and reads the current conversation', async () => {
@@ -208,6 +220,24 @@ describe('conversations tool', () => {
     expect(ambiguous).toMatchObject({ error: true, code: 'APP_VALIDATION_FAILED' });
     expect(ambiguous.message).toContain('Близнец 1');
     expect(parsed(await ask(olga, { mode: 'read', conversation: twins[1] }))).toMatchObject({ title: 'Близнец 2' });
+    // A number shorter than the short number is found when it is the whole id of the person's own conversation.
+    await conversation(olgaId, 'Короткий номер', [['user', [text('привет')]]], { threadId: 'abc' });
+    expect(parsed(await ask(olga, { mode: 'read', conversation: 'abc' }))).toMatchObject({ title: 'Короткий номер' });
+    expect(parsed(await ask(olga, { mode: 'read', conversation: 'ab' }))).toMatchObject({ error: true, code: 'APP_NOT_FOUND' });
+  });
+
+  it('tells how many there are on a page past the end', async () => {
+    const out = parsed(await ask(olga, { mode: 'list', page: 9 }, shared));
+    expect(out).toMatchObject({ page: 9, more: false, conversations: [] });
+    expect(out.total).toBeGreaterThan(0);
+  });
+
+  it('gives a superadministrator only their own conversations too', async () => {
+    await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
+    const igor = await t.signIn('igor@example.com');
+    const out = parsed(await ask(igor, { mode: 'list', scope: 'all' }));
+    expect(out.conversations).toEqual([]);
+    expect(parsed(await ask(igor, { mode: 'read', conversation: ref(kp) }))).toMatchObject({ error: true, code: 'APP_NOT_FOUND' });
   });
 
   it('lists a background conversation of the person with its mark, and never a draft check of a prompt', async () => {

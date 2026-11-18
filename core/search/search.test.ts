@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { SearchResponse } from '@bba/contracts';
+import { GENUI_TOOL_IDS, type SearchResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
@@ -88,6 +88,7 @@ describe('search', () => {
     const chart = await conversation(olgaId, 'График', [['assistant', [block('show_chart', { title: 'Выручка филиалов', kind: 'bar', labels: ['Тверь'], series: [{ name: 'План', values: [1] }] })]]]);
     const choice = await conversation(olgaId, 'Выбор', [['assistant', [block('ask_choice', { question: 'Какой подрядчик?', options: [{ value: 'a', label: 'Монолитстрой' }, { value: 'b', label: 'Другой' }] })]]]);
     const file = await conversation(olgaId, 'Файл', [['assistant', [block('show_file', { path: 'out/Калькуляция.xlsx' }, { name: 'Калькуляция.xlsx', path: 'out/Калькуляция.xlsx', bytes: 10, shown: true })]]]);
+    const form = await conversation(olgaId, 'Форма', [['assistant', [block('ask_form', { title: 'Реквизиты', fields: [{ name: 'b', label: 'Бенефициар', kind: 'text', required: true }, { name: 'k', label: 'КПП', kind: 'text', required: false }], submitLabel: 'Отправить' })]]]);
     await conversation(olgaId, 'Сбой', [['assistant', [block('show_card', { title: 'Невидимка' }, { error: true, message: 'Tool input validation failed' })]]]);
     await conversation(olgaId, 'Команда', [['assistant', [block('mastra_workspace_execute_command', { command: 'grep Тайносекрет' }, 'Тайносекрет найден')]]]);
 
@@ -98,8 +99,26 @@ describe('search', () => {
     expect((await search('филиалов')).threads.map((x) => x.id)).toEqual([chart]);
     expect((await search('монолитстрой')).threads.map((x) => x.id)).toEqual([choice]);
     expect((await search('калькуляция')).threads.map((x) => x.id)).toEqual([file]);
+    expect((await search('бенефициар')).threads.map((x) => x.id)).toEqual([form]);
     expect((await search('невидимка')).threads).toEqual([]);
     expect((await search('тайносекрет')).threads).toEqual([]);
+  });
+
+  it('has words in the search for every block of the interface: a new block without them fails here', async () => {
+    const sample: Record<string, unknown> = {
+      show_table: { columns: [{ key: 'a', label: 'Столбецблок' }], rows: [] },
+      show_chart: { title: 'Графикблок', kind: 'bar', labels: ['x'], series: [{ name: 's', values: [1] }] },
+      show_card: { title: 'Карточкаблок', fields: [] },
+      ask_choice: { question: 'Выборблок', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
+      ask_form: { title: 'Формаблок', fields: [], submitLabel: 'OK' },
+      show_file: { path: 'Файлблок.docx' },
+    };
+    for (const id of GENUI_TOOL_IDS) {
+      expect(sample[id], `no sample for ${id}`).toBeDefined();
+      const word = JSON.stringify(sample[id]).match(/[А-Яа-я]+блок/)![0];
+      const threadId = await conversation(olgaId, `Блок ${id}`, [['assistant', [{ type: 'tool-invocation', toolInvocation: { state: 'result', toolCallId: randomUUID(), toolName: id, args: sample[id], result: { shown: true } } }]]]);
+      expect((await search(word)).threads.map((x) => x.id), id).toEqual([threadId]);
+    }
   });
 
   it('never shows someone else’s conversation and takes % and _ as plain characters', async () => {

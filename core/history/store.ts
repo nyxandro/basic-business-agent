@@ -44,7 +44,6 @@ interface Row {
   project_name: string | null;
   archived: boolean | null;
   sees: boolean | null;
-  total: string;
 }
 
 // $1 — the person. The project of each conversation as the person sees it now (spec, 8.20): a link to a
@@ -53,8 +52,7 @@ const ROWS = `
   SELECT t.id, t.title, t.metadata->>'agentId' AS agent_id, COALESCE(t.metadata->>'kind', 'chat') AS kind,
          t."createdAtZ" AS started, t."updatedAtZ" AS last,
          (SELECT count(*) FROM app.message_texts mt WHERE mt.thread_id = t.id AND btrim(mt.text) <> '') AS messages,
-         tp.project_id, tp.lost_project_name, p.name AS project_name, p.archived_at IS NOT NULL AS archived, ${SEES} AS sees,
-         count(*) OVER () AS total
+         tp.project_id, tp.lost_project_name, p.name AS project_name, p.archived_at IS NOT NULL AS archived, ${SEES} AS sees
     FROM mastra.mastra_threads t
     LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
     LEFT JOIN app.projects p ON p.id = tp.project_id
@@ -85,12 +83,18 @@ function conversationOf(row: Row): ConversationRow {
 
 // The person's conversations, newest first: of one project (`projectId`) or all; `exclude` — the current one.
 export async function listConversations(db: Db, userId: string, opts: { projectId: string | null; exclude: string | null; limit: number; offset: number }): Promise<{ rows: ConversationRow[]; total: number }> {
-  const { rows } = await db.query<Row>(
-    `${ROWS} AND t.id <> $2 AND ($3::uuid IS NULL OR tp.project_id = $3::uuid)
-     ORDER BY t."updatedAtZ" DESC, t.id DESC LIMIT $4 OFFSET $5`,
-    [userId, opts.exclude ?? '', opts.projectId, opts.limit, opts.offset],
-  );
-  return { rows: rows.map(conversationOf), total: Number(rows[0]?.total ?? 0) };
+  const params = [userId, opts.exclude ?? '', opts.projectId];
+  const which = `AND t.id <> $2 AND ($3::uuid IS NULL OR tp.project_id = $3::uuid)`;
+  // Counted on its own: a page past the end has no rows to count with, and the person still has conversations.
+  const [page, counted] = await Promise.all([
+    db.query<Row>(`${ROWS} ${which} ORDER BY t."updatedAtZ" DESC, t.id DESC LIMIT $4 OFFSET $5`, [...params, opts.limit, opts.offset]),
+    db.query<{ n: string }>(
+      `SELECT count(*) AS n FROM mastra.mastra_threads t LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = $1
+        WHERE t."resourceId" = $1 AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft' ${which}`,
+      params,
+    ),
+  ]);
+  return { rows: page.rows.map(conversationOf), total: Number(counted.rows[0]!.n) };
 }
 
 // The person's conversations among `ids` (the found ones of a search), in no particular order.
@@ -107,8 +111,8 @@ const notFound = (ref: string) =>
 // found the same way as one that is not there at all.
 export async function resolveConversation(db: Db, userId: string, ref: string): Promise<ConversationRow> {
   const wanted = ref.trim();
-  if (wanted.length < REF_LENGTH) throw notFound(wanted);
-  const { rows } = await db.query<Row>(`${ROWS} AND (t.id = $2 OR left(t.id, length($2)) = $2) ORDER BY t."updatedAtZ" DESC LIMIT 11`, [userId, wanted]);
+  // A shorter number is only the whole id: a few characters would fit dozens of conversations.
+  const { rows } = await db.query<Row>(`${ROWS} AND (t.id = $2 OR (length($2) >= ${REF_LENGTH} AND left(t.id, length($2)) = $2)) ORDER BY t."updatedAtZ" DESC LIMIT 11`, [userId, wanted]);
   const exact = rows.find((r) => r.id === wanted);
   if (exact) return conversationOf(exact);
   if (rows.length === 0) throw notFound(wanted);
@@ -138,8 +142,12 @@ export async function conversationMessages(db: Db, userId: string, threadId: str
         ORDER BY m."createdAt", m.id`,
       [userId, threadId],
     ),
+    // A question of a chat nobody answered in time stays «pending» in the table — only a press finds it out of
+    // date (core/chat/run.ts) —, so it reads as expired here. Requests are unique per run and call: should a
+    // provider repeat a call's id in another turn, the later request wins.
     db.query<{ tool_call_id: string; status: ApprovalOutcome['status']; error_code: string | null; summary: string }>(
-      'SELECT tool_call_id, status, error_code, summary FROM app.approval_requests WHERE thread_id = $2 AND user_id = $1',
+      `SELECT tool_call_id, CASE WHEN status = 'pending' AND expires_at < now() THEN 'expired' ELSE status END AS status, error_code, summary
+         FROM app.approval_requests WHERE thread_id = $2 AND user_id = $1 ORDER BY created_at, id`,
       [userId, threadId],
     ),
   ]);

@@ -51,10 +51,29 @@ function dayTimeOf(date: Date, timezone: string): string {
 // The words, then a line per mark under them.
 const bodyOf = (visible: Visible) => visible.text + visible.marks.map((m) => `\n    ${m}`).join('');
 
-// A cut never splits a letter written with two UTF-16 units (emoji and some symbols).
+// A cut never splits a letter written with two UTF-16 units (emoji and some symbols): half of one in a tool's
+// result makes the message JSON Postgres refuses, and the whole answer drops out of the search (8.21).
+const isHighHalf = (code: number) => code >= 0xd800 && code <= 0xdbff;
+
 function cutAt(text: string, at: number): number {
-  const code = text.charCodeAt(at - 1);
-  return at > 0 && at < text.length && code >= 0xd800 && code <= 0xdbff ? at - 1 : at;
+  return at > 0 && at < text.length && isHighHalf(text.charCodeAt(at - 1)) ? at - 1 : at;
+}
+
+// The text from `start` to `end`, both ends moved off the middle of a two-unit letter.
+export function sliceWhole(text: string, start: number, end: number): string {
+  const from = start > 0 && start < text.length && isHighHalf(text.charCodeAt(start - 1)) ? start + 1 : start;
+  return text.slice(from, Math.max(from, cutAt(text, Math.min(end, text.length))));
+}
+
+const FRAGMENT_CHARS = 300;
+// Characters of a fragment before the first match.
+const FRAGMENT_BEFORE = 100;
+
+// The piece of a found message around its first match (`marks` — where the matches are in the text on one line).
+export function fragmentOf(text: string, marks: [number, number][]): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const at = marks[0] ? Math.max(0, marks[0][0] - FRAGMENT_BEFORE) : 0;
+  return `${at > 0 ? '…' : ''}${sliceWhole(flat, at, at + FRAGMENT_CHARS)}${at + FRAGMENT_CHARS < flat.length ? '…' : ''}`;
 }
 
 function startOf(messages: ReadMessage[], from: number | 'end' | null, offset: number, total: number): number {

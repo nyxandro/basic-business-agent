@@ -2,10 +2,12 @@
 // that did not fit goes on from where it was cut, and the end tells the exact call to read on.
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { READ_PAGE_CHARS, readPage, type ReadMessage, type ReadPage } from './read.ts';
+import { fragmentOf, READ_PAGE_CHARS, readPage, sliceWhole, type ReadMessage, type ReadPage } from './read.ts';
 
 const at = new Date('2026-11-12T07:02:00Z');
 const said = (number: number, text: string, role: 'user' | 'assistant' = number % 2 ? 'user' : 'assistant', marks: string[] = []): ReadMessage => ({ number, role, createdAt: at, visible: { text, marks } });
+// Half of a letter written with two UTF-16 units: JSON with it is refused by Postgres (spec, 8.28).
+const LONE_HALF = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const head = { title: 'КП для ЖК Северный', ref: '7c1e9a02', where: 'проект «Тендер ЖК Северный»', agent: 'Продажи', started: at, total: 9, timezone: 'Europe/Moscow' };
 
 describe('readPage', () => {
@@ -59,6 +61,25 @@ describe('readPage', () => {
     expect(() => readPage(head, [said(1, 'а')], null, 3)).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
   });
 
+  it('never cuts a letter written with two units of UTF-16 in half, at either end', () => {
+    const text = 'Смета 📄📊 готова';
+    for (let from = 0; from <= text.length; from++) {
+      for (let to = from; to <= text.length; to++) {
+        expect(sliceWhole(text, from, to), `${from}..${to}`).not.toMatch(LONE_HALF);
+      }
+    }
+  });
+
+  it('cuts a fragment of a found message around its match without halving a letter', () => {
+    const text = `${'📄'.repeat(120)} аванс 30 % ${'📊'.repeat(200)}`;
+    const at = text.indexOf('аванс');
+    for (let shift = 0; shift < 4; shift++) {
+      const piece = fragmentOf(text.slice(shift), [[at - shift, at - shift + 5]]);
+      expect(piece).toContain('аванс');
+      expect(piece).not.toMatch(LONE_HALF);
+    }
+  });
+
   it('says so when the conversation has nothing the person saw', () => {
     const page = readPage({ ...head, total: 2 }, [], null, 0);
     expect(page.transcript).toContain('В этом разговоре нет сообщений.');
@@ -69,7 +90,7 @@ describe('readPage', () => {
   // in order, and no portion is bigger than READ_PAGE_CHARS.
   it('reads every message once, in order, portion after portion', () => {
     fc.assert(
-      fc.property(fc.array(fc.string({ minLength: 1, maxLength: 9000 }), { minLength: 1, maxLength: 12 }), (texts) => {
+      fc.property(fc.array(fc.string({ unit: 'grapheme', minLength: 1, maxLength: 3000 }), { minLength: 1, maxLength: 12 }), (texts) => {
         const messages = texts.map((t, i) => said(i + 1, t.replace(/\n/g, ' ').trim() || 'x'));
         const seen: ReadPage['pieces'] = [];
         let from: number | null = null;
@@ -78,6 +99,7 @@ describe('readPage', () => {
           const page: ReadPage = readPage(head, messages, from, offset);
           const body = page.transcript.split('\n').slice(2, -1).join('\n');
           expect(body.length).toBeLessThanOrEqual(READ_PAGE_CHARS);
+          expect(page.transcript).not.toMatch(LONE_HALF);
           seen.push(...page.pieces);
           if (!page.next) break;
           ({ from, offset } = page.next);

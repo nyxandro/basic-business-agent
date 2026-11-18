@@ -12,7 +12,7 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { findConversations } from '../search/search.ts';
 import { logEvent } from '../server/log.ts';
-import { dayOf, readPage, type ReadMessage } from './read.ts';
+import { dayOf, fragmentOf, readPage, type ReadMessage } from './read.ts';
 import { conversationMessages, conversationsByIds, listConversations, refOf, resolveConversation, type ConversationRow, type ProjectPlace } from './store.ts';
 import { visibleOf } from './transcript.ts';
 
@@ -24,9 +24,6 @@ export const CONVERSATIONS_ACTIONS: Record<string, ActionDescription> = {
 export const LIST_PAGE = 20;
 const SEARCH_CONVERSATIONS = 10;
 const SEARCH_MATCHES = 3;
-const FRAGMENT_CHARS = 300;
-// Characters of a fragment before the first match.
-const FRAGMENT_BEFORE = 100;
 const CURRENT = 'current';
 
 type Ctx = { get(key: string): unknown } | undefined;
@@ -95,14 +92,6 @@ function item(deps: HistoryDeps, c: ConversationRow) {
     last: dayOf(c.last, deps.timezone),
     messages: c.messages,
   };
-}
-
-// The piece of a found message around its first match, on one line.
-function fragmentOf(text: string, marks: [number, number][]): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  const at = marks[0] ? Math.max(0, marks[0][0] - FRAGMENT_BEFORE) : 0;
-  const piece = flat.slice(at, at + FRAGMENT_CHARS);
-  return `${at > 0 ? '…' : ''}${piece}${at + FRAGMENT_CHARS < flat.length ? '…' : ''}`;
 }
 
 function scopeOf(input: Input, run: Run): { projectId: string | null; scope: 'project' | 'all' } | Failure {

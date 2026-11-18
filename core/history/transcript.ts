@@ -23,6 +23,7 @@ export interface Visible {
 // Rows of a table read; the person scrolls a big one, the agent gets the start and how many more.
 export const TABLE_ROWS_SHOWN = 20;
 const SUPERSEDED = 'APP_CHAT_SUPERSEDED';
+const TASK_DELETED = 'APP_TASK_DELETED';
 const CODE = /\bAPP_[A-Z0-9_]+\b/;
 
 interface Invocation {
@@ -104,7 +105,9 @@ function actionLine(call: Invocation, outcome: ApprovalOutcome): string {
       return call.state === 'result' ? `сделано после «Да»: ${summary}` : `после «Да» итог неизвестен: ${summary}`;
     }
     case 'declined':
-      return outcome.errorCode === SUPERSEDED ? `отменено — сотрудник написал новое сообщение: ${summary}` : `сотрудник отказал: ${summary}`;
+      if (outcome.errorCode === SUPERSEDED) return `отменено — сотрудник написал новое сообщение: ${summary}`;
+      if (outcome.errorCode === TASK_DELETED) return `отменено — фоновую задачу удалили: ${summary}`;
+      return `сотрудник отказал: ${summary}`;
     case 'failed':
       return `не выполнено: ${summary}${outcome.errorCode ? ` (${outcome.errorCode})` : ''}`;
     case 'expired':
