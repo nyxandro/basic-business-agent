@@ -1,6 +1,6 @@
-// «Думает…» stays while the agent works and has shown nothing new yet (decision of the owner 15.11):
+// «Работаю» stays while the agent works and has shown nothing new yet (decision of the owner 15.11):
 // also while the model reasons — its reasoning comes as a message of its own that the feed does not
-// draw, and it used to take the dots away between the steps of the agent.
+// draw, and it used to take the status away between the steps of the agent.
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
@@ -66,7 +66,7 @@ async function showChat(messages: Message[], running: boolean) {
   await screen.findByText('Улучши моё резюме');
 }
 
-const thinking = () => screen.queryByRole('status', { name: 'Думает…' });
+const thinking = () => screen.queryByRole('status', { name: 'Работаю' });
 
 describe('a conversation opening (spec, section 8.22)', () => {
   it('shows no «Загружаю разговор…» while it connects: nothing, then the line after a second', async () => {
@@ -91,7 +91,7 @@ describe('a conversation opening (spec, section 8.22)', () => {
   });
 });
 
-describe('«Думает…» while the agent works', () => {
+describe('«Работаю» while the agent works', () => {
   it('stays while the model reasons before its first words', async () => {
     await showChat([QUESTION, REASONING], true);
     expect(thinking()).toBeInTheDocument();

@@ -1,6 +1,6 @@
 // The agent's mark inside a conversation (spec, section 8.17): the conversation's agent's own mark
-// next to its words, its «думает…» and its question «Да/Нет»; with the marks turned off in
-// «Интерфейс» — at none of them, and the words, the dots and the question are still there.
+// next to its words and its question «Да/Нет»; with the marks turned off in «Интерфейс» — at none of
+// them, and the words and the question are still there. «Работаю» has no mark at all (owner 18.11).
 import type { AgentMark } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
@@ -95,11 +95,10 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, settin
     expect(marksIn(document)).toEqual(expected);
   });
 
-  it('next to its «думает…»', async () => {
+  it('not at its «Работаю»', async () => {
     await showChat(setting, { messages: [QUESTION], running: true });
-    const thinking = screen.getByRole('status', { name: 'Думает…' });
-    expect(marksIn(thinking)).toEqual(expected);
-    expect(marksIn(document)).toEqual(expected);
+    expect(screen.getByRole('status', { name: 'Работаю' })).toHaveTextContent('Работаю');
+    expect(marksIn(document)).toEqual([]);
   });
 
   it('next to its question «Да/Нет»', async () => {

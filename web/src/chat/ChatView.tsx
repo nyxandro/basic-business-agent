@@ -1,6 +1,6 @@
 // The conversation window, put into CopilotChat's chat view slot: CopilotChat keeps the agent, the
 // thread, sending and stopping; this draws everything the person sees (mockup «Чат с агентом»):
-// the welcome, the feed, «Думает…», the confirmation card, the error and the input. Files dragged
+// the welcome, the feed, «Работаю», the confirmation card, the error and the input. Files dragged
 // onto the window are attached as from the paperclip (FileDrop.tsx).
 // It also keeps the draft in the browser, tells the page when a turn ends and handles answers that
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
@@ -35,15 +35,13 @@ function releaseWaitingQuestions(agent: { pendingInterrupts: unknown[] }): void 
   if (agent.pendingInterrupts.length > 0) agent.pendingInterrupts = [];
 }
 
-function Thinking() {
+// While the agent works and nothing new is on the screen: a turning ring and «Работаю», without the
+// agent's mark (decision of the owner 18.11) — the mark of the turn is already beside its words.
+function Working() {
   return (
-    <div className={styles.thinking} role="status" aria-label={ru.chat.thinking}>
-      <AgentMark />
-      <div className={styles.dots} aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
+    <div className={styles.working} role="status" aria-label={ru.chat.working}>
+      <span className={styles.workingRing} aria-hidden="true" />
+      <span className={styles.workingWord}>{ru.chat.working}</span>
     </div>
   );
 }
@@ -78,7 +76,7 @@ const FEED_ROLES: ReadonlySet<Message['role']> = new Set(['user', 'assistant', '
 
 function Feed({ messages, running, failures }: { messages: Message[]; running: boolean; failures: FeedFailures }) {
   // Until the next thing to see the agent shows it is working — also while the model reasons, whose
-  // reasoning would otherwise be the last message and take the dots away (decision of the owner 15.11).
+  // reasoning would otherwise be the last message and take «Работаю» away (decision of the owner 15.11).
   const last = messages.findLast((m) => FEED_ROLES.has(m.role));
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
   const rows = rowsOf(messages);
@@ -104,7 +102,7 @@ function Feed({ messages, running, failures }: { messages: Message[]; running: b
       {lastBroken && rows.at(-1)?.kind !== 'agent' ? (
         <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted {...(failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})} />
       ) : null}
-      {waiting ? <Thinking /> : null}
+      {waiting ? <Working /> : null}
     </>
   );
 }

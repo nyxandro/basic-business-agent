@@ -268,7 +268,7 @@ export const ru = {
     message: 'Сообщение агенту',
     send: 'Отправить',
     stop: 'Остановить ответ',
-    thinking: 'Думает…',
+    working: 'Работаю',
     readOnly: 'только чтение',
     found: (n: number) => `${n} найдено`,
     changesData: 'Изменит данные',
