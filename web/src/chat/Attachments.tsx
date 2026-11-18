@@ -15,7 +15,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefO
 import { AutoHeight } from '../ui/AutoHeight.tsx';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
-import { dissolve } from '../ui/dissolve.ts';
+import { turnToSand } from '../ui/dissolve.ts';
+import { EASING, MOVE_S } from '../ui/motion.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import type { WaitingFile } from './attach.ts';
 import { AttachmentStack, MAX_CHIPS } from './AttachmentStack.tsx';
@@ -26,10 +27,7 @@ import { chipMin, chipWidths, stableRows, type ChipSize } from './chip-rows.ts';
 import { FileName } from './FileName.tsx';
 import styles from './attachments.module.css';
 
-const MOVE_S = 0.36;
 const MOVE_MS = MOVE_S * 1000;
-// A soft start and end.
-const EASING = [0.4, 0, 0.2, 1] as const;
 const CHIP_GAP_PX = 6;
 const CHIP_RADIUS_PX = 10;
 const stillMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -130,8 +128,7 @@ export function Attachments({ uploading, progress, voice }: { uploading: readonl
   const layout = useChipLayout(row, ids);
 
   function remove(path: string, chip: HTMLElement | null) {
-    // The sand is only a picture: if it cannot be drawn, the file still goes.
-    if (chip && !stillMotion()) dissolve(chip).catch((error: unknown) => console.warn('attachment sand failed', error));
+    turnToSand(chip);
     extras.removeAttachment(path);
   }
 

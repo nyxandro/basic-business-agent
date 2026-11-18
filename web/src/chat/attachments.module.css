@@ -94,7 +94,9 @@
   border-top: 1px solid var(--border-soft);
 }
 
+/* A file taken away leaves the flow and stays where it was for its moment (Motion, popLayout). */
 .stackList {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;

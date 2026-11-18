@@ -4,9 +4,7 @@
 // the system the box simply takes the height (Motion, reducedMotion of MotionConfig).
 import { motion } from 'motion/react';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-
-const MOVE_S = 0.36;
-const EASING = [0.4, 0, 0.2, 1] as const;
+import { EASING, MOVE_S } from './motion.ts';
 
 export function AutoHeight({ children, className }: { children: ReactNode; className?: string }) {
   const inner = useRef<HTMLDivElement>(null);

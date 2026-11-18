@@ -1,7 +1,7 @@
 import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
+import { apiError, ME, mockServer, type Reply } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 import { PICKER_SORT_KEY } from './picker.ts';
 
@@ -355,8 +355,26 @@ describe('projects of conversations', () => {
 
     await user.click(stack);
     for (const f of top) expect(screen.getByText(f.path)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /6 файлов/ })).not.toBeInTheDocument();
+    // The stack fades out of its place for a moment.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /6 файлов/ })).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Топ нейросетей для бизнес-агентов v2.pdf' })).toHaveFocus();
+  });
+
+  // A removed file turns to sand and leaves the list at once, as everywhere (request of the owner 18.11).
+  it('takes a removed file off the list at once and brings it back when the server refuses', async () => {
+    let answer: (reply: Reply) => void = () => undefined;
+    server({
+      'GET /app/api/projects/p1/files': { body: { files: [{ path: 'смета.xlsx', bytes: 2048 }, { path: 'акт.pdf', bytes: 1024 }] } },
+      'DELETE /app/api/projects/p1/file': () => new Promise<Reply>((resolve) => (answer = resolve)),
+    });
+    renderApp('/projects/p1?tab=files');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Удалить смета.xlsx' }));
+    await waitFor(() => expect(screen.queryByText('смета.xlsx')).not.toBeInTheDocument());
+    expect(screen.getByText('акт.pdf')).toBeInTheDocument();
+    answer(apiError('APP_NOT_FOUND', 'Файл не найден.', 404));
+    expect(await screen.findByText(/Файл не найден/)).toBeInTheDocument();
+    expect(screen.getByText('смета.xlsx')).toBeVisible();
   });
 
   // An upload that joins a stack would vanish into it: the stack opens instead.

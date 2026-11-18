@@ -301,7 +301,9 @@
   gap: 8px;
 }
 
+/* A file removed leaves the flow and stays where it was for its moment (Motion, popLayout). */
 .rows {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 0;
