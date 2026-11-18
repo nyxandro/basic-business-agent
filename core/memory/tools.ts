@@ -35,7 +35,7 @@ const inputSchema = z.object({
 });
 
 // The answer is written after the write, apart from it: a model that answers and writes in one step is asked
-// once more and adds «Готово — записал» (M8, 18.11: 14 of 32 turns with a write, on Qwen 3.6).
+// once more and adds «Готово — записал» (M8, 18.11: 14 of 32 turns with a write, on qwen3.8-flash).
 const ORDER = 'Вызывай до текста ответа, отдельно от него: сначала запись, потом ответ. Сотрудник видит каждую запись строкой в чате — не пиши ему «записал в память».';
 // Goes back with a saved write: the model reads it right when it decides whether to write more. A constant —
 // the core rules let the model follow this field only (base-rules.md); entry texts never go into it.
