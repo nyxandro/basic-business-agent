@@ -5,7 +5,8 @@
 // its pixel. The canvas lies over the page and goes with the last grain. The element is hidden at
 // once: whoever removes it from the page does so on their own time. The grains of a frame are written
 // into one buffer of pixels and drawn at once: drawn one by one, a whole card of files (57 000 grains)
-// took 80 ms a frame, through the buffer 4 ms (18.11, Chromium).
+// took 80 ms a frame, through the buffer 4 ms (18.11, Chromium). The buffer is in CSS pixels, scaled up
+// without smoothing: a grain looks the same, and a phone screen of density 3 needs 9 times less of it.
 
 // CSS px between grains, and the size of one; an element larger than any card of files has larger
 // grains, so that there are no more than MAX_GRAINS to draw in a frame.
@@ -40,7 +41,7 @@ interface TextPiece {
   color: string;
   x: number;
   y: number;
-  clip: { x: number; y: number; w: number; h: number };
+  clip: Rect;
   ellipsis: boolean;
 }
 
@@ -50,6 +51,31 @@ interface IconPiece {
   y: number;
   w: number;
   h: number;
+  clip: Rect;
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// The part of a node seen in the element: within the boxes that clip what they hold up to the element
+// (a list scrolled inside a card shows only some rows), in the element's own coordinates.
+function seenRect(node: Element, element: HTMLElement): Rect {
+  const box = element.getBoundingClientRect();
+  let { left, top, right, bottom } = node.getBoundingClientRect();
+  for (let holder = node.parentElement; holder && holder !== element.parentElement; holder = holder.parentElement) {
+    const style = getComputedStyle(holder);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const at = holder.getBoundingClientRect();
+    left = Math.max(left, at.left);
+    top = Math.max(top, at.top);
+    right = Math.min(right, at.right);
+    bottom = Math.min(bottom, at.bottom);
+  }
+  return { x: left - box.left, y: top - box.top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
 }
 
 interface Picture {
@@ -77,18 +103,22 @@ function pictureOf(element: HTMLElement): Picture {
     const range = document.createRange();
     range.selectNodeContents(node);
     const at = range.getBoundingClientRect();
-    const clip = parent.getBoundingClientRect();
+    // The text is cut by its own box (an ellipsis) and by what clips it.
+    const clip = seenRect(parent, element);
+    if (clip.w === 0 || clip.h === 0) continue;
     texts.push({
       text,
       font: `${ps.fontStyle} ${ps.fontWeight} ${ps.fontSize} ${ps.fontFamily}`,
       color: ps.color,
       x: at.left - box.left,
       y: at.top - box.top + at.height / 2,
-      clip: { x: clip.left - box.left, y: clip.top - box.top, w: clip.width, h: clip.height },
+      clip,
       ellipsis: ps.textOverflow === 'ellipsis',
     });
   }
-  const icons = [...element.querySelectorAll('svg')].map((svg) => {
+  const icons = [...element.querySelectorAll('svg')].flatMap((svg) => {
+    const clip = seenRect(svg, element);
+    if (clip.w === 0 || clip.h === 0) return [];
     const at = svg.getBoundingClientRect();
     const copy = svg.cloneNode(true) as SVGElement;
     copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -96,7 +126,7 @@ function pictureOf(element: HTMLElement): Picture {
     copy.setAttribute('height', String(at.height));
     // An icon drawn as a picture knows no CSS: its colour goes in as it is now.
     const markup = new XMLSerializer().serializeToString(copy).replaceAll('currentColor', getComputedStyle(svg).color);
-    return { markup, x: at.left - box.left, y: at.top - box.top, w: at.width, h: at.height };
+    return [{ markup, x: at.left - box.left, y: at.top - box.top, w: at.width, h: at.height, clip }];
   });
   // A border all round is part of the picture; a single line (between the rows of a list) is not.
   const sides = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map((v) => parseFloat(v) || 0);
@@ -155,7 +185,14 @@ async function draw(picture: Picture, dpr: number): Promise<HTMLCanvasElement | 
       return { image, icon };
     }),
   );
-  for (const { image, icon } of images) ctx.drawImage(image, icon.x, icon.y, icon.w, icon.h);
+  for (const { image, icon } of images) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(icon.clip.x, icon.clip.y, icon.clip.w, icon.clip.h);
+    ctx.clip();
+    ctx.drawImage(image, icon.x, icon.y, icon.w, icon.h);
+    ctx.restore();
+  }
   return canvas;
 }
 
@@ -225,11 +262,12 @@ export async function dissolve(element: HTMLElement): Promise<void> {
   Object.assign(overlay.style, { position: 'fixed', left: `${box.left - MARGIN_PX}px`, top: `${box.top - MARGIN_PX}px`, width: `${w}px`, height: `${h}px`, pointerEvents: 'none', zIndex: '1000' });
   const ctx = overlay.getContext('2d');
   const layer = document.createElement('canvas');
-  layer.width = overlay.width;
-  layer.height = overlay.height;
+  layer.width = Math.ceil(w);
+  layer.height = Math.ceil(h);
   const grainLayer = layer.getContext('2d');
   if (!ctx || !grainLayer) return;
   ctx.scale(dpr, dpr);
+  ctx.imageSmoothingEnabled = false;
   const frameImage = grainLayer.createImageData(layer.width, layer.height);
   const pixels = frameImage.data;
   document.body.append(overlay);
@@ -250,8 +288,8 @@ export async function dissolve(element: HTMLElement): Promise<void> {
         if (age >= g.life || (age < 0 && g.x >= front)) continue;
         const p = Math.max(0, age) / g.life;
         const e = easeOut(p);
-        const size = Math.max(1, Math.round(grain * (1 - p * 0.5) * dpr));
-        paint(pixels, layer.width, layer.height, Math.round((MARGIN_PX + g.x + g.dx * e) * dpr), Math.round((MARGIN_PX + g.y + g.dy * e) * dpr), size, g, Math.round(g.a * (1 - p) ** 1.5));
+        const size = Math.max(1, Math.round(grain * (1 - p * 0.5)));
+        paint(pixels, layer.width, layer.height, Math.round(MARGIN_PX + g.x + g.dx * e), Math.round(MARGIN_PX + g.y + g.dy * e), size, g, Math.round(g.a * (1 - p) ** 1.5));
       }
       grainLayer.putImageData(frameImage, 0, 0);
       ctx.drawImage(layer, 0, 0, w, h);

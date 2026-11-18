@@ -1,37 +1,11 @@
 import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiError, ME, mockServer, type Reply } from '../test/fetch-mock.ts';
+import { apiError, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 import { PICKER_SORT_KEY } from './picker.ts';
+import { REPORTS, server, TENDER } from './test-server.ts';
 
-const AGENTS = [
-  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
-  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
-];
-const TENDER = { id: 'p1', name: 'Тендер Альфа', instructions: '', threadCount: 0, lastActiveAt: '2026-11-10T08:00:00Z', pinned: false, createdAt: '2026-11-10T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
-const REPORTS = { id: 'p2', name: 'Отчёты', instructions: 'Кратко', threadCount: 3, lastActiveAt: '2026-11-16T08:00:00Z', pinned: false, createdAt: '2026-11-11T08:00:00Z', role: 'owner' as const, owner: { id: 'u-olga', name: 'Ольга' }, shared: false, unseen: false, access: { mode: 'private' as const, departments: [], people: [] }, archivedAt: null };
-
-function server(extra: Record<string, Parameters<typeof mockServer>[0][string]> = {}) {
-  return mockServer({
-    'GET /app/api/me': { body: ME },
-    'GET /app/api/agents': { body: { agents: AGENTS } },
-    'GET /app/api/threads': { body: { threads: [], next: null } },
-    'GET /app/api/me/usage': { body: { month: { spentRub: 0, limitRub: 3000, resetsOn: '2026-12-01' }, daily: null } },
-    'GET /app/api/copilotkit/info': { body: { version: '2.0.0', agents: { sales: { name: 'sales', description: '', className: 'MastraAgent' }, assistant: { name: 'assistant', description: '', className: 'MastraAgent' } } } },
-    'GET /app/api/projects': { body: { projects: [TENDER, REPORTS], archivedCount: 0 } },
-    'GET /app/api/projects/p1': { body: TENDER },
-    'GET /app/api/projects/p2': { body: REPORTS },
-    'GET /app/api/projects/p1/files': { body: { files: [] } },
-    'GET /app/api/projects/p1/trash': { body: { batches: [] } },
-    'GET /app/api/projects/p2/files': { body: { files: [] } },
-    'GET /app/api/projects/p2/trash': { body: { batches: [] } },
-    'GET /app/api/projects/p1/memory': { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } },
-    'GET /app/api/projects/p2/memory': { body: { entries: [], usedChars: 0, maxChars: 6000, readOnly: false } },
-    'GET /app/api/departments': { body: { departments: [] } },
-    ...extra,
-  });
-}
 
 describe('projects of conversations', () => {
   it('creates a project from the side panel by Enter and opens its page', async () => {
@@ -313,95 +287,6 @@ describe('projects of conversations', () => {
     await user.click(screen.getByRole('button', { name: 'Сохранить' }));
     expect(await screen.findByText('Сохранено')).toBeInTheDocument();
     expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ instructions: 'Заказчик — ООО «Альфа»' });
-  });
-
-  // A removed file goes into the project's trash at once, «Вернуть» brings it back (spec, section 8.20).
-  it('uploads a file, and removes one into the trash with «Вернуть» in the notice', async () => {
-    const s = server({
-      'POST /app/api/projects/p1/files': { status: 201, body: { path: 'смета.xlsx', bytes: 2048 } },
-      'DELETE /app/api/projects/p1/file': { body: { ok: true, trashId: 'tr1' } },
-      'POST /app/api/projects/p1/trash/restore': { body: { restored: ['смета.xlsx'] } },
-    });
-    renderApp('/projects/p1?tab=files');
-    const user = userEvent.setup();
-    expect(await screen.findByText(/Файлов пока нет/)).toBeInTheDocument();
-    s.set('GET /app/api/projects/p1/files', { body: { files: [{ path: 'смета.xlsx', bytes: 2048 }] } });
-    await user.upload(screen.getByLabelText('Загрузить файл', { selector: 'input' }), new File(['x'], 'смета.xlsx'));
-    expect(await screen.findByText('2 КБ')).toBeInTheDocument();
-
-    s.set('GET /app/api/projects/p1/files', { body: { files: [] } });
-    s.set('GET /app/api/projects/p1/trash', { body: { batches: [{ id: 'b1', via: 'page', deletedBy: 'Ольга', deletedAt: '2026-11-16T08:00:00Z', overlapped: false, items: [{ id: 'tr1', path: 'смета.xlsx', bytes: 2048, kind: 'deleted', expiresAt: '2026-12-16T08:00:00Z' }] }] } });
-    await user.click(screen.getByRole('button', { name: 'Удалить смета.xlsx' }));
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    expect(await screen.findByText(/Файлов пока нет/)).toBeInTheDocument();
-    expect(s.calls.find((c) => c.method === 'DELETE')?.path).toBe('/app/api/projects/p1/file');
-    expect(await screen.findByRole('button', { name: 'Корзина · 1' })).toBeInTheDocument();
-    expect(await screen.findByText(/Файл «смета.xlsx» в корзине/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Вернуть' }));
-    await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/p1/trash/restore')?.body).toEqual({ ids: ['tr1'] }));
-  });
-
-  // Versions of one document in any format are one stack (decision of the owner 18.11).
-  it('gathers the versions of a document into a stack that opens into its files and does not close', async () => {
-    const top = ['v2.pdf', 'v2.pptx', 'v3.pdf', 'v3.pptx', '.pdf', '.pptx'].map((end) => ({ path: `Топ нейросетей для бизнес-агентов${end.startsWith('.') ? '' : ' '}${end}`, bytes: 136192 }));
-    server({ 'GET /app/api/projects/p1/files': { body: { files: [{ path: 'Акт.pdf', bytes: 2048 }, ...top] } } });
-    renderApp('/projects/p1?tab=files');
-    const user = userEvent.setup();
-    const stack = await screen.findByRole('button', { name: /Топ нейросетей для бизнес-агентов/ });
-    expect(stack).toHaveAttribute('aria-expanded', 'false');
-    expect(stack).toHaveTextContent('6 файлов · 3 версии · 3 PDF · 3 PowerPoint');
-    expect(screen.getByText('Акт.pdf')).toBeInTheDocument();
-    expect(screen.queryByText('Топ нейросетей для бизнес-агентов v2.pdf')).not.toBeInTheDocument();
-
-    await user.click(stack);
-    for (const f of top) expect(screen.getByText(f.path)).toBeInTheDocument();
-    // The stack fades out of its place for a moment.
-    await waitFor(() => expect(screen.queryByRole('button', { name: /6 файлов/ })).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Топ нейросетей для бизнес-агентов v2.pdf' })).toHaveFocus();
-  });
-
-  // A removed file turns to sand and leaves the list at once, as everywhere (request of the owner 18.11).
-  it('takes a removed file off the list at once and brings it back when the server refuses', async () => {
-    let answer: (reply: Reply) => void = () => undefined;
-    server({
-      'GET /app/api/projects/p1/files': { body: { files: [{ path: 'смета.xlsx', bytes: 2048 }, { path: 'акт.pdf', bytes: 1024 }] } },
-      'DELETE /app/api/projects/p1/file': () => new Promise<Reply>((resolve) => (answer = resolve)),
-    });
-    renderApp('/projects/p1?tab=files');
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Удалить смета.xlsx' }));
-    await waitFor(() => expect(screen.queryByText('смета.xlsx')).not.toBeInTheDocument());
-    expect(screen.getByText('акт.pdf')).toBeInTheDocument();
-    answer(apiError('APP_NOT_FOUND', 'Файл не найден.', 404));
-    expect(await screen.findByText(/Файл не найден/)).toBeInTheDocument();
-    expect(screen.getByText('смета.xlsx')).toBeVisible();
-  });
-
-  // An upload that joins a stack would vanish into it: the stack opens instead.
-  it('opens the stack a new upload joins, so the file is seen', async () => {
-    const versions = ['Смета v1.xlsx', 'Смета v2.xlsx'].map((path) => ({ path, bytes: 2048 }));
-    const s = server({ 'GET /app/api/projects/p1/files': { body: { files: versions } }, 'POST /app/api/projects/p1/files': { status: 201, body: { path: 'Смета v3.xlsx', bytes: 2048 } } });
-    renderApp('/projects/p1?tab=files');
-    const user = userEvent.setup();
-    expect(await screen.findByRole('button', { name: /Смета/ })).toHaveAttribute('aria-expanded', 'false');
-    s.set('GET /app/api/projects/p1/files', { body: { files: [...versions, { path: 'Смета v3.xlsx', bytes: 2048 }] } });
-    await user.upload(screen.getByLabelText('Загрузить файл', { selector: 'input' }), new File(['x'], 'Смета v3.xlsx'));
-    expect(await screen.findByText('Смета v3.xlsx')).toBeInTheDocument();
-    expect(screen.getByText('Смета v1.xlsx')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /3 файла/ })).not.toBeInTheDocument();
-  });
-
-  it('refuses a file over the limit with its own code and no repeat', async () => {
-    const s = server();
-    renderApp('/projects/p1?tab=files');
-    const user = userEvent.setup();
-    await screen.findByText(/Файлов пока нет/);
-    const big = new File(['x'], 'огромный.pdf');
-    Object.defineProperty(big, 'size', { value: 21 * 1024 * 1024 });
-    await user.upload(screen.getByLabelText('Загрузить файл', { selector: 'input' }), big);
-    expect(await screen.findByText(/APP_UPLOAD_TOO_LARGE|больше 20 МБ/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument();
-    expect(s.calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
   it('starts a new conversation in the project with the chosen agent', async () => {

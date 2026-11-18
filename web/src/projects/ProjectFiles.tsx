@@ -55,11 +55,17 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
   const [opened, setOpened] = useState<{ projectId: string; keys: ReadonlySet<string> }>({ projectId, keys: NONE });
   const openedKeys = opened.projectId === projectId ? opened.keys : NONE;
   const openStack = (key: string) => setOpened((o) => ({ projectId, keys: new Set([...(o.projectId === projectId ? o.keys : []), key]) }));
-  // Files being removed are off the list until the server's next list, which knows they are gone.
-  const [leaving, setLeaving] = useState<{ files: readonly ProjectFile[] | null; paths: ReadonlySet<string> }>({ files: null, paths: NONE });
+  // Files the person removed are off the list until a list from the server comes without them, or the
+  // server refuses: a list asked for meanwhile (after another removal, an upload) may still hold them.
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(NONE);
   const loaded = state.status === 'ready' ? state.data.files : null;
-  const gone = loaded !== null && leaving.files === loaded ? leaving.paths : NONE;
-  const files = loaded?.filter((f) => !gone.has(f.path)) ?? [];
+  const still = (path: string) => loaded?.some((f) => f.path === path) ?? true;
+  if ([...removing].some((path) => !still(path))) setRemoving(new Set([...removing].filter(still)));
+  const files = loaded?.filter((f) => !removing.has(f.path)) ?? [];
+  const without = (path: string) => setRemoving((r) => new Set([...r].filter((p) => p !== path)));
+  // The row turns to sand at once and the next one slides under the pointer: a click on «Удалить» this
+  // soon after a removal is the second click of a double click, not a removal of the next file.
+  const lastRemoval = useRef(0);
   // The first file of a stack just opened takes the focus the stack had.
   const list = useRef<HTMLUListElement>(null);
   const focusNext = useRef<string | null>(null);
@@ -96,10 +102,12 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
 
   // Into the trash at once: it can be brought back, so no question first.
   async function remove(path: string, row: HTMLElement | null) {
+    const now = performance.now();
+    if (now - lastRemoval.current < MOVE_S * 1000) return;
+    lastRemoval.current = now;
     setError(null);
     turnToSand(row);
-    const from = loaded;
-    setLeaving((l) => ({ files: from, paths: new Set([...(l.files === from ? l.paths : []), path]) }));
+    setRemoving((r) => new Set([...r, path]));
     try {
       const { trashId } = await deleteProjectFile(projectId, path);
       reload();
@@ -107,17 +115,20 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
       if (trashId) {
         toast(ru.projects.fileInTrash(path), {
           label: ru.projects.undo,
-          run: () =>
+          run: () => {
+            // Brought back before the list without it came: it is not being removed any more.
+            without(path);
             void restoreFromTrash(projectId, { ids: [trashId] }).then(
               () => (reload(), reloadTrash()),
               (raw: unknown) => setError(asApiError(raw)),
-            ),
+            );
+          },
         });
       }
     } catch (raw) {
       // Back in its place: the sand hid the row, and it may still be the same element leaving.
       row?.style.removeProperty('visibility');
-      setLeaving((l) => ({ files: l.files, paths: new Set([...l.paths].filter((p) => p !== path)) }));
+      without(path);
       setError(asApiError(raw));
     }
   }
