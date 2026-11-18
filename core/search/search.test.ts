@@ -77,6 +77,31 @@ describe('search', () => {
     expect((await search('parts')).threads).toEqual([]);
   });
 
+  it('finds the words the person saw in blocks of the interface, not in what a block failed with or what tools were given (spec, 8.28, F25)', async () => {
+    const block = (toolName: string, args: unknown, result: unknown = { shown: true }): Part => ({ type: 'tool-invocation', toolInvocation: { state: 'result', toolCallId: randomUUID(), toolName, args, result } });
+    const card = await conversation(olgaId, 'Договор', [
+      ['user', [text('Что по договору?')]],
+      ['assistant', [block('show_card', { title: 'Условия', fields: [{ label: 'Предоплата', value: 'тридцать процентов' }] }), text('Условия — в карточке.')]],
+    ]);
+    const table = await conversation(olgaId, 'Смета', [['assistant', [block('show_table', { columns: [{ key: 'p', label: 'Позиция' }], rows: [{ p: 'Гидроизоляция' }] })]]]);
+    const drawn = await conversation(olgaId, 'Сделки CRM', [['assistant', [block('crm_deals', {}, { table: { columns: [{ key: 'n', label: 'Сделка' }], rows: [{ n: 'Пескоструйка' }] } })]]]);
+    const chart = await conversation(olgaId, 'График', [['assistant', [block('show_chart', { title: 'Выручка филиалов', kind: 'bar', labels: ['Тверь'], series: [{ name: 'План', values: [1] }] })]]]);
+    const choice = await conversation(olgaId, 'Выбор', [['assistant', [block('ask_choice', { question: 'Какой подрядчик?', options: [{ value: 'a', label: 'Монолитстрой' }, { value: 'b', label: 'Другой' }] })]]]);
+    const file = await conversation(olgaId, 'Файл', [['assistant', [block('show_file', { path: 'out/Калькуляция.xlsx' }, { name: 'Калькуляция.xlsx', path: 'out/Калькуляция.xlsx', bytes: 10, shown: true })]]]);
+    await conversation(olgaId, 'Сбой', [['assistant', [block('show_card', { title: 'Невидимка' }, { error: true, message: 'Tool input validation failed' })]]]);
+    await conversation(olgaId, 'Команда', [['assistant', [block('mastra_workspace_execute_command', { command: 'grep Тайносекрет' }, 'Тайносекрет найден')]]]);
+
+    expect((await search('предоплата')).threads.map((x) => x.id)).toEqual([card]);
+    expect((await search('тридцать')).threads.map((x) => x.id)).toEqual([card]);
+    expect((await search('гидроизоляция')).threads.map((x) => x.id)).toEqual([table]);
+    expect((await search('пескоструйка')).threads.map((x) => x.id)).toEqual([drawn]);
+    expect((await search('филиалов')).threads.map((x) => x.id)).toEqual([chart]);
+    expect((await search('монолитстрой')).threads.map((x) => x.id)).toEqual([choice]);
+    expect((await search('калькуляция')).threads.map((x) => x.id)).toEqual([file]);
+    expect((await search('невидимка')).threads).toEqual([]);
+    expect((await search('тайносекрет')).threads).toEqual([]);
+  });
+
   it('never shows someone else’s conversation and takes % and _ as plain characters', async () => {
     await conversation(petrId, 'Арматура', [['user', [text('Смета по арматуре А500С')]]]);
     expect((await search('арматур')).threads).toEqual([]);

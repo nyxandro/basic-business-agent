@@ -20,6 +20,14 @@ let model: FakeModel;
 let storage: PostgresStore;
 const sent: { to: string; text: string }[] = [];
 
+// What a reading tool gives back: an old conversation's text (spec, section 8.28) in the fields it is kept in.
+const readOld = createTool({
+  id: 'readOld',
+  description: 'Прочитать старый разговор',
+  inputSchema: z.object({}),
+  execute: () => Promise.resolve({ title: 'Письмо для olga@example.com', transcript: '[1] Сотрудник: напиши ivan@example.com', conversations: [{ ref: 'a1b2c3d4', title: 'Счёт petr@example.com', fragment: 'паспорт 4510 123456' }] }),
+});
+
 const sendEmail = createTool({
   id: 'sendEmail',
   description: 'Отправить письмо',
@@ -41,7 +49,7 @@ function agentWith(processorDb: Db): Agent {
     name: 'Продажи',
     instructions: 'Ты помощник отдела продаж.',
     model: { providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x' },
-    tools: { sendEmail },
+    tools: { sendEmail, readOld },
     memory: new Memory({ storage }),
     inputProcessors: [masking],
     outputProcessors: [masking],
@@ -112,6 +120,16 @@ describe('masking processor', () => {
     expect(last).toContain('[ПОЧТА_2]');
     expect(last).not.toContain('petr@example.com');
     expect(last.match(/\[ПОЧТА_1\]/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('hides data in what a tool gives back before the model reads it (spec, 8.28)', async () => {
+    const agent = agentWith(db);
+    model.script({ toolCalls: [{ name: 'readOld', args: {} }] }, { text: 'Прочитал.' });
+    await run(agent, 'thread-e', 'Что было в старом разговоре?');
+    const answerRequest = JSON.stringify(model.requests.at(-1)?.messages);
+    for (const value of ['olga@example.com', 'ivan@example.com', 'petr@example.com', '4510 123456']) expect(answerRequest).not.toContain(value);
+    expect(answerRequest).toContain('[ПОЧТА_');
+    expect(answerRequest).toContain('[ПАСПОРТ_');
   });
 
   it('does not run a tool with a placeholder the model made up', async () => {

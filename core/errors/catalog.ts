@@ -112,6 +112,7 @@ export const ERROR_CATALOG = {
   APP_MEMORY_DUPLICATE: { status: 409, userMessage: 'Такая запись уже есть.' },
   APP_MEMORY_CONFLICT: { status: 409, userMessage: 'Запись изменили, пока вы её правили.' },
   APP_MEMORY_SAVE_FAILED: { status: 500, userMessage: 'Не удалось сохранить запись. Попробуйте ещё раз.' },
+  APP_CONVERSATIONS_UNAVAILABLE: { status: 500, userMessage: 'Не получилось посмотреть прошлые разговоры: сбой на сервере.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

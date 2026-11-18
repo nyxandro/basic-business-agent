@@ -5,6 +5,7 @@ import type { Agent } from '@mastra/core/agent';
 import { MastraEditor } from '@mastra/editor';
 import type { Memory } from '@mastra/memory';
 import { createMemoryTools } from '../memory/tools.ts';
+import { createHistoryTools } from '../history/tool.ts';
 import type { PostgresStore } from '@mastra/pg';
 import type { AppConfig } from '../config/schemas.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -51,6 +52,9 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
   const mailActions = mailTools ? describeTools(mailTools) : {};
   const memoryTools = createMemoryTools(deps.db);
+  // An agent no longer in the registry keeps its id as its name in the lists of past conversations.
+  const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
+  const historyTools = createHistoryTools({ db: deps.db, timezone: deps.app.timezone, agentName });
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);
@@ -63,12 +67,13 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       stepMs: deps.stepMs ?? MODEL_CALL_MAX_MS,
       memory,
       memoryTools,
+      historyTools,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),
       processorsFor: (r, level) => ({
         input: [
-          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot }),
+          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentName }),
           masking,
           ...imageView,
         ],

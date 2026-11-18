@@ -9,7 +9,8 @@ import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { FIRST_MESSAGE } from './titles.ts';
 
-const LAST_MESSAGES = 30;
+// How many last stored messages of a conversation Mastra gives the model (one turn of the agent is one message).
+export const LAST_MESSAGES = 30;
 export const THREAD_TITLE_LENGTH = 60;
 
 // The list of conversations is read by the web interface: the shape lives in contracts.

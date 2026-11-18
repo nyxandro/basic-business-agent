@@ -2,6 +2,8 @@
 // Editor version) are the only layer edited in the admin panel; this processor adds the rest, from
 // what never changes to what changes: core rules before them, then the organisation, the employee
 // and the project of the conversation with its memory; the employee's personal memory goes last (spec, 8.26).
+// The agent the person talks to in a conversation also gets the names of the person's past conversations of
+// the project (spec, 8.28).
 // The current time is not in the system prompt at all: a provider reuses only an unchanged beginning
 // of a request, and a clock there would make the whole prompt and the conversation history after it
 // new every minute. It is added to the person's last message of the outgoing request only
@@ -10,7 +12,10 @@ import { readFileSync } from 'node:fs';
 import type { Processor } from '@mastra/core/processors';
 import type { LostProjectReason } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
+import { hiddenMessagesNote, hiddenNoteOf, keepHiddenNote, pastConversationsText, PROMPT_CONVERSATIONS } from '../history/prompt.ts';
+import { listConversations, storedMessageCount } from '../history/store.ts';
 import { listEntries } from '../memory/entries.ts';
+import { LAST_MESSAGES } from '../memory/memory.ts';
 import { keepMemorySeen, personalMemoryText, projectMemoryText, seenVersions } from '../memory/prompt.ts';
 import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
@@ -23,6 +28,9 @@ export interface LayersDeps {
   timezone: string;
   baseRules: boolean;
   workspaceRoot: string;
+  // A sub-agent gets no past conversations: it has no tool to read them (spec, 8.28).
+  level: 'top' | 'sub';
+  agentName: (id: string) => string;
 }
 
 // The model sees this many project files by name; it lists the folder itself when it needs more.
@@ -81,8 +89,9 @@ function sizeText(bytes: number): string {
 
 // The project of the run: the run's entry point checked that the person sees it, so it is read by its
 // id; its files live with its creator (spec, section 8.20). A project open to colleagues says so, and
-// warns the agent off their files. `memory` — the project's memory as the prompt reads it (null in a draft check).
-export async function projectLayer(db: Db, workspaceRoot: string, viewerId: string, ownerId: string, projectId: string, memory: string | null): Promise<string | null> {
+// warns the agent off their files. `memory` — the project's memory as the prompt reads it (null in a draft check);
+// `conversations` — the names of the person's past conversations in it (spec, 8.28; null where there are none).
+export async function projectLayer(db: Db, workspaceRoot: string, viewerId: string, ownerId: string, projectId: string, memory: string | null, conversations: string | null = null): Promise<string | null> {
   const { rows } = await db.query<{ name: string; instructions: string; owner_name: string; shared: boolean }>(
     `SELECT p.name, p.instructions, u."name" AS owner_name, ${SHARED} AS shared
        FROM app.projects p JOIN app."user" u ON u."id" = p.user_id WHERE p.id = $1 AND p.user_id = $2`,
@@ -103,6 +112,7 @@ export async function projectLayer(db: Db, workspaceRoot: string, viewerId: stri
     shared,
     project.instructions.trim() || null,
     memory,
+    conversations,
     files.length > 0 ? ['Файлы проекта лежат в твоей рабочей папке:', ...shown, ...more].join('\n') : 'Файлов в проекте пока нет.',
   ]
     .filter(Boolean)
@@ -138,11 +148,22 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         ? await Promise.all([projectId ? listEntries(deps.db, { kind: 'project', projectId }) : Promise.resolve(null), listEntries(deps.db, { kind: 'personal', userId })])
         : [null, null];
       if (personalMemory && requestContext) keepMemorySeen(requestContext, { project: projectMemory ? seenVersions(projectMemory) : null, personal: seenVersions(personalMemory) });
+      // Past conversations only where the agent has the tool to read them: the one the person talks to, in a chat.
+      const withHistory = deps.level === 'top' && optionalContextValue(requestContext, REQUEST_KEYS.runKind) === 'chat';
+      const threadId = withHistory ? requireContextValue(requestContext, REQUEST_KEYS.threadId) : null;
+      const [past, stored] = threadId
+        ? await Promise.all([
+            projectId ? listConversations(deps.db, userId, { projectId, exclude: threadId, limit: PROMPT_CONVERSATIONS, offset: 0 }) : Promise.resolve(null),
+            storedMessageCount(deps.db, threadId),
+          ])
+        : [null, 0];
+      if (threadId && requestContext) keepHiddenNote(requestContext, hiddenMessagesNote(stored, LAST_MESSAGES));
+      const conversations = past ? pastConversationsText(past, { currentAgentId: requireContextValue(requestContext, REQUEST_KEYS.agentId), agentName: deps.agentName, timezone: deps.timezone }) : null;
       const [org, employee, project] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
         projectId
-          ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId, projectMemory ? projectMemoryText(projectMemory, deps.timezone) : null)
+          ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId, projectMemory ? projectMemoryText(projectMemory, deps.timezone) : null, conversations)
           : Promise.resolve(lost ? lostProjectLayer(JSON.parse(lost) as { name: string; reason: LostProjectReason }) : null),
       ]);
       return {
@@ -158,12 +179,15 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
       };
     },
 
-    processLLMRequest({ prompt }) {
+    processLLMRequest({ prompt, requestContext }) {
       const last = prompt.findLastIndex((m) => m.role === 'user');
       if (last < 0) return undefined;
       const message = prompt[last]!;
       if (message.role !== 'user') return undefined;
-      const stamped = { ...message, content: [...message.content, { type: 'text' as const, text: `\n\n(${timeLayer(deps.timezone)})` }] };
+      // Which first messages of a long conversation the model does not see (spec, 8.28): the number grows every
+      // turn, so it goes here, with the time, not into the system prompt.
+      const hidden = hiddenNoteOf(requestContext);
+      const stamped = { ...message, content: [...message.content, { type: 'text' as const, text: `\n\n(${timeLayer(deps.timezone)})${hidden ? `\n(${hidden})` : ''}` }] };
       return { prompt: prompt.map((m, i) => (i === last ? stamped : m)) };
     },
   } satisfies Processor;

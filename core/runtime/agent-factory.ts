@@ -13,6 +13,7 @@ import { createShowFileTool } from '../sandbox/show-file.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import type { MemoryTools } from '../memory/tools.ts';
+import type { HistoryTools } from '../history/tool.ts';
 import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
 import { createStreamRetry, dropShownWords, isGatewayStreamFailure } from './stream-retry.ts';
@@ -69,6 +70,8 @@ export interface AgentFactoryDeps {
   connections?: Pick<ConnectionManager, 'toolsFor'>;
   // The memory of the project and of the person (spec, section 8.26): given to the agent the person talks to in a chat.
   memoryTools?: MemoryTools;
+  // The person's past conversations (spec, section 8.28): the same — only to the agent the person talks to, in a chat.
+  historyTools?: HistoryTools;
   // The person's mailbox (spec, section 8.24): its tools, when the person has connected one.
   mail?: { toolsFor(userId: string): Promise<Record<string, AnyTool>> };
   // Files and commands of the employee's own folder; without it the agent only reads skills.
@@ -115,12 +118,13 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     // Tools of connected systems and of the mailbox are per employee and request (their personal access);
     // the memory tools depend on the run (a chat, a project) and go only to the agent the person talks to.
     tools:
-      (rt.connectorIds.length > 0 && deps.connections) || deps.mail || (deps.memoryTools && level === 'top')
+      (rt.connectorIds.length > 0 && deps.connections) || deps.mail || ((deps.memoryTools || deps.historyTools) && level === 'top')
         ? async ({ requestContext }) => {
             const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
             return {
               ...staticTools,
               ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
+              ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
               ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
               ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
             };

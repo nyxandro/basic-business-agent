@@ -2,8 +2,9 @@
 // tables directly (mastra_threads, mastra_messages: content is JSON text with "parts"), so it lives
 // in this one module and its test runs on a real database: a Mastra upgrade that changes the
 // tables breaks the test, not the product silently.
-import type { SearchResponse, SearchScope } from '@bba/contracts';
+import type { SearchResponse, SearchScope, TextMarks } from '@bba/contracts';
 import type pg from 'pg';
+import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
@@ -43,16 +44,24 @@ const MESSAGE_TEXT = normalizedSql('mt.text');
 // or with a typo. Messages holding a word are found through the index of their text (app.message_texts);
 // those found directly come first, newest first in each part (spec, 8.13 and 8.21). Typos are looked for
 // only when fewer than 50 are found directly: the others would not make the list.
-async function searchThreads(client: pg.PoolClient, userId: string, words: WordVariants[]): Promise<{ rows: { row: Row; direct: boolean }[]; words: WordVariants[] }> {
-  const direct = await threadsBy(client, userId, words, false);
-  if (direct.length >= MAX_RESULTS) return { rows: direct, words };
+// `within` — only conversations of this project (the agent's search, spec 8.28); `limit` — how many at most.
+interface ThreadsWithin {
+  projectId: string | null;
+  limit: number;
+}
+const EVERYWHERE: ThreadsWithin = { projectId: null, limit: MAX_RESULTS };
+
+async function searchThreads(client: pg.PoolClient, userId: string, words: WordVariants[], within = EVERYWHERE): Promise<{ rows: { row: Row; direct: boolean }[]; words: WordVariants[] }> {
+  const direct = await threadsBy(client, userId, words, false, within);
+  if (direct.length >= within.limit) return { rows: direct, words };
   const corrected = await correctionsOf(client, words);
-  return { rows: await threadsBy(client, userId, corrected, true), words: corrected };
+  return { rows: await threadsBy(client, userId, corrected, true, within), words: corrected };
 }
 
-async function threadsBy(client: pg.PoolClient, userId: string, words: WordVariants[], typos: boolean): Promise<{ row: Row; direct: boolean }[]> {
+async function threadsBy(client: pg.PoolClient, userId: string, words: WordVariants[], typos: boolean, within: ThreadsWithin): Promise<{ row: Row; direct: boolean }[]> {
   const params = new SqlParams();
   const user = params.add(userId);
+  const inProject = within.projectId ? ` AND tp.project_id = ${params.add(within.projectId)}` : '';
   const inMessages = (condition: string) => `SELECT mt.thread_id FROM app.message_texts mt WHERE mt.resource_id = ${user} AND ${condition}`;
   const pieces: string[] = [];
   const directs: string[] = [];
@@ -72,13 +81,13 @@ async function threadsBy(client: pg.PoolClient, userId: string, words: WordVaria
        SELECT t.id, t.title, ${normalizedSql('t.title')} AS name, t.metadata->>'agentId' AS agent_id, t."updatedAtZ" AS updated, tp.project_id
          FROM mastra.mastra_threads t
          LEFT JOIN app.thread_projects tp ON tp.thread_id = t.id AND tp.user_id = ${user}
-        WHERE t."resourceId" = ${user} AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'
+        WHERE t."resourceId" = ${user} AND COALESCE(t.metadata->>'kind', 'chat') <> 'draft'${inProject}
      ), ${pieces.join(', ')}
      SELECT own.id, own.title, own.agent_id, own.updated, own.project_id, (${directs.join(' AND ')}) AS direct
        FROM own
       WHERE ${each.join(' AND ')}
       ORDER BY direct DESC, own.updated DESC, own.id DESC
-      LIMIT ${MAX_RESULTS}`,
+      LIMIT ${within.limit}`,
     params.values,
   );
   return rows.map(({ direct, ...row }) => ({ row, direct }));
@@ -107,18 +116,82 @@ async function partsOf(client: pg.PoolClient, ids: string[], words: WordVariants
   return new Map(rows.map((r) => [r.id, r]));
 }
 
-export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope }): Promise<SearchResponse> {
-  if (query.q.trim().length < MIN_QUERY) {
-    throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
+// The words of a query, or why it is not one: too short, too long, or only one-letter words («с», «и»).
+async function queryWords(db: Db, q: string): Promise<WordVariants[]> {
+  if (q.trim().length < MIN_QUERY) {
+    throw appError('APP_VALIDATION_FAILED', `search query "${q}" is too short`, { userMessage: `Введите хотя бы ${MIN_QUERY} символа.` });
   }
-  if (query.q.length > MAX_QUERY_LENGTH || query.q.trim().split(/\s+/).length > MAX_QUERY_WORDS) {
-    throw appError('APP_VALIDATION_FAILED', `search query of ${query.q.length} characters is too long`, {
+  if (q.length > MAX_QUERY_LENGTH || q.trim().split(/\s+/).length > MAX_QUERY_WORDS) {
+    throw appError('APP_VALIDATION_FAILED', `search query of ${q.length} characters is too long`, {
       userMessage: `Запрос слишком длинный: оставьте до ${MAX_QUERY_WORDS} слов и ${MAX_QUERY_LENGTH} знаков.`,
     });
   }
-  const words = await queryVariants(deps.db, query.q);
-  // Only one-letter words («с», «и»): nothing to search by.
-  if (words.length === 0) throw appError('APP_VALIDATION_FAILED', `search query "${query.q}" has no word of two letters`, { userMessage: `Введите хотя бы одно слово из ${MIN_QUERY} букв.` });
+  const words = await queryVariants(db, q);
+  if (words.length === 0) throw appError('APP_VALIDATION_FAILED', `search query "${q}" has no word of two letters`, { userMessage: `Введите хотя бы одно слово из ${MIN_QUERY} букв.` });
+  return words;
+}
+
+export interface FoundMessage {
+  // The place of the message among all stored messages of its conversation (spec, 8.28).
+  number: number;
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface FoundConversation {
+  id: string;
+  // Found by the words as typed, not through a corrected typo.
+  direct: boolean;
+  messages: FoundMessage[];
+}
+
+// The agent's search over the person's own conversations (spec, section 8.28): the same words, forms, layouts
+// and typos as «Поиск», within a project or everywhere, found directly first, newest first; for each
+// conversation its last `messages` messages holding a word. The words a typo was corrected to are never handed
+// out — the dictionary is the organisation's (8.21) —, only where the matches are in a text (`marksIn`).
+export async function findConversations(
+  db: Db,
+  userId: string,
+  q: string,
+  within: ThreadsWithin & { messages: number },
+): Promise<{ found: FoundConversation[]; marksIn: (text: string, direct: boolean) => TextMarks }> {
+  const words = await queryWords(db, q);
+  return inSearch(db, async (client) => {
+    const { rows, words: corrected } = await searchThreads(client, userId, words, within);
+    const messages = await numberedMatches(client, rows.map((r) => r.row.id), corrected, within.messages);
+    return {
+      found: rows.map(({ row, direct }) => ({ id: row.id, direct, messages: messages.get(row.id) ?? [] })),
+      marksIn: (text, direct) => marksOf(text, corrected, direct ? 'direct' : 'message-typo'),
+    };
+  });
+}
+
+async function numberedMatches(client: pg.PoolClient, ids: string[], words: WordVariants[], limit: number): Promise<Map<string, FoundMessage[]>> {
+  if (ids.length === 0) return new Map();
+  const params = new SqlParams();
+  const list = params.add(ids);
+  const holds = words.map((word) => {
+    const typo = typoPieces(word);
+    const direct = directCondition(MESSAGE_TEXT, word, params);
+    return typo.length === 0 ? direct : `(${direct} OR ${piecesCondition(MESSAGE_TEXT, typo, params)})`;
+  });
+  const { rows } = await client.query<{ id: string; messages: FoundMessage[] }>(
+    `SELECT found.id,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object('number', x.number, 'role', x.role, 'text', x.text) ORDER BY x.number)
+                        FROM (SELECT n.number, mt.role, mt.text
+                                FROM app.message_texts mt
+                                JOIN (SELECT m.id, row_number() OVER (ORDER BY m."createdAt", m.id) AS number
+                                        FROM mastra.mastra_messages m WHERE m.thread_id = found.id) n ON n.id = mt.message_id
+                               WHERE mt.thread_id = found.id AND (${holds.join(' OR ')})
+                               ORDER BY n.number DESC LIMIT ${limit}) x), '[]'::jsonb) AS messages
+       FROM unnest(${list}::text[]) AS found(id)`,
+    params.values,
+  );
+  return new Map(rows.map((r) => [r.id, r.messages]));
+}
+
+export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope }): Promise<SearchResponse> {
+  const words = await queryWords(deps.db, query.q);
   const seen = (await listProjects(deps, userId)).projects;
   const { threads, parts, projectHits, corrected, files } = await inSearch(deps.db, async (client) => {
     const found = query.scope === 'all' || query.scope === 'threads' ? await searchThreads(client, userId, words) : { rows: [], words };
