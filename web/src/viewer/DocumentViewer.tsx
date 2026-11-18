@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type R
 import { createPortal } from 'react-dom';
 import { ApiRequestError, toError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { Button, ButtonLink, IconButton } from '../ui/Button.tsx';
+import { Button, ButtonLink, cx, IconButton } from '../ui/Button.tsx';
 import { useDialogFocus } from '../ui/dialog-focus.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
@@ -83,6 +83,8 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
   const [state, setState] = useState<'loading' | 'ready' | ViewerFailure>('loading');
   const [scale, setScale] = useState<number | null>(null);
   const [slow, setSlow] = useState(false);
+  // A window over the dimmed page; the whole screen by the button (the first request of the owner, 18.11).
+  const [wholeScreen, setWholeScreen] = useState(false);
 
   useEffect(() => {
     if (state !== 'loading') return;
@@ -117,52 +119,63 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
   };
 
   return createPortal(
-    <div ref={box} className={styles.layer} role="dialog" aria-modal="true" aria-label={source.name} tabIndex={-1} onKeyDown={keys}>
-      <div className={styles.bar}>
-        <span className={styles.name} title={source.name}>
-          {source.name}
-        </span>
-        <div className={styles.zoom} role="group" aria-label={ru.viewer.zoomGroup}>
-          <IconButton icon="minus" size="sm" label={ru.viewer.zoomOut} disabled={!ready} onClick={() => zoom.current?.zoomOut()} />
-          <span className={styles.percent} aria-live="polite" aria-label={scale === null ? undefined : ru.viewer.scale(percent(scale))}>
-            {scale === null ? '' : percent(scale)}
+    <div className={cx(styles.layer, wholeScreen && styles.wholeScreen)}>
+      {/* The dimmed page closes the viewer on a single click, as the other dialogs (ui/Modal.tsx). */}
+      <button type="button" tabIndex={-1} aria-hidden="true" className={styles.scrim} onClick={(event) => event.detail <= 1 && onClose()} />
+      <div ref={box} className={styles.window} role="dialog" aria-modal="true" aria-label={source.name} tabIndex={-1} onKeyDown={keys}>
+        <div className={styles.bar}>
+          <span className={styles.name} title={source.name}>
+            {source.name}
           </span>
-          <IconButton icon="plus" size="sm" label={ru.viewer.zoomIn} disabled={!ready} onClick={() => zoom.current?.zoomIn()} />
-          <IconButton icon="fitWidth" size="sm" label={ru.viewer.fit} disabled={!ready} onClick={() => zoom.current?.fit()} />
-        </div>
-        <ButtonLink href={source.downloadUrl} download={source.name} icon="download" size="sm" className={styles.download} aria-label={ru.viewer.download}>
-          <span className={styles.downloadText}>{ru.viewer.download}</span>
-        </ButtonLink>
-        <IconButton icon="x" size="sm" label={ru.viewer.close} onClick={onClose} />
-      </div>
-      <div className={styles.body}>
-        {state === 'loading' ? <DelayedBar /> : null}
-        {state === 'loading' && slow ? <p className={styles.preparing}>{ru.viewer.preparing}</p> : null}
-        {failure ? (
-          <div className={styles.failure} role="alert">
-            <Icon name="alert" size={22} />
-            <p>{failure.message}</p>
-            <p className={styles.code}>{failure.code}</p>
-            <div className={styles.failureActions}>
-              {PASSING.has(failure.code) ? (
-                <Button onClick={retry}>{ru.viewer.retry}</Button>
-              ) : null}
-              <ButtonLink href={source.downloadUrl} download={source.name} icon="download" variant="primary">
-                {ru.viewer.download}
-              </ButtonLink>
-            </div>
+          <div className={styles.zoom} role="group" aria-label={ru.viewer.zoomGroup}>
+            <IconButton icon="minus" size="sm" label={ru.viewer.zoomOut} disabled={!ready} onClick={() => zoom.current?.zoomOut()} />
+            <span className={styles.percent} aria-live="polite" aria-label={scale === null ? undefined : ru.viewer.scale(percent(scale))}>
+              {scale === null ? '' : percent(scale)}
+            </span>
+            <IconButton icon="plus" size="sm" label={ru.viewer.zoomIn} disabled={!ready} onClick={() => zoom.current?.zoomIn()} />
+            <IconButton icon="fitWidth" size="sm" label={ru.viewer.fit} disabled={!ready} onClick={() => zoom.current?.fit()} />
           </div>
-        ) : (
-          <Content
-            key={attempt}
-            source={source}
-            attempt={attempt}
-            zoom={zoom}
-            onScale={setScale}
-            onReady={() => setState('ready')}
-            onFailure={(f) => setState(f)}
+          <IconButton
+            icon={wholeScreen ? 'collapse' : 'expand'}
+            size="sm"
+            label={wholeScreen ? ru.viewer.exitWholeScreen : ru.viewer.wholeScreen}
+            className={styles.wholeScreenToggle}
+            onClick={() => setWholeScreen((on) => !on)}
           />
-        )}
+          <ButtonLink href={source.downloadUrl} download={source.name} icon="download" size="sm" className={styles.download} aria-label={ru.viewer.download}>
+            <span className={styles.downloadText}>{ru.viewer.download}</span>
+          </ButtonLink>
+          <IconButton icon="x" size="sm" label={ru.viewer.close} onClick={onClose} />
+        </div>
+        <div className={styles.body}>
+          {state === 'loading' ? <DelayedBar /> : null}
+          {state === 'loading' && slow ? <p className={styles.preparing}>{ru.viewer.preparing}</p> : null}
+          {failure ? (
+            <div className={styles.failure} role="alert">
+              <Icon name="alert" size={22} />
+              <p>{failure.message}</p>
+              <p className={styles.code}>{failure.code}</p>
+              <div className={styles.failureActions}>
+                {PASSING.has(failure.code) ? (
+                  <Button onClick={retry}>{ru.viewer.retry}</Button>
+                ) : null}
+                <ButtonLink href={source.downloadUrl} download={source.name} icon="download" variant="primary">
+                  {ru.viewer.download}
+                </ButtonLink>
+              </div>
+            </div>
+          ) : (
+            <Content
+              key={attempt}
+              source={source}
+              attempt={attempt}
+              zoom={zoom}
+              onScale={setScale}
+              onReady={() => setState('ready')}
+              onFailure={(f) => setState(f)}
+            />
+          )}
+        </div>
       </div>
     </div>,
     document.body,

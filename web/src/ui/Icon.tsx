@@ -5,6 +5,9 @@ import type { CSSProperties, ReactNode } from 'react';
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,
+  // «На весь экран» and «Свернуть» of the document viewer.
+  expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  collapse: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
   // «По ширине» of the document viewer: a page stretched to both sides.
   fitWidth: <path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4" />,
   eye: (

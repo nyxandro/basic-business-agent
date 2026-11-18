@@ -656,6 +656,8 @@ export const ru = {
     zoomIn: 'Увеличить',
     zoomOut: 'Уменьшить',
     fit: 'По ширине',
+    wholeScreen: 'На весь экран',
+    exitWholeScreen: 'Свернуть',
     zoomGroup: 'Масштаб документа',
     scale: (value: string) => `Масштаб ${value}`,
     preparing: 'Готовлю документ к просмотру…',
