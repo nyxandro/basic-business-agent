@@ -30,6 +30,8 @@ export interface LayersDeps {
   workspaceRoot: string;
   // A sub-agent gets no past conversations: it has no tool to read them (spec, 8.28).
   level: 'top' | 'sub';
+  // The agent whose prompt this is: a past conversation with another agent is named so.
+  agentId: string;
   agentName: (id: string) => string;
 }
 
@@ -158,7 +160,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
           ])
         : [null, 0];
       if (threadId && requestContext) keepHiddenNote(requestContext, hiddenMessagesNote(stored, LAST_MESSAGES));
-      const conversations = past ? pastConversationsText(past, { currentAgentId: requireContextValue(requestContext, REQUEST_KEYS.agentId), agentName: deps.agentName, timezone: deps.timezone }) : null;
+      const conversations = past ? pastConversationsText(past, { currentAgentId: deps.agentId, agentName: deps.agentName, timezone: deps.timezone }) : null;
       const [org, employee, project] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
@@ -185,8 +187,9 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
       const message = prompt[last]!;
       if (message.role !== 'user') return undefined;
       // Which first messages of a long conversation the model does not see (spec, 8.28): the number grows every
-      // turn, so it goes here, with the time, not into the system prompt.
-      const hidden = hiddenNoteOf(requestContext);
+      // turn, so it goes here, with the time, not into the system prompt. A sub-agent shares the run's context
+      // but has no tool to read the conversation.
+      const hidden = deps.level === 'top' ? hiddenNoteOf(requestContext) : null;
       const stamped = { ...message, content: [...message.content, { type: 'text' as const, text: `\n\n(${timeLayer(deps.timezone)})${hidden ? `\n(${hidden})` : ''}` }] };
       return { prompt: prompt.map((m, i) => (i === last ? stamped : m)) };
     },

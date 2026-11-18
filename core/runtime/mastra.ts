@@ -73,7 +73,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(mail ? { mail } : {}),
       processorsFor: (r, level) => ({
         input: [
-          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentName }),
+          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
           masking,
           ...imageView,
         ],
