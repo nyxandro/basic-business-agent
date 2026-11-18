@@ -341,6 +341,24 @@ describe('projects of conversations', () => {
     await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/projects/p1/trash/restore')?.body).toEqual({ ids: ['tr1'] }));
   });
 
+  // Versions of one document in any format are one stack (decision of the owner 18.11).
+  it('gathers the versions of a document into a stack that opens into its files and does not close', async () => {
+    const top = ['v2.pdf', 'v2.pptx', 'v3.pdf', 'v3.pptx', '.pdf', '.pptx'].map((end) => ({ path: `Топ нейросетей для бизнес-агентов${end.startsWith('.') ? '' : ' '}${end}`, bytes: 136192 }));
+    server({ 'GET /app/api/projects/p1/files': { body: { files: [{ path: 'Акт.pdf', bytes: 2048 }, ...top] } } });
+    renderApp('/projects/p1?tab=files');
+    const user = userEvent.setup();
+    const stack = await screen.findByRole('button', { name: /Топ нейросетей для бизнес-агентов/ });
+    expect(stack).toHaveAttribute('aria-expanded', 'false');
+    expect(stack).toHaveTextContent('6 файлов · 3 версии · 3 PDF · 3 PowerPoint');
+    expect(screen.getByText('Акт.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('Топ нейросетей для бизнес-агентов v2.pdf')).not.toBeInTheDocument();
+
+    await user.click(stack);
+    for (const f of top) expect(screen.getByText(f.path)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /6 файлов/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Топ нейросетей для бизнес-агентов v2.pdf' })).toHaveFocus();
+  });
+
   it('refuses a file over the limit with its own code and no repeat', async () => {
     const s = server();
     renderApp('/projects/p1?tab=files');

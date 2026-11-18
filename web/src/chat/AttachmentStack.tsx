@@ -7,9 +7,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useId, useState, type Ref } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
-import { FileIcon, fileTypeLabel } from '../ui/FileIcon.tsx';
+import { FileIcon } from '../ui/FileIcon.tsx';
+import { fileStackClass, FileStackHead, kindsLine } from '../ui/FileStack.tsx';
 import { fileSize } from '../ui/format.ts';
-import { Icon } from '../ui/Icon.tsx';
 import type { WaitingFile } from './attach.ts';
 import { FileName } from './FileName.tsx';
 import type { UploadProgress } from './upload-progress.ts';
@@ -18,24 +18,6 @@ import styles from './attachments.module.css';
 
 // Files gathered into the card when there are more than this.
 export const MAX_CHIPS = 6;
-// Icons on the card: the first kinds of the files.
-const STACK_ICONS = 3;
-
-// «4 Word · 2 PDF · 1 PNG»: the most of a kind first, then as they came.
-function kindsLine(names: readonly string[]): string {
-  const counts = new Map<string, number>();
-  for (const name of names) counts.set(fileTypeLabel(name), (counts.get(fileTypeLabel(name)) ?? 0) + 1);
-  return [...counts]
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, n]) => `${n} ${label}`)
-    .join(' · ');
-}
-
-// The first files of different kinds, for the icons of the card.
-function iconNames(names: readonly string[]): string[] {
-  const seen = new Set<string>();
-  return names.filter((name) => (seen.has(fileTypeLabel(name)) ? false : (seen.add(fileTypeLabel(name)), true))).slice(0, STACK_ICONS);
-}
 
 export function AttachmentStack({
   files,
@@ -59,27 +41,19 @@ export function AttachmentStack({
   return (
     <motion.div
       ref={ref}
-      className={styles.stack}
+      className={cx(fileStackClass, styles.stackPlace)}
       initial={{ opacity: 0, scale: 0.97, y: 4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
     >
-      <button type="button" className={styles.stackHead} aria-expanded={open} aria-controls={listId} onClick={() => setOpen((o) => !o)}>
-        <span className={styles.stackIcons} aria-hidden="true">
-          {iconNames(names.length > 0 ? names : uploading.map((f) => f.name)).map((name) => (
-            <span key={name} className={styles.stackIcon}>
-              <FileIcon name={name} size={18} />
-            </span>
-          ))}
-        </span>
-        <span className={styles.stackText}>
-          <span className={styles.stackTitle}>{ru.chat.filesCount(total)}</span>
-          <span className={styles.stackKinds}>
-            {uploading.length > 0 ? <BatchProgress progress={progress} left={uploading.length} /> : kindsLine(names)}
-          </span>
-        </span>
-        <Icon name="down" size={16} className={cx(styles.stackChevron, open && styles.stackChevronOpen)} />
-      </button>
+      <FileStackHead
+        names={names.length > 0 ? names : uploading.map((f) => f.name)}
+        title={ru.chat.filesCount(total)}
+        meta={uploading.length > 0 ? <BatchProgress progress={progress} left={uploading.length} /> : kindsLine(names)}
+        open={open}
+        controls={listId}
+        onClick={() => setOpen((o) => !o)}
+      />
       <AnimatePresence initial={false}>
         {open ? (
           <motion.div id={listId} className={styles.stackBody} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

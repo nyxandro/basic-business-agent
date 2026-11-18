@@ -319,6 +319,17 @@
   border-top: 0;
 }
 
+/* Versions of one document as a stack (ProjectFiles.tsx): room above it for the sheets peeking out. */
+.stackItem {
+  padding: 20px 0 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.stackItem:first-child {
+  padding-top: 14px;
+  border-top: 0;
+}
+
 .rowMain {
   flex: 1;
   min-width: 0;

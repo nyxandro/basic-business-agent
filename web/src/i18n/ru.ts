@@ -205,6 +205,7 @@ export const ru = {
     undo: 'Вернуть',
     archiveTitle: 'Архив проектов',
     filesCount: (n: number) => `${n} ${plural(n, ['файл', 'файла', 'файлов'])}`,
+    versionsCount: (n: number) => `${n} ${plural(n, ['версия', 'версии', 'версий'])}`,
     archiveLink: 'Архив',
     // The tabs of a project page (request of the owner 17.11).
     tabsLabel: 'Разделы проекта',
