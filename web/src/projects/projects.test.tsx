@@ -359,6 +359,20 @@ describe('projects of conversations', () => {
     expect(screen.getByRole('button', { name: 'Топ нейросетей для бизнес-агентов v2.pdf' })).toHaveFocus();
   });
 
+  // An upload that joins a stack would vanish into it: the stack opens instead.
+  it('opens the stack a new upload joins, so the file is seen', async () => {
+    const versions = ['Смета v1.xlsx', 'Смета v2.xlsx'].map((path) => ({ path, bytes: 2048 }));
+    const s = server({ 'GET /app/api/projects/p1/files': { body: { files: versions } }, 'POST /app/api/projects/p1/files': { status: 201, body: { path: 'Смета v3.xlsx', bytes: 2048 } } });
+    renderApp('/projects/p1?tab=files');
+    const user = userEvent.setup();
+    expect(await screen.findByRole('button', { name: /Смета/ })).toHaveAttribute('aria-expanded', 'false');
+    s.set('GET /app/api/projects/p1/files', { body: { files: [...versions, { path: 'Смета v3.xlsx', bytes: 2048 }] } });
+    await user.upload(screen.getByLabelText('Загрузить файл', { selector: 'input' }), new File(['x'], 'Смета v3.xlsx'));
+    expect(await screen.findByText('Смета v3.xlsx')).toBeInTheDocument();
+    expect(screen.getByText('Смета v1.xlsx')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /3 файла/ })).not.toBeInTheDocument();
+  });
+
   it('refuses a file over the limit with its own code and no repeat', async () => {
     const s = server();
     renderApp('/projects/p1?tab=files');

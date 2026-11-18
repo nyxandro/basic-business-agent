@@ -29,9 +29,10 @@ describe('the document of a file', () => {
   });
 
   it('keeps folders apart and a name without a format as it is', () => {
-    expect(documentOf('Почта/Счёт v2.pdf').key).toBe('почта/счёт');
+    expect(documentOf('Почта/Счёт v2.pdf').key).toBe('Почта/счёт');
     expect(documentOf('Почта/Счёт v2.pdf').title).toBe('Почта/Счёт');
     expect(documentOf('Счёт v2.pdf').key).toBe('счёт');
+    expect(documentOf('Docs/A v1.pdf').key).not.toBe(documentOf('docs/A v2.pdf').key);
     expect(documentOf('README').key).toBe('readme');
     expect(documentOf('.env').key).toBe('.env');
   });
@@ -63,7 +64,7 @@ describe('the list of «Файлы проекта»', () => {
     const format = fc.constantFrom('.pdf', '.docx', '.pptx', '');
     const files = fc.uniqueArray(fc.tuple(name, version, format).map(([n, v, f]) => `${n}${v}${f}`), { maxLength: 30 }).map((paths) => paths.map((p) => file(p)));
     fc.assert(
-      fc.property(files, fc.array(fc.constantFrom('отчёт', 'смета', 'почта/отчёт', 'kiev', 'резюме (2)'), { maxLength: 5 }), (list, opened) => {
+      fc.property(files, fc.array(fc.constantFrom('отчёт', 'смета', 'Почта/отчёт', 'kiev', 'резюме (2)'), { maxLength: 5 }), (list, opened) => {
         const entries = listEntries(list, new Set(opened));
         const flat = entries.flatMap((e) => (e.kind === 'file' ? [e.file] : e.group.files));
         // Every file once, and the stacks stand where their first file stood.

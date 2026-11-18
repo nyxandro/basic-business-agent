@@ -8,7 +8,7 @@ const VERSION_AT_END = /(?:^|[\s_\-.(])v\.?\s?(\d+(?:\.\d+)*)\)?$/i;
 const SEPARATORS_AT_END = /[\s_\-.]+$/;
 
 export interface FileDocument {
-  // The folder and the name without the format and the version, in lower case.
+  // The folder and the name without the format and the version, the name in lower case.
   key: string;
   title: string;
   version: string | null;
@@ -22,9 +22,10 @@ export function documentOf(path: string): FileDocument {
   const bare = dot > 0 ? name.slice(0, dot) : name;
   const found = VERSION_AT_END.exec(bare);
   const base = found ? bare.slice(0, found.index).replace(SEPARATORS_AT_END, '') : '';
-  // «v2.pdf» alone is a name, not a version of nothing.
-  const title = folder + (base || bare);
-  return { key: title.toLowerCase(), title, version: base ? found![1]! : null };
+  // «v2.pdf» alone is a name, not a version of nothing. The case of the name does not matter, of the
+  // folder it does: «Docs» and «docs» are two folders on the server.
+  const stem = base || bare;
+  return { key: folder + stem.toLowerCase(), title: folder + stem, version: base ? found![1]! : null };
 }
 
 export interface FileGroup {

@@ -73,7 +73,9 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
     }
     setBusy(file.name);
     try {
-      await uploadProjectFile(projectId, file);
+      const saved = await uploadProjectFile(projectId, file);
+      // A file that joins a stack would vanish into it: the stack opens, so what came is seen.
+      setOpened({ projectId, keys: new Set([...openedKeys, documentOf(saved.path).key]) });
       reload();
     } catch (raw) {
       setFailed({ file, error: asApiError(raw) });
