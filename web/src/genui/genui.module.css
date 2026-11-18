@@ -288,7 +288,8 @@
   gap: 12px;
   /* The 1px of the border is in the padding: the ring takes its place. */
   padding: 13px 15px;
-  max-width: 460px;
+  /* Room for the name and both «Открыть» and «Скачать» (owner, 18.11); a phone keeps the width of the answer. */
+  max-width: 640px;
   color: var(--on-acc);
   border: 0;
   background:
