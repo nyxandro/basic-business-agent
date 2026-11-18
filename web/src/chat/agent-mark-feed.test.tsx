@@ -91,7 +91,7 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, settin
     // The answer is drawn word by word, each word in an element of its own.
     const words = document.querySelector('[data-streaming-markdown-root]')!;
     expect(words).toHaveTextContent('Двенадцать сделок.');
-    expect(marksIn(rowOf(words))).toEqual(expected);
+    expect(marksIn(rowOf(words.closest('[data-answer-text]')!))).toEqual(expected);
     expect(marksIn(document)).toEqual(expected);
   });
 

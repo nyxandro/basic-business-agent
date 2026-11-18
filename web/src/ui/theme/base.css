@@ -229,6 +229,23 @@ p {
   }
 }
 
+/* The light over the words of an answer being written (chat/shimmer.ts): its strength is registered
+   as a percentage so that it can glide out — a custom property the browser does not know only jumps. */
+@property --shimmer-strength {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 0%;
+}
+
+@keyframes bba-text-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
 @keyframes bba-grow {
   from {
     width: 0;

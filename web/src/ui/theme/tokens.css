@@ -56,6 +56,8 @@
   --ring: rgba(79, 70, 229, 0.16);
   --ring-strong: rgba(79, 70, 229, 0.45);
   --user-bubble: #f0f0f8;
+  /* The light running over the words of an answer being written (chat/shimmer.ts). */
+  --glow: #8b85f0;
   --ok: #0b7a57;
   --ok-soft: #e6f6ef;
   --warn: #975a00;
@@ -105,6 +107,8 @@
   --ring: rgba(110, 104, 255, 0.22);
   --ring-strong: rgba(110, 104, 255, 0.55);
   --user-bubble: #1f1f30;
+  /* Darker than the words and apart from the links (--acc-text), so the light reads on both. */
+  --glow: #7b74f0;
   --ok: #4ade9e;
   --ok-soft: #0f2a20;
   --warn: #f5b544;

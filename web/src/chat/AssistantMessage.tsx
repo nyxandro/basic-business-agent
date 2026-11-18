@@ -3,19 +3,21 @@
 // Markdown, the blocks the agent draws and the status lines of its calls, those between two things it
 // shows gathered into one stack (decision of the owner 15.11; turn-items.ts); under the last words the
 // toolbar of the mockup: «Копировать», and «Ответить заново» only under the last answer that broke
-// (decision of the owner, 15.11; spec, section 9.1), which also says «Ответ прервался».
+// (decision of the owner, 15.11; spec, section 9.1), which also says «Ответ прервался». A light runs
+// over the words being written and goes out when they are (AnswerText.tsx).
 // CopilotKit draws each tool call with the renderer registered for it (genui/renderers.tsx).
 import type { AssistantMessage as AgentMessage, Message } from '@copilotkit/react-core';
-import { StreamingMarkdownDefaultRenderer, useRenderToolCall } from '@copilotkit/react-core';
+import { useRenderToolCall } from '@copilotkit/react-core';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { AgentMark } from './AgentMark.tsx';
+import { AnswerText } from './AnswerText.tsx';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolStack } from './ToolStack.tsx';
-import { turnItems, type ToolCall } from './turn-items.ts';
+import { turnItems, type ToolCall, type TurnItem } from './turn-items.ts';
 
 const textOfAgent = (m: AgentMessage) => (typeof m.content === 'string' ? m.content : '');
 
@@ -66,6 +68,9 @@ export function AssistantTurn({
   if (items.length === 0 && !interrupted) return null;
   const lastText = [...turn].reverse().map(textOfAgent).find(Boolean) ?? '';
   const draw = (call: ToolCall) => renderToolCall({ toolCall: call, toolMessage: toolMessageOf(messages, call.id) });
+  // Words are still being written only while nothing came after them: the calls of a step come on
+  // the message of its words, and the next step is a message of its own.
+  const writing = (item: TurnItem) => streaming && item === items.at(-1) && item.kind === 'text' && item.message === turn.at(-1);
 
   return (
     <div className={styles.assistant}>
@@ -73,7 +78,7 @@ export function AssistantTurn({
       <div className={styles.body}>
         {items.map((item) =>
           item.kind === 'text' ? (
-            <StreamingMarkdownDefaultRenderer key={`text-${item.id}`} content={item.text} isStreaming={streaming && item.message === turn.at(-1)} className={styles.markdown} />
+            <AnswerText key={`text-${item.id}`} text={item.text} streaming={writing(item)} failed={interrupted} />
           ) : item.kind === 'call' ? (
             <div key={item.call.id}>{draw(item.call)}</div>
           ) : (

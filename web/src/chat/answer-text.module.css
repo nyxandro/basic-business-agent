@@ -1,0 +1,76 @@
+/* Words being written (AnswerText.tsx): a light runs over them and goes out when they are. They are
+   painted with a gradient three times as wide as the answer, seen only through the letters and
+   moving; the light is mixed into the colour of the words by --shimmer-strength (base.css), which
+   glides to 0 in --shimmer-fade, so the last frame is the plain colour and taking the effect off
+   changes nothing. What paints a background or colour of its own would cover the light or lose its
+   letters: a link, inline code and a table (it may be wider than the answer on a phone) run the
+   light over themselves; a code block stays as it is — Chrome does not move its letters when it is
+   scrolled under the light, and the code inside it cannot become a box without its height changing.
+   The words of CopilotKit appear here at once: in Safari a word still fading in drops out of the
+   gradient until it is done. */
+@media (prefers-reduced-motion: no-preference) {
+  .answer[data-shimmer] {
+    --shimmer-base: var(--text);
+    --shimmer-strength: 0%;
+    transition: --shimmer-strength var(--shimmer-fade) ease;
+  }
+
+  .answer[data-shimmer='writing'] {
+    --shimmer-strength: 100%;
+  }
+
+  .answer[data-shimmer] :global([data-streaming-markdown-root]),
+  .answer[data-shimmer] :global(a),
+  .answer[data-shimmer] :global(:not(pre) > code),
+  .answer[data-shimmer] :global(table) {
+    --shimmer-gradient: linear-gradient(
+      100deg,
+      var(--shimmer-base) 42%,
+      color-mix(in oklab, var(--glow) var(--shimmer-strength), var(--shimmer-base)) 50%,
+      var(--shimmer-base) 58%
+    );
+    background-image: var(--shimmer-gradient);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* global(): CSS modules rename an animation to one of the module, and the keyframes are in base.css. */
+    animation: global(bba-text-shimmer) 2.2s linear infinite;
+  }
+
+  .answer[data-shimmer] :global(a) {
+    --shimmer-base: var(--acc-text);
+  }
+
+  /* Its grey box stays under the letters as a second layer. */
+  .answer[data-shimmer] :global(:not(pre) > code) {
+    background-image: var(--shimmer-gradient), linear-gradient(var(--surface2), var(--surface2));
+    background-size: 300% 100%, auto;
+    -webkit-background-clip: text, padding-box;
+    background-clip: text, padding-box;
+  }
+
+  .answer[data-shimmer] :global(a),
+  .answer[data-shimmer] :global(s) {
+    text-decoration-color: var(--shimmer-base);
+  }
+
+  .answer[data-shimmer] :global(pre),
+  .answer[data-shimmer] :global(li)::marker,
+  .answer[data-shimmer] :global([data-streaming-markdown-caret]) {
+    color: var(--text);
+  }
+
+  /* A footnote number in its grey circle, as without the light. */
+  .answer[data-shimmer] :global(.cpk-streaming-markdown-citation-label) {
+    background-image: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: var(--text);
+    animation: none;
+  }
+
+  .answer[data-shimmer] :global(.cpk-streaming-markdown-segment) {
+    transition: none;
+  }
+}
