@@ -21,7 +21,7 @@ export const SESSION_EXPIRED = 'APP_AUTH_SESSION_EXPIRED';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-async function toError(res: Response): Promise<ApiRequestError> {
+export async function toError(res: Response): Promise<ApiRequestError> {
   const raw: unknown = await res.json().catch(() => null);
   const parsed = apiErrorSchema.safeParse(raw);
   if (parsed.success) {

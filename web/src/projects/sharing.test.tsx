@@ -5,6 +5,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { FileBlockView } from '../genui/FileBlock.tsx';
 import { ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
@@ -136,7 +137,11 @@ describe('shared projects', () => {
   it('«Скачать» of a removed file says it is in the trash, offers it from there and brings it back', async () => {
     const s = server({ 'POST /app/api/projects/p1/trash/restore': { body: { restored: ['КП.docx'] } } });
     const status = { state: 'trash' as const, name: 'КП.docx', projectId: 'p1', trashId: 'tr1', expiresAt: '2026-12-16T08:00:00Z' };
-    render(<FileBlockView name="КП.docx" bytes={1024} href="/app/api/threads/t1/file?path=x" checkFile={() => Promise.resolve(status)} />);
+    render(
+      <MemoryRouter>
+        <FileBlockView name="КП.docx" bytes={1024} href="/app/api/threads/t1/file?path=x" previewHref="/app/api/threads/t1/file/preview?path=x" checkFile={() => Promise.resolve(status)} />
+      </MemoryRouter>,
+    );
     const user = userEvent.setup();
     await user.click(screen.getByRole('link', { name: 'Скачать КП.docx' }));
     expect(await screen.findByText('Файл «КП.docx» удалён из рабочей папки. Он в корзине проекта до 16 декабря 2026.')).toBeInTheDocument();
@@ -148,7 +153,11 @@ describe('shared projects', () => {
 
   it('«Скачать» of a file gone for good says so', async () => {
     server();
-    render(<FileBlockView name="старое.docx" bytes={10} href="/x" checkFile={() => Promise.resolve({ state: 'deleted', name: 'старое.docx' })} />);
+    render(
+      <MemoryRouter>
+        <FileBlockView name="старое.docx" bytes={10} href="/x" previewHref="/x/preview" checkFile={() => Promise.resolve({ state: 'deleted', name: 'старое.docx' })} />
+      </MemoryRouter>,
+    );
     await userEvent.setup().click(screen.getByRole('link', { name: 'Скачать старое.docx' }));
     expect(await screen.findByText('Файл «старое.docx» удалён из рабочей папки — скачать его нельзя.')).toBeInTheDocument();
   });

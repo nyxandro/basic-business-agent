@@ -128,7 +128,7 @@ export function registerProjectRoutes(app: Hono<AppEnv>, deps: ProjectsDeps & { 
     const path = c.req.query('path') ?? '';
     // From the copy, or straight from the bucket: one file does not bring the whole project (spec, 8.23).
     const inArea = `files/${relative(filesOf(project), resolveInside(filesOf(project), path))}`;
-    return fileResponse(await deps.storage.openFile(areaOf(project), inArea), 'Файл не найден.', basename(inArea), c.req.query('inline') === '1');
+    return fileResponse(await deps.storage.openFile(areaOf(project), inArea), 'Файл не найден.', basename(inArea));
   });
 
   // The viewer of «Файлы проекта»: the PDF of a Word, Excel or PowerPoint file (spec, section 8.27).

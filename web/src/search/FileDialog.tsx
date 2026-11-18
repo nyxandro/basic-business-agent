@@ -1,8 +1,9 @@
-// The window of a found document (spec, section 8.21; decision of the owner 16.11): its name, project, day
-// and size, «Скачать» and, for a PDF, «Посмотреть» — the browser's own viewer in a new tab. As the file block
+// The window of a found document (spec, sections 8.21 and 8.27; decisions of the owner 16.11 and 18.11): its
+// name, project, day and size, «Закрыть», «Посмотреть» — the document viewer over the window, for the files it
+// shows — and «Скачать». As the file block
 // of the chat, it asks first what it will find: a file removed meanwhile is said so, from the project's trash
 // it can be downloaded or brought back. The window of «Поиск» stays under it.
-import type { SearchFile } from '@bba/contracts';
+import { previewKindOf, type SearchFile } from '@bba/contracts';
 import { useCallback } from 'react';
 import { FileNote } from '../genui/FileBlock.tsx';
 import { ru } from '../i18n/ru.ts';
@@ -12,16 +13,16 @@ import { FileIcon } from '../ui/FileIcon.tsx';
 import { dayLabel, fileSize } from '../ui/format.ts';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import { fetchFileStatus, fileUrl } from './api.ts';
+import { fetchFileStatus, filePreviewUrl, fileUrl } from './api.ts';
+import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { placeOf } from './FileResult.tsx';
 import styles from './search.module.css';
 import { DelayedBar } from '../ui/Loading.tsx';
 
-const isPdf = (name: string) => name.toLowerCase().endsWith('.pdf');
-
 export function FileDialog({ file, projectName, onClose }: { file: SearchFile; projectName: string; onClose: () => void }) {
   const check = useCallback(() => fetchFileStatus(file), [file]);
   const { state, reload } = useLoad(check);
+  const { open, viewer } = useDocumentViewer();
   return (
     <Modal open onClose={onClose} label={file.name} narrow>
       <div className={styles.fileDialog}>
@@ -41,10 +42,10 @@ export function FileDialog({ file, projectName, onClose }: { file: SearchFile; p
           <Button variant="secondary" onClick={onClose}>
             {ru.search.closeFile}
           </Button>
-          {state.status === 'ready' && state.data.state === 'ok' && isPdf(file.name) ? (
-            <ButtonLink href={fileUrl(file, true)} target="_blank" rel="noopener noreferrer">
-              {ru.search.view}
-            </ButtonLink>
+          {state.status === 'ready' && state.data.state === 'ok' && previewKindOf(file.name) ? (
+            <Button icon="eye" onClick={() => open({ name: file.name, downloadUrl: fileUrl(file), previewUrl: filePreviewUrl(file) })}>
+              {ru.viewer.view}
+            </Button>
           ) : null}
           {state.status === 'ready' && state.data.state === 'ok' ? (
             <ButtonLink variant="primary" href={fileUrl(file)} download={file.name} icon="download">
@@ -53,6 +54,7 @@ export function FileDialog({ file, projectName, onClose }: { file: SearchFile; p
           ) : null}
         </div>
       </div>
+      {viewer}
     </Modal>
   );
 }

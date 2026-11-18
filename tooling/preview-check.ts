@@ -10,6 +10,7 @@ import { isAppError } from '../core/errors/app-error.ts';
 import { createPreviewCache } from '../core/preview/cache.ts';
 import { sandboxRunner } from '../core/preview/convert.ts';
 import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS } from '../core/preview/service.ts';
+import { sandboxPath } from '../core/sandbox/environment.ts';
 import { createLimiter } from '../core/sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../core/sandbox/workspace.ts';
 import { areaDir, userArea } from '../core/storage/areas.ts';
@@ -55,7 +56,7 @@ try {
     let line: string;
     try {
       const { path } = await preview.pdf(AREA, want.file, '-');
-      const pages = Number(execFileSync(join(VENV, 'bin', 'qpdf'), ['--show-npages', path]).toString().trim());
+      const pages = Number(execFileSync('qpdf', ['--show-npages', path], { env: { ...process.env, PATH: sandboxPath(VENV) } }).toString().trim());
       const text = execFileSync('pdftotext', [path, '-']).toString();
       const problems = [
         want.code ? `expected ${want.code}` : '',

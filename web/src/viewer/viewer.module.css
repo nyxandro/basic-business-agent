@@ -1,0 +1,167 @@
+/* The document viewer (spec, section 8.27): the whole screen above everything, a thin bar and the document
+   edge to edge. The pages stay white as paper in both themes; round them — the colour of the theme. */
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface2);
+  outline: none;
+  animation: bba-fade 0.15s ease-out both;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 0 8px 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.percent {
+  min-width: 48px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.download {
+  margin-left: 4px;
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* PDF.js scrolls this container itself and needs it positioned. The browser's own pinch of the page is
+   off here: two fingers scale the document (zoom.ts). */
+.pdf {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  touch-action: pan-x pan-y;
+  outline: none;
+}
+
+.pdf :global(.pdfViewer) {
+  padding: 8px 0;
+}
+
+.pdf :global(.pdfViewer .page) {
+  box-shadow: 0 1px 3px rgba(20, 20, 43, 0.18);
+}
+
+.text {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface);
+  font-size: calc(14px * var(--viewer-scale, 1));
+  touch-action: pan-x pan-y;
+  outline: none;
+}
+
+.plain {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown {
+  max-width: 860px;
+  margin: 0 auto;
+  font-size: inherit;
+}
+
+.cut {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-size: 13px;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  touch-action: pan-x pan-y;
+  outline: none;
+}
+
+.image img {
+  display: block;
+  max-width: none;
+  margin: auto;
+}
+
+.preparing {
+  position: absolute;
+  inset: 40% 16px auto;
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.failure {
+  max-width: 420px;
+  margin: 15vh auto 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text);
+}
+
+.failure p {
+  margin: 8px 0 0;
+}
+
+.code {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.failureActions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* On a phone «Скачать» is its icon: the name keeps the room. */
+@media (max-width: 599px) {
+  .downloadText {
+    display: none;
+  }
+
+  .bar {
+    padding-left: 12px;
+  }
+}

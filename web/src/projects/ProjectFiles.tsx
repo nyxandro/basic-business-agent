@@ -2,7 +2,7 @@
 // — no question, «Вернуть» in the notice — and «Корзина · N». A failed upload stays as a line with
 // «Повторить». Attachments of the project's conversations land here too. In an archived project the
 // files are only read.
-import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
+import { MAX_UPLOAD_BYTES, previewKindOf, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -16,7 +16,8 @@ import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { projectKeys } from './queries.ts';
 import { useToast } from '../ui/Toast.tsx';
-import { deleteProjectFile, fetchProjectFiles, fetchTrash, projectFileUrl, restoreFromTrash, uploadProjectFile } from './api.ts';
+import { deleteProjectFile, fetchProjectFiles, fetchTrash, projectFilePreviewUrl, projectFileUrl, restoreFromTrash, uploadProjectFile } from './api.ts';
+import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { TrashDialog } from './TrashDialog.tsx';
 import styles from './projects.module.css';
 
@@ -34,6 +35,8 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
   const [failed, setFailed] = useState<{ file: File; error: ApiRequestError } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiRequestError | null>(null);
+  // A click on a document opens it; «Скачать» is beside the row and in the viewer (decision of the owner 18.11).
+  const { open, viewer } = useDocumentViewer();
 
   async function upload(file: File) {
     setFailed(null);
@@ -147,9 +150,15 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
             <li key={f.path} className={styles.row}>
               <FileIcon name={f.path} size={20} />
               <span className={styles.rowMain}>
-                <a className={styles.rowName} href={projectFileUrl(projectId, f.path)} download>
-                  {f.path}
-                </a>
+                {previewKindOf(f.path) ? (
+                  <button type="button" className={styles.rowName} onClick={() => open({ name: f.path.split('/').at(-1)!, downloadUrl: projectFileUrl(projectId, f.path), previewUrl: projectFilePreviewUrl(projectId, f.path) })}>
+                    {f.path}
+                  </button>
+                ) : (
+                  <a className={styles.rowName} href={projectFileUrl(projectId, f.path)} download>
+                    {f.path}
+                  </a>
+                )}
                 <span className={styles.rowMeta}>{fileSize(f.bytes)}</span>
               </span>
               <IconButton icon="download" label={`${ru.projects.download} ${f.path}`} onClick={() => window.open(projectFileUrl(projectId, f.path), '_blank')} />
@@ -159,6 +168,7 @@ export function ProjectFiles({ projectId, readOnly, shared }: { projectId: strin
           {state.data.files.length === 0 && !busy && !failed ? <li className={styles.empty}>{ru.projects.noFiles}</li> : null}
         </ul>
       ) : null}
+      {viewer}
     </Card>
   );
 }

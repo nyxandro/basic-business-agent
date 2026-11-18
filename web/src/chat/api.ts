@@ -15,6 +15,8 @@ export function fetchThreadPage(query: { limit: number; before?: string | null }
 }
 // «Скачать» of the file block: a file of the folder of the conversation (spec, section 8.18).
 export const threadFileUrl = (threadId: string, path: string) => `/app/api/threads/${enc(threadId)}/file?path=${enc(path)}`;
+// The PDF of a Word, Excel or PowerPoint file for the viewer (spec, section 8.27).
+export const threadFilePreviewUrl = (threadId: string, path: string) => `/app/api/threads/${enc(threadId)}/file/preview?path=${enc(path)}`;
 export const fetchThreadFileStatus = (threadId: string, path: string) => api<ThreadFileStatus>('GET', `/app/api/threads/${enc(threadId)}/file/status?path=${enc(path)}`);
 export const deleteThread = (threadId: string) => api<{ ok: true }>('DELETE', `/app/api/threads/${enc(threadId)}`);
 export const fetchThreadName = (threadId: string) => api<ThreadNameResponse>('GET', `/app/api/threads/${enc(threadId)}`);

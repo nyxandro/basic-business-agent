@@ -89,6 +89,9 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 ")"
+# The viewer's conversions (spec, section 8.27): every format of core/preview/fixtures through the same
+# LibreOffice, sandbox and qpdf as the installation, LibreOffice 7.4 of the image.
+check "every format of the document viewer turns into PDF in the sandbox" "all 13 formats ok" "$(compose exec -T app node tooling/preview-check.ts 2>/dev/null | tail -1)"
 check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
 echo "== login files of the ChatGPT accounts (volume chatgpt-auth)"

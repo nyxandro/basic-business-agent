@@ -57,15 +57,14 @@ describe('addresses of the file search (spec, section 8.21)', () => {
     expect((await get(`/app/api/files/status?projectId=${project}&path=KP_Yelka_v2.pdf`, petr)).status).toBe(404);
   });
 
-  it('downloads one’s own file, opens a PDF in place only when asked, and refuses paths out of the folder', async () => {
+  // Always a download: the document viewer reads it itself (spec, section 8.27; the old «inline=1» is gone, F22).
+  it('downloads one’s own file and refuses paths out of the folder', async () => {
     const own = await get(`/app/api/files/file?path=${encodeURIComponent('Договор поставки.docx')}`);
     expect(own.status).toBe(200);
     expect(own.headers.get('content-disposition')).toMatch(/^attachment;/);
-    expect((await get(`/app/api/files/file?path=${encodeURIComponent('Договор поставки.docx')}&inline=1`)).headers.get('content-disposition')).toMatch(/^attachment;/);
     const pdf = await get(`/app/api/projects/${project}/file?path=KP_Yelka_v2.pdf&inline=1`);
-    expect(pdf.headers.get('content-disposition')).toMatch(/^inline;/);
+    expect(pdf.headers.get('content-disposition')).toMatch(/^attachment;/);
     expect(pdf.headers.get('content-type')).toBe('application/pdf');
-    expect((await get(`/app/api/projects/${project}/file?path=KP_Yelka_v2.pdf`)).headers.get('content-disposition')).toMatch(/^attachment;/);
     expect((await get(`/app/api/files/file?path=${encodeURIComponent('../x.docx')}`)).status).toBe(400);
     expect((await get(`/app/api/files/file?path=${encodeURIComponent('Нет такого.docx')}`)).status).toBe(404);
     // Пётр's own folder has no such file: nobody reaches another person's own folder.

@@ -52,7 +52,7 @@ export function registerFileSearchRoutes(app: Hono<AppEnv>, deps: ProjectsDeps &
     const userId = access(c).userId;
     const folder = filesRoot(deps.workspaceRoot, userId, null);
     const rel = relative(folder, resolveInside(folder, c.req.query('path') ?? ''));
-    return fileResponse(await deps.storage.openFile(userArea(userId), rel), 'Файл не найден.', basename(rel), c.req.query('inline') === '1');
+    return fileResponse(await deps.storage.openFile(userArea(userId), rel), 'Файл не найден.', basename(rel));
   });
 
   // «Посмотреть» of the window of a found file: the PDF of a Word, Excel or PowerPoint file (spec, 8.27).

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sandboxPath } from '../sandbox/environment.ts';
 import { createLimiter } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { areaDir, userArea } from '../storage/areas.ts';
@@ -23,7 +24,7 @@ const OLGA = userArea('olga');
 let root: string;
 let preview: PreviewService;
 
-const pages = (pdf: string) => Number(execFileSync(join(VENV, 'bin', 'qpdf'), ['--show-npages', pdf]).toString().trim());
+const pages = (pdf: string) => Number(execFileSync('qpdf', ['--show-npages', pdf], { env: { ...process.env, PATH: sandboxPath(VENV) } }).toString().trim());
 const text = (pdf: string) => execFileSync('pdftotext', [pdf, '-']).toString();
 
 beforeAll(() => {

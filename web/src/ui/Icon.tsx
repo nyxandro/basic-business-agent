@@ -4,6 +4,15 @@ import type { CSSProperties, ReactNode } from 'react';
 
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
+  // «По ширине» of the document viewer: a page stretched to both sides.
+  fitWidth: <path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4" />,
+  eye: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="7" />

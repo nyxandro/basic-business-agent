@@ -1,6 +1,7 @@
 import { cardBlockSchema, chartBlockSchema, modelTableBlockSchema, withAttachments, type ChoiceBlock, type FormBlock } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CardBlockView } from './CardBlock.tsx';
@@ -136,11 +137,17 @@ describe('choice and form', () => {
   });
 
   // Spec, section 8.18: a file the agent made, with «Скачать» from the folder of the conversation.
-  it('draws the file the agent made with its size and a link to download it from the conversation', () => {
+  it('draws the file the agent made with its size, «Открыть» and a link to download it from the conversation', () => {
     const result = JSON.stringify({ shown: true, path: 'итоги/КП «Ёлка».docx', name: 'КП «Ёлка».docx', bytes: 48_128 });
-    render(<FileCall call={call({ path: 'итоги/КП «Ёлка».docx' }, { result })} threadId="t-1" />);
+    render(
+      <MemoryRouter>
+        <FileCall call={call({ path: 'итоги/КП «Ёлка».docx' }, { result })} threadId="t-1" />
+      </MemoryRouter>,
+    );
     expect(screen.getByText('КП «Ёлка».docx')).toBeInTheDocument();
     expect(screen.getByText('47 КБ')).toBeInTheDocument();
+    // The document viewer for what it shows (spec, section 8.27): beside «Скачать».
+    expect(screen.getByRole('button', { name: 'Открыть КП «Ёлка».docx' })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'Скачать КП «Ёлка».docx' });
     expect(link).toHaveAttribute('href', `/app/api/threads/t-1/file?path=${encodeURIComponent('итоги/КП «Ёлка».docx')}`);
     expect(link).toHaveAttribute('download', 'КП «Ёлка».docx');

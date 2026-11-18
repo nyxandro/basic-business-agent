@@ -26,6 +26,8 @@ export const fetchProjectFiles = (id: string) => api<{ files: ProjectFile[] }>('
 // Into the project's trash: `trashId` brings it back («Вернуть»); null for a link, which is just removed.
 export const deleteProjectFile = (id: string, path: string) => api<{ ok: true; trashId: string | null }>('DELETE', `${P}/${enc(id)}/file?path=${enc(path)}`);
 export const projectFileUrl = (id: string, path: string) => `${P}/${enc(id)}/file?path=${enc(path)}`;
+// The PDF of a Word, Excel or PowerPoint file for the viewer (spec, section 8.27).
+export const projectFilePreviewUrl = (id: string, path: string) => `${P}/${enc(id)}/file/preview?path=${enc(path)}`;
 export const fetchProjectThreads = (id: string) => api<ThreadPage>('GET', `/app/api/threads?projectId=${enc(id)}&limit=100`);
 export const fetchThreadProject = (threadId: string) => api<ThreadProjectResponse>('GET', `/app/api/threads/${enc(threadId)}/project`);
 export const setThreadProject = (threadId: string, projectId: string | null) => api<{ ok: true }>('PUT', `/app/api/threads/${enc(threadId)}/project`, { projectId });

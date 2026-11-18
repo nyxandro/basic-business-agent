@@ -340,7 +340,7 @@ describe('search over conversations and projects', () => {
     expect(within(dialog).queryByText('Все проекты')).not.toBeInTheDocument();
   });
 
-  it('lists the newest documents on «Файлы» before a query; a document opens its window with «Скачать» and «Посмотреть»', async () => {
+  it('lists the newest documents on «Файлы» before a query; a document opens its window with «Закрыть», «Посмотреть» and «Скачать»', async () => {
     const s = server();
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
@@ -353,9 +353,8 @@ describe('search over conversations and projects', () => {
     const download = await within(file).findByRole('link', { name: 'Скачать' });
     expect(download).toHaveAttribute('href', '/app/api/projects/p1/file?path=KP_Yelka_v2.pdf');
     expect(download).toHaveAttribute('download', 'KP_Yelka_v2.pdf');
-    const view = within(file).getByRole('link', { name: 'Посмотреть' });
-    expect(view).toHaveAttribute('href', '/app/api/projects/p1/file?path=KP_Yelka_v2.pdf&inline=1');
-    expect(view).toHaveAttribute('target', '_blank');
+    // «Закрыть», «Посмотреть» — the document viewer over the window (decision of the owner 18.11), «Скачать».
+    expect([...within(file).getAllByRole('button'), download].map((el) => el.textContent).slice(-3)).toEqual(['Закрыть', 'Посмотреть', 'Скачать']);
     expect(within(file).getByText(/Тендер Северный · сегодня · 2 КБ/)).toBeInTheDocument();
     expect(s.calls.find((c) => c.path === '/app/api/files/status')?.query).toEqual({ projectId: 'p1', path: 'KP_Yelka_v2.pdf' });
     await user.click(within(file).getByRole('button', { name: 'Закрыть' }));
@@ -365,7 +364,8 @@ describe('search over conversations and projects', () => {
     await user.click(within(dialog).getAllByRole('button', { name: /Договор поставки\.docx/ })[0]!);
     const own = await screen.findByRole('dialog', { name: 'Договор поставки.docx' });
     expect(await within(own).findByRole('link', { name: 'Скачать' })).toHaveAttribute('href', `/app/api/files/file?path=${encodeURIComponent('Договор поставки.docx')}`);
-    expect(within(own).queryByRole('link', { name: 'Посмотреть' })).not.toBeInTheDocument();
+    // A Word document is shown too: the server turns it into PDF (spec, section 8.27).
+    expect(within(own).getByRole('button', { name: 'Посмотреть' })).toBeInTheDocument();
   });
 
   it('says in the window of a file that it was removed meanwhile', async () => {

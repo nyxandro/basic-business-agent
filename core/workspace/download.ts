@@ -1,7 +1,7 @@
 // A file of an employee's folder as a download (spec, sections 8.9, 8.18 and 8.21): «Файлы проекта», the
 // file block of the chat and the search. An attachment with the type from the extension and `nosniff`, so a
-// file the agent wrote (HTML, SVG) is saved, never opened as a page of our address; only a PDF may be shown
-// in place («Посмотреть»): the browser opens it in its own viewer.
+// file the agent wrote (HTML, SVG) is saved, never opened as a page of our address. The document viewer
+// reads the same answer itself (spec, section 8.27).
 import { extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { appError } from '../errors/catalog.ts';
@@ -28,14 +28,14 @@ const OTHER = 'application/octet-stream';
 // `name`: the name the person gets; a file of the trash lies under its id and is given under the name it had.
 // The file comes from the disk or straight from the bucket (core/storage, spec section 8.23) and is streamed:
 // a big file does not fill the memory of the server.
-export function fileResponse(file: { stream: Readable; bytes: number } | null, missing: string, name: string, inline = false): Response {
+export function fileResponse(file: { stream: Readable; bytes: number } | null, missing: string, name: string): Response {
   if (!file) throw appError('APP_NOT_FOUND', 'no such file in the folder', { userMessage: missing });
   const body = Readable.toWeb(file.stream) as ReadableStream<Uint8Array>;
   return new Response(body, {
     headers: {
       'content-length': String(file.bytes),
       'content-type': CONTENT_TYPES[extname(name).toLowerCase()] ?? OTHER,
-      'content-disposition': `${inline && extname(name).toLowerCase() === '.pdf' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
       'x-content-type-options': 'nosniff',
     },
   });
