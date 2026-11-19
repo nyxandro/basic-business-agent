@@ -27,6 +27,8 @@ describe('documents of people in the internet of agents', () => {
     expect(await personalDocumentIn(db, 'паспорт 4510 123456', 'web_search')).toBe('passport');
     expect(await personalDocumentIn(db, 'https://example.com/?passport=4510%20123456', 'web_fetch')).toBe('passport');
     expect(await personalDocumentIn(db, 'https://example.com/?p=4510+123456', 'web_fetch')).toBe('passport');
+    // A broken «%» elsewhere does not hide the passport.
+    expect(await personalDocumentIn(db, 'https://example.com/?p=4510%20123456&x=%', 'web_fetch')).toBe('passport');
     expect(await personalDocumentIn(db, 'СНИЛС 112-233-445 95', 'web_research')).toBe('snils');
     expect(await personalDocumentIn(db, 'карта 4111 1111 1111 1111', 'web_research')).toBe('card');
   });

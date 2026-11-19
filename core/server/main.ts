@@ -20,7 +20,7 @@ import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
 import { ensureAgentAbilities } from '../abilities/abilities.ts';
-import { cleanWebWork, createPageReader, FETCH_MAX_MS } from '../web/fetch.ts';
+import { cleanWebWork, createPageReader, FETCH_MAX_MS, WEB_TEXT_CACHE_DIR, WEB_TEXT_CACHE_MAX_AGE_MS, WEB_TEXT_CACHE_MAX_BYTES } from '../web/fetch.ts';
 import { createGatewaySearcher } from '../web/search.ts';
 import { createModelCatalog } from '../models/catalog.ts';
 import { createChatGptAccounts } from '../models/chatgpt-accounts.ts';
@@ -136,7 +136,18 @@ async function main(): Promise<void> {
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   // The internet of agents (spec, section 8.30): the gateway's search, the server's reader of pages.
   cleanWebWork(tmpdir());
-  const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
+  const webTextCache = createPreviewCache({ dir: join(tmpdir(), WEB_TEXT_CACHE_DIR), suffix: DOC_TEXT_CACHE_SUFFIX, maxBytes: WEB_TEXT_CACHE_MAX_BYTES, maxAgeMs: WEB_TEXT_CACHE_MAX_AGE_MS });
+  const webText = createDocTextService({
+    run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [pptxScripts] }),
+    officeLimiter,
+    commandLimiter,
+    cache: webTextCache,
+    workRoot: tmpdir(),
+    pptxScripts,
+    timezone: installation.app.timezone,
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
+  });
+  const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, docText, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
@@ -152,6 +163,7 @@ async function main(): Promise<void> {
   const stopTrashPurge = startTrashPurge(db, files);
   const stopPreviewPurge = startPreviewPurge(previewCache, 'preview');
   const stopDocTextPurge = startPreviewPurge(docTextCache, 'doctext');
+  const stopWebTextPurge = startPreviewPurge(webTextCache, 'webtext');
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
@@ -171,6 +183,7 @@ async function main(): Promise<void> {
     stopTrashPurge();
     stopPreviewPurge();
     stopDocTextPurge();
+    stopWebTextPurge();
     files.stop();
     await mastra.stopWorkers();
     await connections.close();

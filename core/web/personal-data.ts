@@ -14,15 +14,18 @@ const DOCUMENTS: readonly MaskingKind[] = ['passport', 'snils', 'card'];
 export const PERSONAL_DATA_MESSAGE =
   'В запросе есть персональные данные (паспорт, СНИЛС или номер карты). В интернет такие данные не отправляются — так настроено в организации. Скажи об этом сотруднику; если можно, обойдись без этих данных.';
 
-// An address is read as people write it: «%20» and «+» are spaces, «4510%20123456» is a passport.
+// An address is read as people write it: «%20» and «+» are spaces, «4510%20123456» is a passport. Each run of
+// escapes is decoded on its own: one broken «%» elsewhere does not hide the rest.
 function readable(text: string): string {
-  const spaced = text.replace(/\+/g, ' ');
-  try {
-    return decodeURIComponent(spaced);
-  } catch {
-    // A broken escape is not an error of the address check: the text is checked as it is.
-    return spaced;
-  }
+  return text.replace(/\+/g, ' ').replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch (error) {
+      // Bytes that are no UTF-8 (an old Russian site's address): the run stays as written.
+      if (error instanceof URIError) return run;
+      throw error;
+    }
+  });
 }
 
 // The kind of a document of a person found in `text`, or null. Logged without the value.

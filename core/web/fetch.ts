@@ -9,7 +9,7 @@ import type { LookupFunction } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
-import type { Readable } from 'node:stream';
+import { addAbortSignal, pipeline, type Readable } from 'node:stream';
 import { appError } from '../errors/catalog.ts';
 import type { DocTextService } from '../doctext/service.ts';
 import { WEB_PAGE_EXTENSION } from '../doctext/extract.ts';
@@ -17,6 +17,11 @@ import { sliceWhole } from '../history/read.ts';
 import { assertPublicLiteral, publicLookup } from '../net/public-address.ts';
 
 export const FETCH_MAX_BYTES = 10 * 1024 * 1024;
+// Pages are read into their own small cache: a page is never read twice by the same file, and the texts of
+// attached documents (a week, 256 MB) must not be pushed out by a busy search.
+export const WEB_TEXT_CACHE_DIR = 'bba-web-texts';
+export const WEB_TEXT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+export const WEB_TEXT_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 export const FETCH_MAX_MS = 20_000;
 const MAX_REDIRECTS = 5;
 export const ADDRESS_MAX_CHARS = 2000;
@@ -31,6 +36,11 @@ const WORK_PREFIX = 'bba-web-';
 const BLOCKED_STATUSES: ReadonlySet<number> = new Set([401, 403, 429]);
 // Pages of the protections against robots (measure M10a): a check instead of the page.
 const BOT_CHECKS = [/ddos-guard/i, /qrator/i, /cf-chl|just a moment\.\.\.|attention required! \| cloudflare/i, /проверка браузера|вы не робот/i];
+// A page of such a check is small; a big page that only names them (an article about DDoS) is a page to read.
+const BOT_CHECK_MAX_CHARS = 30_000;
+// The <head> of a page — its title and charset — is looked for here only: patterns over a whole page of 10 MB
+// would take the server for minutes on a page made for that.
+const HEAD_CHARS = 64 * 1024;
 
 export type PageKind = 'html' | 'pdf' | 'word' | 'sheet' | 'slides' | 'text';
 
@@ -46,7 +56,8 @@ export interface FetchedPage {
 }
 
 export interface PageReader {
-  read(address: string, offset: number): Promise<FetchedPage>;
+  // `stop` — «Стоп» of the person: the download ends with it.
+  read(address: string, offset: number, stop?: AbortSignal): Promise<FetchedPage>;
 }
 
 export interface PageReaderDeps {
@@ -111,12 +122,15 @@ interface Downloaded {
   body: Buffer;
 }
 
-function decoded(res: http.IncomingMessage): Readable {
+// The body as the site sent it unpacked. `pipeline` carries a break or the abort of the response into the
+// unpacker: with a plain `pipe` a silent or broken compressed body would keep the reader waiting forever.
+function decoded(res: http.IncomingMessage, signal: AbortSignal): Readable {
   const encoding = String(res.headers['content-encoding'] ?? '').toLowerCase();
-  if (encoding === 'gzip' || encoding === 'x-gzip') return res.pipe(createGunzip());
-  if (encoding === 'br') return res.pipe(createBrotliDecompress());
-  if (encoding === 'deflate') return res.pipe(createInflate());
-  return res;
+  const unpack = encoding === 'gzip' || encoding === 'x-gzip' ? createGunzip() : encoding === 'br' ? createBrotliDecompress() : encoding === 'deflate' ? createInflate() : null;
+  if (!unpack) return addAbortSignal(signal, res);
+  // The error reaches the reader through the unpacker itself, which pipeline destroys with it.
+  pipeline(res, addAbortSignal(signal, unpack), () => undefined);
+  return unpack;
 }
 
 // One request, no redirect followed: the caller checks the next address first.
@@ -146,8 +160,10 @@ async function readLimited(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function download(start: URL, deps: PageReaderDeps): Promise<Downloaded> {
-  const signal = AbortSignal.timeout(deps.timeoutMs);
+async function download(start: URL, deps: PageReaderDeps, stop: AbortSignal | undefined): Promise<Downloaded> {
+  const timeout = AbortSignal.timeout(deps.timeoutMs);
+  // «Стоп» of the person ends the download too, not only the time limit.
+  const signal = stop ? AbortSignal.any([timeout, stop]) : timeout;
   let url = start;
   try {
     for (let hop = 0; ; hop++) {
@@ -160,11 +176,12 @@ async function download(start: URL, deps: PageReaderDeps): Promise<Downloaded> {
         url = checkAddress(new URL(location, url).toString(), deps.testSite);
         continue;
       }
-      const body = await readLimited(decoded(res));
+      const body = await readLimited(decoded(res, signal));
       return { final: url, status: res.statusCode ?? 0, contentType: String(res.headers['content-type'] ?? ''), body };
     }
   } catch (error) {
-    if (signal.aborted) throw appError('APP_WEB_FETCH_TIMEOUT', `no answer in ${deps.timeoutMs} ms`, { cause: error });
+    if (stop?.aborted) throw error;
+    if (timeout.aborted) throw appError('APP_WEB_FETCH_TIMEOUT', `no answer in ${deps.timeoutMs} ms`, { cause: error });
     if ((error as { code?: string }).code?.startsWith('APP_')) throw error;
     throw appError('APP_WEB_FETCH_HTTP', `the site did not answer: ${(error as { code?: string }).code ?? (error instanceof Error ? error.name : 'unknown')}`, { cause: error });
   }
@@ -188,28 +205,41 @@ function textOfBody(body: Buffer, contentType: string): string {
   }
 }
 
+// The last part of the address as a title, readable when it can be: «%F0%F0» of an old Russian site stays as is.
+function titleOfAddress(url: URL): string {
+  const last = url.pathname.split('/').filter(Boolean).at(-1) ?? url.hostname;
+  try {
+    return decodeURIComponent(last);
+  } catch (error) {
+    if (error instanceof URIError) return last;
+    throw error;
+  }
+}
+
 const decodeEntities = (s: string) =>
   s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ');
 
 export function createPageReader(deps: PageReaderDeps): PageReader {
   return {
-    async read(address, offset) {
+    async read(address, offset, stop) {
       const start = checkAddress(address, deps.testSite);
-      const got = await download(start, deps);
+      const got = await download(start, deps, stop);
       if (BLOCKED_STATUSES.has(got.status)) throw appError('APP_WEB_FETCH_BLOCKED_BY_SITE', `status ${got.status}`, { details: { status: got.status } });
       if (got.status >= 400) throw appError('APP_WEB_FETCH_HTTP', `status ${got.status}`, { details: { status: got.status } });
       const type = typeOf(got.contentType, got.final, got.body);
       if (!type) throw appError('APP_WEB_FETCH_UNSUPPORTED', `type ${got.contentType || 'unknown'}`);
       const [ext, kind] = type;
       let bytes = got.body;
-      let title = decodeURIComponent(got.final.pathname.split('/').filter(Boolean).at(-1) ?? got.final.hostname);
+      let title = titleOfAddress(got.final);
       if (kind === 'html' || kind === 'text') {
         // Read in its own charset, written in UTF-8: the reader of documents then needs no guess.
         let text = textOfBody(got.body, got.contentType);
         if (kind === 'html') {
-          if (BOT_CHECKS.some((re) => re.test(text.slice(0, 20_000)))) throw appError('APP_WEB_FETCH_BLOCKED_BY_SITE', 'a check against robots');
-          title = decodeEntities(text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? title);
-          text = `<meta charset="utf-8">${text.replace(/<meta[^>]+charset=[^>]*>/gi, '')}`;
+          if (text.length < BOT_CHECK_MAX_CHARS && BOT_CHECKS.some((re) => re.test(text))) throw appError('APP_WEB_FETCH_BLOCKED_BY_SITE', 'a check against robots');
+          const head = text.slice(0, HEAD_CHARS);
+          const named = head.match(/<title[^<>]*>([^<]*)<\/title>/i)?.[1]?.trim();
+          if (named) title = decodeEntities(named);
+          text = `<meta charset="utf-8">${head.replace(/<meta[^<>]+charset=[^<>]*>/gi, '')}${text.slice(HEAD_CHARS)}`;
         }
         bytes = Buffer.from(text, 'utf8');
       }
@@ -222,6 +252,7 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
         if (!doc) throw appError('APP_WEB_FETCH_UNSUPPORTED', `no reader for ${ext}`);
         if (doc.state === 'password') throw appError('APP_WEB_FETCH_UNSUPPORTED', 'a document with a password');
         if (doc.state === 'scan') throw appError('APP_WEB_FETCH_NO_TEXT', 'a scan without text');
+        if (doc.state === 'busy' || doc.state === 'slow') throw appError('APP_WEB_FETCH_BUSY', `the reader of documents: ${doc.state}`);
         if (doc.state !== 'ok') throw appError('APP_WEB_FETCH_UNSUPPORTED', `the document was not read: ${doc.state}`);
         if (kind === 'html' && doc.chars < MIN_PAGE_TEXT_CHARS) throw appError('APP_WEB_FETCH_NO_TEXT', `${doc.chars} chars of text`);
         const shown = sliceWhole(doc.text, offset, offset + PAGE_SHOWN_CHARS);
@@ -254,6 +285,8 @@ export function fetchFailureMessage(code: string, details?: Record<string, unkno
       return 'Файл по ссылке больше 10 МБ — такой не скачивается.';
     case 'APP_WEB_FETCH_UNSUPPORTED':
       return 'По ссылке не страница и не документ (картинка, видео, архив или файл с паролем) — прочитать его нельзя.';
+    case 'APP_WEB_FETCH_BUSY':
+      return 'Сервер сейчас занят разбором документов — попробуй открыть эту страницу ещё раз чуть позже или возьми другой источник.';
     case 'APP_WEB_FETCH_NO_TEXT':
       return 'На странице нет текста: похоже, сайт строит её скриптами в браузере. Возьми другой источник.';
     default:

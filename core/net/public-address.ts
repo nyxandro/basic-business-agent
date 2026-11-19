@@ -23,11 +23,19 @@ for (const [network, prefix] of [
 ] as const) {
   INNER.addSubnet(network, prefix, 'ipv4');
 }
+// NAT64 and 6to4 (they reach an IPv4 address behind them, an inner one too), the old site-local range,
+// discard-only, unique local, link-local and multicast. IPv4 written inside IPv6 («::ffff:…», «::a.b.c.d») is
+// judged by that IPv4 (ipv4Inside): Node's BlockList matches an IPv4 against «::ffff:0:0/96» itself.
 for (const [network, prefix] of [
   ['::', 128],
   ['::1', 128],
+  ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48],
+  ['100::', 64],
+  ['2002::', 16],
   ['fc00::', 7],
   ['fe80::', 10],
+  ['fec0::', 10],
   ['ff00::', 8],
 ] as const) {
   INNER.addSubnet(network, prefix, 'ipv6');
@@ -36,8 +44,9 @@ for (const [network, prefix] of [
 // «::ffff:10.0.0.5» and «::ffff:a00:5» are 10.0.0.5: the IPv4 inside is what the connection reaches.
 function ipv4Inside(address: string): string | null {
   const lower = address.toLowerCase();
-  if (!lower.startsWith('::ffff:')) return null;
-  const rest = lower.slice('::ffff:'.length);
+  const prefix = lower.startsWith('::ffff:') ? '::ffff:' : /^::[0-9a-f]/.test(lower) && lower !== '::1' ? '::' : null;
+  if (!prefix) return null;
+  const rest = lower.slice(prefix.length);
   if (isIP(rest) === 4) return rest;
   const groups = rest.split(':');
   if (groups.length !== 2 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
@@ -49,6 +58,7 @@ export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
   if (family === 0) return false;
   if (family === 4) return !INNER.check(address, 'ipv4');
+  // «::ffff:8.8.8.8» is 8.8.8.8: the IPv4 inside decides, as the connection reaches it.
   const inside = ipv4Inside(address);
   if (inside) return isPublicAddress(inside);
   return !INNER.check(address, 'ipv6');

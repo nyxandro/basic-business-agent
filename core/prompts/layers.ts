@@ -34,8 +34,11 @@ export const WEB_OFF = `Интернета у тебя нет — он ${SWITCHE
 
 // The block of what the agent may do: it changes only with the switches, so the system prompt stays the same
 // from turn to turn.
-export function abilitiesLayer(abilities: AgentAbilities): string {
-  return [abilities.commands ? COMMANDS_RULES.trim() : COMMANDS_OFF, abilities.web ? WEB_RULES : WEB_OFF].join('\n\n');
+// An agent whose passport turns the core's rules off (baseRules: false) gets no rules of programs either — they
+// were a part of the core's rules; what is switched off it is told still.
+export function abilitiesLayer(abilities: AgentAbilities, baseRules: boolean): string {
+  const commands = abilities.commands ? (baseRules ? COMMANDS_RULES.trim() : null) : COMMANDS_OFF;
+  return [commands, abilities.web ? WEB_RULES : WEB_OFF].filter((part): part is string => part !== null).join('\n\n');
 }
 
 export interface LayersDeps {
@@ -187,7 +190,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         messages,
         systemMessages: [
           ...(deps.baseRules ? [{ role: 'system' as const, content: BASE_RULES }] : []),
-          { role: 'system' as const, content: abilitiesLayer(abilitiesOf(requestContext)) },
+          { role: 'system' as const, content: abilitiesLayer(abilitiesOf(requestContext), deps.baseRules) },
           ...systemMessages,
           { role: 'system' as const, content: org },
           { role: 'system' as const, content: employee },

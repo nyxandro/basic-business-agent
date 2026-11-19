@@ -20,9 +20,11 @@ function ownAddress(url: string): URL | null {
   return parsed.origin === window.location.origin ? parsed : null;
 }
 
+// Where a picture of another site is: http(s) only — a `data:` picture is not a place to name.
 function foreign(url: string): string {
   try {
     const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
     return `${parsed.host}${parsed.pathname === '/' ? '' : parsed.pathname}`;
   } catch {
     // Not an address at all: the note says only that there was a picture.

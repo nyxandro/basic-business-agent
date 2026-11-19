@@ -30,7 +30,8 @@ export interface SearchHit {
 }
 
 export interface WebSearcher {
-  search(input: { query: string; maxResults: number; userId: string; agentId: string }): Promise<SearchHit[]>;
+  // `stop` — «Стоп» of the person: the search ends with it.
+  search(input: { query: string; maxResults: number; userId: string; agentId: string; stop?: AbortSignal }): Promise<SearchHit[]>;
 }
 
 const responseSchema = z.object({
@@ -39,7 +40,7 @@ const responseSchema = z.object({
 
 export function createGatewaySearcher(gateway: Pick<ModelGateway, 'modelConfig' | 'translateError'>): WebSearcher {
   return {
-    async search({ query, maxResults, userId, agentId }) {
+    async search({ query, maxResults, userId, agentId, stop }) {
       // The employee's key and the agent's header, as for a model: the gateway counts the call and checks the limits.
       const call = await gateway.modelConfig(SEARCH_TOOL_NAME, userId, agentId);
       let res: Response;
@@ -48,9 +49,10 @@ export function createGatewaySearcher(gateway: Pick<ModelGateway, 'modelConfig' 
           method: 'POST',
           headers: { authorization: `Bearer ${call.apiKey}`, 'content-type': 'application/json', ...call.headers },
           body: JSON.stringify({ query, max_results: maxResults, country: SEARCH_COUNTRY }),
-          signal: AbortSignal.timeout(SEARCH_WAIT_MS),
+          signal: stop ? AbortSignal.any([AbortSignal.timeout(SEARCH_WAIT_MS), stop]) : AbortSignal.timeout(SEARCH_WAIT_MS),
         });
       } catch (error) {
+        if (stop?.aborted) throw error;
         throw appError('APP_WEB_SEARCH_FAILED', `the gateway's search did not answer: ${error instanceof Error ? error.name : 'unknown'}`, { cause: error });
       }
       if (!res.ok) {
@@ -86,10 +88,11 @@ export function createWebSearchTool(deps: { db: Db; searcher: WebSearcher }): An
     }),
     execute: async ({ query, max_results }, context) => {
       const ctx = context?.requestContext;
+      const stop = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       if (await personalDocumentIn(deps.db, query, WEB_SEARCH_TOOL)) return { error: true, code: 'APP_WEB_PERSONAL_DATA', message: PERSONAL_DATA_MESSAGE };
       const started = Date.now();
       try {
-        const results = await deps.searcher.search({ query, maxResults: max_results, userId: requireContextValue(ctx, REQUEST_KEYS.userId), agentId: requireContextValue(ctx, REQUEST_KEYS.agentId) });
+        const results = await deps.searcher.search({ query, maxResults: max_results, userId: requireContextValue(ctx, REQUEST_KEYS.userId), agentId: requireContextValue(ctx, REQUEST_KEYS.agentId), ...(stop ? { stop } : {}) });
         countSearch(ctx);
         logEvent('info', 'web_search_done', { ms: Date.now() - started, results: results.length });
         return { results };

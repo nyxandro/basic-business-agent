@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPreviewCache } from '../preview/cache.ts';
 import { sandboxRunner } from '../preview/convert.ts';
@@ -80,6 +81,27 @@ beforeAll(async () => {
       case '/to-page':
         res.writeHead(301, { location: '/page' });
         return res.end();
+      case '/gzip':
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-encoding': 'gzip' });
+        return res.end(gzipSync(article('Сжатая страница', 'Металлочерепица — 610 ₽ за квадратный метр. '.repeat(10))));
+      case '/gzip-silent': {
+        // Headers and the first bytes of a compressed body, then silence.
+        res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'gzip' });
+        res.write(gzipSync(article('x', 'y'.repeat(500))).subarray(0, 20));
+        return;
+      }
+      case '/gzip-cut': {
+        res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'gzip' });
+        res.write(gzipSync(article('x', 'y'.repeat(500))).subarray(0, 20));
+        setTimeout(() => res.socket?.destroy(), 50);
+        return;
+      }
+      case '/meta-trap':
+        return send(200, 'text/html', `<html><head>${'<meta '.repeat(200_000)}</head><body>${'<p>Текст страницы, его достаточно для чтения.</p>'.repeat(20)}</body></html>`);
+      case '/title-trap':
+        return send(200, 'text/html', `<html><head><title>${'а'.repeat(1_000_000)}<p>Текст страницы, его достаточно для чтения.</p></body></html>`);
+      case '/%EF%F0%E0%E9%F1.pdf':
+        return send(200, 'application/pdf', PDF);
       default:
         return send(404, 'text/plain', 'нет');
     }
@@ -145,6 +167,33 @@ describe('opening a page', () => {
     expect(await codeOf('ftp://example.com/file')).toBe('APP_WEB_FETCH_BAD_URL');
     expect(await codeOf(`https://example.com/${'a'.repeat(2001)}`)).toBe('APP_WEB_FETCH_BAD_URL');
   });
+
+  it('reads a compressed page, and never hangs on a compressed body that goes silent or breaks', async () => {
+    expect((await reader.read(`${base}/gzip`, 0)).text).toContain('610 ₽ за квадратный метр');
+    const started = Date.now();
+    expect(await codeOf(`${base}/gzip-silent`)).toBe('APP_WEB_FETCH_TIMEOUT');
+    expect(Date.now() - started).toBeLessThan(TIMEOUT_MS + 1000);
+    expect(await codeOf(`${base}/gzip-cut`)).toBe('APP_WEB_FETCH_HTTP');
+  }, 60_000);
+
+  it('reads a page made to stall patterns over it in seconds, not hours', async () => {
+    for (const trap of ['/meta-trap', '/title-trap']) {
+      const started = Date.now();
+      await reader.read(`${base}${trap}`, 0).catch(() => undefined);
+      expect(Date.now() - started, trap).toBeLessThan(15_000);
+    }
+  }, 60_000);
+
+  it('takes the title of an address in an old Russian encoding as written, and stops with «Стоп»', async () => {
+    expect((await reader.read(`${base}/%EF%F0%E0%E9%F1.pdf`, 0)).title).toBe('%EF%F0%E0%E9%F1.pdf');
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 100);
+    const started = Date.now();
+    const failure = (await reader.read(`${base}/slow`, 0, stop.signal).catch((error: unknown) => error)) as { code?: string; name?: string };
+    expect(failure.code).not.toBe('APP_WEB_FETCH_TIMEOUT');
+    expect(failure.name).toBe('AbortError');
+    expect(Date.now() - started).toBeLessThan(TIMEOUT_MS);
+  }, 60_000);
 
   it('names each failure of a site with its own code', async () => {
     expect(await codeOf(`${base}/missing`)).toBe('APP_WEB_FETCH_HTTP');

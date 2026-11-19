@@ -46,11 +46,13 @@ export function createWebFetchTool(deps: { db: Db; reader: PageReader }): AnyToo
       offset: z.number().int().min(0).default(0).describe('С какого знака текста читать; 0 — с начала'),
     }),
     execute: async ({ address, offset }, context) => {
+      // Mastra's own signal of the run: «Стоп» of the person ends the download too.
+      const stop = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       if (await personalDocumentIn(deps.db, address, WEB_FETCH_TOOL)) return { error: true, code: 'APP_WEB_PERSONAL_DATA', message: PERSONAL_DATA_MESSAGE };
       const host = hostOf(address);
       const started = Date.now();
       try {
-        const page = await deps.reader.read(address, offset);
+        const page = await deps.reader.read(address, offset, stop);
         sourcesIn(context?.requestContext)?.pages.set(page.final_address, page.title);
         logEvent('info', 'web_fetch_done', { host, kind: page.kind, chars: page.total_chars, ms: Date.now() - started });
         return page;

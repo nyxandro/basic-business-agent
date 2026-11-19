@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { withAttachments, type AdminAgentsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMANDS_OFF, COMMANDS_RULES, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
+import { abilitiesLayer, COMMANDS_OFF, COMMANDS_RULES, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { contextRoot } from '../workspace/layout.ts';
 import { AGENT_ABILITY_DEFAULTS, ensureAgentAbilities, readAbilities } from './abilities.ts';
@@ -57,6 +57,13 @@ describe('what an agent may do', () => {
     expect((await t.call('PUT', '/app/api/admin/agents/ghost/abilities', { cookie: admin, body: { web: true } })).status).toBe(404);
     expect((await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: {} })).status).toBe(400);
     expect((await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: olga, body: { web: true } })).status).toBe(403);
+  });
+
+  // An agent whose passport turns the core's rules off gets no rules of programs either; it is told what is off.
+  it('gives the rules of programs only with the core’s rules, and the switched-off lines always', () => {
+    expect(abilitiesLayer({ web: true, commands: true }, false)).toBe(WEB_RULES);
+    expect(abilitiesLayer({ web: false, commands: false }, false)).toBe(`${COMMANDS_OFF}\n\n${WEB_OFF}`);
+    expect(abilitiesLayer({ web: true, commands: true }, true)).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}`);
   });
 
   it('stops a run of an agent the database has no row of', async () => {

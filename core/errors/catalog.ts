@@ -124,6 +124,7 @@ export const ERROR_CATALOG = {
   APP_WEB_FETCH_TIMEOUT: { status: 504, userMessage: 'Сайт не ответил за 20 секунд.' },
   APP_WEB_FETCH_TOO_LARGE: { status: 413, userMessage: 'Файл по ссылке больше 10 МБ — такой не скачивается.' },
   APP_WEB_FETCH_UNSUPPORTED: { status: 415, userMessage: 'По ссылке не страница и не документ — прочитать его нельзя.' },
+  APP_WEB_FETCH_BUSY: { status: 503, userMessage: 'Сервер сейчас занят разбором документов — попробуйте чуть позже.' },
   APP_WEB_FETCH_NO_TEXT: { status: 422, userMessage: 'На странице нет текста — прочитать её не получилось.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 

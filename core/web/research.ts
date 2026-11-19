@@ -60,10 +60,17 @@ export function createResearcher(deps: ResearcherDeps): Agent {
   });
 }
 
-// A copy of the run's context: the researcher's own writes do not reach the run of the agent.
+// What the researcher takes of the run: who, in which conversation, for which agent, on which model. Nothing
+// else — no project, no skills, no hooks of the chat (a broken stream of the researcher must not take words of
+// the agent's answer off the screen).
+const RESEARCHER_KEYS = [REQUEST_KEYS.userId, REQUEST_KEYS.threadId, REQUEST_KEYS.agentId, REQUEST_KEYS.modelId, REQUEST_KEYS.runKind, REQUEST_KEYS.taskId, REQUEST_KEYS.abilities];
+
 function copyOf(ctx: RequestContext | undefined): RequestContext {
   const rc = new RequestContext();
-  for (const [key, value] of ctx?.entries() ?? []) rc.set(key, value);
+  for (const key of RESEARCHER_KEYS) {
+    const value = ctx?.get(key);
+    if (value !== undefined) rc.set(key, value);
+  }
   return rc;
 }
 

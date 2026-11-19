@@ -69,6 +69,13 @@ describe('the light over an answer being written', () => {
     expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('names a data: picture of an answer without a link and without its text', () => {
+    const { container } = render(<AnswerText text={'![x](data:image/png;base64,iVBORw0KGgo=)'} streaming={false} failed={false} />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.textContent).toContain('Картинка с другого сайта не показывается');
+  });
+
   it('is never on an answer that broke', () => {
     const { container, rerender } = render(<AnswerText text="Начало ответа" streaming failed={false} />);
     rerender(<AnswerText text="Начало ответа" streaming={false} failed />);

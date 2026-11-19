@@ -92,7 +92,7 @@ export function createPreviewCache({ dir, suffix, maxBytes, maxAgeMs }: { dir: s
 }
 
 // Cleans the folder at the start (a container restarted keeps its temporary disk) and every hour.
-export function startPreviewPurge(cache: PreviewCache, what: 'preview' | 'doctext'): () => void {
+export function startPreviewPurge(cache: PreviewCache, what: 'preview' | 'doctext' | 'webtext'): () => void {
   const pass = () => {
     try {
       const { removed, bytes } = cache.purge(Date.now());
