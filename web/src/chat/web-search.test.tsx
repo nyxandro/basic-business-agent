@@ -45,6 +45,9 @@ describe('the live block of a search', () => {
 
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
     expect(screen.getByRole('status')).toHaveTextContent('Ищу: «профнастил С21 цена Екатеринбург»');
+    // Folded while it works: the line says what it does; the list is a click away (decision of the owner 20.11).
+    expect(screen.queryByRole('region', { name: 'Запросы' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Ищу/ }));
     const queries = screen.getByRole('region', { name: 'Запросы' });
     expect(within(queries).getByText('профнастил С21 цена Екатеринбург')).toBeInTheDocument();
 
@@ -57,6 +60,8 @@ describe('the live block of a search', () => {
     const sites = screen.getByRole('region', { name: 'Сайты' });
     expect(within(sites).getByText('metall.example')).toBeInTheDocument();
     expect(within(sites).getByText('читаю…')).toBeInTheDocument();
+    // A step under way has no spinner: it measures nothing.
+    expect(view.container.querySelector('section [class*="spin"]')).toBeNull();
     // A site is a link once it was read, not while it is read.
     expect(within(sites).queryByRole('link')).toBeNull();
 
@@ -94,22 +99,22 @@ describe('the live block of a search', () => {
     expect(screen.getByText('1:05')).toBeInTheDocument();
   });
 
-  it('has nothing to unfold before the first step: a click then does not fold the list for good', () => {
+  it('has nothing to unfold before the first step, and stays folded when the steps come', () => {
     const store = createWebProgressStore();
     show(running, store, true);
     const head = screen.getByRole('button', { name: /Начинаю поиск/ });
     expect(head).not.toHaveAttribute('aria-expanded');
     fireEvent.click(head);
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
-    expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('region', { name: 'Запросы' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'Запросы' })).toBeNull();
   });
 
   it('folds into the counts and the time when done, and unfolds the same list on a click', () => {
     const store = createWebProgressStore();
     const view = show(running, store, true);
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
-    expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'false');
 
     view.rerender(inChat(complete({ answer: 'От 520 ₽ за м²', sources: [SOURCE], steps: [QUERY_DONE, PAGE_DONE, PAGE_BLOCKED], ms: 72_000 }), store, true));
     const line = screen.getByRole('button', { name: 'Поиск в интернете · 1 запрос · 1 источник · 1 мин 12 с' });

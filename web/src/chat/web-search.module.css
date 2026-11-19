@@ -95,6 +95,14 @@
   color: var(--muted);
 }
 
+/* A step under way: a still dot where its ✓ or ✗ will stand. */
+.pending {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  background: radial-gradient(circle, var(--muted) 0 2px, transparent 2.5px);
+}
+
 .ok {
   flex: none;
   color: var(--ok);

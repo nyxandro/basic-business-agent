@@ -79,9 +79,13 @@ function nowText(steps: readonly WebStep[]): string {
 // A step of a call left unfinished is not under way any more.
 const settled = (step: WebStep): WebStep => (step.state === 'running' ? { ...step, state: 'failed', code: undefined } : step);
 
+// The state of a step, without a spinner: a step under way measures nothing to show (decision of the owner 20.11) — a
+// still dot, then ✓ or ✗; a search that found nothing is no success.
 function StepIcon({ step }: { step: WebStep }) {
-  if (step.state === 'running') return <span className={chat.spin} aria-hidden="true" />;
-  return <Icon name={step.state === 'done' ? 'check' : 'x'} size={13} className={step.state === 'failed' ? styles.bad : styles.ok} />;
+  if (step.state === 'running') return <span className={styles.pending} aria-hidden="true" />;
+  if (step.state === 'failed') return <Icon name="x" size={13} className={styles.bad} />;
+  if (step.kind === 'search' && !step.found) return <Icon name="minus" size={13} className={styles.kind} />;
+  return <Icon name="check" size={13} className={styles.ok} />;
 }
 
 function Steps({ steps }: { steps: readonly WebStep[] }) {
@@ -136,9 +140,8 @@ export function WebSearch({ call }: { call: Call }) {
   const unfinished = useUnfinished();
   const outcome = outcomeOf(call, unfinished({ name: WEB_RESEARCH_TOOL }) === 'running');
   const running = outcome.kind === 'running';
-  // Open while it works, folded when done; a click of the person decides from then on.
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const open = chosen ?? running;
+  // Folded: the line says what the search does now; the list opens only on a click (decision of the owner 20.11).
+  const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!running) return;
@@ -152,7 +155,7 @@ export function WebSearch({ call }: { call: Call }) {
   const seen = kept.length > 0 ? kept : (live ?? []);
   const steps = running ? seen : seen.map(settled);
   const unfolds = steps.length > 0;
-  const toggle = () => setChosen(!open);
+  const toggle = () => setOpen(!open);
 
   if (running) {
     return (
