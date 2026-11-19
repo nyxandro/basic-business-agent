@@ -1,6 +1,7 @@
 // Admin sections «Лимиты», «Агенты», «Профиль организации», «Маскирование», «Подключения»,
 // «Журнал действий» (spec, scenario 5, section 17.5). Each needs its own right of the role.
 import {
+  agentAbilitiesPatchSchema,
   agentModelSchema,
   agentStartersSchema,
   journalQuerySchema,
@@ -9,12 +10,14 @@ import {
   orgProfileSchema,
   promptDraftSchema,
 } from '@bba/contracts';
+import type { AgentAbilities } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { writeAudit } from '../../audit/audit.ts';
 import type { ConnectionManager } from '../../connections/manager.ts';
 import type { Db } from '../../db/pool.ts';
 import { getPromptState, publishDraft, revertToFile, saveDraft, setAgentModel, type EditorDeps } from '../../editor/prompts.ts';
 import { appError } from '../../errors/catalog.ts';
+import { listAbilities, setAbilities } from '../../abilities/abilities.ts';
 import { agentMarks, DEFAULT_MARK } from '../../interface-settings/agent-marks.ts';
 import type { Registry } from '../../loader/registry.ts';
 import { getMaskingKinds, setMaskingKinds } from '../../masking/settings.ts';
@@ -68,6 +71,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     );
     const override = new Map(own.rows.map((r) => [r.agent_id, r]));
     const marks = await agentMarks(db);
+    const abilities = await listAbilities(db);
     const known = deps.registry.ids();
     return c.json({
       agents: deps.registry.agents.map((a) => {
@@ -82,6 +86,8 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
           startersCustom: o?.starters !== null && o?.starters !== undefined,
           promptChanged: Boolean(o?.published_version_id),
           mark: marks.get(a.passport.id) ?? DEFAULT_MARK,
+          // Every agent of the registry has its row from the start of the server (core/abilities/abilities.ts).
+          abilities: abilitiesOfAgent(abilities, a.passport.id),
         };
       }),
       // Departments still pointing at agents removed from the installation (spec, section 10).
@@ -109,6 +115,14 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     await db.query('INSERT INTO app.agent_overrides (agent_id, starters) VALUES ($1, $2) ON CONFLICT (agent_id) DO UPDATE SET starters = EXCLUDED.starters', [id, starters]);
     await writeAudit(db, { actorUserId: access(c).userId, action: 'agent.starters', target: id, details: { starters } });
     return c.json({ ok: true });
+  });
+
+  // «Что агенту можно» (spec, section 8.30): from the next message of every employee.
+  app.put('/app/api/admin/agents/:id/abilities', agents, async (c) => {
+    const id = c.req.param('id');
+    if (!deps.registry.get(id)) throw appError('APP_NOT_FOUND', `agent ${id} is not loaded`);
+    const patch = await parseJson(c, agentAbilitiesPatchSchema);
+    return c.json({ abilities: await setAbilities(db, id, patch, access(c).userId) });
   });
 
   app.put('/app/api/admin/agents/:id/model', agents, async (c) => {
@@ -182,4 +196,10 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
       pageSize: JOURNAL_PAGE_SIZE,
     });
   });
+}
+
+function abilitiesOfAgent(rows: Map<string, AgentAbilities>, agentId: string): AgentAbilities {
+  const row = rows.get(agentId);
+  if (!row) throw new Error(`APP_CONFIG_INVALID: agent ${agentId} has no row in app.agent_abilities: ensureAgentAbilities runs at the start of the server`);
+  return row;
 }

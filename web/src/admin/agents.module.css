@@ -129,6 +129,33 @@
   padding: 0 18px 18px;
 }
 
+/* «Что агенту можно» (spec, section 8.30): a switch per row, its explanation under the title. */
+.abilities {
+  margin-top: 16px;
+}
+
+.abilityList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 18px 18px;
+}
+
+.abilityRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.abilityText {
+  flex: 1;
+  min-width: 0;
+}
+
+.abilityTitle {
+  font-weight: 600;
+}
+
 .editor {
   padding: 18px;
   display: flex;

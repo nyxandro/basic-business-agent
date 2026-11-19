@@ -31,6 +31,7 @@ import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
 import { fireTimeOf } from './schedule.ts';
 import { membersOf } from './scope.ts';
+import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 
 export const BACKGROUND_WORKFLOW_ID = 'background-run';
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -120,7 +121,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
   // `waiting`: the project of an answer that waited for «Да» — the answer is finished there (spec, 8.20).
   async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string, waiting?: { projectId: string | null }): Promise<RequestContext> {
-    const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId)]);
+    const abilities = await readAbilities(db, row.agent_id);
+    const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId, { documents: abilities.commands })]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
     rc.set(REQUEST_KEYS.threadId, threadId);
@@ -135,6 +137,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     }
     if (project.lostProject) rc.set(REQUEST_KEYS.lostProject, JSON.stringify(project.lostProject));
     rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skillPaths));
+    rc.set(REQUEST_KEYS.abilities, abilitiesValue(abilities));
     return rc;
   }
 

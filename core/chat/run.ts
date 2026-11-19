@@ -24,6 +24,8 @@ import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
 import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
+import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
+import type { AgentAbilities } from '@bba/contracts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import type { NamingDeps } from './naming.ts';
 
@@ -73,6 +75,9 @@ export interface PreparedRun {
   models: ModelChoice | null;
   // Folders of the skills the employee gets, fixed for the run.
   skillPaths: string[];
+  // What the agent may do (spec, section 8.30), read at the start of the run; null where no model is called
+  // (agent listing).
+  abilities: AgentAbilities | null;
   // The run's folder held on the disk (spec, section 8.23): let go when the agent ends, after its trash.
   release: Release | null;
 }
@@ -184,6 +189,7 @@ export function requestContextFor(run: PreparedRun): RequestContext {
   if (run.lostProject) rc.set(REQUEST_KEYS.lostProject, JSON.stringify(run.lostProject));
   if (run.snapshot && run.snapshot.projectId === run.projectId) rc.set(REQUEST_KEYS.projectSnapshot, run.snapshot.id);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(run.skillPaths));
+  if (run.abilities) rc.set(REQUEST_KEYS.abilities, abilitiesValue(run.abilities));
   return rc;
 }
 
@@ -232,7 +238,9 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const threadId = input.threadId ?? '';
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths: await deps.skills.skillsFor(access.userId), release: null };
+  const abilities = await readAbilities(deps.db, agentId);
+  const skillPaths = await deps.skills.skillsFor(access.userId, { documents: abilities.commands });
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths, abilities, release: null };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
   // Working in a project shared to the person takes its «новое» off.

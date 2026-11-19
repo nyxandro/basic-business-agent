@@ -1,5 +1,6 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  AgentAbilities,
   AgentIcon,
   AgentMarkAdminState,
   AgentMarkKind,
@@ -102,6 +103,7 @@ export const adminApi = {
   revert: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/revert`, {}),
   setModel: (agentId: string, modelId: string | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/model`, { modelId }),
   setStarters: (agentId: string, starters: string[] | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/starters`, { starters }),
+  setAbilities: (agentId: string, patch: Partial<AgentAbilities>) => api<{ abilities: AgentAbilities }>('PUT', `${A}/agents/${enc(agentId)}/abilities`, patch),
   tasks: () => api<{ tasks: AdminTask[] }>('GET', `${A}/tasks`),
   createTask: (input: TaskCreate) => api<AdminTask>('POST', `${A}/tasks`, input),
   updateTask: (id: string, change: TaskUpdate) => api<AdminTask>('PUT', `${A}/tasks/${enc(id)}`, change),

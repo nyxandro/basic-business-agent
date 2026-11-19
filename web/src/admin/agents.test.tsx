@@ -6,7 +6,7 @@ import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['agents'] };
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, departmentNames: ['Отдел продаж'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, departmentNames: ['Отдел продаж'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true } };
 const ASSISTANT = { ...AGENT, id: 'assistant', name: 'Общий помощник', description: 'Вопросы', departmentNames: [], promptChanged: false, mark: { kind: 'image', icon: 'spark', image: { url: '/app/api/agents/assistant/image?v=0123456789ab' } } };
 const PROMPT = {
   agentId: 'sales',
@@ -98,6 +98,27 @@ describe('the page of an agent', () => {
     await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/starters'))?.body).toEqual({ starters: ['Сделки без движения', 'Сводка по воронке'] }));
     await user.click(screen.getByRole('button', { name: 'Вернуть подсказки из файла' }));
     await waitFor(() => expect(s.calls.filter((c) => c.path.endsWith('/starters')).at(-1)?.body).toEqual({ starters: null }));
+  });
+
+  it('«Настройки»: «Что агенту можно» saves a switch at once and keeps it as it was when the server fails', async () => {
+    const s = server();
+    s.set('PUT /app/api/admin/agents/sales/abilities', { body: { abilities: { web: false, commands: true } } });
+    renderApp('/admin/agents/sales/settings');
+    const user = userEvent.setup();
+    const web = await screen.findByRole('switch', { name: 'Доступ к сети интернет' });
+    const commands = screen.getByRole('switch', { name: 'Доступ к выполнению команд терминала' });
+    expect(web).toHaveAttribute('aria-checked', 'true');
+    expect(commands).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/помощник агента: он видит только задание/)).toBeInTheDocument();
+    await user.click(web);
+    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/abilities'))?.body).toEqual({ web: false }));
+    await waitFor(() => expect(web).toHaveAttribute('aria-checked', 'false'));
+    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+
+    s.set('PUT /app/api/admin/agents/sales/abilities', apiError('APP_INTERNAL', 'Что-то пошло не так.', 500));
+    await user.click(commands);
+    expect(await screen.findByText(/Что-то пошло не так/)).toBeInTheDocument();
+    expect(commands).toHaveAttribute('aria-checked', 'true');
   });
 
   it('«Настройки»: keeps the agent’s model inactive while agents may not choose one, and saves a choice otherwise', async () => {

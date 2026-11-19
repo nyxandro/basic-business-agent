@@ -19,6 +19,7 @@ import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
+import { ensureAgentAbilities } from '../abilities/abilities.ts';
 import { createModelCatalog } from '../models/catalog.ts';
 import { createChatGptAccounts } from '../models/chatgpt-accounts.ts';
 import { createChatGptAuthClient, OPENAI_AUTH_BASE } from '../models/chatgpt-login.ts';
@@ -66,6 +67,8 @@ async function main(): Promise<void> {
   await ensureLimitSettings(db, installation.app.limits);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
   await ensureOrgName(db, installation.app.name);
+  // «Что агенту можно» (spec, section 8.30): every agent of the installation has its row from the start.
+  await ensureAgentAbilities(db, agentIds);
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });

@@ -28,6 +28,7 @@ import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
+import { ensureAgentAbilities } from '../abilities/abilities.ts';
 import { createModelCatalog, type ModelCatalog } from '../models/catalog.ts';
 import { createChatGptAccounts, type ChatGptAccounts } from '../models/chatgpt-accounts.ts';
 import { createChatGptAuthClient, type ChatGptAuthClient } from '../models/chatgpt-login.ts';
@@ -237,6 +238,7 @@ export async function createTestApp(
         triggers: [],
       };
   if (registry.pluginMigrations.length > 0) await migrate(database.url, undefined, registry.pluginMigrations);
+  await ensureAgentAbilities(db, registry.ids());
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   await storage.init();
   await ensureMessageTexts(db);

@@ -122,7 +122,21 @@ export interface AdminAgent {
   promptChanged: boolean;
   // «Значок» of the agent (spec, section 8.17).
   mark: AgentMarkAdminState;
+  // «Что агенту можно» (spec, section 8.30).
+  abilities: AgentAbilities;
 }
+
+// What an agent may do (spec, section 8.30): the internet (search and pages, through the researcher) and the
+// commands of the sandbox. Its sub-agents work with the same.
+export interface AgentAbilities {
+  web: boolean;
+  commands: boolean;
+}
+
+// PUT /app/api/admin/agents/:id/abilities: one switch or both.
+export const agentAbilitiesPatchSchema = z
+  .object({ web: z.boolean().optional(), commands: z.boolean().optional() })
+  .refine((p) => p.web !== undefined || p.commands !== undefined, { message: 'at least one of web, commands' });
 
 export interface AdminAgentsResponse {
   agents: AdminAgent[];

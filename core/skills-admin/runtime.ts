@@ -11,7 +11,9 @@ import { readSkillArchive, writeSkillFiles } from './archive.ts';
 import { removeSkillCopies, skillDir, type SkillsDeps } from './store.ts';
 
 export interface SkillsRuntime {
-  skillsFor(userId: string): Promise<string[]>;
+  // `documents: false` — the agent may run no commands (spec, section 8.30): the system skills of documents
+  // are made of scripts it could not run, so it does not get them.
+  skillsFor(userId: string, opts?: { documents: boolean }): Promise<string[]>;
   // At the start of the server: removes uploaded skills a system skill took the name of, unpacks
   // the enabled skills afresh from their archives (a copy changed on disk does not survive a start),
   // removes copies nobody uses any more.
@@ -44,7 +46,7 @@ export function createSkillsRuntime(deps: SkillsDeps): SkillsRuntime {
   const systemDirs = deps.systemSkills.map((s) => s.dir);
   const systemNames = deps.systemSkills.map((s) => s.name);
   return {
-    async skillsFor(userId) {
+    async skillsFor(userId, opts = { documents: true }) {
       const { rows } = await deps.db.query<{ name: string; sha256: string }>(
         `SELECT s.name, s.sha256 FROM app.skills s
           WHERE s.enabled AND s.name <> ALL($2) AND (
@@ -57,7 +59,7 @@ export function createSkillsRuntime(deps: SkillsDeps): SkillsRuntime {
         [userId, systemNames],
       );
       const dirs = await Promise.all(rows.map((r) => unpack(deps.db, deps.skillsDir, r.name, r.sha256)));
-      return [...systemDirs, ...dirs.filter((d): d is string => d !== null)];
+      return [...(opts.documents ? systemDirs : []), ...dirs.filter((d): d is string => d !== null)];
     },
 
     async prepare() {

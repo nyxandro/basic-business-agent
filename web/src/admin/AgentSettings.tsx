@@ -10,6 +10,7 @@ import { Field, Input, Select } from '../ui/Field.tsx';
 import { adminApi } from './api.ts';
 import styles from './agents.module.css';
 import { Feedback, useAction } from './parts.tsx';
+import { AgentAbilities } from './AgentAbilities.tsx';
 
 const MAX_STARTERS = 3;
 const STARTER_SEPARATOR = ';';
@@ -82,12 +83,15 @@ function AgentModel({ state, onSaved }: { state: PromptState; onSaved: () => voi
 
 export function AgentSettings({ agent, state, onChanged }: { agent: AdminAgent; state: PromptState; onChanged: () => void }) {
   return (
-    <Card className="rise">
-      <CardHead title={ru.admin.agents.settingsTitle} sub={ru.admin.agents.settingsSub} />
-      <div className={styles.settingsBody}>
-        <AgentModel state={state} onSaved={onChanged} />
-        <Starters key={agent.starters.join('|')} agent={agent} onSaved={onChanged} />
-      </div>
-    </Card>
+    <>
+      <Card className="rise">
+        <CardHead title={ru.admin.agents.settingsTitle} sub={ru.admin.agents.settingsSub} />
+        <div className={styles.settingsBody}>
+          <AgentModel state={state} onSaved={onChanged} />
+          <Starters key={agent.starters.join('|')} agent={agent} onSaved={onChanged} />
+        </div>
+      </Card>
+      <AgentAbilities agent={agent} onChanged={onChanged} />
+    </>
   );
 }
