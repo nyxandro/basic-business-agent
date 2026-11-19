@@ -39,7 +39,7 @@ function useAnswer(toolCallId: string): { answer: string | null; send: (text: st
 function Choice({ call }: { call: CallProps }) {
   const { answer, send } = useAnswer(call.toolCallId);
   const parsed = choiceBlockSchema.safeParse(call.parameters);
-  if (call.status === 'inProgress') return <Preparing />;
+  if (call.status === 'inProgress') return <Preparing ofCall />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
   return <ChoiceBlockView block={parsed.data} answer={answer} onAnswer={send} />;
 }
@@ -47,7 +47,7 @@ function Choice({ call }: { call: CallProps }) {
 function Form({ call }: { call: CallProps }) {
   const { answer, send } = useAnswer(call.toolCallId);
   const parsed = formBlockSchema.safeParse(call.parameters);
-  if (call.status === 'inProgress') return <Preparing />;
+  if (call.status === 'inProgress') return <Preparing ofCall />;
   if (!parsed.success) return <BrokenData data={call.parameters} />;
   return <FormBlockView block={parsed.data} answered={answer !== null} onAnswer={send} />;
 }

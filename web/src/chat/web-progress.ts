@@ -64,16 +64,11 @@ export function webProgressSubscriber(store: WebProgressStore) {
 
 export const WebProgressContext = createContext<WebProgressStore | null>(null);
 
-// Whether the turn a block is in is the answer being written now. Not the chat's «answering»: a call that an earlier
-// answer left unfinished («Стоп», a broken answer) is not under way while the next answer is written.
-export const TurnAnsweringContext = createContext(false);
-
 // The live steps of one call; nothing outside a chat window (a past conversation shows the steps of its result).
-export function useWebCall(toolCallId: string): { steps: WebStep[] | undefined; startedAt: number; answering: boolean } {
+export function useWebCall(toolCallId: string): { steps: WebStep[] | undefined; startedAt: number } {
   const store = useContext(WebProgressContext);
-  const answering = useContext(TurnAnsweringContext);
   const subscribe = useCallback((listener: () => void) => (store ? store.subscribe(listener) : () => undefined), [store]);
   const steps = useSyncExternalStore(subscribe, () => store?.stepsOf(toolCallId));
   const [startedAt] = useState(() => (store ? store.startOf(toolCallId, Date.now()) : Date.now()));
-  return { steps, startedAt, answering };
+  return { steps, startedAt };
 }

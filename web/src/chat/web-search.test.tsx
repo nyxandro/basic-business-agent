@@ -5,7 +5,8 @@ import { CHAT_EVENTS, type WebStep } from '@bba/contracts';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWebProgressStore, TurnAnsweringContext, WebProgressContext, webProgressSubscriber, type WebProgressStore } from './web-progress.ts';
+import { TurnStateContext } from './call-progress.ts';
+import { createWebProgressStore, WebProgressContext, webProgressSubscriber, type WebProgressStore } from './web-progress.ts';
 import { WebSearch } from './WebSearch.tsx';
 
 const CALL_ID = 'call-web-1';
@@ -23,9 +24,9 @@ const complete = (result: unknown): CallOf => ({ ...running, status: 'complete',
 // The block as the chat draws it: in a turn that is being written now or not.
 const inChat = (call: CallOf, store: WebProgressStore | null, answering: boolean): ReactElement => {
   const block = (
-    <TurnAnsweringContext value={answering}>
+    <TurnStateContext value={answering ? 'answering' : 'ended'}>
       <WebSearch call={call} />
-    </TurnAnsweringContext>
+    </TurnStateContext>
   );
   return store ? <WebProgressContext value={store}>{block}</WebProgressContext> : block;
 };

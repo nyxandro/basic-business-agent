@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { TurnStateContext, type TurnState } from '../chat/call-progress.ts';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
 import { ChartBlockView, pieSlices } from './ChartBlock.tsx';
@@ -67,8 +68,19 @@ describe('catalog blocks', () => {
     const { unmount } = render(<CatalogBlock call={call(TABLE, { result: '{"error":true,"message":"Tool input validation failed"}' })} schema={modelTableBlockSchema} View={TableBlockView} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось показать данные');
     unmount();
-    render(<CatalogBlock call={call({}, { status: 'inProgress', result: undefined })} schema={modelTableBlockSchema} View={TableBlockView} />);
+    const written = (turn: TurnState) => (
+      <TurnStateContext value={turn}>
+        <CatalogBlock call={call({}, { status: 'inProgress', result: undefined })} schema={modelTableBlockSchema} View={TableBlockView} />
+      </TurnStateContext>
+    );
+    const view = render(written('answering'));
     expect(screen.getByText('Готовлю…')).toBeInTheDocument();
+    // Its answer ended without the result (decision of the owner 20.11: a call is shown the moment it is made).
+    view.rerender(written('ended'));
+    expect(screen.getByText('Прервано')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    view.rerender(written('asking'));
+    expect(screen.getByText('Ждёт вашего подтверждения')).toBeInTheDocument();
   });
 });
 

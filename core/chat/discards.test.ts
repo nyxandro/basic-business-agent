@@ -59,6 +59,19 @@ describe('announcing dropped messages', () => {
     expect(out).toEqual([text('m1', 'Смотрю.'), first, result, second, discard('m1', ['c2']), text('m2', 'Готово.')]);
   });
 
+  // A call comes to the chat the moment the model makes it (decision of the owner 20.11), so a broken step can leave one
+  // half written; at the end of the run the adapter answers every unanswered call it started. The call is gone from the
+  // screen: nothing more of it goes there, or a result without its call would be sent back with the next message.
+  it('lets nothing more of a dropped call through', () => {
+    const call = line({ type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'crm_search', parentMessageId: 'm1' });
+    const args = line({ type: 'TOOL_CALL_ARGS', toolCallId: 'c1', delta: '{"q' });
+    const end = line({ type: 'TOOL_CALL_END', toolCallId: 'c1' });
+    const placeholder = line({ type: 'TOOL_CALL_RESULT', messageId: 'r9', toolCallId: 'c1', content: 'The tool call ended without a result.', role: 'tool' });
+    const finished = line({ type: 'RUN_FINISHED', threadId: 't1', runId: 'run1' });
+    const out = stream([call, args, { drop: 'm1' }, text('m2', 'Готово.'), end, placeholder, finished]);
+    expect(out).toEqual([call, args, discard('m1'), text('m2', 'Готово.'), finished]);
+  });
+
   it('drops the reasoning of the broken attempt as well', () => {
     const thinking = line({ type: 'REASONING_MESSAGE_START', messageId: 'think-1', role: 'reasoning' });
     const out = stream([thinking, text('m1', 'Пр'), { drop: 'm1' }, text('m2', 'Привет')]);

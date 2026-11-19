@@ -34,7 +34,8 @@ export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySe
       out.push({ id: m.id, role: 'user', content: m.text });
       continue;
     }
-    // A call still waiting for "Да" is shown by its card (the interrupt below), as in a live turn.
+    // A call still waiting for "Да" is shown by its card (the interrupt below), a call left without a result not at all.
+    // A live turn shows such calls as lines too — «Ждёт вашего подтверждения», «Прервано» (web/src/chat/call-progress.ts).
     const shown = m.toolCalls.filter((c) => c.state === 'result' || c.state === DENIED_STATE);
     const toolCalls = shown.map((c) => ({ id: c.id, type: 'function' as const, function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) } }));
     if (!m.text && toolCalls.length === 0) continue;
@@ -51,8 +52,9 @@ export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySe
   return out;
 }
 
-// A call waiting for "Да" reaches the chat only as an interrupt; when it is declined, Mastra's
-// adapter sends nothing about it. These events show it in the chat as cancelled.
+// When a call waiting for "Да" is declined, Mastra's adapter sends nothing about it. These events show it in the chat
+// as cancelled: a chat opened since has no such call and gets it; a live one has it already (core/chat/copilot.ts streams
+// every call) and the AG-UI client updates it.
 export function declinedCallEvents(call: { toolCallId: string; tool: string; args: unknown; superseded: boolean }): object[] {
   const declined: DeclinedToolResult = { declined: true, superseded: call.superseded };
   return [

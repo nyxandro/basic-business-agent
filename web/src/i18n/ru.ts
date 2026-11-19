@@ -347,6 +347,9 @@ export const ru = {
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,
     connectInSettings: 'Подключить в настройках',
     declinedAction: 'Действие отменено',
+    // A call without its result that is not under way (web/src/chat/call-progress.ts).
+    toolWaiting: 'Ждёт вашего подтверждения',
+    toolStopped: 'Прервано',
     supersededAction: 'Отменено: вы написали новое сообщение',
     confirmTitle: 'Подтвердите действие',
     yes: 'Да, выполнить',

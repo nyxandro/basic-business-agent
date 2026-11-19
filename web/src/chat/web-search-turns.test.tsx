@@ -32,7 +32,7 @@ vi.mock('@copilotkit/react-core', async (original) => ({
 const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
 const search = (id: string) => ({ id, type: 'function' as const, function: { name: WEB_RESEARCH_TOOL, arguments: '{"task":"Найди цены"}' } });
 
-function extras(): ChatExtras {
+function extras(interrupt: ChatExtras['interrupt'] = null): ChatExtras {
   return {
     agent: AGENT,
     agentId: 'sales',
@@ -45,7 +45,7 @@ function extras(): ChatExtras {
     onRunFinished: vi.fn(),
     onThreadTitled: vi.fn(),
     onUploadError: vi.fn(),
-    interrupt: null,
+    interrupt,
     failure: null,
     onFailure: vi.fn(),
     interruptedIds: [],
@@ -54,6 +54,22 @@ function extras(): ChatExtras {
     composerExtra: null,
     composerNotice: null,
   };
+}
+
+function showChat(messages: Message[], running: boolean, interrupt: ChatExtras['interrupt'] = null) {
+  return (
+    <MemoryRouter>
+      <SessionProvider>
+        <ToastProvider>
+          <RequireAuth>
+            <ChatExtrasContext value={extras(interrupt)}>
+              <ChatView messages={messages} isRunning={running} />
+            </ChatExtrasContext>
+          </RequireAuth>
+        </ToastProvider>
+      </SessionProvider>
+    </MemoryRouter>
+  );
 }
 
 describe('the block of a search in a conversation', () => {
@@ -65,22 +81,27 @@ describe('the block of a search in a conversation', () => {
       { id: 'u2', role: 'user', content: 'Попробуй ещё раз' },
       { id: 'a2', role: 'assistant', content: '', toolCalls: [search('w2')] },
     ];
-    render(
-      <MemoryRouter>
-        <SessionProvider>
-          <ToastProvider>
-            <RequireAuth>
-              <ChatExtrasContext value={extras()}>
-                <ChatView messages={messages} isRunning />
-              </ChatExtrasContext>
-            </RequireAuth>
-          </ToastProvider>
-        </SessionProvider>
-      </MemoryRouter>,
-    );
+    render(showChat(messages, true));
     await screen.findByText('Попробуй ещё раз');
     // The earlier one is over; the search of the answer being written now is under way — only one clock goes.
     expect(screen.getByRole('button', { name: 'Поиск в интернете прерван' })).toBeInTheDocument();
     expect(screen.getAllByRole('status').filter((s) => s.textContent === 'Начинаю поиск в интернете…')).toHaveLength(1);
+  });
+
+  // A sub-agent's call shows the call of the sub-agent, while the question names its inner action: the whole unfinished
+  // part of the last answer waits, and turns again once «Да» runs the action.
+  it('says the last answer waits for «Да» while the question is open, and runs again after the answer', async () => {
+    mockServer({ 'GET /app/api/me': { body: ME } });
+    const messages: Message[] = [
+      { id: 'u1', role: 'user', content: 'Напиши клиенту' },
+      { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'agent-mailer', arguments: '{}' } }] },
+    ];
+    const view = render(showChat(messages, false, <div>Подтвердите действие</div>));
+    expect(await screen.findByText('Ждёт вашего подтверждения')).toBeInTheDocument();
+    view.rerender(showChat(messages, true));
+    expect(screen.queryByText('Ждёт вашего подтверждения')).not.toBeInTheDocument();
+    expect(screen.queryByText('Прервано')).not.toBeInTheDocument();
+    view.rerender(showChat(messages, false));
+    expect(screen.getByText('Прервано')).toBeInTheDocument();
   });
 });

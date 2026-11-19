@@ -13,12 +13,12 @@ import { IconButton } from '../ui/Button.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { AgentMark } from './AgentMark.tsx';
 import { AnswerText } from './AnswerText.tsx';
+import { TurnStateContext } from './call-progress.ts';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolStack } from './ToolStack.tsx';
 import { turnItems, type ToolCall, type TurnItem } from './turn-items.ts';
-import { TurnAnsweringContext } from './web-progress.ts';
 
 const textOfAgent = (m: AgentMessage) => (typeof m.content === 'string' ? m.content : '');
 
@@ -53,12 +53,15 @@ export function AssistantTurn({
   turn,
   messages,
   streaming,
+  asking = false,
   interrupted = false,
   onAnswerAgain,
 }: {
   turn: AgentMessage[];
   messages: readonly Message[];
   streaming: boolean;
+  // The answer ended with the question «Да» open under it.
+  asking?: boolean;
   interrupted?: boolean;
   onAnswerAgain?: () => void;
 }) {
@@ -77,7 +80,7 @@ export function AssistantTurn({
     <div className={styles.assistant}>
       <AgentMark />
       <div className={styles.body}>
-        <TurnAnsweringContext value={streaming}>
+        <TurnStateContext value={streaming ? 'answering' : asking ? 'asking' : 'ended'}>
           {items.map((item) =>
             item.kind === 'text' ? (
               <AnswerText key={`text-${item.id}`} text={item.text} streaming={writing(item)} failed={interrupted} />
@@ -87,7 +90,7 @@ export function AssistantTurn({
               <ToolStack key={item.calls[0]!.id} calls={item.calls} messages={messages} agent={agent} renderCall={draw} />
             ),
           )}
-        </TurnAnsweringContext>
+        </TurnStateContext>
         <TurnFooter text={lastText} streaming={streaming} interrupted={interrupted} {...(onAnswerAgain ? { onAnswerAgain } : {})} />
       </div>
     </div>

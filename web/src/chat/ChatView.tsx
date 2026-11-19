@@ -75,7 +75,8 @@ interface FeedFailures {
 // environment (`activity`) come as messages of their own and are not drawn.
 const FEED_ROLES: ReadonlySet<Message['role']> = new Set(['user', 'assistant', 'tool']);
 
-function Feed({ messages, running, failures }: { messages: Message[]; running: boolean; failures: FeedFailures }) {
+// `asking` — the question «Да» is open under the last answer.
+function Feed({ messages, running, asking, failures }: { messages: Message[]; running: boolean; asking: boolean; failures: FeedFailures }) {
   // Until the next thing to see the agent shows it is working — also while the model reasons, whose
   // reasoning would otherwise be the last message and take «Работаю» away (decision of the owner 15.11).
   const last = messages.findLast((m) => FEED_ROLES.has(m.role));
@@ -94,6 +95,7 @@ function Feed({ messages, running, failures }: { messages: Message[]; running: b
             turn={row.turn}
             messages={messages}
             streaming={running && isLast}
+            asking={!running && isLast && asking}
             interrupted={broken}
             {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
           />
@@ -221,7 +223,7 @@ export function ChatView(props: CopilotChatViewProps) {
             {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
             {empty && isConnecting ? <DelayedBar /> : null}
             {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
-            <Feed messages={messages} running={isRunning} failures={failures} />
+            <Feed messages={messages} running={isRunning} asking={extras.interrupt !== null} failures={failures} />
             {extras.interrupt ? (
               <div className={styles.assistant}>
                 <AgentMark />

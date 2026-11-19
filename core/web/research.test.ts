@@ -112,6 +112,10 @@ describe('the researcher of the internet', () => {
     expect(steps.map((s) => `${s.step.kind}:${s.step.state}`)).toEqual(['search:running', 'search:done', 'page:running', 'page:done']);
     expect(steps[1]!.step).toMatchObject({ query: 'профнастил С21 цена Екатеринбург', found: 1 });
     expect(steps[3]!.step).toMatchObject({ host: 'example.com', title: 'Профнастил С21 — цены' });
+    // The call comes the moment the agent makes it (decision of the owner 20.11: like Codex and Claude Code), before
+    // the first step — not together with its result, or the block has nothing to hang on while the search runs.
+    const startAt = events.findIndex((e) => e.type === 'TOOL_CALL_START' && e.toolCallId === callId);
+    expect(startAt).toBeLessThan(events.findIndex((e) => e.type === 'CUSTOM' && e.name === 'bba.web_progress'));
     // The steps come before the result of the call.
     const resultAt = events.findIndex((e) => e.type === 'TOOL_CALL_RESULT' && e.toolCallId === callId);
     expect(events.findIndex((e) => e.type === 'CUSTOM' && e.name === 'bba.web_progress')).toBeLessThan(resultAt);

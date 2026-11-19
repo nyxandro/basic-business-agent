@@ -10,6 +10,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
+import { useUnfinished } from './call-progress.ts';
 import styles from './chat.module.css';
 import { toolSummary, type ToolStatus } from './tool-summary.ts';
 
@@ -28,7 +29,10 @@ export function ToolDetails({ args, value }: { args: unknown; value: unknown }) 
 
 export function ToolRow({ name, status, parameters, result, agent }: ToolRowProps) {
   const [open, setOpen] = useState(false);
-  const summary = toolSummary(name, status, result, agent, parameters);
+  const unfinished = useUnfinished()({ name });
+  // A call without its result that is not under way waits for «Да» or was stopped (call-progress.ts).
+  const shown = status === 'complete' || status === 'executing' || unfinished === 'running' ? status : unfinished;
+  const summary = toolSummary(name, shown, result, agent, parameters);
 
   if (summary.state === 'running') {
     return (
@@ -40,11 +44,11 @@ export function ToolRow({ name, status, parameters, result, agent }: ToolRowProp
       </div>
     );
   }
-  if (summary.state === 'declined') {
+  if (summary.state === 'declined' || summary.state === 'waiting') {
     return (
       <div className={styles.tool}>
         <div className={cx(styles.toolLine, styles.toolLineStatic)}>
-          <Icon name="x" size={15} />
+          <Icon name={summary.state === 'waiting' ? 'clock' : 'x'} size={15} />
           <span className={styles.toolText}>{summary.text}</span>
         </div>
       </div>

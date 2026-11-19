@@ -112,7 +112,8 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { n
 }
 
 export function FileCall({ call, threadId }: { call: CallProps; threadId: string }) {
-  if (call.status !== 'complete') return <Preparing />;
+  // A browser tool runs here and answers itself; a call of the server may end without its result.
+  if (call.status !== 'complete') return <Preparing ofCall={call.status === 'inProgress'} />;
   const outcome = parseToolResult(call.result);
   if (outcome.kind !== 'ok') return null;
   const parsed = fileBlockResultSchema.safeParse(outcome.value);

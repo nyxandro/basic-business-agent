@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { ApprovalCard } from './ApprovalCard.tsx';
-import { splitAttachments, withAttachments } from '@bba/contracts';
+import { TurnStateContext, type TurnState } from './call-progress.ts';
+import { COMPUTER_TOOLS, splitAttachments, withAttachments } from '@bba/contracts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
 import { ToolRow, type ToolRowProps } from './ToolRow.tsx';
@@ -67,6 +68,32 @@ describe('tool line', () => {
   it('names the system while the call runs', () => {
     row({ status: 'executing' });
     expect(screen.getByText('Ищу в «Битрикс24»…')).toBeInTheDocument();
+  });
+
+  // Every call is in the chat the moment the agent makes it (decision of the owner 20.11): a call of the server without
+  // its result turns only while its answer is being written.
+  it('says a call waits for «Да» or was stopped when its answer ended without the result', () => {
+    const line = (turn: TurnState, name = 'bitrix24_deals') =>
+      render(
+        <MemoryRouter>
+          <TurnStateContext value={turn}>
+            <ToolRow name={name} status="inProgress" agent={AGENT} />
+          </TurnStateContext>
+        </MemoryRouter>,
+      );
+    line('answering');
+    expect(screen.getByText('Ищу в «Битрикс24»…')).toBeInTheDocument();
+    cleanup();
+    line('asking');
+    expect(screen.getByText('Ждёт вашего подтверждения')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    cleanup();
+    line('ended');
+    expect(screen.getByText('Прервано')).toBeInTheDocument();
+    cleanup();
+    // The browser's own tools answer themselves after the run: still under way.
+    line('ended', COMPUTER_TOOLS.read);
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('tells a declined action from one cancelled by a new message', () => {
@@ -220,14 +247,17 @@ describe('stack of status lines', () => {
   const STACK_AGENT = { systems: SYSTEMS, actions: { ...AGENT.actions, [COMMAND]: { title: 'Команда в рабочей папке', fields: {}, readOnly: false } } };
   const calls = ['c1', 'c2', 'c3', 'c4', 'c5'].map((id) => ({ id, type: 'function' as const, function: { name: COMMAND, arguments: `{"command":"ls ${id}"}` } }));
   const done = (ids: string[]) => ids.map((id) => ({ id: `r-${id}`, role: 'tool' as const, toolCallId: id, content: '{"exitCode":0}' }));
-  const stack = (messages: ReturnType<typeof done>) => (
+  // A stack in the answer being written now, or in an answer that ended and waits for «Да» on some calls.
+  const stack = (messages: ReturnType<typeof done>, turn: TurnState = 'answering') => (
     <MemoryRouter>
-      <ToolStack
-        calls={calls}
-        messages={messages}
-        agent={STACK_AGENT}
-        renderCall={(c) => <ToolRow name={c.function.name} status={messages.some((m) => m.toolCallId === c.id) ? 'complete' : 'executing'} parameters={JSON.parse(c.function.arguments)} result='{"exitCode":0}' agent={STACK_AGENT} />}
-      />
+      <TurnStateContext value={turn}>
+        <ToolStack
+          calls={calls}
+          messages={messages}
+          agent={STACK_AGENT}
+          renderCall={(c) => <ToolRow name={c.function.name} status={messages.some((m) => m.toolCallId === c.id) ? 'complete' : 'inProgress'} parameters={JSON.parse(c.function.arguments)} result='{"exitCode":0}' agent={STACK_AGENT} />}
+        />
+      </TurnStateContext>
     </MemoryRouter>
   );
 
@@ -255,10 +285,20 @@ describe('stack of status lines', () => {
     expect(screen.getByRole('button', { name: /Выполняю действие….*5 действий/ })).toBeInTheDocument();
   });
 
+  it('stops turning when its answer ended: the last line waits for «Да» or was stopped', () => {
+    render(stack(done(['c1', 'c2', 'c3', 'c4']), 'asking'));
+    expect(screen.getByRole('button', { name: /Ждёт вашего подтверждения.*5 действий/ })).toBeInTheDocument();
+    cleanup();
+    render(stack(done(['c1', 'c2', 'c3', 'c4']), 'ended'));
+    expect(screen.getByRole('button', { name: /Прервано.*5 действий/ })).toBeInTheDocument();
+  });
+
   it('is the line itself for one call: unfolds what it was asked and found; does not unfold while it runs', async () => {
     const one = (messages: ReturnType<typeof done>) => (
       <MemoryRouter>
-        <ToolStack calls={[calls[0]!]} messages={messages} agent={STACK_AGENT} renderCall={() => null} />
+        <TurnStateContext value="answering">
+          <ToolStack calls={[calls[0]!]} messages={messages} agent={STACK_AGENT} renderCall={() => null} />
+        </TurnStateContext>
       </MemoryRouter>
     );
     const { rerender } = render(one([]));

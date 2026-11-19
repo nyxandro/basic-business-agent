@@ -13,6 +13,7 @@ import { cx } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Ticker } from '../ui/Ticker.tsx';
+import { useUnfinished } from './call-progress.ts';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolDetails } from './ToolRow.tsx';
@@ -30,7 +31,8 @@ function argumentsOf(call: ToolCall): unknown {
 
 function StatusIcon({ summary }: { summary: ToolSummary }) {
   if (summary.state === 'running') return <span className={styles.spin} />;
-  return <Icon name={summary.state === 'done' ? 'check' : summary.state === 'failed' ? 'alert' : 'x'} size={15} />;
+  const icon = summary.state === 'done' ? 'check' : summary.state === 'failed' ? 'alert' : summary.state === 'waiting' ? 'clock' : 'x';
+  return <Icon name={icon} size={15} />;
 }
 
 export function ToolStack({
@@ -45,12 +47,15 @@ export function ToolStack({
   renderCall: (call: ToolCall) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const unfinished = useUnfinished();
   const last = calls.at(-1);
   if (!last) throw new Error('a stack of tool lines needs at least one call');
   const result = toolMessageOf(messages, last.id)?.content;
   const args = argumentsOf(last);
-  // A call without its result yet is still under way (or waits for «Да»).
-  const summary = toolSummary(last.function.name, typeof result === 'string' ? 'complete' : 'executing', typeof result === 'string' ? result : undefined, agent, args);
+  // A call without its result is under way, waits for «Да» or was stopped (call-progress.ts).
+  const state = unfinished({ name: last.function.name });
+  const status = typeof result === 'string' ? 'complete' : state === 'running' ? 'executing' : state;
+  const summary = toolSummary(last.function.name, status, typeof result === 'string' ? result : undefined, agent, args);
   const single = calls.length === 1;
   // One call unfolds once it is done; several unfold any time.
   const unfolds = !single || summary.state === 'done';

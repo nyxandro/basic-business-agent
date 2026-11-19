@@ -42,7 +42,11 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
   async function agentFor(agentId: string, run: PreparedRun, live?: { onMessageDiscarded: (messageId: string) => void; onAgentEnd: () => void }): Promise<AbstractAgent> {
     const agent = await resolveAgent(deps.editor, agentId, run.mode);
     const requestContext = requestContextFor(run);
-    const mastraAgent = new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext });
+    // Every call of a server tool goes to the chat the moment the agent makes it, not with its result (decision of
+    // the owner 20.11: like Codex and Claude Code): by default the adapter holds a server call back until its result,
+    // so a long tool (the search of the internet, a document) showed nothing while it ran. A call that waits for «Да»
+    // is then shown too and closed without a result of its own: the question carries it (web/src/chat/ToolRow.tsx).
+    const mastraAgent = new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext, streamServerToolCalls: true });
     if (!live) return mastraAgent;
     requestContext.set(REQUEST_KEYS.messageDiscarded, live.onMessageDiscarded);
     // The steps of the researcher of the internet go to the browser at once, between the agent's own events

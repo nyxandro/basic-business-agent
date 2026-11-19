@@ -64,6 +64,14 @@ describe('events of the chat stream', () => {
     expect(result?.messages?.map((m) => m.id)).toEqual(['u1', 'a2']);
   });
 
+  // A call comes the moment the model makes it (decision of the owner 20.11): a broken attempt can take calls with it.
+  it('takes the results of its calls off with a broken attempt', () => {
+    const attempt: Message = { id: 'a1', role: 'assistant', content: '', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'crm_search', arguments: '{}' } }] };
+    const ended: Message = { id: 'r1', role: 'tool', toolCallId: 'c1', content: 'The tool call ended without a result.' };
+    const result = failureSubscriber(vi.fn()).onCustomEvent({ event: { name: CHAT_EVENTS.messageDiscarded, value: { messageId: 'a1' } }, messages: [user('u1', 'привет'), attempt, ended, said('a2', 'Готово.')] });
+    expect(result?.messages?.map((m) => m.id)).toEqual(['u1', 'a2']);
+  });
+
   it('takes only the unfinished calls off a message of an earlier step', () => {
     const withCalls: Message = { id: 'a1', role: 'assistant', content: 'Смотрю.', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'crm_search', arguments: '{}' } }, { id: 'c2', type: 'function', function: { name: 'crm_search', arguments: '{}' } }] };
     const done: Message = { id: 'r1', role: 'tool', toolCallId: 'c1', content: '{}' };

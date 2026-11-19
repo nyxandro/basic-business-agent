@@ -6,10 +6,12 @@ import { ru } from '../i18n/ru.ts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
 
-export type ToolStatus = 'inProgress' | 'executing' | 'complete';
+// CopilotKit's state of a call, or ours for a call without its result that is not under way (call-progress.ts).
+export type ToolStatus = 'inProgress' | 'executing' | 'complete' | 'waiting' | 'stopped';
 
 export type ToolSummary =
   | { state: 'running'; text: string }
+  | { state: 'waiting'; text: string }
   | { state: 'declined'; text: string }
   | { state: 'failed'; text: string; code: string | null }
   | { state: 'done'; text: string; readOnly: boolean; count: number | null; value: unknown };
@@ -107,6 +109,8 @@ function conversationsSummary(status: ToolStatus, result: string | undefined, pa
 
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
+  if (status === 'waiting') return { state: 'waiting', text: ru.chat.toolWaiting };
+  if (status === 'stopped') return { state: 'declined', text: ru.chat.toolStopped };
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
   if (skill) return skill;
   const memory = MEMORY_TOOLS[name];

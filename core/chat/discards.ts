@@ -54,6 +54,10 @@ export function createDiscardTracker(take: () => string[]): DiscardTracker {
   let stepMessages: string[] = [];
   let stepReasoning = new Set<string>();
   let stepCalls = new Map<string, string[]>();
+  // Calls taken off the screen. A call comes the moment the model makes it (core/chat/copilot.ts), so a broken step may
+  // leave one half written, and the adapter answers it at the end of the run: nothing more of it goes to the chat, or
+  // the browser would keep a result without its call and send it back with the next message.
+  const dropped = new Set<string>();
 
   const ofBroken = (id: string) => broken.some((response) => derivedFrom(id, response));
 
@@ -61,6 +65,7 @@ export function createDiscardTracker(take: () => string[]): DiscardTracker {
     const lines: string[] = [];
     for (const id of stepMessages) {
       if (!ofBroken(id) && !stepReasoning.has(id)) continue;
+      for (const call of stepCalls.get(id) ?? []) dropped.add(call);
       if (!earlier.has(id)) lines.push(discardLine(id), '');
       else if (stepCalls.has(id)) lines.push(discardLine(id, stepCalls.get(id)), '');
     }
@@ -80,6 +85,7 @@ export function createDiscardTracker(take: () => string[]): DiscardTracker {
       const ends = event.type === 'RUN_FINISHED' || event.type === 'RUN_ERROR';
       const other = message !== null && !ofBroken(message) && !stepReasoning.has(message);
       const before = broken.length > 0 && (ends || other) ? announce() : [];
+      if (typeof event.toolCallId === 'string' && dropped.has(event.toolCallId)) return before.join('\n');
       if (event.type === 'TOOL_CALL_RESULT') {
         for (const id of stepMessages) earlier.add(id);
         stepMessages = [];

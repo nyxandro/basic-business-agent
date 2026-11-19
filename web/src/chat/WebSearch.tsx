@@ -2,7 +2,7 @@
 // works, the line says what it does now — the query it searches, the site it reads — with a clock, and under it the
 // queries and the sites so far, each with its state. Done, it folds into «Поиск в интернете · 2 запроса · 3 источника
 // · 1 мин 12 с» that unfolds the same list; after a reload the list comes from the result of the call.
-import { webResearchResultSchema, webStepSchema, type WebStep } from '@bba/contracts';
+import { WEB_RESEARCH_TOOL, webResearchResultSchema, webStepSchema, type WebStep } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { ru } from '../i18n/ru.ts';
@@ -10,6 +10,7 @@ import { cx } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import chat from './chat.module.css';
+import { useUnfinished } from './call-progress.ts';
 import { parseToolResult } from './tool-result.ts';
 import { useWebCall } from './web-progress.ts';
 import styles from './web-search.module.css';
@@ -44,8 +45,9 @@ const hostOf = (address: string) => {
   }
 };
 
-function outcomeOf(call: Call, answering: boolean): Outcome {
-  if (call.status !== 'complete' || call.result === undefined) return answering ? { kind: 'running' } : { kind: 'stopped' };
+// `underway` — the call has no result yet and is still being worked on (call-progress.ts).
+function outcomeOf(call: Call, underway: boolean): Outcome {
+  if (call.status !== 'complete' || call.result === undefined) return underway ? { kind: 'running' } : { kind: 'stopped' };
   const outcome = parseToolResult(call.result);
   if (outcome.kind === 'ok') {
     const kept = keptSchema.safeParse(outcome.value);
@@ -130,8 +132,9 @@ function Steps({ steps }: { steps: readonly WebStep[] }) {
 }
 
 export function WebSearch({ call }: { call: Call }) {
-  const { steps: live, startedAt, answering } = useWebCall(call.toolCallId);
-  const outcome = outcomeOf(call, answering);
+  const { steps: live, startedAt } = useWebCall(call.toolCallId);
+  const unfinished = useUnfinished();
+  const outcome = outcomeOf(call, unfinished({ name: WEB_RESEARCH_TOOL }) === 'running');
   const running = outcome.kind === 'running';
   // Open while it works, folded when done; a click of the person decides from then on.
   const [chosen, setChosen] = useState<boolean | null>(null);

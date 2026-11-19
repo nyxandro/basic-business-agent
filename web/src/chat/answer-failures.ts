@@ -11,11 +11,12 @@ interface CustomEventParams {
   messages: readonly Message[];
 }
 
-// The message goes, or — when only calls of a broken step hang on a message of an earlier step —
-// only those calls and whatever they may already show.
+// The message goes with the results of its calls, or — when only calls of a broken step hang on a message of an earlier
+// step — only those calls and whatever they may already show.
 function withoutDiscarded(messages: readonly Message[], messageId: string, toolCallIds: string[] | undefined): Message[] {
-  if (!toolCallIds) return messages.filter((m) => m.id !== messageId);
-  const calls = new Set(toolCallIds);
+  const gone = messages.find((m) => m.id === messageId);
+  const calls = new Set(toolCallIds ?? (gone?.role === 'assistant' ? (gone.toolCalls ?? []).map((c) => c.id) : []));
+  if (!toolCallIds) return messages.filter((m) => m.id !== messageId && !(m.role === 'tool' && calls.has(m.toolCallId)));
   return messages
     .filter((m) => !(m.role === 'tool' && calls.has(m.toolCallId)))
     .map((m) => (m.id === messageId && m.role === 'assistant' && m.toolCalls ? { ...m, toolCalls: m.toolCalls.filter((c) => !calls.has(c.id)) } : m));
