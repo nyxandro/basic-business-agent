@@ -1,6 +1,6 @@
 // How a turn of the agent is laid out (decision of the owner 15.11): the status lines between two
 // things the agent shows go into one stack; its words and the blocks it draws stay in sight.
-import { GENUI_TOOL } from '@bba/contracts';
+import { GENUI_TOOL, WEB_RESEARCH_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { describe, expect, it } from 'vitest';
 import { turnItems } from './turn-items.ts';
@@ -33,6 +33,11 @@ describe('the layout of a turn', () => {
     const turn = [said('a1', '', [call('c1'), call('c2'), call('t1', GENUI_TOOL.table), call('c3'), call('c4'), call('crm', 'crm_search'), call('c5')])];
     const table = JSON.stringify({ table: { title: 'Сделки', columns: [{ key: 'deal', label: 'Сделка' }], rows: [{ deal: 'Поставка' }] } });
     expect(shape(turn, [result('crm', table)])).toEqual(['[c1 c2]', 't1', '[c3 c4]', 'crm', '[c5]']);
+  });
+
+  // The live block of a search is the search itself (spec, section 8.30), not a line of a stack.
+  it('leaves the search of the internet in sight', () => {
+    expect(shape([said('a1', '', [call('c1'), call('w1', WEB_RESEARCH_TOOL), call('c2')])])).toEqual(['[c1]', 'w1', '[c2]']);
   });
 
   it('puts nothing for a message with neither words nor calls', () => {

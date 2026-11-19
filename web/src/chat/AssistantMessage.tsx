@@ -18,6 +18,7 @@ import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolStack } from './ToolStack.tsx';
 import { turnItems, type ToolCall, type TurnItem } from './turn-items.ts';
+import { TurnAnsweringContext } from './web-progress.ts';
 
 const textOfAgent = (m: AgentMessage) => (typeof m.content === 'string' ? m.content : '');
 
@@ -76,15 +77,17 @@ export function AssistantTurn({
     <div className={styles.assistant}>
       <AgentMark />
       <div className={styles.body}>
-        {items.map((item) =>
-          item.kind === 'text' ? (
-            <AnswerText key={`text-${item.id}`} text={item.text} streaming={writing(item)} failed={interrupted} />
-          ) : item.kind === 'call' ? (
-            <div key={item.call.id}>{draw(item.call)}</div>
-          ) : (
-            <ToolStack key={item.calls[0]!.id} calls={item.calls} messages={messages} agent={agent} renderCall={draw} />
-          ),
-        )}
+        <TurnAnsweringContext value={streaming}>
+          {items.map((item) =>
+            item.kind === 'text' ? (
+              <AnswerText key={`text-${item.id}`} text={item.text} streaming={writing(item)} failed={interrupted} />
+            ) : item.kind === 'call' ? (
+              <div key={item.call.id}>{draw(item.call)}</div>
+            ) : (
+              <ToolStack key={item.calls[0]!.id} calls={item.calls} messages={messages} agent={agent} renderCall={draw} />
+            ),
+          )}
+        </TurnAnsweringContext>
         <TurnFooter text={lastText} streaming={streaming} interrupted={interrupted} {...(onAnswerAgain ? { onAnswerAgain } : {})} />
       </div>
     </div>

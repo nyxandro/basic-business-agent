@@ -27,6 +27,9 @@ export const REQUEST_KEYS = {
   // Chat runs only: a function told the id of a message whose words the person already saw when the
   // model call broke and was asked again, so the chat takes them off the screen (spec, 9.1).
   messageDiscarded: 'bba.messageDiscarded',
+  // Chat runs only: a function told each step of the researcher of the internet, for the live block of its
+  // search in the chat (spec, section 8.30).
+  webProgress: 'bba.webProgress',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';

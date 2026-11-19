@@ -5,8 +5,10 @@
 import { MastraAgent } from '@ag-ui/mastra';
 import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime';
 import type { AbstractAgent } from '@ag-ui/client';
-import { EventType } from '@ag-ui/core';
-import { filter, finalize } from 'rxjs';
+import { EventType, type BaseEvent } from '@ag-ui/core';
+import { CHAT_EVENTS } from '@bba/contracts';
+import { filter, finalize, Observable, Subject } from 'rxjs';
+import type { WebProgress } from '../web/trail.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
@@ -43,6 +45,11 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
     const mastraAgent = new MastraAgent({ agent, agentId, resourceId: run.resourceId, requestContext });
     if (!live) return mastraAgent;
     requestContext.set(REQUEST_KEYS.messageDiscarded, live.onMessageDiscarded);
+    // The steps of the researcher of the internet go to the browser at once, between the agent's own events
+    // (spec, section 8.30: the live block of the search) — the agent's stream is silent while a tool works.
+    const progress = new Subject<BaseEvent>();
+    const tell: WebProgress = (toolCallId, step) => progress.next({ type: EventType.CUSTOM, name: CHAT_EVENTS.webProgress, value: { toolCallId, step } });
+    requestContext.set(REQUEST_KEYS.webProgress, tell);
     // A middleware survives the copy of the agent CopilotKit makes for a run; `finalize` fires once
     // the agent's events end — completed, failed or unsubscribed by «Стоп».
     // The «state of the agent» is cut both ways (spec, 8.26): the chat does not use it, and the adapter of
@@ -50,12 +57,21 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
     // browser, and written back from the browser's next run.
     return mastraAgent.use((input, next) => {
       run.agentStarted = true;
-      return next
+      const events = next
         .run({ ...input, state: {} })
         .pipe(
           filter((event) => event.type !== EventType.STATE_SNAPSHOT && event.type !== EventType.STATE_DELTA),
           finalize(live.onAgentEnd),
         );
+      // The steps only while the agent's events go: they end, fail or are stopped together.
+      return new Observable<BaseEvent>((subscriber) => {
+        const steps = progress.subscribe((event) => subscriber.next(event));
+        const agentEvents = events.subscribe(subscriber);
+        return () => {
+          steps.unsubscribe();
+          agentEvents.unsubscribe();
+        };
+      });
     });
   }
 

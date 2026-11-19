@@ -2,6 +2,25 @@
 // here are only the texts of the screens and of the errors the browser detects itself.
 import { plural } from '../ui/format.ts';
 
+// Why a page of a search did not open, in a word or two (spec, section 8.30).
+const PAGE_FAILURES: Record<string, string> = {
+  APP_WEB_FETCH_BLOCKED_BY_SITE: 'сайт не пустил',
+  APP_WEB_FETCH_HTTP: 'ошибка сайта',
+  APP_WEB_FETCH_TIMEOUT: 'не ответил',
+  APP_WEB_FETCH_TOO_LARGE: 'слишком большой',
+  APP_WEB_FETCH_UNSUPPORTED: 'не страница',
+  APP_WEB_FETCH_NO_TEXT: 'нет текста',
+  APP_WEB_FETCH_BLOCKED_ADDRESS: 'внутренний адрес',
+  APP_WEB_FETCH_BAD_URL: 'неверный адрес',
+  APP_WEB_FETCH_BUSY: 'сервер занят',
+};
+
+// «12 с», «1 мин 12 с».
+function duration(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `${s} с` : `${Math.floor(s / 60)} мин${s % 60 ? ` ${s % 60} с` : ''}`;
+}
+
 export const ru = {
   app: { title: 'Агенты' },
   menu: {
@@ -296,10 +315,31 @@ export const ru = {
     conversationRead: (title: string) => `Прочитал разговор «${title}»`,
     conversationReadCurrent: 'Перечитал ранние сообщения разговора',
     conversationsFailed: 'Не получилось посмотреть прошлые разговоры',
-    // The errand of the internet (spec, section 8.30).
-    webResearchRunning: (task: string) => (task ? `Ищу в интернете: ${task}` : 'Ищу в интернете…'),
-    webResearchDone: (n: number) => (n > 0 ? `Поиск в интернете · ${n} ${plural(n, ['источник', 'источника', 'источников'])}` : 'Поиск в интернете · источников нет'),
-    webResearchFailed: 'Поиск в интернете не получился',
+    // The live block of a search (spec, section 8.30; decision of the owner 20.11).
+    webSearch: {
+      starting: 'Начинаю поиск в интернете…',
+      thinking: 'Разбираю найденное…',
+      searching: (query: string) => `Ищу: «${query}»`,
+      reading: (host: string) => `Читаю ${host}…`,
+      queries: 'Запросы',
+      sites: 'Сайты',
+      found: (n: number) => (n > 0 ? `${n} ${plural(n, ['результат', 'результата', 'результатов'])}` : 'ничего не нашлось'),
+      searchFailed: 'поиск не ответил',
+      readingNote: 'читаю…',
+      pageFailed: (code: string) => PAGE_FAILURES[code] ?? 'не открылась',
+      // A search kept before 20.11 has no steps and no time: the line names the sources only.
+      done: (queries: number | null, sources: number, ms: number | null) =>
+        [
+          'Поиск в интернете',
+          queries === null ? null : `${queries} ${plural(queries, ['запрос', 'запроса', 'запросов'])}`,
+          `${sources} ${plural(sources, ['источник', 'источника', 'источников'])}`,
+          ms === null ? null : duration(ms),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      failed: 'Поиск в интернете не получился',
+      stopped: 'Поиск в интернете прерван',
+    },
     // A picture of an answer from another site is a link (spec, section 8.30).
     foreignImage: (where: string) => (where ? `Картинка: ${where}` : 'Картинка с другого сайта не показывается'),
     toolDone: 'Действие выполнено',

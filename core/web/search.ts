@@ -12,7 +12,7 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
-import { countSearch } from './fetch-tool.ts';
+import { stepId, trailIn } from './trail.ts';
 
 export const WEB_SEARCH_TOOL = 'web_search';
 const SEARCH_WAIT_MS = 20_000;
@@ -90,13 +90,18 @@ export function createWebSearchTool(deps: { db: Db; searcher: WebSearcher }): An
       const ctx = context?.requestContext;
       const stop = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       if (await personalDocumentIn(deps.db, query, WEB_SEARCH_TOOL)) return { error: true, code: 'APP_WEB_PERSONAL_DATA', message: PERSONAL_DATA_MESSAGE };
+      const trail = trailIn(ctx);
+      const step = { kind: 'search' as const, id: stepId(), query };
+      trail?.record({ ...step, state: 'running' });
       const started = Date.now();
       try {
         const results = await deps.searcher.search({ query, maxResults: max_results, userId: requireContextValue(ctx, REQUEST_KEYS.userId), agentId: requireContextValue(ctx, REQUEST_KEYS.agentId), ...(stop ? { stop } : {}) });
-        countSearch(ctx);
+        trail?.record({ ...step, state: 'done', found: results.length });
         logEvent('info', 'web_search_done', { ms: Date.now() - started, results: results.length });
         return { results };
       } catch (error) {
+        // Whatever broke, the step is not under way any more.
+        trail?.record({ ...step, state: 'failed', ...(isAppError(error) ? { code: error.code } : {}) });
         if (!isAppError(error)) throw error;
         logEvent('warn', 'web_search_failed', { code: error.code, ms: Date.now() - started });
         return failureOf(error);

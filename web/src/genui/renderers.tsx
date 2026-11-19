@@ -1,5 +1,5 @@
 // Draws the catalog blocks and every other tool call inside CopilotChat (spec, section 17.8).
-import { cardBlockSchema, chartBlockSchema, choiceBlockSchema, formBlockSchema, GENUI_TOOL, modelTableBlockSchema, type AgentSummary } from '@bba/contracts';
+import { cardBlockSchema, chartBlockSchema, choiceBlockSchema, formBlockSchema, GENUI_TOOL, modelTableBlockSchema, WEB_RESEARCH_TOOL, type AgentSummary } from '@bba/contracts';
 import { useAgent, useCopilotKit, useRenderTool } from '@copilotkit/react-core';
 import { lazy, Suspense, useCallback } from 'react';
 import { z } from 'zod';
@@ -13,6 +13,7 @@ import { FileCall } from './FileBlock.tsx';
 import { useChatExtras } from '../chat/chat-context.ts';
 import { FormBlockView } from './FormBlock.tsx';
 import { TableBlockView } from './TableBlock.tsx';
+import { WebSearch } from '../chat/WebSearch.tsx';
 
 // A chart is drawn by code most conversations never need: it is loaded with the first chart.
 const ChartBlockView = lazy(() => import('./ChartBlock.tsx').then((m) => ({ default: m.ChartBlockView })));
@@ -74,6 +75,8 @@ export function useGenuiRenderers(agent: AgentSummary): void {
   useRenderTool({ name: GENUI_TOOL.choice, parameters: anyArgs, render: (call) => <Choice call={call} /> }, []);
   useRenderTool({ name: GENUI_TOOL.form, parameters: anyArgs, render: (call) => <Form call={call} /> }, []);
   useRenderTool({ name: GENUI_TOOL.file, parameters: anyArgs, render: (call) => <FileOfCall call={call} /> }, []);
+  // The live block of a search of the internet (spec, section 8.30).
+  useRenderTool({ name: WEB_RESEARCH_TOOL, parameters: anyArgs, render: (call) => <WebSearch call={call} /> }, []);
   useRenderTool(
     {
       name: '*',

@@ -1,0 +1,106 @@
+/* The live block of a search of the internet (WebSearch.tsx): the line of the call, and under it the queries and the
+   sites with their states — the same look as the other lines of calls (chat.module.css .toolLine). */
+.block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.head {
+  max-width: 100%;
+}
+
+.head:disabled {
+  cursor: default;
+}
+
+.clock {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.group {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kind {
+  flex: none;
+  color: var(--muted);
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.link {
+  text-decoration: none;
+}
+
+.link:hover .host {
+  text-decoration: underline;
+}
+
+.host {
+  font-weight: 500;
+}
+
+.title {
+  color: var(--muted);
+}
+
+.note {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ok {
+  flex: none;
+  color: var(--ok);
+}
+
+.bad {
+  flex: none;
+  color: var(--bad);
+}

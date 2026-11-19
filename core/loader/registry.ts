@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { GENUI_TOOL_IDS } from '@bba/contracts';
+import { GENUI_TOOL_IDS, WEB_RESEARCH_TOOL } from '@bba/contracts';
 import { agentPassportSchema, type AgentPassport } from '../config/schemas.ts';
 import { configError, formatPath, type ConfigProblem, type Installation } from '../config/validate.ts';
 import type { MigrationSource } from '../db/migrate.ts';
@@ -15,7 +15,7 @@ import type { ConnectorRuntime } from '../connections/manager.ts';
 import type { AnyTool, McpDefinition, PluginContext, PluginTrigger } from '../plugins/public/index.ts';
 
 // Names of the core's tools of the internet (core/web): no plugin or agent tool may take them.
-const WEB_TOOL_IDS: readonly string[] = ['web_research', 'web_search', 'web_fetch'];
+const WEB_TOOL_IDS: readonly string[] = [WEB_RESEARCH_TOOL, 'web_search', 'web_fetch'];
 
 export interface AgentRuntime {
   passport: AgentPassport;

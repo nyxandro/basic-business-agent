@@ -1,5 +1,5 @@
-// The researcher's tool for a page (spec, section 8.30): web_fetch over the reader of pages (fetch.ts). The sources
-// the researcher read are gathered in the context of its task, for the answer of web_research.
+// The researcher's tool for a page (spec, section 8.30): web_fetch over the reader of pages (fetch.ts). Each page is a
+// step of the trail of the search (trail.ts): «читаю», then read or not, for the live block in the chat.
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
@@ -8,23 +8,9 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { logEvent } from '../server/log.ts';
 import { ADDRESS_MAX_CHARS, fetchFailureMessage, type PageReader } from './fetch.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
+import { pageStepId, trailIn } from './trail.ts';
 
 export const WEB_FETCH_TOOL = 'web_fetch';
-// A key of the researcher's own context (never of a run of an agent): what it read and searched.
-export const WEB_SOURCES_KEY = 'bba.webSources';
-
-export interface Sources {
-  pages: Map<string, string>;
-  searches: number;
-}
-
-export const newSources = (): Sources => ({ pages: new Map(), searches: 0 });
-export const sourcesOf = (s: Sources) => [...s.pages].map(([address, title]) => ({ title, address }));
-
-function sourcesIn(ctx: { get(key: string): unknown } | undefined): Sources | null {
-  const value = ctx?.get(WEB_SOURCES_KEY);
-  return value && typeof value === 'object' && 'pages' in value ? (value as Sources) : null;
-}
 
 // The host only: the rest of an address may hold a person's data, it is not logged.
 function hostOf(address: string): string | null {
@@ -50,23 +36,24 @@ export function createWebFetchTool(deps: { db: Db; reader: PageReader }): AnyToo
       const stop = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       if (await personalDocumentIn(deps.db, address, WEB_FETCH_TOOL)) return { error: true, code: 'APP_WEB_PERSONAL_DATA', message: PERSONAL_DATA_MESSAGE };
       const host = hostOf(address);
+      const trail = trailIn(context?.requestContext);
+      const step = { kind: 'page' as const, id: pageStepId(address), address, host: host ?? address };
+      // A page read before stays read when its next part does not come.
+      const before = trail?.step(step.id);
+      trail?.record({ ...step, state: 'running' });
       const started = Date.now();
       try {
         const page = await deps.reader.read(address, offset, stop);
-        sourcesIn(context?.requestContext)?.pages.set(page.final_address, page.title);
+        // The link may have led to another site: the row names the site of the page read.
+        trail?.record({ ...step, address: page.final_address, host: hostOf(page.final_address) ?? step.host, title: page.title, state: 'done' });
         logEvent('info', 'web_fetch_done', { host, kind: page.kind, chars: page.total_chars, ms: Date.now() - started });
         return page;
       } catch (error) {
+        trail?.record(before?.state === 'done' ? before : { ...step, state: 'failed', ...(isAppError(error) ? { code: error.code } : {}) });
         if (!isAppError(error)) throw error;
         logEvent('warn', 'web_fetch_failed', { host, code: error.code, ms: Date.now() - started });
         return { error: true, code: error.code, message: fetchFailureMessage(error.code, error.details) };
       }
     },
   }) as AnyTool;
-}
-
-// The search counts too, for the journal of a task.
-export function countSearch(ctx: { get(key: string): unknown } | undefined): void {
-  const sources = sourcesIn(ctx);
-  if (sources) sources.searches++;
 }

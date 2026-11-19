@@ -94,7 +94,31 @@ export const CHAT_EVENTS = {
   turnsFailed: 'bba.turns_failed',
   // The conversation got its name while the agent answered: «Недавние» load again.
   threadTitled: 'bba.thread_titled',
+  // A step of the researcher of the internet, for the live block of its search (spec, section 8.30).
+  webProgress: 'bba.web_progress',
 } as const;
+
+// The errand of the internet of an agent (spec, section 8.30): the chat draws its call as the live block of the search.
+export const WEB_RESEARCH_TOOL = 'web_research';
+
+// A step of the search of the internet (spec, section 8.30): a query to the search, or a page read. The same
+// step comes again with its new state; `id` tells which.
+export const webStepSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('search'), id: z.string().min(1), query: z.string(), state: z.enum(['running', 'done', 'failed']), found: z.number().int().nonnegative().optional(), code: z.string().optional() }),
+  z.object({ kind: z.literal('page'), id: z.string().min(1), address: z.string(), host: z.string(), title: z.string().optional(), state: z.enum(['running', 'done', 'failed']), code: z.string().optional() }),
+]);
+export type WebStep = z.infer<typeof webStepSchema>;
+
+// CUSTOM event of the chat stream: the step of the search of a call of web_research.
+export const webProgressSchema = z.object({ toolCallId: z.string().min(1), step: webStepSchema });
+
+// What web_research gives back, its steps included: the block of the search is the same after a reload.
+export const webResearchResultSchema = z.object({
+  answer: z.string(),
+  sources: z.array(z.object({ title: z.string(), address: z.string() })),
+  steps: z.array(webStepSchema),
+  ms: z.number().nonnegative(),
+});
 
 export const threadTitledSchema = z.object({ threadId: z.string().min(1), title: z.string().min(1) });
 

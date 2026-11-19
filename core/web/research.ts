@@ -2,6 +2,7 @@
 // researcher and gets back only what it asked for, with the sources — the pages stay out of the conversation.
 // The researcher is an agent of the core with the search and the pages only: it gets the task and nothing else
 // of the run — no conversation, no memory, no mail or systems of the employee — and its own talk is kept nowhere.
+import { WEB_RESEARCH_TOOL } from '@bba/contracts';
 import { Agent } from '@mastra/core/agent';
 import type { ErrorProcessor, InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { RequestContext } from '@mastra/core/request-context';
@@ -15,10 +16,10 @@ import { REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import type { PageReader } from './fetch.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
-import { createWebFetchTool, newSources, sourcesOf, WEB_SOURCES_KEY } from './fetch-tool.ts';
+import { createWebFetchTool } from './fetch-tool.ts';
+import { newTrail, WEB_TRAIL_KEY, type WebProgress, type WebTrail } from './trail.ts';
 import { createWebSearchTool, type WebSearcher } from './search.ts';
 
-export const WEB_RESEARCH_TOOL = 'web_research';
 // Calls of the model one task may take; a researcher that has not answered by then has lost its way.
 export const RESEARCH_MAX_STEPS = 20;
 const TASK_MAX_CHARS = 4000;
@@ -81,7 +82,14 @@ export interface WebResearchDeps {
 }
 
 export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
-  const fail = (reason: string) => ({ error: true, code: 'APP_WEB_RESEARCH_FAILED', message: `Поиск в интернете не получился: ${reason} Скажи сотруднику; можно попробовать ещё раз позже.` });
+  // A failure keeps its steps too: the block of the search shows what was tried.
+  const fail = (reason: string, trail: WebTrail, started: number) => ({
+    error: true,
+    code: 'APP_WEB_RESEARCH_FAILED',
+    message: `Поиск в интернете не получился: ${reason} Скажи сотруднику; можно попробовать ещё раз позже.`,
+    steps: trail.steps(),
+    ms: Date.now() - started,
+  });
   return createTool({
     id: WEB_RESEARCH_TOOL,
     description:
@@ -92,30 +100,43 @@ export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
       // Mastra's own signal of the run: «Стоп» of the person.
       const signal = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       const rc = copyOf(context?.requestContext);
-      const sources = newSources();
-      rc.set(WEB_SOURCES_KEY, sources);
+      // Each step goes to the live block of this call in the chat (decision of the owner 20.11); a background run
+      // has no browser to tell, its steps stay in the result.
+      const progress = context?.requestContext?.get(REQUEST_KEYS.webProgress);
+      const toolCallId = (context as { agent?: { toolCallId?: string } } | undefined)?.agent?.toolCallId ?? null;
+      const trail = newTrail(toolCallId, typeof progress === 'function' ? (progress as WebProgress) : null);
+      rc.set(WEB_TRAIL_KEY, trail);
       const started = Date.now();
       try {
         signal?.throwIfAborted();
         const result = await deps.researcher.generate(task, { requestContext: rc, ...(signal ? { abortSignal: signal } : {}) });
         // Mastra ends a stopped generation with what it had: the stop is the run's, not a failure of the search.
         signal?.throwIfAborted();
-        const found = sourcesOf(sources);
-        logEvent('info', 'web_research_done', { steps: result.steps?.length ?? null, searches: sources.searches, pages: found.length, ms: Date.now() - started });
+        const found = trail.sources();
+        logEvent('info', 'web_research_done', { steps: result.steps?.length ?? null, searches: trail.searches(), pages: found.length, ms: Date.now() - started });
         if (!result.text.trim()) {
           logEvent('warn', 'web_research_failed', { code: 'APP_WEB_RESEARCH_FAILED', reason: 'no_answer', steps: result.steps?.length ?? null });
-          return fail(`помощник не дошёл до ответа за ${RESEARCH_MAX_STEPS} шагов.`);
+          return fail(`помощник не дошёл до ответа за ${RESEARCH_MAX_STEPS} шагов.`, trail, started);
         }
-        return { answer: result.text, sources: found };
+        return { answer: result.text, sources: found, steps: trail.steps(), ms: Date.now() - started };
       } catch (error) {
         // «Стоп» of the person stops the run itself, not only this call.
         if (signal?.aborted) throw error;
         const translated = isAppError(error) ? error : await deps.translateError(error, requireContextValue(rc, REQUEST_KEYS.userId));
         logEvent('warn', 'web_research_failed', { code: translated.code, ms: Date.now() - started });
-        return fail(translated.userMessage);
+        return fail(translated.userMessage, trail, started);
       }
     },
+    // The steps and the time are for the person's screen (the live block of the search); the agent gets only what it
+    // asked for (F35). Mastra keeps this in the stored message: the next turns see the same.
+    toModelOutput: (output: unknown) => ({ type: 'json', value: forModel(output) }),
   }) as AnyTool;
+}
+
+function forModel(output: unknown): unknown {
+  if (!output || typeof output !== 'object') return output;
+  const { steps: _steps, ms: _ms, ...rest } = output as Record<string, unknown>;
+  return rest;
 }
 
 export interface WebDeps {

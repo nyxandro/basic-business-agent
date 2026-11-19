@@ -23,6 +23,7 @@ import { useFileDrop } from './FileDrop.tsx';
 import { withAttachments } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
+import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
 import { Welcome } from './Welcome.tsx';
 
 // The feed sticks to the bottom while the person is within this distance of it.
@@ -138,6 +139,13 @@ export function ChatView(props: CopilotChatViewProps) {
     return () => subscription.unsubscribe();
   }, [agent, onTurnsFailed]);
 
+  // The steps of searches of the internet, for their live blocks (spec, section 8.30).
+  const [webProgress] = useState(createWebProgressStore);
+  useEffect(() => {
+    const subscription = agent.subscribe(webProgressSubscriber(webProgress));
+    return () => subscription.unsubscribe();
+  }, [agent, webProgress]);
+
   // The conversation got its name while the agent answers (spec, section 8.16).
   const { threadId, onThreadTitled } = extras;
   useEffect(() => {
@@ -199,46 +207,48 @@ export function ChatView(props: CopilotChatViewProps) {
 
   const empty = messages.length === 0;
   return (
-    <div className={styles.view} data-chat-window onDragEnter={drop.onDragEnter}>
-      <div
-        ref={scroller}
-        className={`${styles.scroll} scroll-thin`}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-        }}
-      >
-        <div className={styles.feed}>
-          {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
-          {empty && isConnecting ? <DelayedBar /> : null}
-          {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
-          <Feed messages={messages} running={isRunning} failures={failures} />
-          {extras.interrupt ? (
-            <div className={styles.assistant}>
-              <AgentMark />
-              <div className={styles.body}>{extras.interrupt}</div>
-            </div>
-          ) : null}
+    <WebProgressContext value={webProgress}>
+      <div className={styles.view} data-chat-window onDragEnter={drop.onDragEnter}>
+        <div
+          ref={scroller}
+          className={`${styles.scroll} scroll-thin`}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+          }}
+        >
+          <div className={styles.feed}>
+            {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
+            {empty && isConnecting ? <DelayedBar /> : null}
+            {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
+            <Feed messages={messages} running={isRunning} failures={failures} />
+            {extras.interrupt ? (
+              <div className={styles.assistant}>
+                <AgentMark />
+                <div className={styles.body}>{extras.interrupt}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
-      <div className={styles.dock}>
-        <div className={styles.dockInner}>
-          {bannerError ? <ErrorBanner error={bannerError} /> : null}
-          {extras.composerNotice}
-          <Composer
-            value={inputValue}
-            onChange={change}
-            onSend={() => send(inputValue)}
-            {...(onStop ? { onStop } : {})}
-            running={isRunning}
-            extra={extras.composerExtra}
-            uploading={uploads.waiting}
-            progress={uploads.progress}
-            onAttach={uploads.attach}
-          />
+        <div className={styles.dock}>
+          <div className={styles.dockInner}>
+            {bannerError ? <ErrorBanner error={bannerError} /> : null}
+            {extras.composerNotice}
+            <Composer
+              value={inputValue}
+              onChange={change}
+              onSend={() => send(inputValue)}
+              {...(onStop ? { onStop } : {})}
+              running={isRunning}
+              extra={extras.composerExtra}
+              uploading={uploads.waiting}
+              progress={uploads.progress}
+              onAttach={uploads.attach}
+            />
+          </div>
         </div>
+        {drop.overlay}
       </div>
-      {drop.overlay}
-    </div>
+    </WebProgressContext>
   );
 }

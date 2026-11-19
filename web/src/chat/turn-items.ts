@@ -3,7 +3,7 @@
 // the last of them and unfolds into all. A lone line is a stack of one, so the line stays the same
 // when the next call comes and only turns to it. Within one message the words come first: AG-UI puts
 // the calls of a step on the message of the words said before them.
-import { GENUI_TOOL, toolTableResultSchema } from '@bba/contracts';
+import { GENUI_TOOL, toolTableResultSchema, WEB_RESEARCH_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { toolMessageOf } from './messages.ts';
 import { parseToolResult } from './tool-result.ts';
@@ -15,7 +15,8 @@ export type TurnItem =
   | { kind: 'call'; call: ToolCall }
   | { kind: 'stack'; calls: ToolCall[] };
 
-const BLOCKS: ReadonlySet<string> = new Set(Object.values(GENUI_TOOL));
+// The live block of a search of the internet stands alone too (spec, section 8.30): it is the search itself.
+const BLOCKS: ReadonlySet<string> = new Set([...Object.values(GENUI_TOOL), WEB_RESEARCH_TOOL]);
 
 // A block of the catalog, or a call whose result is a table the person reads: content, not status.
 function standsAlone(call: ToolCall, messages: readonly Message[]): boolean {
