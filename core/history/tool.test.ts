@@ -244,7 +244,7 @@ describe('conversations tool', () => {
     await conversation(olgaId, 'Сводка по тендерам', [['assistant', [text('Нашёл 3 закупки.')]]], { projectId: shared, kind: 'background', threadId: `bg:${randomUUID()}:${olgaId}` });
     const rc = new RequestContext();
     const draftThread = randomUUID();
-    for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, draftThread], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.modelId, 'test-paid'], [REQUEST_KEYS.skillPaths, '[]'], [REQUEST_KEYS.runKind, 'draft']] as const) rc.set(key, value);
+    for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, draftThread], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.modelId, 'test-paid'], [REQUEST_KEYS.skillPaths, '[]'], [REQUEST_KEYS.abilities, '{"web":true,"commands":true}'], [REQUEST_KEYS.runKind, 'draft']] as const) rc.set(key, value);
     t.model.script({ text: 'Черновик проверен.' });
     await t.mastra.getAgent('sales').generate('Проверка черновика', { requestContext: rc, memory: { thread: draftThread, resource: `draft:${olgaId}` } });
     const listed = parsed(await ask(olga, { mode: 'list', scope: 'all' }));
@@ -257,7 +257,7 @@ describe('conversations tool', () => {
     for (const runKind of ['background', 'draft'] as const) {
       const rc = new RequestContext();
       const threadId = randomUUID();
-      for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, threadId], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.modelId, 'test-paid'], [REQUEST_KEYS.skillPaths, '[]'], [REQUEST_KEYS.runKind, runKind]] as const) rc.set(key, value);
+      for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, threadId], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.modelId, 'test-paid'], [REQUEST_KEYS.skillPaths, '[]'], [REQUEST_KEYS.abilities, '{"web":true,"commands":true}'], [REQUEST_KEYS.runKind, runKind]] as const) rc.set(key, value);
       t.model.script({ text: 'Готово.' });
       await t.mastra.getAgent('sales').generate('Привет', { requestContext: rc, memory: { thread: threadId, resource: runKind === 'draft' ? `draft:${olgaId}` : olgaId } });
       expect(toolNames(t.model.requests.at(-1)!)).not.toContain(CONVERSATIONS_TOOL);

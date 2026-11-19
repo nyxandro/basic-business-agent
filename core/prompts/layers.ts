@@ -19,9 +19,24 @@ import { LAST_MESSAGES } from '../memory/memory.ts';
 import { keepMemorySeen, personalMemoryText, projectMemoryText, seenVersions } from '../memory/prompt.ts';
 import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { abilitiesOf } from '../abilities/abilities.ts';
+import type { AgentAbilities } from '@bba/contracts';
 import { contextRoot, listFiles } from '../workspace/layout.ts';
 
 export const BASE_RULES = readFileSync(new URL('./base-rules.md', import.meta.url), 'utf8');
+// What the agent may do (spec, section 8.30): the rules of programs only to the agent that may run them; the
+// others are told plainly what is switched off, so they say so instead of trying.
+export const COMMANDS_RULES = readFileSync(new URL('./rules-commands.md', import.meta.url), 'utf8');
+const SWITCHED_OFF = 'выключен в настройках агента';
+export const COMMANDS_OFF = `Запуск программ тебе ${SWITCHED_OFF}: скрипты и программы ты не запускаешь, файлы Word, Excel, PowerPoint и PDF не создаёшь и не правишь, архивы не распаковываешь, документ дальше показанного фрагмента не дочитываешь. Если сотруднику нужно это — скажи, что запуск программ ${SWITCHED_OFF}, и сделай, что можешь, текстом.`;
+export const WEB_RULES = `## Интернет\n- Свежие сведения из интернета и чтение страниц по ссылкам — через \`web_research\`: опиши задание полностью (что найти, ссылки, в каком виде вернуть) — исследователь не видит этот разговор.\n- В ответе называй источники ссылками.\n- Не ищи в интернете то, что есть в документах, памяти и подключённых системах.`;
+export const WEB_OFF = `Интернета у тебя нет — он ${SWITCHED_OFF}. Если нужны свежие сведения из интернета, скажи об этом сотруднику; свои знания не выдавай за свежие.`;
+
+// The block of what the agent may do: it changes only with the switches, so the system prompt stays the same
+// from turn to turn.
+export function abilitiesLayer(abilities: AgentAbilities): string {
+  return [abilities.commands ? COMMANDS_RULES.trim() : COMMANDS_OFF, abilities.web ? WEB_RULES : WEB_OFF].join('\n\n');
+}
 
 export interface LayersDeps {
   db: Db;
@@ -172,6 +187,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         messages,
         systemMessages: [
           ...(deps.baseRules ? [{ role: 'system' as const, content: BASE_RULES }] : []),
+          { role: 'system' as const, content: abilitiesLayer(abilitiesOf(requestContext)) },
           ...systemMessages,
           { role: 'system' as const, content: org },
           { role: 'system' as const, content: employee },

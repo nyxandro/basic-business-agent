@@ -16,6 +16,7 @@ import type { MemoryTools } from '../memory/tools.ts';
 import type { HistoryTools } from '../history/tool.ts';
 import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
+import { abilitiesOf } from '../abilities/abilities.ts';
 import { createStreamRetry, dropShownWords, isGatewayStreamFailure } from './stream-retry.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
@@ -76,6 +77,8 @@ export interface AgentFactoryDeps {
   mail?: { toolsFor(userId: string): Promise<Record<string, AnyTool>> };
   // Files and commands of the employee's own folder; without it the agent only reads skills.
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
+  // The internet (spec, section 8.30): the tools an agent with «Доступ к сети интернет» gets.
+  web?: { tools: Record<string, AnyTool> };
   // Per agent, because some layers depend on its passport (e.g. baseRules: false) and some only
   // belong to the agent the person talks to (a sub-agent's chunks also pass through its parent).
   processorsFor(rt: AgentRuntime, level: 'top' | 'sub'): { input: InputProcessorOrWorkflow[]; output: OutputProcessorOrWorkflow[] };
@@ -117,19 +120,20 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
     },
     // Tools of connected systems and of the mailbox are per employee and request (their personal access);
     // the memory tools depend on the run (a chat, a project) and go only to the agent the person talks to.
-    tools:
-      (rt.connectorIds.length > 0 && deps.connections) || deps.mail || ((deps.memoryTools || deps.historyTools) && level === 'top')
-        ? async ({ requestContext }) => {
-            const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
-            return {
-              ...staticTools,
-              ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
-              ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
-              ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
-              ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
-            };
-          }
-        : staticTools,
+    // What the agent may do is read first (spec, section 8.30): a run started without it stops here, loudly —
+    // the commands' switch alone would turn into a silent «off» (core/sandbox/workspace.ts).
+    tools: async ({ requestContext }) => {
+      const abilities = abilitiesOf(requestContext);
+      const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
+      return {
+        ...staticTools,
+        ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
+        ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
+        ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
+        ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
+        ...(abilities.web && deps.web ? deps.web.tools : {}),
+      };
+    },
     ...(deps.memory ? { memory: deps.memory } : {}),
     // Every entry point (chat, background tasks, sub-agents) gets the limit; with a fallback model a
     // primary over it gives way to the fallback (Mastra).

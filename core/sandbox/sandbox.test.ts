@@ -26,6 +26,7 @@ const VENV = join(ROOT, '.venv-skills');
 let workspaceRoot: string;
 let model: FakeModel;
 let agent: Agent;
+let parent: Agent;
 
 // A minimal one-page PDF with a text line, built by hand so the test needs no PDF writer.
 function pdfWithText(text: string | null): Buffer {
@@ -100,17 +101,18 @@ function lastToolOutput(): string {
 
 const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
-async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл'): Promise<void> {
+async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл', abilities = '{"web":true,"commands":true}', on: Agent = agent): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skills));
+  rc.set(REQUEST_KEYS.abilities, abilities);
   if (projectId) {
     rc.set(REQUEST_KEYS.projectId, projectId);
     rc.set(REQUEST_KEYS.projectOwnerId, userId);
   }
-  await agent.generate(text, { requestContext: rc, maxSteps: 3 });
+  await on.generate(text, { requestContext: rc, maxSteps: 3 });
 }
 
 beforeAll(async () => {
@@ -135,6 +137,14 @@ beforeAll(async () => {
     // As in core/runtime/mastra.ts: the layers add the time to the latest message before the pictures are looked for.
     processorsFor: () => ({ input: [stampTime, createImageViewProcessor(workspaceRoot)], output: [] }),
   });
+  // An agent with a sub-agent: the sub-agent works with the abilities of the run (spec, section 8.30).
+  parent = createMastraAgent({ ...rt, passport: { ...rt.passport, id: 'parent' }, subagents: [{ ...rt, passport: { ...rt.passport, id: 'helper', name: 'Помощник', description: 'Делает файлы.' } }] }, {
+    gateway,
+    firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
+    stepMs: MODEL_CALL_MAX_MS,
+    sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
+    processorsFor: () => ({ input: [stampTime], output: [] }),
+  });
   process.env.BBA_TEST_SECRET = 'app-secret-value';
 });
 afterAll(async () => {
@@ -143,6 +153,34 @@ afterAll(async () => {
 });
 
 describe('sandbox', () => {
+  // «Доступ к выполнению команд терминала» (spec, section 8.30): off — no command tools, for the agent and its
+  // sub-agents; the files stay; a hint never offers to run a program; the next run with it on gets them back.
+  it('gives an agent without commands, and its sub-agent, no tool to run a program', async () => {
+    const names = () => (model.requests.at(-1)!.tools ?? []).map((t) => t.function.name);
+    const COMMANDS_OFF = '{"web":true,"commands":false}';
+    model.script({ text: 'Ок.' });
+    await runAs('olga', undefined, [SKILL], 'Сделай КП', COMMANDS_OFF);
+    expect(names().filter((n) => /execute_command|get_process_output|kill_process/.test(n))).toEqual([]);
+    expect(names().some((n) => n.endsWith('write_file'))).toBe(true);
+
+    model.script({ text: 'Ок.' });
+    await runAs('olga', undefined, [SKILL], 'Сделай КП');
+    expect(names().some((n) => n.endsWith('execute_command'))).toBe(true);
+
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(dir, 'docs.zip'), 'PK');
+    model.script(readFile({ path: 'docs.zip' }), { text: 'Ок.' });
+    await runAs('olga', undefined, [SKILL], 'Что в архиве?', COMMANDS_OFF);
+    expect(lastToolOutput()).toContain('запуск программ выключен в настройках агента');
+    expect(lastToolOutput()).not.toContain('python3');
+
+    model.script((req) => ({ toolCalls: [{ name: (req.tools ?? []).map((t) => t.function.name).find((n) => n.startsWith('agent-'))!, args: { prompt: 'Сделай файл' } }] }), { text: 'Подагент: ок.' }, { text: 'Готово.' });
+    await runAs('olga', undefined, [SKILL], 'Поручи помощнику', COMMANDS_OFF, parent);
+    const sub = model.requests.find((r) => JSON.stringify(r.messages).includes('Сделай файл') && !(r.tools ?? []).some((t) => t.function.name.startsWith('agent-')));
+    expect(sub).toBeDefined();
+    expect((sub!.tools ?? []).map((t) => t.function.name).filter((n) => /execute_command/.test(n))).toEqual([]);
+  });
+
   // The ways the document skills read files (spec, section 8.18), inside the employee's folder.
   it('reads PDF, Word and Excel the way the document skills do, inside the employee’s folder', async () => {
     const dir = contextRoot(workspaceRoot, 'olga', null);

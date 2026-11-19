@@ -63,6 +63,7 @@ async function generateAs(runKind: 'background' | 'draft'): Promise<FakeRequest>
   rc.set(REQUEST_KEYS.agentId, 'sales');
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
+  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
   rc.set(REQUEST_KEYS.runKind, runKind);
   t.model.script({ text: 'Готово.' });
   await t.mastra.getAgent('sales').generate('Привет', { requestContext: rc, memory: { thread: threadId, resource: runKind === 'draft' ? `draft:${olgaId}` : olgaId } });
