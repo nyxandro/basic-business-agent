@@ -71,6 +71,21 @@ export function splitAttachments(text: string): { text: string; files: Pick<Uplo
   return files.length === lines.length ? { text: text.slice(0, at), files } : { text, files: [] };
 }
 
+export type AttachedFile = Pick<UploadedFile, 'name' | 'path'>;
+
+// The files of a person's message in a request to the model, and which of its text parts holds the block. Each
+// text part is read on its own: what the server adds to the message — the time, the text of documents — is a
+// part of its own and never breaks the block (spec, section 8.29).
+export function attachmentsOf(content: string | readonly { type?: string; text?: unknown }[]): { files: AttachedFile[]; part: number } {
+  if (typeof content === 'string') return { files: splitAttachments(content).files, part: 0 };
+  for (const [part, p] of content.entries()) {
+    if (p.type !== 'text' || typeof p.text !== 'string') continue;
+    const files = splitAttachments(p.text).files;
+    if (files.length > 0) return { files, part };
+  }
+  return { files: [], part: -1 };
+}
+
 // Events our server adds to the AG-UI stream of the chat as CUSTOM events (spec, sections 8.16 and 9.1).
 export const CHAT_EVENTS = {
   // The person saw words of a model call that broke and was asked again: the message goes off the screen.

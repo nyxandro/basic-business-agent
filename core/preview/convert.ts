@@ -33,9 +33,10 @@ export interface RunResult {
 // One program in the sandbox, in `cwd` (the conversion's own folder, writable).
 export type RunCommand = (cwd: string, program: string, args: string[], timeoutMs: number) => Promise<RunResult>;
 
-export function sandboxRunner({ venv, isolation }: { venv: string; isolation: 'bwrap' | 'seatbelt' }): RunCommand {
+// `readOnlyPaths` — folders a program reads besides the conversion's own (the pptx skill's scripts, 8.29).
+export function sandboxRunner({ venv, isolation, readOnlyPaths }: { venv: string; isolation: 'bwrap' | 'seatbelt'; readOnlyPaths: string[] }): RunCommand {
   return async (cwd, program, args, timeoutMs) => {
-    const options = sandboxOptions(venv, cwd, [], isolation);
+    const options = sandboxOptions(venv, cwd, readOnlyPaths, isolation);
     // Without a display LibreOffice draws with its own headless backend.
     const sandbox = new LocalSandbox({ ...options, env: { ...options.env, SAL_USE_VCLPLUGIN: 'svp' } });
     const result = await sandbox.executeCommand!(program, args, { timeout: timeoutMs });

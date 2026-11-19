@@ -17,6 +17,8 @@ import { createMailTools } from '../mail/tools.ts';
 import type { MailService } from '../mail/service.ts';
 import { createApprovalRecorder } from '../approvals/requests.ts';
 import type { ModelGateway } from '../models/gateway.ts';
+import { createDocTextProcessor } from '../doctext/excerpt.ts';
+import type { DocTextService } from '../doctext/service.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
@@ -36,6 +38,8 @@ export interface MastraRuntimeDeps {
   stepMs?: number;
   connections?: Pick<ConnectionManager, 'toolsFor' | 'actionsSeen'>;
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
+  // The text of attached documents for the model (spec, section 8.29).
+  docText: DocTextService;
   // The mailboxes of employees (spec, section 8.24).
   mail?: MailService;
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
@@ -46,6 +50,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
   const memory = deps.memory;
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
+  const docText = createDocTextProcessor({ service: deps.docText, workspaceRoot: deps.workspaceRoot });
   const agents: Record<string, Agent> = {};
   // The mail tools do not depend on the person (they read who runs from the request): made once.
   const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
@@ -72,7 +77,10 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),
       processorsFor: (r, level) => ({
+        // The text of documents first: before the layers add the time to the latest message and before masking
+        // hides personal data in it (spec, section 8.29).
         input: [
+          docText,
           createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
           masking,
           ...imageView,

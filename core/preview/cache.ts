@@ -2,7 +2,8 @@
 // A PDF is made once per version of a file and kept in a folder of the server's temporary disk — not on a
 // volume: lost with the container, it is simply made again. A PDF not opened for a week goes; over the size
 // limit the ones opened longest ago go first. A key names the file and its version, so a changed file is
-// never shown from an old PDF; the right to see the file is checked before the cache is asked.
+// never shown from an old PDF; the right to see the file is checked before the cache is asked. The text of
+// attached documents (spec, section 8.29) is kept the same way, in its own folder with its own suffix.
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,7 +19,7 @@ const PURGE_EVERY_MS = 60 * 60 * 1000;
 export const PREVIEW_CACHE_DIR = 'bba-previews';
 // A piece older than this is what a stopped server left: a conversion is never this long.
 const PIECE_MAX_AGE_MS = 60 * 60 * 1000;
-const PDF = '.pdf';
+export const PREVIEW_CACHE_SUFFIX = '.pdf';
 
 export interface PreviewFileVersion {
   area: string;
@@ -39,9 +40,9 @@ export interface PreviewCache {
   purge(now: number): { removed: number; bytes: number };
 }
 
-export function createPreviewCache({ dir, maxBytes, maxAgeMs }: { dir: string; maxBytes: number; maxAgeMs: number }): PreviewCache {
+export function createPreviewCache({ dir, suffix, maxBytes, maxAgeMs }: { dir: string; suffix: string; maxBytes: number; maxAgeMs: number }): PreviewCache {
   mkdirSync(dir, { recursive: true });
-  const pathOf = (key: string) => join(dir, `${key}${PDF}`);
+  const pathOf = (key: string) => join(dir, `${key}${suffix}`);
   return {
     get(key) {
       const path = pathOf(key);
@@ -68,7 +69,7 @@ export function createPreviewCache({ dir, maxBytes, maxAgeMs }: { dir: string; m
         const path = join(dir, name);
         const file = statSync(path, { throwIfNoEntry: false });
         if (!file?.isFile()) continue;
-        const piece = !name.endsWith(PDF);
+        const piece = !name.endsWith(suffix);
         if ((piece && now - file.mtimeMs > PIECE_MAX_AGE_MS) || (!piece && now - file.mtimeMs > maxAgeMs)) {
           rmSync(path, { force: true });
           removed++;
@@ -91,13 +92,13 @@ export function createPreviewCache({ dir, maxBytes, maxAgeMs }: { dir: string; m
 }
 
 // Cleans the folder at the start (a container restarted keeps its temporary disk) and every hour.
-export function startPreviewPurge(cache: PreviewCache): () => void {
+export function startPreviewPurge(cache: PreviewCache, what: 'preview' | 'doctext'): () => void {
   const pass = () => {
     try {
       const { removed, bytes } = cache.purge(Date.now());
-      if (removed > 0) logEvent('info', 'preview_cache_purged', { removed, bytes });
+      if (removed > 0) logEvent('info', `${what}_cache_purged`, { removed, bytes });
     } catch (error) {
-      logEvent('error', 'preview_cache_purge_failed', { error });
+      logEvent('error', `${what}_cache_purge_failed`, { error });
     }
   };
   pass();

@@ -2,7 +2,7 @@
 // conversation's files folder (core/workspace/layout.ts) is the root of both the file tools and the
 // bubblewrap sandbox — no network, no app environment; the folders of the skills this employee
 // gets (and only those, V14) and the Python of the skills are visible read-only.
-import { splitAttachments, type ActionDescription } from '@bba/contracts';
+import { attachmentsOf, type ActionDescription } from '@bba/contracts';
 import { createHash } from 'node:crypto';
 import { closeSync, readFileSync, statSync } from 'node:fs';
 import { extname } from 'node:path';
@@ -207,18 +207,13 @@ function pictureOf(dir: string, path: string): FilePart | string {
   }
 }
 
-function textOf(content: unknown): string {
-  if (typeof content === 'string') return content;
-  return Array.isArray(content) ? content.map((p: { type?: string; text?: unknown }) => (p.type === 'text' && typeof p.text === 'string' ? p.text : '')).join('') : '';
-}
-
 // The pictures attached to the person's latest message go to the model with that message, so
 // «что на картинке?» needs no tool call. Requests are built anew for every step of a run, so this
 // adds them to each step; earlier messages' pictures are not sent again (view_image opens them).
 function withAttachedPictures(prompt: PromptMessage[], dir: string): PromptMessage[] | undefined {
   const at = prompt.findLastIndex((m) => m.role === 'user');
   if (at < 0) return undefined;
-  const pictures = splitAttachments(textOf(prompt[at]!.content)).files.filter((f) => IMAGE_TYPES[extname(f.path).toLowerCase()]);
+  const pictures = attachmentsOf(prompt[at]!.content as Parameters<typeof attachmentsOf>[0]).files.filter((f) => IMAGE_TYPES[extname(f.path).toLowerCase()]);
   if (pictures.length === 0) return undefined;
   const parts = pictures.map((f) => pictureOf(dir, f.path));
   for (const part of parts) if (typeof part === 'string') logEvent('warn', 'attached_picture_not_sent', { reason: part });

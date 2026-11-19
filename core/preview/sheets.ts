@@ -155,3 +155,28 @@ function plan(bytes: Uint8Array): SheetPlan | null {
   });
   return { singlePage, hiddenPages, sheets: sheets.length };
 }
+
+const XML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+
+function unescapeXml(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (whole, ref: string) => {
+    if (ref[0] === '#') return String.fromCodePoint(ref[1]?.toLowerCase() === 'x' ? parseInt(ref.slice(2), 16) : Number(ref.slice(1)));
+    return XML_ENTITIES[ref] ?? whole;
+  });
+}
+
+// The sheets of an `.xlsx`/`.xlsm` in their order, with whether each is hidden — the text of a workbook leaves
+// the hidden ones out, as the viewer does (spec, section 8.29); null — not a workbook that can be read.
+export function sheetNames(bytes: Uint8Array): { name: string; hidden: boolean }[] | null {
+  try {
+    const book = unzipSync(bytes, { filter: (file) => file.name === 'xl/workbook.xml' && file.originalSize <= PART_MAX_BYTES })['xl/workbook.xml'];
+    if (!book) return null;
+    return [...tags(strFromU8(book), 'sheet')].map((match) => {
+      const state = attr(match[1]!, 'state');
+      return { name: unescapeXml(attr(match[1]!, 'name') ?? ''), hidden: state === 'hidden' || state === 'veryHidden' };
+    });
+  } catch {
+    // Not a zip, or its book is not text: the workbook gives no text.
+    return null;
+  }
+}

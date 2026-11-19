@@ -12,7 +12,7 @@ import { createLimiter } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { areaDir, userArea } from '../storage/areas.ts';
 import { createFileStorage } from '../storage/engine.ts';
-import { createPreviewCache } from './cache.ts';
+import { createPreviewCache, PREVIEW_CACHE_SUFFIX } from './cache.ts';
 import { sandboxRunner } from './convert.ts';
 import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS, type PreviewService } from './service.ts';
 
@@ -34,8 +34,8 @@ beforeAll(() => {
   const storage = createFileStorage({ db: null as never, box: null as never, workspaceRoot: join(root, 'workspace'), keepCopyMs: 0 });
   preview = createPreviewService({
     storage,
-    cache: createPreviewCache({ dir: join(root, 'cache'), maxBytes: 100_000_000, maxAgeMs: 60_000 }),
-    run: sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable() }),
+    cache: createPreviewCache({ dir: join(root, 'cache'), suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 100_000_000, maxAgeMs: 60_000 }),
+    run: sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [] }),
     limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
     workRoot: root,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,

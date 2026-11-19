@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createLimiter } from '../sandbox/limiter.ts';
 import { userArea } from '../storage/areas.ts';
-import { createPreviewCache } from './cache.ts';
+import { createPreviewCache, PREVIEW_CACHE_SUFFIX } from './cache.ts';
 import type { RunCommand } from './convert.ts';
 import { cleanWorkRoot, createPreviewService } from './service.ts';
 
@@ -52,7 +52,7 @@ function libreOffice(waitMs = 0) {
 
 function service(files: Parameters<typeof storageOf>[0], run: RunCommand, { max = 2, waitMs = 60_000, maxUnpackedBytes = 1_000_000 } = {}) {
   const { storage, opened } = storageOf(files);
-  const cache = createPreviewCache({ dir: join(root, 'cache'), maxBytes: 1_000_000, maxAgeMs: 7 * DAY_MS });
+  const cache = createPreviewCache({ dir: join(root, 'cache'), suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 1_000_000, maxAgeMs: 7 * DAY_MS });
   const preview = createPreviewService({ storage, cache, run, limiter: createLimiter(max, waitMs), workRoot: root, maxUnpackedBytes });
   return { preview, opened };
 }

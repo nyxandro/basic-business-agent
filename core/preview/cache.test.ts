@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createPreviewCache, previewKey } from './cache.ts';
+import { createPreviewCache, PREVIEW_CACHE_SUFFIX, previewKey } from './cache.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 let dir: string;
@@ -35,7 +35,7 @@ describe('ready PDFs of the viewer (spec, section 8.27)', () => {
   });
 
   it('keeps a PDF under its key and gives it back; a key never put has none', () => {
-    const cache = createPreviewCache({ dir, maxBytes: 1_000_000, maxAgeMs: 7 * DAY_MS });
+    const cache = createPreviewCache({ dir, suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 1_000_000, maxAgeMs: 7 * DAY_MS });
     expect(cache.get('a')).toBeNull();
     const kept = cache.put('a', pdf('a.pdf', 5));
     expect(cache.get('a')).toBe(kept);
@@ -45,7 +45,7 @@ describe('ready PDFs of the viewer (spec, section 8.27)', () => {
   });
 
   it('removes what was not opened for a week, and the oldest ones over the size limit', () => {
-    const cache = createPreviewCache({ dir, maxBytes: 250, maxAgeMs: 7 * DAY_MS });
+    const cache = createPreviewCache({ dir, suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 250, maxAgeMs: 7 * DAY_MS });
     const now = Date.now();
     aged(cache.put('old', pdf('o.pdf', 10)), now - 8 * DAY_MS);
     aged(cache.put('first', pdf('1.pdf', 100)), now - 3 * DAY_MS);
@@ -56,7 +56,7 @@ describe('ready PDFs of the viewer (spec, section 8.27)', () => {
   });
 
   it('a PDF opened again counts as fresh', () => {
-    const cache = createPreviewCache({ dir, maxBytes: 150, maxAgeMs: 7 * DAY_MS });
+    const cache = createPreviewCache({ dir, suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 150, maxAgeMs: 7 * DAY_MS });
     const now = Date.now();
     aged(cache.put('used', pdf('u.pdf', 100)), now - 3 * DAY_MS);
     aged(cache.put('newer', pdf('n.pdf', 100)), now - 2 * DAY_MS);
@@ -66,7 +66,7 @@ describe('ready PDFs of the viewer (spec, section 8.27)', () => {
   });
 
   it('cleans up pieces a stopped server left half-written', () => {
-    const cache = createPreviewCache({ dir, maxBytes: 1_000, maxAgeMs: 7 * DAY_MS });
+    const cache = createPreviewCache({ dir, suffix: PREVIEW_CACHE_SUFFIX, maxBytes: 1_000, maxAgeMs: 7 * DAY_MS });
     const piece = join(dir, '.x.123.part');
     writeFileSync(piece, 'half');
     aged(piece, Date.now() - 2 * 60 * 60 * 1000);

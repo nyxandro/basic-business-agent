@@ -46,9 +46,10 @@ import { createAuthPool, createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase } from '../db/test-database.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
-import { createPreviewCache, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES } from '../preview/cache.ts';
+import { createPreviewCache, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, PREVIEW_CACHE_SUFFIX } from '../preview/cache.ts';
 import { sandboxRunner, type RunCommand } from '../preview/convert.ts';
 import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
+import { createDocTextService, DOC_TEXT_CACHE_MAX_AGE_MS, DOC_TEXT_CACHE_MAX_BYTES, DOC_TEXT_CACHE_SUFFIX } from '../doctext/service.ts';
 import type { ObjectStore, S3Config } from '../storage/object-store.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import type { checkMailbox } from '../mail/client.ts';
@@ -108,6 +109,9 @@ function requireEnv(name: string): string {
 }
 
 const SKILLS_VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
+const PPTX_SCRIPTS = join(SYSTEM_SKILLS_DIR, 'pptx', 'scripts');
+// A test app without the sandbox runs no program: a document that needs one gives «не разобрался».
+const noProgram: RunCommand = () => Promise.reject(new Error('this test app runs no program of the sandbox (createTestApp({ sandbox }) or docTextRun)'));
 // The system skills of the core, read once per test process (spec, section 8.18).
 const SYSTEM_SKILLS = loadSystemSkills(SYSTEM_SKILLS_DIR);
 
@@ -179,6 +183,9 @@ export async function createTestApp(
     mailCheck?: typeof checkMailbox;
     // How the viewer's PDF is made (spec, section 8.27): without `sandbox`, a stand-in that writes a small PDF.
     previewRun?: RunCommand;
+    // How the text of an attached document is made (spec, section 8.29): without `sandbox`, no program runs —
+    // plain text, letters and pages without programs still give their text.
+    docTextRun?: RunCommand;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -259,6 +266,20 @@ export async function createTestApp(
   await files.start();
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
+  const previewRoot = mkdtempSync(join(tmpdir(), 'bba-test-preview-'));
+  // LibreOffice's runs of the viewer and of the text of documents share one queue, as in core/server/main.ts.
+  const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
+  const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
+  const docText = createDocTextService({
+    run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [PPTX_SCRIPTS] }) : (opts.docTextRun ?? noProgram),
+    officeLimiter,
+    commandLimiter,
+    cache: createPreviewCache({ dir: join(previewRoot, 'texts'), suffix: DOC_TEXT_CACHE_SUFFIX, maxBytes: DOC_TEXT_CACHE_MAX_BYTES, maxAgeMs: DOC_TEXT_CACHE_MAX_AGE_MS }),
+    workRoot: previewRoot,
+    pptxScripts: PPTX_SCRIPTS,
+    timezone: 'Europe/Moscow',
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
+  });
   const mastra = createMastraRuntime({
     registry,
     storage,
@@ -267,13 +288,14 @@ export async function createTestApp(
     db,
     app: { timezone: 'Europe/Moscow' },
     workspaceRoot,
+    docText,
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
     mail,
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
-      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) }, isolation: assertIsolationAvailable() } }
+      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter }, isolation: assertIsolationAvailable() } }
       : {}),
   });
   const editor = { db, mastra, registry };
@@ -296,12 +318,11 @@ export async function createTestApp(
       };
   const accounts = createChatGptAccounts({ db, box, writer, auth: chatgptAuth, authDir: chatgptAuthDir, timezone: 'Europe/Moscow' });
   const models = createModelCatalog({ db, box, client: litellm, writer, accounts, agentName });
-  const previewRoot = mkdtempSync(join(tmpdir(), 'bba-test-preview-'));
   const preview = createPreviewService({
     storage: files,
-    cache: createPreviewCache({ dir: join(previewRoot, 'cache'), maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS }),
-    run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable() }) : (opts.previewRun ?? stubPdf),
-    limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
+    cache: createPreviewCache({ dir: join(previewRoot, 'cache'), suffix: PREVIEW_CACHE_SUFFIX, maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS }),
+    run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [] }) : (opts.previewRun ?? stubPdf),
+    limiter: officeLimiter,
     workRoot: previewRoot,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });

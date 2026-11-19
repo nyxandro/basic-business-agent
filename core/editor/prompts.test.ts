@@ -83,7 +83,7 @@ beforeAll(async () => {
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-prompts-'));
-  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot });
+  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot, docText: { text: () => Promise.resolve(null) } });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {

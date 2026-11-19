@@ -7,6 +7,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { withAttachments } from '@bba/contracts';
 import { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
+import type { Processor } from '@mastra/core/processors';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
@@ -49,6 +50,17 @@ function pdfWithText(text: string | null): Buffer {
 }
 
 // A red square of `size` pixels as a real PNG file.
+// The time the prompt layers add to the latest message in the outgoing request (core/prompts/layers.ts).
+const stampTime = {
+  id: 'test-time-stamp',
+  processLLMRequest({ prompt }) {
+    const last = prompt.findLastIndex((m) => m.role === 'user');
+    const message = prompt[last];
+    if (!message || message.role !== 'user') return undefined;
+    return { prompt: prompt.map((m, i) => (i === last ? { ...message, content: [...message.content, { type: 'text' as const, text: '\n\n(Сейчас: 19.11.2026 12:00, Europe/Moscow)' }] } : m)) };
+  },
+} satisfies Processor;
+
 function png(size: number): Buffer {
   const chunk = (type: string, data: Buffer) => {
     const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
@@ -120,7 +132,8 @@ beforeAll(async () => {
     firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
     stepMs: MODEL_CALL_MAX_MS,
     sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
-    processorsFor: () => ({ input: [createImageViewProcessor(workspaceRoot)], output: [] }),
+    // As in core/runtime/mastra.ts: the layers add the time to the latest message before the pictures are looked for.
+    processorsFor: () => ({ input: [stampTime, createImageViewProcessor(workspaceRoot)], output: [] }),
   });
   process.env.BBA_TEST_SECRET = 'app-secret-value';
 });

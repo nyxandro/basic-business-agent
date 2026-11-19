@@ -5,22 +5,6 @@ export function cleanWorkRoot(workRoot: string): void {
   }
 }
 
-// What the archive of a document says it unpacks into, read from its directory without unpacking.
-function unpackedBytes(bytes: Uint8Array): number | null {
-  let total = 0;
-  try {
-    unzipSync(bytes, {
-      filter: (file) => {
-        total += file.originalSize;
-        return false;
-      },
-    });
-  } catch {
-    // Not a zip archive: LibreOffice says what it is.
-    return null;
-  }
-  return total;
-}
 
 // The PDF of a Word, Excel or PowerPoint file for the viewer (spec, section 8.27; decisions of the owner
 // 18.11): made on the first opening of a version of the file — never ahead — and then taken from the cache
@@ -28,11 +12,10 @@ function unpackedBytes(bytes: Uint8Array): number | null {
 // wait in a queue, and one waiting too long is told the server is busy. Two people opening one new
 // document wait for one conversion. The route checks the right to the file before asking.
 import { createWriteStream, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { open, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { CONVERTED_KINDS, previewKindOf, PREVIEW_MAX_BYTES, type PreviewKind } from '@bba/contracts';
-import { unzipSync } from 'fflate';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Limiter } from '../sandbox/limiter.ts';
@@ -40,6 +23,7 @@ import { logEvent } from '../server/log.ts';
 import { areaKey, type Area } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { previewKey, type PreviewCache } from './cache.ts';
+import { isEncryptedOffice, unpackedBytesOf, ZIPPED_FORMATS, ZIPPED_OFFICE } from './checks.ts';
 import { convertToPdf, type RunCommand } from './convert.ts';
 import { planSheets } from './sheets.ts';
 
@@ -50,12 +34,7 @@ function failed(reason: string, details: Record<string, unknown>) {
 // Conversions at once (step 114: ~450 MB of memory each, the app has 3 GB) and how long one may wait.
 export const PREVIEW_MAX_CONCURRENT = 2;
 export const PREVIEW_QUEUE_WAIT_MS = 60_000;
-// The formats of Office that are zip archives: one beginning as an OLE container is encrypted.
-const ZIPPED_OFFICE = new Set(['.docx', '.docm', '.dotx', '.xlsx', '.xlsm', '.pptx', '.ppsx']);
-const OLE_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
 const PLANNED_SHEETS = new Set(['.xlsx', '.xlsm']);
-// Formats that are zip archives: what their archive says it unpacks into is checked first.
-const ZIPPED = new Set([...ZIPPED_OFFICE, '.odt', '.ods', '.odp']);
 // A document unpacking into more than this would hold LibreOffice and the 3 GB of the container (a crafted
 // archive of 1 MB can hold gigabytes); real documents up to 50 MB unpack into far less.
 export const PREVIEW_MAX_UNPACKED_BYTES = 300 * 1024 * 1024;
@@ -78,17 +57,6 @@ export interface PreviewService {
   pdf(area: Area, rel: string, missing: string, partial?: boolean): Promise<{ path: string; bytes: number }>;
 }
 
-async function startsWith(path: string, magic: Buffer): Promise<boolean> {
-  const file = await open(path, 'r');
-  try {
-    const head = Buffer.alloc(magic.length);
-    const { bytesRead } = await file.read(head, 0, magic.length, 0);
-    return bytesRead === magic.length && head.equals(magic);
-  } finally {
-    await file.close();
-  }
-}
-
 export function createPreviewService(deps: PreviewDeps): PreviewService {
   const running = new Map<string, Promise<string>>();
 
@@ -102,9 +70,9 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
       bytes = file.bytes;
       const source = join(dir, `source${ext}`);
       await pipeline(file.stream, createWriteStream(source));
-      if (ZIPPED_OFFICE.has(ext) && (await startsWith(source, OLE_MAGIC))) throw appError('APP_PREVIEW_PASSWORD', 'the document is encrypted');
-      const archive = ZIPPED.has(ext) ? await readFile(source) : null;
-      const unpacked = archive ? unpackedBytes(archive) : null;
+      if (ZIPPED_OFFICE.has(ext) && (await isEncryptedOffice(source))) throw appError('APP_PREVIEW_PASSWORD', 'the document is encrypted');
+      const archive = ZIPPED_FORMATS.has(ext) ? await readFile(source) : null;
+      const unpacked = archive ? unpackedBytesOf(archive) : null;
       if (unpacked !== null && unpacked > deps.maxUnpackedBytes) throw failed('unpacked_too_big', { unpacked });
       const plan = archive && PLANNED_SHEETS.has(ext) ? planSheets(archive) : null;
       const pdf = deps.cache.put(key, await convertToPdf(deps.run, { dir, ext, kind, plan }));

@@ -37,9 +37,10 @@ import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
-import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, startPreviewPurge } from '../preview/cache.ts';
+import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, PREVIEW_CACHE_SUFFIX, startPreviewPurge } from '../preview/cache.ts';
 import { sandboxRunner } from '../preview/convert.ts';
 import { cleanWorkRoot, createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
+import { cleanDocTextWork, createDocTextService, DOC_TEXT_CACHE_DIR, DOC_TEXT_CACHE_MAX_AGE_MS, DOC_TEXT_CACHE_MAX_BYTES, DOC_TEXT_CACHE_SUFFIX } from '../doctext/service.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import { realDiscoverDeps } from '../mail/discover.ts';
 import { realEndpoints } from '../mail/oauth.ts';
@@ -90,28 +91,45 @@ async function main(): Promise<void> {
   await ensureMessageTexts(db);
   const memory = createMemory(storage);
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
+  // The commands of the sandbox and LibreOffice's runs: each its own queue for the whole installation (8.7, 8.27).
+  const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
+  const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
   const sandbox = {
-    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS) },
+    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: commandLimiter },
     isolation: assertIsolationAvailable(),
   };
   assertSandboxEnvironment(SKILLS_VENV);
   // Where the files are kept — the disk or the bucket the superadmin connected (spec, section 8.23).
   const files = createFileStorage({ db, box, workspaceRoot: env.APP_WORKSPACE_DIR, keepCopyMs: KEEP_COPY_MS });
   // PDFs of documents for the viewer: made in the sandbox, kept a week in the temporary folder (spec, 8.27).
-  const previewCache = createPreviewCache({ dir: join(tmpdir(), PREVIEW_CACHE_DIR), maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS });
+  const previewCache = createPreviewCache({ dir: join(tmpdir(), PREVIEW_CACHE_DIR), suffix: PREVIEW_CACHE_SUFFIX, maxBytes: PREVIEW_CACHE_MAX_BYTES, maxAgeMs: PREVIEW_CACHE_MAX_AGE_MS });
   const preview = createPreviewService({
     storage: files,
     cache: previewCache,
-    run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation }),
-    limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS),
+    run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [] }),
+    limiter: officeLimiter,
     workRoot: tmpdir(),
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   cleanWorkRoot(tmpdir());
+  // The text of attached documents for the model: made in the sandbox, kept a week like the viewer's PDFs (8.29).
+  const docTextCache = createPreviewCache({ dir: join(tmpdir(), DOC_TEXT_CACHE_DIR), suffix: DOC_TEXT_CACHE_SUFFIX, maxBytes: DOC_TEXT_CACHE_MAX_BYTES, maxAgeMs: DOC_TEXT_CACHE_MAX_AGE_MS });
+  const pptxScripts = join(SYSTEM_SKILLS_DIR, 'pptx', 'scripts');
+  const docText = createDocTextService({
+    run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [pptxScripts] }),
+    officeLimiter,
+    commandLimiter,
+    cache: docTextCache,
+    workRoot: tmpdir(),
+    pptxScripts,
+    timezone: installation.app.timezone,
+    maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
+  });
+  cleanDocTextWork(tmpdir());
   // The mailboxes of employees (spec, section 8.24).
   const mail = createMailService({ db, box, publicUrl: env.APP_PUBLIC_URL, transport: { trustSelfSigned: false }, discover: realDiscoverDeps, endpoints: realEndpoints, ports: { imap: IMAP_PORTS, smtp: SMTP_PORTS } });
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, connections, sandbox, mail, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, docText, connections, sandbox, mail, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;
@@ -124,7 +142,8 @@ async function main(): Promise<void> {
   // After the recovery: copies a stopped server left are stored into the bucket by the first pass.
   await files.start();
   const stopTrashPurge = startTrashPurge(db, files);
-  const stopPreviewPurge = startPreviewPurge(previewCache);
+  const stopPreviewPurge = startPreviewPurge(previewCache, 'preview');
+  const stopDocTextPurge = startPreviewPurge(docTextCache, 'doctext');
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
@@ -143,6 +162,7 @@ async function main(): Promise<void> {
     background.stop();
     stopTrashPurge();
     stopPreviewPurge();
+    stopDocTextPurge();
     files.stop();
     await mastra.stopWorkers();
     await connections.close();

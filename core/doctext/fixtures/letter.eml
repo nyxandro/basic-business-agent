@@ -1,0 +1,20 @@
+From: =?UTF-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@example.com>
+To: olga@example.com
+Subject: =?UTF-8?B?0KHRh9GR0YIg0L3QsCDQvtC/0LvQsNGC0YM=?=
+Date: Tue, 17 Nov 2026 10:00:00 +0300
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: base64
+
+0JTQvtCx0YDRi9C5INC00LXQvdGMISDQktC+INCy0LvQvtC20LXQvdC40Lgg0YHRh9GR0YIg0L3Q
+sCDQvtC/0LvQsNGC0YMg0LDQstCw0L3RgdCwIDMwICUuDQo=
+--b1
+Content-Type: application/pdf; name="=?UTF-8?B?0KHRh9GR0YIucGRm?="
+Content-Disposition: attachment; filename="=?UTF-8?B?0KHRh9GR0YIucGRm?="
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcOkw7zDtsOfCg==
+--b1--
