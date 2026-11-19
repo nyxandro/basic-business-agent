@@ -155,7 +155,14 @@ export async function startFakeModel(
         res.end(JSON.stringify({ text: FAKE_TRANSCRIPT, ...usage }));
         return;
       }
-      const parsed = JSON.parse(Buffer.from(body, 'latin1').toString('utf8')) as Omit<FakeRequest, 'headers'>;
+      let parsed: Omit<FakeRequest, 'headers'>;
+      try {
+        parsed = JSON.parse(Buffer.from(body, 'latin1').toString('utf8')) as Omit<FakeRequest, 'headers'>;
+      } catch {
+        // The gateway gave up mid-request (a test that times out under load): a provider just closes it.
+        res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: 'the request body was cut', type: 'error', code: 400 } }));
+        return;
+      }
       const record: FakeRequest = { ...parsed, stream: Boolean(parsed.stream), headers: req.headers };
       const naming = req.headers[CALL_HEADER] === NAMING_CALL;
       (naming ? namingRequests : requests).push(record);

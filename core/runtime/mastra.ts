@@ -82,8 +82,10 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
         input: [
           docText,
           createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
-          masking,
+          // Pictures before masking: a name like «89123456789.png» is found by the real path; the picture itself is
+          // never masked (its data is skipped), the text of the request is.
           ...imageView,
+          masking,
         ],
         // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,
         // under the run id the chat answers to.

@@ -1,9 +1,9 @@
 // The text of a document of the run's folder, for the model (spec, section 8.29). Made on the first request
 // for a version of the file — never ahead — in the sandbox, and kept a week in the server's temporary folder,
-// as the viewer's PDF (core/preview). A refusal (a password, a broken file, a scan, out of time) is kept too:
+// as the viewer's PDF (core/preview). A refusal (a password, a broken file, a scan, 90 s without a text) is kept too:
 // a file a program hangs on must not hold every next call of the model. A busy server is not kept.
 import { createHash } from 'node:crypto';
-import { closeSync, fstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, fstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, type Stats } from 'node:fs';
 import { extname, join } from 'node:path';
 import { isAppError } from '../errors/app-error.ts';
 import type { PreviewCache } from '../preview/cache.ts';
@@ -29,7 +29,7 @@ const WORK_PREFIX = 'bba-doctext-';
 export type DocText =
   | { state: 'ok'; kind: DocKind; text: string; chars: number; pages: number | null; emptyPages: number[]; hiddenSheets: string[] }
   | { state: 'scan'; kind: 'pdf'; pages: number }
-  | { state: 'password' | 'failed' | 'too_big' | 'missing' | 'busy'; kind: DocKind };
+  | { state: 'password' | 'failed' | 'slow' | 'too_big' | 'missing' | 'busy'; kind: DocKind };
 
 export interface DocTextDeps {
   run: RunCommand;
@@ -57,8 +57,10 @@ export function cleanDocTextWork(workRoot: string): void {
   }
 }
 
-function keyOf(root: string, path: string, bytes: number, modifiedMs: number): string {
-  return createHash('sha256').update([DOC_TEXT_FORMAT_VERSION, root, path, bytes, modifiedMs].join('\0')).digest('hex');
+// The version of a file: its size, its times of change and its inode. `ctime` is set by the system on every write
+// and cannot be carried over by a copy or an unpacked archive, as the time of change can (`cp -p`, unzip).
+function keyOf(root: string, path: string, stat: Stats): string {
+  return createHash('sha256').update([DOC_TEXT_FORMAT_VERSION, root, path, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino].join('\0')).digest('hex');
 }
 
 function asDocText(kind: DocKind, done: Extracted): DocText {
@@ -133,7 +135,7 @@ export function createDocTextService(deps: DocTextDeps): DocTextService {
       try {
         const stat = fstatSync(fd);
         if (stat.size > PREVIEW_MAX_BYTES) return { state: 'too_big', kind };
-        const key = keyOf(root, path, stat.size, stat.mtimeMs);
+        const key = keyOf(root, path, stat);
         const ready = remembered(key);
         if (ready) {
           logEvent('info', 'doctext_cache_hit', { ext, kind });

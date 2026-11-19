@@ -1,7 +1,10 @@
 // The text of attached documents (spec, section 8.29): the real programs in the real sandbox, the way the
 // skills would read them — Word by pandoc, PowerPoint by the skill's own script, Excel by LibreOffice as Excel
-// shows the values, PDF by pdftotext with its pages. Every old format is checked by `pnpm preview:check`.
-import { cpSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+// shows the values, PDF by pdftotext with its pages. Only a few real runs here — a full parallel `pnpm test`
+// already runs out of time under load (AGENTS.md); old formats, PowerPoint and web pages are checked by
+// `pnpm preview:check` (tooling/preview-check.ts).
+import { execFileSync } from 'node:child_process';
+import { cpSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,7 +50,7 @@ beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'bba-doctext-real-'));
   folder = join(root, 'files');
   cpSync(OWN, folder, { recursive: true });
-  for (const name of ['kp.docx', 'sheets.xls', 'deck.pptx', 'secret.docx', 'broken.docx']) cpSync(join(VIEWER, name), join(folder, name));
+  for (const name of ['kp.docx', 'sheets.xls', 'secret.docx', 'broken.docx']) cpSync(join(VIEWER, name), join(folder, name));
   runs = [];
   const real = sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [PPTX_SCRIPTS] });
   service = make((cwd, program, args, timeoutMs) => {
@@ -60,13 +63,14 @@ afterAll(() => {
 });
 
 describe('the text of an attached document (spec, section 8.29)', () => {
-  it('keeps the title of a Word document and writes a table with merged cells compactly', { timeout: EXTRACTION_MS }, async () => {
+  it('keeps the title of a Word document and the values of a table with merged cells, compactly', { timeout: EXTRACTION_MS }, async () => {
     const kp = ok(await service.text(folder, 'kp.docx'));
     expect(kp).toMatchObject({ kind: 'word', pages: null });
     expect(kp.text).toContain('Коммерческое предложение ООО «Пример»');
     expect(kp.text).toContain('Поставка материалов для кровли');
+    // pandoc 3 (a development machine) writes it as HTML, pandoc 2.17 (the image) as a table with empty cells.
     const merged = ok(await service.text(folder, 'merged.docx'));
-    expect(merged.text).toContain('<td colspan="3">Итого со скидкой 7 %</td>');
+    expect(merged.text).toMatch(/Итого со скидкой 7 %(<\/td><td>|\s*\|[\s|]*)84 000/);
     expect(merged.text).not.toContain('<colgroup>');
   });
 
@@ -80,18 +84,8 @@ describe('the text of an attached document (spec, section 8.29)', () => {
     expect(book.text).toMatch(/Итого\t\t\t2\s050\s000,50 ₽/);
     expect(book.text).not.toContain('СКРЫТО');
     expect(book.text).not.toMatch(/NaN|Unnamed/);
-  });
-
-  it('reads an old workbook through LibreOffice, without its hidden sheet', { timeout: EXTRACTION_MS }, async () => {
-    const book = ok(await service.text(folder, 'sheets.xls'));
-    expect(book.text).toContain('Итог');
-    expect(book.text).not.toContain('СКРЫТО');
-  });
-
-  it('reads a presentation with the skill’s own script', { timeout: EXTRACTION_MS }, async () => {
-    const deck = ok(await service.text(folder, 'deck.pptx'));
-    expect(deck.kind).toBe('slides');
-    expect(deck.text).toContain('Слайд 3');
+    // Formats without a language of their own show as in a Russian Excel only with LibreOffice's language set.
+    expect(book.text).toMatch(/## Встроенные\nДата\tСумма\n18\.11\.2026\t1\s200\s000,00/);
   });
 
   it('marks the pages of a PDF and those without text; a PDF with no text at all is a scan', { timeout: EXTRACTION_MS }, async () => {
@@ -111,7 +105,7 @@ describe('the text of an attached document (spec, section 8.29)', () => {
     expect(runs.length).toBe(before);
   });
 
-  it('decodes a letter, a text file in Windows-1251 and a web page', { timeout: EXTRACTION_MS }, async () => {
+  it('decodes a letter and a text file in Windows-1251', { timeout: EXTRACTION_MS }, async () => {
     const letter = ok(await service.text(folder, 'letter.eml'));
     expect(letter.kind).toBe('email');
     expect(letter.text).toContain('Тема: Счёт на оплату');
@@ -120,9 +114,6 @@ describe('the text of an attached document (spec, section 8.29)', () => {
     expect(letter.text).toContain('Добрый день! Во вложении счёт на оплату аванса 30 %.');
     expect(letter.text).toContain('Вложения письма: Счёт.pdf');
     expect(ok(await service.text(folder, 'prices-1251.csv')).text).toContain('Профнастил С8;650');
-    const page = ok(await service.text(folder, 'page.html'));
-    expect(page.text).toContain('Прайс-лист (образец)');
-    expect(page.text).not.toContain('alert(1)');
   });
 
   it('makes the text once per version of the file; a changed file is read again', { timeout: EXTRACTION_MS }, async () => {
@@ -134,6 +125,50 @@ describe('the text of an attached document (spec, section 8.29)', () => {
     expect(runs.length).toBe(before);
     writeFileSync(join(folder, 'note.txt'), 'Срок — 60 дней.');
     expect(ok(await service.text(folder, 'note.txt')).text).toBe('Срок — 60 дней.');
+  });
+
+  it('reads the whole output of a program, from its first page, however long it is', async () => {
+    // Mastra's sandbox keeps only the last 1 MiB of what a program prints: the text must come from a file.
+    const long = make((cwd, program) => {
+      if (program !== 'pdftotext') return Promise.reject(new Error(`unexpected ${program}`));
+      const pages = Array.from({ length: 300 }, (_, i) => `Страница ${i + 1}: ${'текст договора '.repeat(400)}`);
+      writeFileSync(join(cwd, 'out', 'text.txt'), pages.join('\f'));
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+    });
+    writeFileSync(join(folder, 'long.pdf'), '%PDF-1.4 long');
+    const doc = ok(await long.text(folder, 'long.pdf'));
+    expect(doc.pages).toBe(300);
+    expect(doc.chars).toBeGreaterThan(1_500_000);
+    expect(doc.text.startsWith('— стр. 1 —\nСтраница 1:')).toBe(true);
+  });
+
+  it('gives no text for 90 s of a program, and remembers it for that version of the file', async () => {
+    let calls = 0;
+    const slow = make(() => {
+      calls++;
+      return Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: true });
+    });
+    writeFileSync(join(folder, 'heavy.docx'), 'PK heavy');
+    expect(await slow.text(folder, 'heavy.docx')).toEqual({ state: 'slow', kind: 'word' });
+    expect(await slow.text(folder, 'heavy.docx')).toEqual({ state: 'slow', kind: 'word' });
+    expect(calls).toBe(1);
+  });
+
+  it('decodes UTF-16 by its mark and keeps UTF-8 with a broken byte as UTF-8', async () => {
+    writeFileSync(join(folder, 'unicode.txt'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Цена — 650 ₽', 'utf16le')]));
+    expect(ok(await service.text(folder, 'unicode.txt')).text).toBe('Цена — 650 ₽');
+    writeFileSync(join(folder, 'cut.txt'), Buffer.concat([Buffer.from(`${'Договор поставки. '.repeat(100)}`, 'utf8'), Buffer.from([0xd0])]));
+    expect(ok(await service.text(folder, 'cut.txt')).text).toContain('Договор поставки.');
+  });
+
+  it('never follows a link out of the folder and never waits on a pipe', async () => {
+    writeFileSync(join(root, 'secret.txt'), 'чужое');
+    symlinkSync(join(root, 'secret.txt'), join(folder, 'link.txt'));
+    execFileSync('mkfifo', [join(folder, 'pipe.txt')]);
+    const before = runs.length;
+    expect(await service.text(folder, 'link.txt')).toEqual({ state: 'missing', kind: 'text' });
+    expect(await service.text(folder, 'pipe.txt')).toEqual({ state: 'missing', kind: 'text' });
+    expect(runs.length).toBe(before);
   });
 
   it('runs no program for a file too big, gone, outside the folder or not a document', async () => {

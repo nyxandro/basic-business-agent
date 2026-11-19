@@ -49,7 +49,6 @@ function pdfWithText(text: string | null): Buffer {
   return Buffer.from(out, 'latin1');
 }
 
-// A red square of `size` pixels as a real PNG file.
 // The time the prompt layers add to the latest message in the outgoing request (core/prompts/layers.ts).
 const stampTime = {
   id: 'test-time-stamp',
@@ -61,6 +60,7 @@ const stampTime = {
   },
 } satisfies Processor;
 
+// A red square of `size` pixels as a real PNG file.
 function png(size: number): Buffer {
   const chunk = (type: string, data: Buffer) => {
     const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);

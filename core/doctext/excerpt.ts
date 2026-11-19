@@ -19,17 +19,20 @@ export const DOC_REQUEST_MAX_CHARS = 40_000;
 export const DOC_MIN_SHOWN_CHARS = 2_000;
 
 const KIND_LABEL: Record<DocKind, string> = { pdf: 'PDF', word: 'Word', sheet: 'Excel', slides: 'PowerPoint', text: 'текст', html: 'веб-страница', email: 'письмо' };
-// The marks of a block: a text of a document may not close it — «<<<» in it becomes «‹‹‹».
+// The marks of a block: a text of a document may not close it — «<<<» in it becomes «‹‹‹», also written with
+// full-width brackets or with invisible characters between.
 const OPEN = '<<<';
 const CLOSE = '>>>';
-const PAGE_MARK = /— стр\. (\d+)/g;
+const MARK_LIKE = /[<＜﹤](?:[\p{Cf}\s]*[<＜﹤]){2}/gu;
+// The page marks the text of a PDF has at the start of a line (core/doctext/extract.ts).
+const PAGE_MARK = /^— стр\. (\d+)(?: —|:)/gm;
 
 type Ctx = { get(key: string): unknown } | undefined;
 type PromptMessage = { role: string; content: unknown };
 type TextPart = { type: 'text'; text: string };
 
 const count = (n: number) => n.toLocaleString('ru-RU');
-const safe = (text: string) => text.replaceAll(OPEN, '‹‹‹');
+const safe = (text: string) => text.replace(MARK_LIKE, '‹‹‹');
 
 function ranges(pages: number[]): string {
   const out: string[] = [];
@@ -48,7 +51,8 @@ function card(file: AttachedFile, what: string): string {
 
 const REFUSED: Record<Exclude<DocText['state'], 'ok' | 'scan'>, string> = {
   password: 'защищён паролем — прочитать нельзя. Попроси сотрудника прислать его без пароля.',
-  failed: 'не разобрался — файл повреждён или это не документ. Скажи об этом сотруднику.',
+  failed: 'не разобрался — файл повреждён, защищён паролем или это не документ. Скажи об этом сотруднику или попробуй прочитать его скиллом.',
+  slow: 'текст не подготовился за 90 секунд — документ тяжёлый или сервер занят. Прочитай его скиллом.',
   too_big: 'больше 50 МБ — текст не готовится. Читай его скиллом по частям.',
   missing: 'файла больше нет в рабочей папке.',
   busy: 'текст не успел подготовиться — сервер занят. Прочитай документ скиллом.',
@@ -58,6 +62,21 @@ const REFUSED: Record<Exclude<DocText['state'], 'ok' | 'scan'>, string> = {
 function cut(text: string, room: number): string {
   const line = text.lastIndexOf('\n', room);
   return sliceWhole(text, 0, line > room / 2 ? line : room).trimEnd();
+}
+
+// The room of a message shared among its documents: a small one whole, the rest evenly among the bigger ones
+// (taken from the smallest up); the blocks keep the order of the attachments. A bill after a big contract is
+// shown whole, not «не поместился».
+function shares(sizes: number[], room: number): number[] {
+  const order = sizes.map((_, i) => i).sort((a, b) => sizes[a]! - sizes[b]!);
+  const given = sizes.map(() => 0);
+  let left = room;
+  order.forEach((i, k) => {
+    const share = Math.min(sizes[i]!, Math.floor(left / (order.length - k)));
+    given[i] = share;
+    left -= share;
+  });
+  return given;
 }
 
 // A block of a document and how many characters of its text it takes.
@@ -76,7 +95,7 @@ function block(file: AttachedFile, doc: DocText, room: number): { text: string; 
     return { text: card(file, `${KIND_LABEL[doc.kind]}, ${count(doc.chars)} знаков: текст не поместился в сообщение — прочитай его скиллом.`), used: 0 };
   }
   const shown = cut(doc.text, room);
-  const lastPage = [...shown.matchAll(PAGE_MARK)].at(-1)?.[1];
+  const lastPage = doc.kind === 'pdf' ? [...shown.matchAll(PAGE_MARK)].at(-1)?.[1] : undefined;
   const pages = lastPage ? ` (стр. 1–${lastPage})` : '';
   const end = `${OPEN}Конец фрагмента документа «${safe(file.name)}»: показаны знаки 1–${count(shown.length)} из ${count(doc.chars)}${pages}. Полная версия — файл в рабочей папке: ${safe(file.path)}; дальше читай его скиллом.${CLOSE}`;
   return { text: `${head}\n${safe(shown)}\n${end}`, used: shown.length };
@@ -102,7 +121,8 @@ export function createDocTextProcessor(deps: DocTextProcessorDeps) {
         // A recovery the spec names: the model gets «не разобрался» and reads the file with a skill; the
         // failure goes to the journal once.
         const format = docFormatOf(extname(path));
-        logEvent('error', 'doctext_unexpected_failure', { code: 'APP_INTERNAL', ext: extname(path).toLowerCase(), error });
+        // The name of the error only: its text may hold the path the person typed.
+        logEvent('error', 'doctext_unexpected_failure', { code: 'APP_INTERNAL', ext: extname(path).toLowerCase(), errorName: error instanceof Error ? error.name : typeof error, errno: (error as NodeJS.ErrnoException | null)?.code ?? null });
         return format ? { state: 'failed', kind: format.kind } : null;
       });
       seen.set(path, doc);
@@ -117,22 +137,22 @@ export function createDocTextProcessor(deps: DocTextProcessorDeps) {
       const attached = messages.map((m) => (m.role === 'user' ? attachmentsOf(m.content as never) : null));
       if (!attached.some((a) => a && a.files.length > 0)) return undefined;
       const root = runRoot(deps.workspaceRoot, requestContext);
+      // Every document starts at once (a cold cache after a restart, several attachments), the latest message's
+      // first: LibreOffice has two places in the installation, and the older ones may end as a line anyway.
+      for (let i = attached.length - 1; i >= 0; i--) for (const file of attached[i]?.files ?? []) void textOf(requestContext, root, file.path);
       let requestRoom = DOC_REQUEST_MAX_CHARS;
       const blocks = new Map<number, string>();
       for (let i = messages.length - 1; i >= 0; i--) {
         const files = attached[i]?.files ?? [];
-        if (files.length === 0) continue;
-        let room = Math.min(DOC_MESSAGE_MAX_CHARS, requestRoom);
-        const parts: string[] = [];
-        for (const file of files) {
-          const doc = await textOf(requestContext, root, file.path);
-          if (!doc) continue;
-          const made = block(file, doc, room);
-          room -= made.used;
+        const docs = (await Promise.all(files.map((file) => textOf(requestContext, root, file.path)))).map((doc, j) => ({ file: files[j]!, doc })).filter((d): d is { file: AttachedFile; doc: DocText } => d.doc !== null);
+        if (docs.length === 0) continue;
+        const given = shares(docs.map((d) => (d.doc.state === 'ok' ? d.doc.chars : 0)), Math.min(DOC_MESSAGE_MAX_CHARS, requestRoom));
+        const parts = docs.map((d, j) => {
+          const made = block(d.file, d.doc, given[j]!);
           requestRoom -= made.used;
-          parts.push(made.text);
-        }
-        if (parts.length > 0) blocks.set(i, parts.join('\n\n'));
+          return made.text;
+        });
+        blocks.set(i, parts.join('\n\n'));
       }
       if (blocks.size === 0) return undefined;
       return {

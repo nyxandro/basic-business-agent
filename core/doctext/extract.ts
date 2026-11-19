@@ -5,6 +5,8 @@
 // shows them (pandas of markitdown gives NaN, «Unnamed», 0.07 for 7 %); PDF — pdftotext keeping the layout
 // (tables stay rows; two columns side by side are read across); old formats and OpenDocument — LibreOffice
 // into the new format first. A letter and plain text are decoded on the server: nothing is run for them.
+// Every program writes into a file of the folder: Mastra's sandbox keeps only the last 1 MiB of what a
+// program prints (`maxRetainedBytes`), and a big document would come back as its end.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { simpleParser } from 'mailparser';
@@ -68,18 +70,21 @@ const SHEET_LOCALE = 'ru-RU';
 const CSV_FILTER = 'csv:Text - txt - csv (StarCalc):9,34,76,1,,0,false,true,true,false,false,-1';
 const SOURCE = 'source';
 const OUT = 'out';
+// Where a program writes the text (in `out/`, made before any program runs).
+const TEXT_FILE = `${OUT}/text.txt`;
 // The killed exit of a program (bubblewrap passes on SIGKILL): the memory of the server ran out.
 const KILLED_EXIT_CODE = 137;
 
 // A document that gave no text, and why — for the journal, never for the person.
-export type Refusal = { state: 'password' | 'failed' | 'busy'; reason: string };
+// `slow` — no text in 90 s: a heavy document or a busy server; the agent reads it with a skill.
+export type Refusal = { state: 'password' | 'failed' | 'slow' | 'busy'; reason: string };
 
 export type Extracted = { state: 'ok'; text: string; pages: number | null; emptyPages: number[]; hiddenSheets: string[] } | { state: 'scan'; pages: number } | Refusal;
 
 // What a program's run says beyond its output: out of time — the document cannot be read; killed — the server
 // is busy, not the file broken.
 function outcome(result: RunResult, step: string): Refusal | null {
-  if (result.timedOut) return { state: 'failed', reason: `${step}_timeout` };
+  if (result.timedOut) return { state: 'slow', reason: `${step}_timeout` };
   if (result.killed || result.exitCode === KILLED_EXIT_CODE) return { state: 'busy', reason: `${step}_killed` };
   return null;
 }
@@ -116,12 +121,20 @@ function squeeze(page: string): string {
 
 const letters = (text: string) => text.replace(/\s/g, '').length;
 
+// What a program wrote into `file` of the folder; null when it wrote nothing.
+function output(dir: string, file: string): string | null {
+  const path = join(dir, file);
+  return existsSync(path) ? readFileSync(path, 'utf8') : null;
+}
+
 async function pdf(run: RunCommand, dir: string): Promise<Extracted> {
-  const result = await run(dir, 'pdftotext', ['-layout', `${SOURCE}.pdf`, '-'], EXTRACT_TIMEOUT_MS);
+  const result = await run(dir, 'pdftotext', ['-layout', `${SOURCE}.pdf`, TEXT_FILE], EXTRACT_TIMEOUT_MS);
   const bad = outcome(result, 'pdftotext');
   if (bad) return bad;
   if (result.exitCode !== 0) return /password/i.test(result.stderr) ? { state: 'password', reason: 'pdf_password' } : { state: 'failed', reason: 'pdftotext_exit' };
-  const pages = result.stdout.split('\f');
+  const printed = output(dir, TEXT_FILE);
+  if (printed === null) return { state: 'failed', reason: 'pdftotext_no_output' };
+  const pages = printed.split('\f');
   // pdftotext ends every page, the last too, with a form feed.
   if (pages.length > 1 && pages.at(-1)!.trim() === '') pages.pop();
   const cleaned = pages.map(squeeze);
@@ -144,11 +157,12 @@ function compactTables(markdown: string): string {
 }
 
 async function word(run: RunCommand, dir: string, file: string): Promise<Extracted> {
-  const result = await run(dir, 'pandoc', ['-s', '-t', 'gfm', '--wrap=none', file], EXTRACT_TIMEOUT_MS);
+  const result = await run(dir, 'pandoc', ['-s', '-t', 'gfm', '--wrap=none', '-o', TEXT_FILE, file], EXTRACT_TIMEOUT_MS);
   const bad = outcome(result, 'pandoc');
   if (bad) return bad;
-  if (result.exitCode !== 0) return { state: 'failed', reason: 'pandoc_exit' };
-  return { state: 'ok', text: compactTables(result.stdout).trim(), pages: null, emptyPages: [], hiddenSheets: [] };
+  const printed = result.exitCode === 0 ? output(dir, TEXT_FILE) : null;
+  if (printed === null) return { state: 'failed', reason: 'pandoc_exit' };
+  return { state: 'ok', text: compactTables(printed).trim(), pages: null, emptyPages: [], hiddenSheets: [] };
 }
 
 async function sheet(run: RunCommand, dir: string, file: string): Promise<Extracted> {
@@ -174,28 +188,36 @@ async function sheet(run: RunCommand, dir: string, file: string): Promise<Extrac
 }
 
 async function slides(run: RunCommand, dir: string, file: string, pptxScripts: string): Promise<Extracted> {
-  const result = await run(dir, 'python3', [join(pptxScripts, 'slide_text.py'), file], EXTRACT_TIMEOUT_MS);
+  // The skill's script only prints: its output goes into the file by the shell (the command is fixed, the paths
+  // are its arguments).
+  const result = await run(dir, 'sh', ['-c', `exec python3 "$0" "$1" > ${TEXT_FILE}`, join(pptxScripts, 'slide_text.py'), file], EXTRACT_TIMEOUT_MS);
   const bad = outcome(result, 'slide_text');
   if (bad) return bad;
-  if (result.exitCode !== 0) return { state: 'failed', reason: 'slide_text_exit' };
-  return { state: 'ok', text: result.stdout.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
+  const printed = result.exitCode === 0 ? output(dir, TEXT_FILE) : null;
+  if (printed === null) return { state: 'failed', reason: 'slide_text_exit' };
+  return { state: 'ok', text: printed.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
 }
 
 async function html(run: RunCommand, dir: string, file: string): Promise<Extracted> {
-  const result = await run(dir, 'markitdown', [file], EXTRACT_TIMEOUT_MS);
+  const result = await run(dir, 'markitdown', [file, '-o', TEXT_FILE], EXTRACT_TIMEOUT_MS);
   const bad = outcome(result, 'markitdown');
   if (bad) return bad;
-  if (result.exitCode !== 0) return { state: 'failed', reason: 'markitdown_exit' };
-  return { state: 'ok', text: result.stdout.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
+  const printed = result.exitCode === 0 ? output(dir, TEXT_FILE) : null;
+  if (printed === null) return { state: 'failed', reason: 'markitdown_exit' };
+  return { state: 'ok', text: printed.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
 }
 
-// UTF-8, or Windows-1251 as old accounting exports are; never a guess past these two.
-function decodeText(bytes: Uint8Array): string {
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/^\uFEFF/, '');
-  } catch {
-    return new TextDecoder('windows-1251').decode(bytes);
-  }
+// A few broken sequences in UTF-8 (a file cut off) are still UTF-8; more is another encoding.
+const BROKEN_UTF8_SHARE = 0.001;
+
+// UTF-16 by its mark (Excel's «Unicode text»), UTF-8, or Windows-1251 as old accounting exports are; never a
+// guess past these.
+export function decodeText(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  const utf8 = new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '');
+  const broken = utf8.match(/\uFFFD/g)?.length ?? 0;
+  return broken <= Math.max(1, utf8.length * BROKEN_UTF8_SHARE) ? utf8 : new TextDecoder('windows-1251').decode(bytes);
 }
 
 function dateIn(timezone: string, date: Date): string {
@@ -235,6 +257,7 @@ export async function extractText(run: RunCommand, { dir, ext, pptxScripts, time
   const format = docFormatOf(ext);
   if (!format) throw new Error(`no text for ${ext}: the caller asks only for documents`);
   let file = `${SOURCE}${ext.toLowerCase()}`;
+  mkdirSync(join(dir, OUT), { recursive: true });
   if (format.via) {
     const bad = await soffice(run, dir, format.via, file);
     if (bad) return bad;
