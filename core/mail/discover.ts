@@ -4,7 +4,8 @@
 // publishes itself (autoconfig of Thunderbird, SRV records of RFC 6186), then a server that answers at a
 // usual name. Nothing found — the person enters the servers by hand.
 import { lookup, resolveMx, resolveSrv } from 'node:dns/promises';
-import { isIP, Socket } from 'node:net';
+import { isPublicAddress } from '../net/public-address.ts';
+import { Socket } from 'node:net';
 import { MAIL_PRESETS, OTHER_MAIL_PASSWORD_HELP, type MailDiscovery, type MailOAuthProvider, type MailPreset, type MailSecurity, type MailServer, type MailServers } from '@bba/contracts';
 
 const DOMAINS: Record<string, string> = Object.fromEntries(
@@ -45,17 +46,11 @@ export interface DiscoverDeps {
 const LOOKUP_MS = 4000;
 const CONFIG_MAX_BYTES = 64 * 1024;
 
-// Private, loopback and link-local addresses: the published settings of a domain are not read from inside.
-function privateAddress(address: string): boolean {
-  if (isIP(address) === 6) return /^(::1|fe80:|fc|fd|::ffff:(10\.|127\.|192\.168\.|169\.254\.))/i.test(address);
-  const [a, b] = address.split('.').map(Number) as [number, number];
-  return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
-}
-
-// A host the server may reach while guessing: every address of it is public.
+// A host the server may reach while guessing: every address of it is public (core/net/public-address.ts) — the
+// published settings of a domain are not read from inside.
 async function publicHost(host: string): Promise<string | null> {
   const addresses = await lookup(host, { all: true }).catch(() => []);
-  if (addresses.length === 0 || addresses.some((a) => privateAddress(a.address))) return null;
+  if (addresses.length === 0 || addresses.some((a) => !isPublicAddress(a.address))) return null;
   return addresses[0]!.address;
 }
 

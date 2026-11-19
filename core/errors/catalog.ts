@@ -113,6 +113,18 @@ export const ERROR_CATALOG = {
   APP_MEMORY_CONFLICT: { status: 409, userMessage: 'Запись изменили, пока вы её правили.' },
   APP_MEMORY_SAVE_FAILED: { status: 500, userMessage: 'Не удалось сохранить запись. Попробуйте ещё раз.' },
   APP_CONVERSATIONS_UNAVAILABLE: { status: 500, userMessage: 'Не получилось посмотреть прошлые разговоры: сбой на сервере.' },
+  // The internet of agents (spec, section 8.30): the model gets its own text of each, people see these.
+  APP_WEB_PERSONAL_DATA: { status: 400, userMessage: 'Паспорт, СНИЛС и номер карты в интернет не отправляются — так настроено в организации.' },
+  APP_WEB_RESEARCH_FAILED: { status: 502, userMessage: 'Поиск в интернете не получился. Попробуйте ещё раз позже.' },
+  APP_WEB_SEARCH_FAILED: { status: 502, userMessage: 'Поиск в интернете сейчас не отвечает. Попробуйте ещё раз позже.' },
+  APP_WEB_FETCH_BAD_URL: { status: 400, userMessage: 'Это не адрес страницы: нужен адрес, который начинается с http:// или https://.' },
+  APP_WEB_FETCH_BLOCKED_ADDRESS: { status: 400, userMessage: 'Это внутренний адрес: такие страницы не открываются.' },
+  APP_WEB_FETCH_BLOCKED_BY_SITE: { status: 502, userMessage: 'Сайт не пустил: он требует входа или закрыт от программ.' },
+  APP_WEB_FETCH_HTTP: { status: 502, userMessage: 'Сайт ответил ошибкой — страница не открылась.' },
+  APP_WEB_FETCH_TIMEOUT: { status: 504, userMessage: 'Сайт не ответил за 20 секунд.' },
+  APP_WEB_FETCH_TOO_LARGE: { status: 413, userMessage: 'Файл по ссылке больше 10 МБ — такой не скачивается.' },
+  APP_WEB_FETCH_UNSUPPORTED: { status: 415, userMessage: 'По ссылке не страница и не документ — прочитать его нельзя.' },
+  APP_WEB_FETCH_NO_TEXT: { status: 422, userMessage: 'На странице нет текста — прочитать её не получилось.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;
