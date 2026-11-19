@@ -1,6 +1,6 @@
 /* The files of the next message above the input (Attachments.tsx, AttachmentStack.tsx, FileName.tsx):
    chips in full rows, and the card more than six of them gather into. The same chip shows the files of a
-   sent message above its bubble (UserMessage.tsx). */
+   sent message in its bubble (UserMessage.tsx). */
 
 /* Many files do not push the input off the screen: past nearly half of its height (a third on a phone) the
    files scroll — up and down only; while the chips move there is no scroll bar at all. */
@@ -47,9 +47,13 @@
   font-size: 13px;
 }
 
-/* A file of a sent message (UserMessage.tsx): no cross, so the same room on both sides. */
+/* A file of a sent message, in its bubble (UserMessage.tsx): the fill of the page, not of the bubble — on
+   the bubble's own fill the chip was lost; no cross, so the same room on both sides; rows apart by the
+   gap of the files. Its corners are the bubble's less the bubble's padding. */
 .chip.chipSent {
+  margin-block: 0;
   padding: 0 10px;
+  background: var(--surface);
 }
 
 /* The icon and the cross of a chip: they move with it, unstretched by its scale. */
