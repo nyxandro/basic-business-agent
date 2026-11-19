@@ -11,6 +11,9 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin
 		X-Frame-Options DENY
+		# Pictures from our own server only (spec, section 8.30): a picture from another site in an answer of the
+		# agent would carry out whatever was put into its address.
+		Content-Security-Policy "img-src 'self' data: blob:"
 		-Server
 	}
 

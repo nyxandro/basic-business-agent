@@ -300,6 +300,8 @@ export const ru = {
     webResearchRunning: (task: string) => (task ? `Ищу в интернете: ${task}` : 'Ищу в интернете…'),
     webResearchDone: (n: number) => (n > 0 ? `Поиск в интернете · ${n} ${plural(n, ['источник', 'источника', 'источников'])}` : 'Поиск в интернете · источников нет'),
     webResearchFailed: 'Поиск в интернете не получился',
+    // A picture of an answer from another site is a link (spec, section 8.30).
+    foreignImage: (where: string) => (where ? `Картинка: ${where}` : 'Картинка с другого сайта не показывается'),
     toolDone: 'Действие выполнено',
     toolDoneIn: (system: string) => `Готово: «${system}»`,
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,

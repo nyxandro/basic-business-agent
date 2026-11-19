@@ -65,6 +65,7 @@ check "/api/agents is 404" 404 "$(status "$BASE/api/agents")"
 check "/app/api/internal/usage is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/usage")"
 check "/app/api/internal/account-events is 404 from outside" 404 "$(status -X POST "$BASE/app/api/internal/account-events")"
 check "an interface page is served" 200 "$(status "$BASE/login")"
+check "pictures come from the site itself only (Content-Security-Policy)" ok "$(curl --noproxy '*' -s -D - -o /dev/null "$BASE/login" | grep -qi "^content-security-policy: img-src 'self' data: blob:" && echo ok || echo missing)"
 # PDF.js of the document viewer (spec, section 8.27): Caddy answers an unknown path with the page itself
 # (try_files), so a font or decoder missing from the build would fail silently — each must come as a file.
 for asset in pdfjs/standard_fonts/LiberationSans-Regular.ttf pdfjs/wasm/openjpeg.wasm pdfjs/cmaps/78-H.bcmap pdfjs/iccs/CGATS001Compat-v2-micro.icc; do

@@ -187,6 +187,22 @@
   overflow-wrap: anywhere;
 }
 
+/* Pictures of an answer (AnswerText.tsx): our own server's shown, another site's only named as a link. */
+.answerImage {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.foreignImage {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
 .markdown :global(p) {
   margin: 0 0 10px;
 }
