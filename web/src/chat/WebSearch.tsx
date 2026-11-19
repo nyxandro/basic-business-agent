@@ -161,7 +161,8 @@ export function WebSearch({ call }: { call: Call }) {
     return (
       <div className={styles.block}>
         <button type="button" className={cx(chat.toolLine, styles.head)} aria-expanded={unfolds ? open : undefined} onClick={unfolds ? toggle : undefined}>
-          <span className={chat.spin} />
+          {/* A still magnifier, not a spinner: the light over the words and the clock say it works. */}
+          <Icon name="search" size={15} />
           <span className={cx(chat.toolText, chat.shimmer)} role="status">
             {nowText(steps)}
           </span>

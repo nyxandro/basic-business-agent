@@ -60,8 +60,8 @@ describe('the live block of a search', () => {
     const sites = screen.getByRole('region', { name: 'Сайты' });
     expect(within(sites).getByText('metall.example')).toBeInTheDocument();
     expect(within(sites).getByText('читаю…')).toBeInTheDocument();
-    // A step under way has no spinner: it measures nothing.
-    expect(view.container.querySelector('section [class*="spin"]')).toBeNull();
+    // No spinner anywhere in the block, its line included: it measures nothing (decision of the owner 20.11).
+    expect(view.container.querySelector('[class*="spin"]')).toBeNull();
     // A site is a link once it was read, not while it is read.
     expect(within(sites).queryByRole('link')).toBeNull();
 
