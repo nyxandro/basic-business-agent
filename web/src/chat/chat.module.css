@@ -70,11 +70,13 @@
   color: var(--muted);
 }
 
+/* The end of the last message stays clear of the input: with the dock's own 8px, 40px — more than between
+   two messages, so the feed reads as ended (request of the owner 19.11; on a phone 28px). */
 .scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 28px 24px 12px;
+  padding: 28px 24px 32px;
 }
 
 .feed {
@@ -612,7 +614,7 @@
 
 @media (max-width: 859px) {
   .scroll {
-    padding: 20px 14px 8px;
+    padding: 20px 14px 22px;
   }
   .dock {
     padding: 6px 10px 12px;
