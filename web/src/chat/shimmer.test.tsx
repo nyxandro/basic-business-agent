@@ -52,6 +52,13 @@ describe('the light over an answer being written', () => {
     expect(shimmer(container)).toBe('writing');
   });
 
+  // The light is the only sign of writing: CopilotKit's caret was a stray dot after the words (owner, 19.11).
+  it('draws no caret after the words being written', () => {
+    const { container } = render(<AnswerText text="Пакет от Ikon уже приходил" streaming failed={false} />);
+    expect(container.textContent).toContain('Пакет от Ikon уже приходил');
+    expect(container.querySelector('[data-streaming-markdown-caret]')).toBeNull();
+  });
+
   it('is never on an answer that broke', () => {
     const { container, rerender } = render(<AnswerText text="Начало ответа" streaming failed={false} />);
     rerender(<AnswerText text="Начало ответа" streaming={false} failed />);

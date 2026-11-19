@@ -56,8 +56,7 @@
   }
 
   .answer[data-shimmer] :global(pre),
-  .answer[data-shimmer] :global(li)::marker,
-  .answer[data-shimmer] :global([data-streaming-markdown-caret]) {
+  .answer[data-shimmer] :global(li)::marker {
     color: var(--text);
   }
 

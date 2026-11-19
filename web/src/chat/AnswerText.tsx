@@ -1,6 +1,7 @@
 // The words of an answer as Markdown; while they are written a light runs over them (shimmer.ts),
-// not over an answer that broke. The wrapper stays the same element whatever the state, so the
-// Markdown keeps what it has drawn.
+// not over an answer that broke. The light is the only sign of writing: no caret of CopilotKit after the
+// words (a stray dot, request of the owner 19.11). The wrapper stays the same element whatever the state,
+// so the Markdown keeps what it has drawn.
 import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import type { CSSProperties } from 'react';
 import shimmerStyles from './answer-text.module.css';
@@ -14,7 +15,7 @@ export function AnswerText({ text, streaming, failed }: { text: string; streamin
   const shimmer = !lit ? undefined : streaming ? 'writing' : 'fading';
   return (
     <div className={shimmerStyles.answer} data-answer-text data-shimmer={shimmer} style={FADE_STYLE}>
-      <StreamingMarkdownDefaultRenderer content={text} isStreaming={streaming} className={styles.markdown} />
+      <StreamingMarkdownDefaultRenderer content={text} isStreaming={streaming} caret={false} className={styles.markdown} />
     </div>
   );
 }
