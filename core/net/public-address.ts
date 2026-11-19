@@ -64,7 +64,7 @@ export function assertPublicLiteral(hostname: string): void {
 export const publicLookup: LookupFunction = (hostname, options, callback) => {
   dnsLookup(hostname, { ...options, all: true }, (error, addresses) => {
     if (error) return callback(error, '', 0);
-    const all = addresses as LookupAddress[];
+    const all: LookupAddress[] = addresses;
     if (all.length === 0) return callback(Object.assign(new Error(`no address for ${hostname}`), { code: 'ENOTFOUND' }), '', 0);
     if (all.some((a) => !isPublicAddress(a.address))) return callback(appError('APP_WEB_FETCH_BLOCKED_ADDRESS', `${hostname} resolves to an inner address`), '', 0);
     if (options.all) return (callback as unknown as (e: null, a: LookupAddress[]) => void)(null, all);

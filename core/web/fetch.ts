@@ -247,7 +247,7 @@ export function fetchFailureMessage(code: string, details?: Record<string, unkno
     case 'APP_WEB_FETCH_BLOCKED_BY_SITE':
       return 'Сайт не пустил: он требует входа или закрыт от программ. Возьми другой источник.';
     case 'APP_WEB_FETCH_HTTP':
-      return `Сайт ответил ошибкой${details?.status ? ` ${String(details.status)}` : ''}: 404 — такой страницы нет, 5xx — сбой на сайте; без кода — сайт не ответил.`;
+      return `Сайт ответил ошибкой${typeof details?.status === 'number' ? ` ${details.status}` : ''}: 404 — такой страницы нет, 5xx — сбой на сайте; без кода — сайт не ответил.`;
     case 'APP_WEB_FETCH_TIMEOUT':
       return 'Сайт не ответил за 20 секунд.';
     case 'APP_WEB_FETCH_TOO_LARGE':

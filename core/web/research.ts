@@ -82,15 +82,17 @@ export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
     inputSchema: z.object({ task: z.string().min(1).max(TASK_MAX_CHARS).describe('Задание исследователю целиком: что найти или прочитать, ссылки, в каком виде вернуть') }),
     execute: async ({ task }, context) => {
       if (await personalDocumentIn(deps.db, task, WEB_RESEARCH_TOOL)) return { error: true, code: 'APP_WEB_PERSONAL_DATA', message: PERSONAL_DATA_MESSAGE };
+      // Mastra's own signal of the run: «Стоп» of the person.
+      const signal = (context as { abortSignal?: AbortSignal } | undefined)?.abortSignal;
       const rc = copyOf(context?.requestContext);
       const sources = newSources();
       rc.set(WEB_SOURCES_KEY, sources);
       const started = Date.now();
       try {
-        context?.abortSignal?.throwIfAborted();
-        const result = await deps.researcher.generate(task, { requestContext: rc, ...(context?.abortSignal ? { abortSignal: context.abortSignal } : {}) });
+        signal?.throwIfAborted();
+        const result = await deps.researcher.generate(task, { requestContext: rc, ...(signal ? { abortSignal: signal } : {}) });
         // Mastra ends a stopped generation with what it had: the stop is the run's, not a failure of the search.
-        context?.abortSignal?.throwIfAborted();
+        signal?.throwIfAborted();
         const found = sourcesOf(sources);
         logEvent('info', 'web_research_done', { steps: result.steps?.length ?? null, searches: sources.searches, pages: found.length, ms: Date.now() - started });
         if (!result.text.trim()) {
@@ -100,7 +102,7 @@ export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
         return { answer: result.text, sources: found };
       } catch (error) {
         // «Стоп» of the person stops the run itself, not only this call.
-        if (context?.abortSignal?.aborted) throw error;
+        if (signal?.aborted) throw error;
         const translated = isAppError(error) ? error : await deps.translateError(error, requireContextValue(rc, REQUEST_KEYS.userId));
         logEvent('warn', 'web_research_failed', { code: translated.code, ms: Date.now() - started });
         return fail(translated.userMessage);
