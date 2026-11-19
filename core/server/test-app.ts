@@ -59,6 +59,9 @@ import { realDiscoverDeps, type DiscoverDeps } from '../mail/discover.ts';
 import { realEndpoints, type EndpointsOf } from '../mail/oauth.ts';
 import { createMailService, type MailService } from '../mail/service.ts';
 import { createApp } from './app.ts';
+import { appError } from '../errors/catalog.ts';
+import type { PageReader } from '../web/fetch.ts';
+import type { WebSearcher } from '../web/search.ts';
 import type { AppEnv } from './http.ts';
 
 export const TEST_PUBLIC_URL = 'http://localhost:8080';
@@ -115,6 +118,10 @@ const PPTX_SCRIPTS = join(SYSTEM_SKILLS_DIR, 'pptx', 'scripts');
 const noProgram: RunCommand = () => Promise.reject(new Error('this test app runs no program of the sandbox (createTestApp({ sandbox }) or docTextRun)'));
 // The system skills of the core, read once per test process (spec, section 8.18).
 const SYSTEM_SKILLS = loadSystemSkills(SYSTEM_SKILLS_DIR);
+
+// The internet of a test app without fakes: every search and every page fails, loudly and with its code.
+const noSearch: WebSearcher = { search: () => Promise.reject(appError('APP_WEB_SEARCH_FAILED', 'this test app has no search (createTestApp({ web }))')) };
+const noPages: PageReader = { read: () => Promise.reject(appError('APP_WEB_FETCH_HTTP', 'this test app opens no page (createTestApp({ web }))')) };
 
 export const TEST_ENCRYPTION_KEYS = `1:${Buffer.alloc(32, 7).toString('base64')}`;
 
@@ -175,6 +182,9 @@ export async function createTestApp(
     // The agents get the employee's folder and the bubblewrap sandbox of an installation (the browser
     // stand: an agent makes a document there and shows it with «Скачать», spec section 8.18).
     sandbox?: boolean;
+    // The internet of agents (spec, section 8.30): without it the search and the pages of this test app fail
+    // with their own codes — a test of the internet gives its fakes.
+    web?: { searcher?: WebSearcher; reader?: PageReader };
     // How long an unused copy of a folder stays when files are in a bucket (KEEP_COPY_MS in an installation).
     keepCopyMs?: number;
     connectStore?: (config: S3Config) => ObjectStore;
@@ -295,6 +305,11 @@ export async function createTestApp(
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
     mail,
+    web: {
+      searcher: opts.web?.searcher ?? noSearch,
+      reader: opts.web?.reader ?? noPages,
+      translateError: (error: unknown, userId: string) => gateway.translateError(error, userId),
+    },
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
       ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter }, isolation: assertIsolationAvailable() } }

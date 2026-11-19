@@ -14,6 +14,12 @@ const ALLOWED_FAILS_BEFORE_COOLDOWN = 1;
 // a restart of the app. Both endpoints keep a record once, by its call id.
 const CALLBACK_RETRIES = 5;
 const CALLBACK_RETRY_DELAY_SECONDS = 1;
+// The search of the internet (spec, section 8.30): one search tool of the gateway, SearXNG of the installation
+// behind it for now (decision of the owner 19.11 — free, no keys); another engine later is a change of this entry.
+export const SEARCH_TOOL_NAME = 'web-search';
+const SEARCH_TIMEOUT_SECONDS = 15;
+// SearXNG as the gateway reaches it in an installation and in development: a service of the same Compose project.
+export const SEARXNG_URL_IN_COMPOSE = 'http://searxng:8080';
 
 // A deployment written into the file. Only the test LiteLLM has them: mock models of the tests.
 export interface StaticDeployment {
@@ -27,6 +33,8 @@ export interface LiteLLMConfigOptions {
   // POST /app/api/internal/usage of the server, as LiteLLM reaches it.
   callbackUrl: string;
   staticDeployments: StaticDeployment[];
+  // SearXNG as the gateway reaches it.
+  searchUrl: string;
 }
 
 const USAGE_PATH = '/app/api/internal/usage';
@@ -68,6 +76,13 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
         retry_delay: CALLBACK_RETRY_DELAY_SECONDS,
       },
     },
+    search_tools: [
+      {
+        search_tool_name: SEARCH_TOOL_NAME,
+        litellm_params: { search_provider: 'searxng', api_base: opts.searchUrl, timeout: SEARCH_TIMEOUT_SECONDS },
+        search_tool_info: { description: 'SearXNG of the installation' },
+      },
+    ],
     router_settings: {
       routing_strategy: 'simple-shuffle',
       num_retries: POOL_RETRIES,

@@ -296,6 +296,10 @@ export const ru = {
     conversationRead: (title: string) => `Прочитал разговор «${title}»`,
     conversationReadCurrent: 'Перечитал ранние сообщения разговора',
     conversationsFailed: 'Не получилось посмотреть прошлые разговоры',
+    // The errand of the internet (spec, section 8.30).
+    webResearchRunning: (task: string) => (task ? `Ищу в интернете: ${task}` : 'Ищу в интернете…'),
+    webResearchDone: (n: number) => (n > 0 ? `Поиск в интернете · ${n} ${plural(n, ['источник', 'источника', 'источников'])}` : 'Поиск в интернете · источников нет'),
+    webResearchFailed: 'Поиск в интернете не получился',
     toolDone: 'Действие выполнено',
     toolDoneIn: (system: string) => `Готово: «${system}»`,
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,

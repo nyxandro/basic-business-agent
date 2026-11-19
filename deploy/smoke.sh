@@ -30,6 +30,7 @@ APP_ENCRYPTION_KEYS=1:$(openssl rand -base64 32)
 LITELLM_MASTER_KEY=sk-$(random)
 LITELLM_CALLBACK_SECRET=$(random)
 LITELLM_SALT_KEY=sk-$(random)
+SEARXNG_SECRET=$(random)
 ENV
 
 compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$HERE/compose.yaml" "$@"; }

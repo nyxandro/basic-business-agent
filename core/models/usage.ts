@@ -11,9 +11,14 @@ export const NAMING_CALL = 'thread-title';
 
 const tokenCount = z.number().int().nonnegative().nullish();
 
+// The gateway's search of the internet reports itself too (spec, section 8.30, step 0 V29): it is not counted while
+// the search is free (decision of the owner 19.11).
+const SEARCH_CALL_TYPES: ReadonlySet<string> = new Set(['search', 'asearch']);
+
 const logSchema = z.object({
   litellm_call_id: z.string().min(1),
   status: z.string(),
+  call_type: z.string().nullish(),
   startTime: z.union([z.number(), z.string()]),
   model_group: z.string().nullish(),
   model_id: z.string().nullish(),
@@ -50,6 +55,7 @@ export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
     if (!parsed.success) throw new Error(`APP_USAGE_PAYLOAD_INVALID: ${parsed.error.issues.map((i) => i.path.join('.')).join(', ')}`);
     const r = parsed.data;
     if (r.status !== 'success') continue;
+    if (r.call_type && SEARCH_CALL_TYPES.has(r.call_type)) continue;
     const usage = r.metadata?.usage_object;
     const agentHeader = r.metadata?.requester_custom_headers?.[AGENT_HEADER];
     const { rowCount } = await db.query(

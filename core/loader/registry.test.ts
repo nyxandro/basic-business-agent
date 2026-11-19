@@ -77,6 +77,14 @@ describe('buildRegistry', () => {
     });
   });
 
+  it('refuses a tool with the name of a tool of the core’s internet (spec, section 8.30)', async () => {
+    const dir = installation({ 'agents/sales/tools/report.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default ${TOOL('web_research')};` });
+    await expect(registryOf(dir)).rejects.toMatchObject({
+      code: 'APP_CONFIG_INVALID',
+      details: { problems: [{ file: 'agents/sales/agent.ts', field: 'plugins', message: 'tool "web_research" has the name of a tool of the core’s internet' }] },
+    });
+  });
+
   it('lets the agent passport mark its own tool as read-only', async () => {
     const reg = await registryOf(
       installation({

@@ -1,6 +1,6 @@
 // End-to-end through the test LiteLLM (deploy/compose.dev.yaml: litellm-test, mock models).
-// This is the only test file that listens on TEST_CALLBACK_PORT for LiteLLM's callbacks and on
-// TEST_CHATGPT_PORT as the ChatGPT of the subscription accounts.
+// This is the only test file that listens on TEST_CALLBACK_PORT for LiteLLM's callbacks, on
+// TEST_CHATGPT_PORT as the ChatGPT of the subscription accounts and on TEST_SEARXNG_PORT as the SearXNG of the search.
 import { serve, type ServerType } from '@hono/node-server';
 import { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
@@ -14,7 +14,9 @@ import { createLiteLLMClient } from './litellm-client.ts';
 import { createModelGateway } from './gateway.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { startFakeChatGpt, FAKE_SUBSCRIPTION_ANSWER, type FakeChatGpt } from './fake-chatgpt.ts';
-import { TEST_CALLBACK_PORT, TEST_CHATGPT_PORT } from './test-catalog.ts';
+import { TEST_CALLBACK_PORT, TEST_CHATGPT_PORT, TEST_SEARXNG_PORT } from './test-catalog.ts';
+import { startFakeSearxng, type FakeSearxng } from '../web/fake-searxng.ts';
+import { createGatewaySearcher } from '../web/search.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
 const GATEWAY_SILENCE_S = 2;
@@ -22,9 +24,11 @@ const GATEWAY_SILENCE_S = 2;
 let t: TestApp;
 let server: ServerType;
 let openai: FakeChatGpt;
+let searxng: FakeSearxng;
 
 beforeAll(async () => {
   openai = await startFakeChatGpt({ port: TEST_CHATGPT_PORT, host: '0.0.0.0' });
+  searxng = await startFakeSearxng({ port: TEST_SEARXNG_PORT, host: '0.0.0.0' });
   // A provider that goes silent is cut off by the gateway after GATEWAY_SILENCE_S, not after a minute.
   t = await createTestApp({ chatgpt: { authBase: openai.url, gateway: true }, gatewayTimeouts: { silenceSeconds: GATEWAY_SILENCE_S, requestSeconds: 60 } });
   server = serve({ fetch: t.app.fetch, port: TEST_CALLBACK_PORT, hostname: '0.0.0.0' });
@@ -33,6 +37,7 @@ afterAll(async () => {
   await new Promise((r) => server.close(r));
   await t.close();
   await openai.close();
+  await searxng.close();
 });
 
 async function ask(userId: string, model: string, agentId = 'sales'): Promise<string> {
@@ -86,6 +91,22 @@ describe('model gateway', () => {
     const rows = await waitForUsage(userId, 4);
     expect(rows.every((r) => r.is_subscription && Number(r.cost_rub) === 0)).toBe(true);
     expect(rows.every((r) => ['sub-1', 'sub-2'].includes(r.deployment))).toBe(true);
+  });
+
+  // The search of the internet (spec, section 8.30; step 0 V29, V32): the gateway's own search on the employee's
+  // key, SearXNG behind it asked in Russian; a free search is not counted, and the batch of the usage still is.
+  it('searches through the gateway on the employee’s key and does not count the search in the ledger', async () => {
+    const userId = await t.createUser({ email: 'searcher@example.com' });
+    searxng.setResults([{ title: 'Профнастил С21 — цена', url: 'https://example.com/c21', content: 'от 520 ₽ за лист' }]);
+    const hits = await createGatewaySearcher(t.gateway).search({ query: 'профнастил С21 Екатеринбург', maxResults: 5, userId, agentId: 'sales' });
+    expect(hits).toEqual([{ title: 'Профнастил С21 — цена', address: 'https://example.com/c21', snippet: 'от 520 ₽ за лист', date: null }]);
+    expect(searxng.queries.at(-1)).toEqual({ q: 'профнастил С21 Екатеринбург', language: 'ru', format: 'json' });
+    // A model call after it: its record arrives, the search's does not become a row.
+    expect(await ask(userId, 'test-paid')).toBe('Ответ платной модели');
+    const rows = await waitForUsage(userId, 1);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await waitForUsage(userId, 1)).map((r) => r.model)).toEqual(rows.map((r) => r.model));
+    expect(rows.map((r) => r.model)).toEqual(['test-paid']);
   });
 
   it('stops an employee at their monthly limit with the date of the new limit', async () => {

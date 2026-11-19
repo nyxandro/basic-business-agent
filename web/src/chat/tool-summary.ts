@@ -105,6 +105,23 @@ function conversationsSummary(status: ToolStatus, result: string | undefined, pa
   return { state: 'done', text, readOnly: true, count: null, value: outcome.value };
 }
 
+// The errand of the internet (spec, section 8.30): the line names the task while the researcher works and the
+// number of the sources it read when it is done.
+const WEB_RESEARCH_TOOL = 'web_research';
+const TASK_SHOWN_CHARS = 80;
+
+function webResearchSummary(status: ToolStatus, result: string | undefined, parameters: unknown): ToolSummary {
+  const task = typeof (parameters as { task?: unknown } | undefined)?.task === 'string' ? ((parameters as { task: string }).task) : '';
+  const shortTask = task.length > TASK_SHOWN_CHARS ? `${task.slice(0, TASK_SHOWN_CHARS).trimEnd()}…` : task;
+  if (status !== 'complete') return { state: 'running', text: ru.chat.webResearchRunning(shortTask) };
+  const outcome = parseToolResult(result);
+  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.webResearchFailed, code: outcome.code };
+  const sources = (outcome.value as { sources?: unknown } | null)?.sources;
+  if (!Array.isArray(sources)) return { state: 'failed', text: ru.chat.webResearchFailed, code: null };
+  return { state: 'done', text: ru.chat.webResearchDone(sources.length), readOnly: true, count: null, value: outcome.value };
+}
+
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
@@ -112,6 +129,7 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   const memory = MEMORY_TOOLS[name];
   if (memory) return memorySummary(memory, status, result);
   if (name === CONVERSATIONS_TOOL) return conversationsSummary(status, result, parameters);
+  if (name === WEB_RESEARCH_TOOL) return webResearchSummary(status, result, parameters);
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };

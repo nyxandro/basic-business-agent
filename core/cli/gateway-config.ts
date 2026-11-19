@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadInstallation } from '../config/load.ts';
 import { isAppError } from '../errors/app-error.ts';
-import { buildLiteLLMConfig } from '../models/litellm-config.ts';
+import { buildLiteLLMConfig, SEARXNG_URL_IN_COMPOSE } from '../models/litellm-config.ts';
 import { TEST_LITELLM_OPTIONS } from '../models/test-catalog.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -25,7 +25,7 @@ try {
     const callbackUrl = process.env.LITELLM_CALLBACK_URL;
     if (!callbackUrl) throw new Error('APP_CONFIG_INVALID: .env: LITELLM_CALLBACK_URL: is not set');
     const installation = await loadInstallation(ROOT, process.env);
-    write('config.json', buildLiteLLMConfig({ timezone: installation.app.timezone, callbackUrl, staticDeployments: [] }));
+    write('config.json', buildLiteLLMConfig({ timezone: installation.app.timezone, callbackUrl, staticDeployments: [], searchUrl: SEARXNG_URL_IN_COMPOSE }));
     if (process.argv.includes('--mkdir-auth')) {
       const authDir = process.env.APP_CHATGPT_AUTH_DIR;
       if (!authDir) throw new Error('APP_CONFIG_INVALID: .env: APP_CHATGPT_AUTH_DIR: is not set');

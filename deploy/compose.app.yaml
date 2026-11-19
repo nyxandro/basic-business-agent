@@ -45,3 +45,11 @@ services:
       interval: 3s
       timeout: 3s
       retries: 60
+
+  # The search of the internet of agents (spec, section 8.30): reached by the gateway only, inside this network.
+  searxng:
+    image: searxng/searxng:2026.8.22-9fea41204@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro

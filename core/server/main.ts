@@ -20,6 +20,8 @@ import { createAuthPool, createPool } from '../db/pool.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
 import { ensureAgentAbilities } from '../abilities/abilities.ts';
+import { cleanWebWork, createPageReader, FETCH_MAX_MS } from '../web/fetch.ts';
+import { createGatewaySearcher } from '../web/search.ts';
 import { createModelCatalog } from '../models/catalog.ts';
 import { createChatGptAccounts } from '../models/chatgpt-accounts.ts';
 import { createChatGptAuthClient, OPENAI_AUTH_BASE } from '../models/chatgpt-login.ts';
@@ -132,7 +134,10 @@ async function main(): Promise<void> {
   // The mailboxes of employees (spec, section 8.24).
   const mail = createMailService({ db, box, publicUrl: env.APP_PUBLIC_URL, transport: { trustSelfSigned: false }, discover: realDiscoverDeps, endpoints: realEndpoints, ports: { imap: IMAP_PORTS, smtp: SMTP_PORTS } });
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, docText, connections, sandbox, mail, workflows: { [workflow.id]: workflow } });
+  // The internet of agents (spec, section 8.30): the gateway's search, the server's reader of pages.
+  cleanWebWork(tmpdir());
+  const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, docText, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;

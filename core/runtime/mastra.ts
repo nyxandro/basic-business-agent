@@ -22,6 +22,8 @@ import type { DocTextService } from '../doctext/service.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
+import { createStreamRetry } from './stream-retry.ts';
+import { createWebTools, type WebDeps } from '../web/research.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -42,6 +44,9 @@ export interface MastraRuntimeDeps {
   docText: DocTextService;
   // The mailboxes of employees (spec, section 8.24).
   mail?: MailService;
+  // The internet of agents (spec, section 8.30): the search, the reader of pages and the translation of a failed
+  // model call of the researcher.
+  web?: Pick<WebDeps, 'searcher' | 'reader' | 'translateError'>;
   // Mastra workflows of the core, e.g. "background-run" for background tasks.
   workflows?: ConstructorParameters<typeof Mastra>[0] extends infer O ? (O extends { workflows?: infer W } ? W : never) : never;
 }
@@ -52,6 +57,21 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const docText = createDocTextProcessor({ service: deps.docText, workspaceRoot: deps.workspaceRoot });
   const agents: Record<string, Agent> = {};
+  // The researcher of the internet: masked like every agent, its broken streams asked again (spec, section 8.30).
+  const web = deps.web
+    ? createWebTools({
+        db: deps.db,
+        ...deps.web,
+        researcher: {
+          gateway: deps.gateway,
+          inputProcessors: [masking],
+          outputProcessors: [masking],
+          errorProcessors: [createStreamRetry({ mastraRetries: true })],
+          stepMs: deps.stepMs ?? MODEL_CALL_MAX_MS,
+          timezone: deps.app.timezone,
+        },
+      })
+    : null;
   // The mail tools do not depend on the person (they read who runs from the request): made once.
   const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
   const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
@@ -76,6 +96,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),
+      ...(web ? { web } : {}),
       processorsFor: (r, level) => ({
         // The text of documents first: before the layers add the time to the latest message and before masking
         // hides personal data in it (spec, section 8.29).

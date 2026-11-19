@@ -1,0 +1,31 @@
+# SearXNG of the installation: the search of the internet of agents (spec, section 8.30). Free and without keys for
+# now (decision of the owner 19.11); only the gateway LiteLLM reaches it, inside the Compose network — no port is
+# published and Caddy does not serve it. It reads the results of the engines below the way a browser does; they
+# may answer it with a captcha, then they are skipped. The engines were chosen by the check of 19.11 (only
+# «google cse» answered from the development machine); a Russian server may see another working set.
+# «yandex api» (the paid Yandex Search API, a key of Yandex Cloud) is the way to Yandex later.
+use_default_settings:
+  engines:
+    keep_only:
+      - google cse
+      - google
+      - yandex
+      - bing
+      - duckduckgo
+      - brave
+      - mojeek
+      - wikipedia
+general:
+  instance_name: "bba-search"
+search:
+  safe_search: 0
+  default_lang: "ru-RU"
+  # The gateway asks for JSON (LiteLLM's provider «searxng»).
+  formats:
+    - html
+    - json
+server:
+  # The secret comes from SEARXNG_SECRET (.env). The limiter guards a public instance; this one is not public.
+  limiter: false
+  public_instance: false
+  image_proxy: false

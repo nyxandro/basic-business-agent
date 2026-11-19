@@ -124,6 +124,19 @@
       "retry_delay": 1
     }
   },
+  "search_tools": [
+    {
+      "search_tool_name": "web-search",
+      "litellm_params": {
+        "search_provider": "searxng",
+        "api_base": "http://host.docker.internal:39997",
+        "timeout": 15
+      },
+      "search_tool_info": {
+        "description": "SearXNG of the installation"
+      }
+    }
+  ],
   "router_settings": {
     "routing_strategy": "simple-shuffle",
     "num_retries": 1,

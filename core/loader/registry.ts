@@ -14,6 +14,9 @@ import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { ConnectorRuntime } from '../connections/manager.ts';
 import type { AnyTool, McpDefinition, PluginContext, PluginTrigger } from '../plugins/public/index.ts';
 
+// Names of the core's tools of the internet (core/web): no plugin or agent tool may take them.
+const WEB_TOOL_IDS: readonly string[] = ['web_research', 'web_search', 'web_fetch'];
+
 export interface AgentRuntime {
   passport: AgentPassport;
   dir: string;
@@ -152,6 +155,8 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     Object.assign(tools, await loadAgentTools(dir, file, problems));
     for (const id of Object.keys(tools)) {
       if (GENUI_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of an interface block of the core` });
+      // The internet of the core (spec, section 8.30): a plugin's tool of that name would shadow it.
+      if (WEB_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of a tool of the core’s internet` });
     }
     for (const id of passport.readOnly) {
       if (!tools[id]) problems.push({ file, field: 'readOnly', message: `the agent has no tool "${id}"` });

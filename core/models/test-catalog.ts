@@ -75,8 +75,11 @@ export async function seedTestModels(db: Db): Promise<void> {
 }
 
 export const TEST_CALLBACK_PORT = 39_999;
+// The fake SearXNG behind the search of the test gateway (spec, section 8.30); only core/web/search.test.ts listens.
+export const TEST_SEARXNG_PORT = 39_997;
 export const TEST_LITELLM_OPTIONS = {
   timezone: 'Europe/Moscow',
   callbackUrl: `http://host.docker.internal:${TEST_CALLBACK_PORT}/app/api/internal/usage`,
   staticDeployments: TEST_STATIC_DEPLOYMENTS,
+  searchUrl: `http://host.docker.internal:${TEST_SEARXNG_PORT}`,
 };
