@@ -7,7 +7,7 @@
 // into the new format first. A letter and plain text are decoded on the server: nothing is run for them.
 // Every program writes into a file of the folder: Mastra's sandbox keeps only the last 1 MiB of what a
 // program prints (`maxRetainedBytes`), and a big document would come back as its end.
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { simpleParser } from 'mailparser';
 import type { RunCommand, RunResult } from '../preview/convert.ts';
@@ -18,7 +18,10 @@ export type DocKind = 'pdf' | 'word' | 'sheet' | 'slides' | 'text' | 'html' | 'e
 // The new format LibreOffice turns an old or OpenDocument file into, before it is read like that one.
 type Via = 'docx' | 'xlsx' | 'pptx';
 
-const FORMATS: Record<string, { kind: DocKind; via?: Via }> = {
+// A page an agent opened from the internet (spec, section 8.30): read for its main text first (html below).
+export const WEB_PAGE_EXTENSION = '.webpage';
+
+const FORMATS: Record<string, { kind: DocKind; via?: Via; main?: boolean }> = {
   '.pdf': { kind: 'pdf' },
   '.docx': { kind: 'word' },
   '.doc': { kind: 'word', via: 'docx' },
@@ -42,10 +45,11 @@ const FORMATS: Record<string, { kind: DocKind; via?: Via }> = {
   '.log': { kind: 'text' },
   '.html': { kind: 'html' },
   '.htm': { kind: 'html' },
+  [WEB_PAGE_EXTENSION]: { kind: 'html', main: true },
   '.eml': { kind: 'email' },
 };
 
-export function docFormatOf(ext: string): { kind: DocKind; via?: Via } | null {
+export function docFormatOf(ext: string): { kind: DocKind; via?: Via; main?: boolean } | null {
   return FORMATS[ext.toLowerCase()] ?? null;
 }
 
@@ -198,7 +202,33 @@ async function slides(run: RunCommand, dir: string, file: string, pptxScripts: s
   return { state: 'ok', text: printed.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
 }
 
-async function html(run: RunCommand, dir: string, file: string): Promise<Extracted> {
+// A page an agent opened from the internet (spec, section 8.30; measure M10a): its main text by trafilatura —
+// without the menus, counters and hundreds of links that markitdown keeps (2–24 times shorter on 7 Russian pages,
+// prices and articles kept). A page without a main text (a list, a portal) is read whole, as an attached HTML is.
+const MAIN_TEXT = `import sys, trafilatura
+raw = open(sys.argv[1], 'rb').read()
+text = trafilatura.extract(raw, output_format='markdown', include_links=True, include_tables=True, favor_recall=True) or ''
+open(sys.argv[2], 'w', encoding='utf-8').write(text)`;
+const MIN_MAIN_TEXT_CHARS = 200;
+
+async function mainText(run: RunCommand, dir: string, file: string): Promise<Extracted | null> {
+  const result = await run(dir, 'python3', ['-c', MAIN_TEXT, file, TEXT_FILE], EXTRACT_TIMEOUT_MS);
+  const bad = outcome(result, 'trafilatura');
+  if (bad) return bad;
+  const printed = result.exitCode === 0 ? output(dir, TEXT_FILE) : null;
+  if (printed === null || printed.trim().length < MIN_MAIN_TEXT_CHARS) return null;
+  return { state: 'ok', text: printed.trim(), pages: null, emptyPages: [], hiddenSheets: [] };
+}
+
+async function html(run: RunCommand, dir: string, source: string, main: boolean): Promise<Extracted> {
+  let file = source;
+  if (main) {
+    const found = await mainText(run, dir, source);
+    if (found) return found;
+    // markitdown knows a page by its extension.
+    file = `${SOURCE}.html`;
+    copyFileSync(join(dir, source), join(dir, file));
+  }
   const result = await run(dir, 'markitdown', [file, '-o', TEXT_FILE], EXTRACT_TIMEOUT_MS);
   const bad = outcome(result, 'markitdown');
   if (bad) return bad;
@@ -274,7 +304,7 @@ export async function extractText(run: RunCommand, { dir, ext, pptxScripts, time
     case 'slides':
       return slides(run, dir, file, pptxScripts);
     case 'html':
-      return html(run, dir, file);
+      return html(run, dir, file, format.main === true);
     case 'text':
       return { state: 'ok', text: decodeText(readFileSync(join(dir, file))).trim(), pages: null, emptyPages: [], hiddenSheets: [] };
     case 'email':

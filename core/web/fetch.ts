@@ -12,6 +12,7 @@ import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import type { Readable } from 'node:stream';
 import { appError } from '../errors/catalog.ts';
 import type { DocTextService } from '../doctext/service.ts';
+import { WEB_PAGE_EXTENSION } from '../doctext/extract.ts';
 import { sliceWhole } from '../history/read.ts';
 import { assertPublicLiteral, publicLookup } from '../net/public-address.ts';
 
@@ -213,9 +214,11 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
         bytes = Buffer.from(text, 'utf8');
       }
       const work = mkdtempSync(join(tmpdir(), WORK_PREFIX));
+      // A page of HTML is read for its main text (core/doctext/extract.ts, WEB_PAGE_EXTENSION).
+      const name = kind === 'html' ? `page${WEB_PAGE_EXTENSION}` : `page${ext}`;
       try {
-        writeFileSync(join(work, `page${ext}`), bytes);
-        const doc = await deps.docText.text(work, `page${ext}`);
+        writeFileSync(join(work, name), bytes);
+        const doc = await deps.docText.text(work, name);
         if (!doc) throw appError('APP_WEB_FETCH_UNSUPPORTED', `no reader for ${ext}`);
         if (doc.state === 'password') throw appError('APP_WEB_FETCH_UNSUPPORTED', 'a document with a password');
         if (doc.state === 'scan') throw appError('APP_WEB_FETCH_NO_TEXT', 'a scan without text');

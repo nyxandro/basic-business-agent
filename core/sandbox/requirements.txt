@@ -16,3 +16,5 @@ reportlab==5.1.0
 pdf2image==1.17.0
 pytesseract==0.3.13
 markitdown[docx,pptx,xlsx]==0.1.9
+# The main text of a page an agent opened from the internet (spec, section 8.30).
+trafilatura==2.3.1

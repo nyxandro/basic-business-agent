@@ -37,6 +37,7 @@ export const PYTHON_MODULES: Record<string, string> = {
   pdf2image: 'pdf2image',
   pytesseract: 'pytesseract',
   markitdown: 'markitdown',
+  trafilatura: 'trafilatura',
 };
 
 // Scanned pages of Russian documents; English for mixed text.
