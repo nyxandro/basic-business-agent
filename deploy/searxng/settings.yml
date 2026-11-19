@@ -15,6 +15,11 @@ use_default_settings:
       - brave
       - mojeek
       - wikipedia
+# Bing is off in SearXNG's own defaults: it is turned on here (decision of the owner 20.11 — Bing lets an automatic
+# client through, when Google, Brave and DuckDuckGo answered our searches with a block or a captcha).
+engines:
+  - name: bing
+    disabled: false
 general:
   instance_name: "bba-search"
 search:
