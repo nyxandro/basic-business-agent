@@ -120,15 +120,15 @@ export interface TrashBatchDto {
 export const trashRestoreSchema = z.union([z.object({ ids: z.array(z.uuid()).min(1) }), z.object({ batchId: z.uuid() })]);
 export type TrashRestore = z.infer<typeof trashRestoreSchema>;
 
-// GET /app/api/threads/:threadId/file/status?path=: what «Скачать» of the chat will find.
-export type ThreadFileStatus =
-  | { state: 'ok' }
-  | { state: 'trash'; name: string; projectId: string; trashId: string; expiresAt: string }
-  | { state: 'deleted'; name: string }
-  | { state: 'lost'; name: string; projectName: string; reason: LostProjectReason };
+// A file removed from its folder: in the project's trash, or gone.
+type RemovedFile = { state: 'trash'; name: string; projectId: string; trashId: string; expiresAt: string } | { state: 'deleted'; name: string };
+
+// GET /app/api/threads/:threadId/file/status?path=: what «Скачать» of the chat will find. `version` of a file there
+// changes whenever the file is written: the marks drawn on it in the viewer belong to one version (spec, 8.32).
+export type ThreadFileStatus = { state: 'ok'; version: string } | RemovedFile | { state: 'lost'; name: string; projectName: string; reason: LostProjectReason };
 
 // GET /app/api/files/status: a file the search found (spec, section 8.21) — there, in the project's trash, or gone.
-export type SearchFileStatus = Exclude<ThreadFileStatus, { state: 'lost' }>;
+export type SearchFileStatus = { state: 'ok' } | RemovedFile;
 
 // GET /app/api/projects/archive: the creator's archived projects (spec, section 8.20). A project is
 // removed for good only from the archive and not before `deletableFrom`.

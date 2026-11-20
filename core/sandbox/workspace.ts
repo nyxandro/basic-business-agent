@@ -2,7 +2,7 @@
 // conversation's files folder (core/workspace/layout.ts) is the root of both the file tools and the
 // bubblewrap sandbox — no network, no app environment; the folders of the skills this employee
 // gets (and only those, V14) and the Python of the skills are visible read-only.
-import { attachmentsOf, type ActionDescription } from '@bba/contracts';
+import { attachmentsOf, MODEL_PICTURE_MAX_BYTES, type ActionDescription } from '@bba/contracts';
 import { createHash } from 'node:crypto';
 import { closeSync, readFileSync, statSync } from 'node:fs';
 import { extname } from 'node:path';
@@ -21,7 +21,6 @@ import { contextRoot, existingInside, openFileInside } from '../workspace/layout
 import { sandboxOptions } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
 // Pictures a person may send that are not given to the model as they are: not every provider takes them
 // (Groq does not list WebP and GIF, 17.11) — the agent turns them into PNG first.
@@ -197,7 +196,7 @@ function findPicture(dir: string, path: string, commands: boolean): { real: stri
     return `Путь ${path} ведёт за пределы рабочей папки`;
   }
   if (!real || !statSync(real).isFile()) return `Файла ${path} нет`;
-  if (statSync(real).size > MAX_IMAGE_BYTES) return 'Картинка больше 5 МБ';
+  if (statSync(real).size > MODEL_PICTURE_MAX_BYTES) return 'Картинка больше 5 МБ';
   return { real, mediaType };
 }
 
@@ -216,7 +215,7 @@ function pictureOf(dir: string, path: string): FilePart | string {
   }
   if (!file) return `Файла ${path} нет`;
   try {
-    if (file.size > MAX_IMAGE_BYTES) return 'Картинка больше 5 МБ';
+    if (file.size > MODEL_PICTURE_MAX_BYTES) return 'Картинка больше 5 МБ';
     return { type: 'file', data: readFileSync(file.fd).toString('base64'), mediaType: picture.mediaType };
   } finally {
     closeSync(file.fd);

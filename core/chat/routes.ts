@@ -1,7 +1,7 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // and attachments.
 import { basename, relative } from 'node:path';
-import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
+import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, MARKS_FOLDER, MODEL_PICTURE_MAX_BYTES, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { AppError } from '../errors/app-error.ts';
 import { agentActions, describeTools, subagentCalls } from '../approvals/describe.ts';
@@ -17,7 +17,7 @@ import { fileResponse } from '../workspace/download.ts';
 import { pdfResponse } from '../preview/response.ts';
 import type { PreviewService } from '../preview/service.ts';
 import { areaOf, filesPrefix, type Area } from '../storage/areas.ts';
-import { contextRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile } from '../workspace/layout.ts';
+import { contextRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile, saveInFolder } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
@@ -57,6 +57,10 @@ function projectFileLost(name: string, reason: keyof typeof LOST_FILE_TEXT): App
 
 // A copy of a file of the person's computer stays this long after it was brought (spec, section 8.25).
 const COMPUTER_COPY_KEEP_MS = 60 * 60 * 1000;
+
+// A JPEG by its name and its first bytes (FF D8 FF): the marks' picture the browser makes (spec, section 8.32).
+const isJpegName = (name: string): boolean => /\.jpe?g$/i.test(name);
+const startsLikeJpeg = (data: Uint8Array): boolean => data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler; preview: PreviewService }): void {
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
@@ -299,6 +303,19 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json(saved, 201);
   });
 
+  // The picture of the marks drawn on a document in the viewer (spec, section 8.32): into the hidden folder «.marks»
+  // of the conversation's working folder — not among the project's files, kept with them in a bucket. The browser
+  // makes it; only a JPEG the model is given passes (core/sandbox/workspace.ts).
+  app.post('/app/api/threads/:threadId/marks', async (c) => {
+    const found = await threadFolders(access(c).userId, c.req.param('threadId'));
+    const file = await readUploadedFile(c);
+    const data = new Uint8Array(await file.arrayBuffer());
+    if (!isJpegName(file.name) || !startsLikeJpeg(data) || data.byteLength > MODEL_PICTURE_MAX_BYTES) {
+      throw appError('APP_MARKS_PICTURE_INVALID', `marks picture of ${data.byteLength} bytes is not a JPEG up to ${MODEL_PICTURE_MAX_BYTES} bytes`);
+    }
+    return c.json(await inFolder(found, 'write', (folder) => saveInFolder(folder, MARKS_FOLDER, file.name, data)), 201);
+  });
+
   // What «Скачать» of a file block will find (spec, sections 8.18 and 8.20): the file; or it was
   // removed and lies in the project's trash (found by its exact path), or is gone; or it is a file of
   // a project gone for the person — a file of their own folder in such a conversation is still theirs.
@@ -309,7 +326,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const full = inArea.slice(filesPrefix(found.area).length);
     const name = basename(full);
     // From the copy, or from the list of the bucket: a check brings nothing to the disk (spec, 8.23).
-    if (await deps.storage.exists(found.area, inArea)) return { state: 'ok' };
+    const there = await deps.storage.stat(found.area, inArea);
+    if (there) return { state: 'ok', version: `${there.bytes}-${there.modifiedMs}` };
     if (state.state === 'lost') return { state: 'lost', name, projectName: state.name, reason: state.reason };
     if (state.state === 'active') {
       const trashed = await trashedAt(deps.db, state.project.id, full);

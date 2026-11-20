@@ -179,7 +179,7 @@ describe('the trash of a project', () => {
     await t.call('PUT', `/app/api/threads/${threadId}/project`, { cookie: olga, body: { projectId: p.id } });
     put(p.files, 'КП v1.docx', 'КП');
     const status = async (path: string) => json<ThreadFileStatus>(await t.call('GET', `/app/api/threads/${threadId}/file/status?path=${encodeURIComponent(path)}`, { cookie: olga }));
-    expect(await status('КП v1.docx')).toEqual({ state: 'ok' });
+    expect(await status('КП v1.docx')).toEqual({ state: 'ok', version: expect.any(String) });
     await t.call('DELETE', `/app/api/projects/${p.id}/file?path=${encodeURIComponent('КП v1.docx')}`, { cookie: olga });
     const inTrash = await status('КП v1.docx');
     expect(inTrash).toMatchObject({ state: 'trash', name: 'КП v1.docx', projectId: p.id });
