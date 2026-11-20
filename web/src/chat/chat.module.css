@@ -429,7 +429,9 @@
   border-radius: 50%;
   border: 2px solid var(--ring);
   border-top-color: var(--acc);
-  animation: bba-spin 0.8s linear infinite;
+  /* global(): the build renames an animation of a module to the module's own name, and the shared @keyframes of
+     base.css are not found — the circle stood still, a ring a quarter filled, like progress (owner, 20.11). */
+  animation: global(bba-spin) 0.8s linear infinite;
 }
 
 .shimmer {
