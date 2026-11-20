@@ -147,7 +147,7 @@ function readComponent(component: unknown): unknown {
   const out: Record<string, unknown> = { ...(component as Record<string, unknown>) };
   for (const key of SPACING_KEYS) {
     const value = out[key];
-    if (typeof value === 'string' && value in SPACING_STEPS) out[key] = SPACING_STEPS[value];
+    if (typeof value === 'string' && Object.hasOwn(SPACING_STEPS, value)) out[key] = SPACING_STEPS[value];
   }
   if (typeof out.wrap === 'boolean') out.wrap = out.wrap ? 'wrap' : 'nowrap';
   return out;

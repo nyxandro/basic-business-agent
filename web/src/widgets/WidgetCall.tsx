@@ -14,7 +14,7 @@ import { ru } from '../i18n/ru.ts';
 import { answerOf } from '../genui/answer.ts';
 import { BusyPress } from './busy.tsx';
 import { changesAScreen, drawableOperations, laterChanges } from './operations.ts';
-import { chosenWords, replyHead, WidgetReplyContext } from './reply.ts';
+import { screensOfAnswer, WidgetReplyContext, widgetReply } from './reply.ts';
 import styles from './widgets.module.css';
 
 export function WidgetCall({ call }: { call: CallProps }) {
@@ -34,7 +34,7 @@ export function WidgetCall({ call }: { call: CallProps }) {
   const threadId = agent.threadId;
   // The person's answer to the widget: what it marks and makes inactive (reply.ts).
   const reply = answerOf(messages, call.toolCallId);
-  const replied = useMemo(() => (reply === null ? { answered: false, chosen: new Set<string>() } : { answered: true, chosen: chosenWords(operations.ops, replyHead(reply)) }), [reply, operations.ops]);
+  const replied = useMemo(() => widgetReply(operations.ops, screensOfAnswer(messages, call.toolCallId), reply), [operations.ops, messages, call.toolCallId, reply]);
   // A press CopilotKit did not send while the agent was answering (busy.tsx): a line says to press again, until the
   // answer is done (state adjusted while rendering, as React advises for a change of a value).
   const [pressedBusy, setPressedBusy] = useState(false);

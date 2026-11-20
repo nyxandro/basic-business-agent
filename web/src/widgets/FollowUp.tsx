@@ -5,7 +5,7 @@
 // block says to press again (busy.tsx). When the model bound `onFollowUp`, that binding sends, as in CopilotKit's.
 import { useAgent, useCopilotKit } from '@copilotkit/react-core';
 import type { GenerativeUIComponentProps, standardUI } from '@copilotkit/react-core/generative-ui';
-import { useContext, useRef, type ReactNode } from 'react';
+import { useContext, useRef, useState, type ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -17,6 +17,7 @@ type Props = GenerativeUIComponentProps<typeof standardUI, 'FollowUp'>;
 
 export function FollowUp(props: Props): ReactNode {
   const { answered, chosen } = useContext(WidgetReplyContext);
+  const [pressed, setPressed] = useState<string | null>(null);
   const busy = useContext(BusyPress);
   const { agent } = useAgent();
   const { copilotkit } = useCopilotKit();
@@ -28,7 +29,9 @@ export function FollowUp(props: Props): ReactNode {
 
   const send = async (message: string) => {
     if (bound) {
-      await bound({ message });
+      setPressed(message);
+      const outcome = await bound({ message });
+      if (!outcome?.ok) setPressed(null);
       return;
     }
     if (going.current) return;
@@ -37,6 +40,7 @@ export function FollowUp(props: Props): ReactNode {
       return;
     }
     going.current = true;
+    setPressed(message);
     try {
       agent.addMessage({ id: crypto.randomUUID(), role: 'user', content: message });
       await copilotkit.runAgent({ agent });
@@ -50,7 +54,7 @@ export function FollowUp(props: Props): ReactNode {
       {props.title && <span className={styles.followUpsTitle}>{props.title}</span>}
       <div className={styles.followUpRow}>
         {items.map((item, i) => {
-          const isChosen = answered && (chosen.has(item.message) || chosen.has(item.label));
+          const isChosen = answered && (pressed === item.message || chosen.has(item.label));
           return (
             <button key={`${item.label}-${i}`} type="button" className={cx(styles.followUp, isChosen && styles.chosen)} disabled={answered} data-chosen={isChosen || undefined} onClick={() => void send(item.message)}>
               {isChosen ? <Icon name="check" size={15} /> : null}

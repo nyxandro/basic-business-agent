@@ -13,7 +13,7 @@ import { widgetsUI } from './catalog.ts';
 import { drawableOperations, laterChanges } from './operations.ts';
 import { BUSY_CODE, BusyPress, useBusyGuard } from './busy.tsx';
 import { widgetOverrides } from './overrides.tsx';
-import { chosenWords, replyHead, WidgetReplyContext } from './reply.ts';
+import { replyHead, screensOfAnswer, sendingControls, WidgetReplyContext, widgetReply } from './reply.ts';
 import { WidgetCall } from './WidgetCall.tsx';
 
 const ingest = vi.fn();
@@ -237,7 +237,7 @@ describe('our components of the mockup', () => {
     const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
     const onClick = vi.fn();
     render(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сравнить с планом']) }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сравнить с планом']), sending: new Set(['Сравнить с планом', 'Разложить по менеджерам']) }}>
         <Button label="Сравнить с планом" onClick={onClick} />
         <Button label="Разложить по менеджерам" onClick={onClick} />
         <Button label="Открыть сайт" href="https://example.com" />
@@ -259,7 +259,7 @@ describe('our components of the mockup', () => {
     expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', content: 'Сделай слайд для отчёта' }));
     expect(runAgent).toHaveBeenCalledOnce();
     view.rerender(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сделай слайд для отчёта']) }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сделать слайд']), sending: new Set(['Сравнить с планом', 'Сделать слайд']) }}>
         <FollowUp items={items} />
       </WidgetReplyContext.Provider>,
     );
@@ -289,12 +289,47 @@ describe('our components of the mockup', () => {
     expect(screen.getByText('С')).toBeInTheDocument();
     const Card = widgetOverrides.EntityCard.component as unknown as (props: Record<string, unknown>) => ReactNode;
     render(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Выбрать']) }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Выбрать']), sending: new Set(['Выбрать', 'Сравнить']) }}>
         <Card title="Старт" actions={[{ label: 'Выбрать' }, { label: 'Сравнить' }]} onAction={vi.fn()} />
       </WidgetReplyContext.Provider>,
     );
     expect(screen.getByRole('button', { name: 'Выбрать, выбрано' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Сравнить' })).toBeDisabled();
+  });
+
+  // Review 20.11: with the submit button marked the form was left open to Enter in its field — a second message.
+  it('send nothing from an answered form, not by Enter either', async () => {
+    const onSubmit = vi.fn(() => Promise.resolve({ ok: true as const, result: undefined }));
+    const Form = widgetOverrides.Form.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Отправить']), sending: new Set(['Отправить']) }}>
+        <Form onSubmit={onSubmit}>
+          <input aria-label="Клиент" />
+          <Button label="Отправить" submit />
+        </Form>
+      </WidgetReplyContext.Provider>,
+    );
+    expect(screen.getByRole('button', { name: 'Отправить, выбрано' })).toBeDisabled();
+    await userEvent.type(screen.getByRole('textbox', { name: 'Клиент' }), 'ООО Сибирь{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // The answer cannot tell three «Выбрать» apart; this window knows which one was pressed.
+  it('mark the button pressed in this window though another sends the same words', async () => {
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const onClick = vi.fn(() => Promise.resolve({ ok: true as const, result: undefined }));
+    const tree = (answered: boolean) => (
+      <WidgetReplyContext.Provider value={{ answered, chosen: new Set(), sending: new Set(['Выбрать']) }}>
+        <Button label="Выбрать" onClick={onClick} />
+        <Button label="Выбрать" onClick={onClick} />
+      </WidgetReplyContext.Provider>
+    );
+    const view = render(tree(false));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Выбрать' })[1]!);
+    view.rerender(tree(true));
+    expect(screen.getByRole('button', { name: 'Выбрать, выбрано' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Выбрать' })).toBeDisabled();
   });
 
   it('show a picture of another site as a link to open', () => {
@@ -305,26 +340,61 @@ describe('our components of the mockup', () => {
 });
 
 describe('the answer to a widget', () => {
-  it('finds the controls whose press sent it: by their words, by a message of their own, a form by its submit button', () => {
-    const ops = [
-      {
-        version: '1.0',
-        createSurface: {
-          surfaceId: 'kp',
-          components: [
-            { id: 'root', component: 'Column', children: ['plan', 'form'] },
-            { id: 'plan', component: 'Button', label: 'Сравнить с планом', onClick: { event: { name: 'plan', userMessage: 'Сравни с планом' } } },
-            { id: 'form', component: 'Form', children: ['inn', 'send'], onSubmit: { event: { name: 'submit', userMessage: 'Заявка' } } },
-            { id: 'inn', component: 'TextField', label: 'ИНН' },
-            { id: 'send', component: 'Button', label: 'Отправить заявку', submit: true },
-          ],
-        },
-      },
-    ];
+  const screen1 = (components: Record<string, unknown>[], surfaceId = 'kp') => [{ version: '1.0', createSurface: { surfaceId, components: [{ id: 'root', component: 'Column', children: components.map((c) => c.id) }, ...components] } }];
+  const press = (name: string, userMessage?: string) => ({ event: { name, ...(userMessage ? { userMessage } : {}) } });
+
+  it('knows the controls that send: buttons with an event, submit buttons of a form, actions of a card, follow-ups', () => {
+    const ops = screen1([
+      { id: 'plan', component: 'Button', label: 'Сравнить с планом', onClick: press('plan', 'Сравни с планом') },
+      { id: 'site', component: 'Button', label: 'Открыть сайт', onClick: { functionCall: { call: 'openUrl', args: { url: 'https://example.com' } } } },
+      { id: 'form', component: 'Form', children: ['send'], onSubmit: press('submit', 'Заявка') },
+      { id: 'send', component: 'Button', label: 'Отправить заявку', submit: true },
+      { id: 'card', component: 'EntityCard', title: 'Старт', actions: [{ label: 'Выбрать' }, { label: 'Сайт', href: 'https://example.com' }], onAction: press('pick') },
+      { id: 'fu', component: 'FollowUp', items: ['Ещё', { label: 'Слайд', message: 'Сделай слайд' }] },
+    ]);
+    expect(sendingControls(ops).map((c) => [c.words, c.head])).toEqual([
+      ['Сравнить с планом', 'Сравни с планом'],
+      ['Отправить заявку', 'Заявка'],
+      ['Выбрать', 'Выбрать'],
+      ['Ещё', 'Ещё'],
+      ['Слайд', 'Сделай слайд'],
+    ]);
     expect(replyHead('Заявка\n\ninn: 5406012345')).toBe('Заявка');
-    expect([...chosenWords(ops, 'Сравни с планом')]).toEqual(['Сравни с планом', 'Сравнить с планом']);
-    expect([...chosenWords(ops, 'Заявка')]).toEqual(['Заявка', 'Отправить заявку']);
-    expect([...chosenWords(ops, 'Что-то своё')]).toEqual(['Что-то своё']);
+    expect([...widgetReply(ops, [ops], 'Сравни с планом').chosen]).toEqual(['Сравнить с планом']);
+    expect([...widgetReply(ops, [ops], 'Заявка\n\ninn: 5406012345').chosen]).toEqual(['Отправить заявку']);
+    expect(widgetReply(ops, [ops], 'Что-то своё')).toMatchObject({ answered: true, chosen: new Set() });
+    expect(widgetReply(ops, [ops], null)).toMatchObject({ answered: false });
+  });
+
+  // Review 20.11: three plan cards each with «Выбрать» send the same message — the answer cannot tell which was pressed.
+  it('marks nothing by the answer when several controls of the answer send the same words', () => {
+    const card = (id: string) => ({ id, component: 'EntityCard', title: id, actions: [{ label: 'Выбрать' }], onAction: press('pick') });
+    const plans = screen1([card('Старт'), card('Команда'), card('Предприятие')]);
+    expect(widgetReply(plans, [plans], 'Выбрать').chosen.size).toBe(0);
+    const a = screen1([{ id: 'go', component: 'Button', label: 'Да', onClick: press('a') }], 'a');
+    const b = screen1([{ id: 'go', component: 'Button', label: 'Да', onClick: press('b') }], 'b');
+    expect(widgetReply(a, [a, b], 'Да').chosen.size).toBe(0);
+    // A change of the same screen in place sends the same button again: it is still one.
+    const changed = [{ version: '1.0', updateComponents: { surfaceId: 'a', components: [{ id: 'go', component: 'Button', label: 'Да', onClick: press('a') }] } }];
+    expect([...widgetReply(a, [a, changed], 'Да').chosen]).toEqual(['Да']);
+  });
+
+  it('takes the screens of the answer the call is in, shown ones only', () => {
+    const call = (id: string, operations: unknown) => ({ id: `m-${id}`, role: 'assistant', toolCalls: [{ id, type: 'function', function: { name: 'render_ui', arguments: JSON.stringify({ operations }) } }] });
+    const result = (id: string, content: unknown) => ({ id: `r-${id}`, role: 'tool', toolCallId: id, content: JSON.stringify(content) });
+    const a = screen1([{ id: 'go', component: 'Text', text: 'А' }], 'a');
+    const messages = [
+      { id: 'u1', role: 'user', content: 'Покажи' },
+      call('c1', a),
+      result('c1', { shown: true, surfaceId: 'a' }),
+      call('c2', a),
+      result('c2', { error: true, code: 'APP_WIDGET_INVALID', message: 'нет' }),
+      { id: 'u2', role: 'user', content: 'Дальше' },
+      call('c3', a),
+      result('c3', { shown: true, surfaceId: 'a' }),
+    ] as never;
+    expect(screensOfAnswer(messages, 'c1')).toHaveLength(1);
+    expect(screensOfAnswer(messages, 'c3')).toHaveLength(1);
   });
 });
 

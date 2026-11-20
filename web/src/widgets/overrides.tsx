@@ -4,7 +4,7 @@
 // thing — the glass panel, the slider, the chart, the formula, a picture of our server only — ours draws.
 import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import { standardUI, type GenerativeUIComponentProps } from '@copilotkit/react-core/generative-ui';
-import { createContext, lazy, Suspense, useContext, type ComponentType, type CSSProperties } from 'react';
+import { createContext, lazy, Suspense, useContext, useState, type ComponentType, type CSSProperties } from 'react';
 import { OWN_PICTURES_ONLY } from '../chat/AnswerText.tsx';
 import chatStyles from '../chat/chat.module.css';
 import { ru } from '../i18n/ru.ts';
@@ -104,17 +104,34 @@ function GlassButton(props: Props<'Button'>) {
   );
 }
 
-// A button that sends a message: not a link, not «copy». Once the person answered the widget it is inactive, and the
-// one that sent the answer is marked by colour and a tick (reply.ts).
+// A button that sends a message (its press is an event, reply.ts). Once the person answered the widget it is inactive,
+// and the one that sent the answer is marked by colour and a tick: the one pressed in this window, or the one the answer
+// names when no other control of the answer sends the same words.
 function Button(props: Props<'Button'>) {
   const onGlass = useContext(OnGlass);
-  const { answered, chosen } = useContext(WidgetReplyContext);
-  const onClick = useBusyGuard(props.onClick);
+  const { answered, chosen, sending } = useContext(WidgetReplyContext);
+  const submitted = useContext(FormSubmitted);
+  const [pressed, setPressed] = useState(false);
+  const guarded = useBusyGuard(props.onClick);
   const words = props.label ?? props.text;
-  const sends = !safeHref(props.href) && typeof props.copy !== 'string' && (props.onClick !== undefined || props.submit === true);
-  if (answered && sends && typeof words === 'string' && chosen.has(words)) {
+  const sends = typeof words === 'string' && sending.has(words);
+  const onClick = guarded
+    ? async (args: Parameters<typeof guarded>[0]) => {
+        setPressed(true);
+        const outcome = await guarded(args);
+        if (!outcome?.ok) setPressed(false);
+        return outcome;
+      }
+    : undefined;
+  if (answered && sends && (pressed || chosen.has(words) || (props.submit === true && submitted))) {
     return (
-      <button type="button" className={cx(onGlass ? styles.glassMain : styles.cardAction, styles.chosen)} disabled data-chosen>
+      <button
+        type={props.submit ? 'submit' : 'button'}
+        className={cx(onGlass ? styles.glassMain : styles.cardAction, styles.chosen)}
+        style={{ ...(typeof props.weight === 'number' ? { flexGrow: props.weight } : {}), ...(props.block ? { width: '100%' } : {}) }}
+        disabled
+        data-chosen
+      >
         <Icon name="check" size={15} />
         {words}
         <span className="visually-hidden">{ru.genui.chosen}</span>
@@ -126,10 +143,27 @@ function Button(props: Props<'Button'>) {
   return <StandardButton {...props} {...done} onClick={onClick} pill={props.pill ?? false} />;
 }
 
-// A form sends what was filled in with its submit button.
+// A form sends what was filled in with its submit button; once the widget is answered it sends nothing more — not by
+// Enter in a field either (review 20.11: the marked submit button left the form open to Enter).
+const FormSubmitted = createContext(false);
+
 function Form(props: Props<'Form'>) {
-  const onSubmit = useBusyGuard(props.onSubmit);
-  return <StandardForm {...props} onSubmit={onSubmit} />;
+  const { answered } = useContext(WidgetReplyContext);
+  const [submitted, setSubmitted] = useState(false);
+  const guarded = useBusyGuard(props.onSubmit);
+  const onSubmit = guarded
+    ? async (args: Parameters<typeof guarded>[0]) => {
+        setSubmitted(true);
+        const outcome = await guarded(args);
+        if (!outcome?.ok) setSubmitted(false);
+        return outcome;
+      }
+    : undefined;
+  return (
+    <FormSubmitted.Provider value={submitted}>
+      <StandardForm {...props} onSubmit={answered ? undefined : onSubmit} />
+    </FormSubmitted.Provider>
+  );
 }
 
 // A title without a size is the title of a card of the mockup (15 px), not CopilotKit's larger one.

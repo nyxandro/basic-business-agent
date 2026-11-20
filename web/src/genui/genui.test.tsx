@@ -54,6 +54,11 @@ describe('catalog blocks', () => {
     unmount();
     const many = render(<ChartBlockView block={{ kind: 'bar', labels: ['А', 'Б'], series: [{ name: 'Раз', values: [1, 2] }, { name: 'Два', values: [3, 4] }] }} />);
     expect(many.container.querySelectorAll('[data-bar-value]')).toHaveLength(0);
+    many.unmount();
+    // Twelve bars of millions leave no room over each bar for the number: the hints keep it.
+    const months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+    const wide = render(<ChartBlockView block={{ kind: 'bar', labels: months, series: [{ name: 'Выручка', values: months.map((_, i) => 1_250_000 + i) }] }} />);
+    expect(wide.container.querySelectorAll('[data-bar-value]')).toHaveLength(0);
   });
 
   it('folds the smallest slices of a pie into «Другое» past six colours', () => {

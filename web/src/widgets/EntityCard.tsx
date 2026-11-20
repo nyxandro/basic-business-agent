@@ -4,7 +4,7 @@
 // on glass, with a white main button (the agent's rules say so). Only pictures of our own server; another site's — a
 // link under the card (F36).
 import type { GenerativeUIComponentProps, standardUI } from '@copilotkit/react-core/generative-ui';
-import { useContext, type ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -27,7 +27,7 @@ function initials(title: string): string {
 function Stars({ rating, count }: { rating: number; count: number | undefined }) {
   const full = Math.round(Math.max(0, Math.min(5, rating)));
   return (
-    <span className={styles.cardStars} aria-label={ru.widgets.rating(rating, count)}>
+    <span className={styles.cardStars} role="img" aria-label={ru.widgets.rating(rating, count)}>
       {'★'.repeat(full)}
       <span className={styles.cardStarsOff}>{'★'.repeat(5 - full)}</span>
       {count !== undefined && <span className={styles.cardMuted}> {count}</span>}
@@ -35,8 +35,8 @@ function Stars({ rating, count }: { rating: number; count: number | undefined })
   );
 }
 
-function ActionButton({ action, main, glass, onAction }: { action: Action; main: boolean; glass: boolean; onAction: ((args: { label: string }) => unknown) | undefined }) {
-  const { answered, chosen } = useContext(WidgetReplyContext);
+function ActionButton({ action, main, glass, pressed, onAction }: { action: Action; main: boolean; glass: boolean; pressed: boolean; onAction: ((args: { label: string }) => unknown) | undefined }) {
+  const { answered, chosen, sending } = useContext(WidgetReplyContext);
   const href = safeHref(action.href);
   const solid = action.variant === 'solid' || (glass && main);
   const className = glass ? (solid ? styles.glassMain : styles.glassSecond) : cx(styles.cardAction, solid && styles.cardActionMain);
@@ -47,9 +47,10 @@ function ActionButton({ action, main, glass, onAction }: { action: Action; main:
       </a>
     );
   }
-  const isChosen = answered && chosen.has(action.label);
+  const sends = sending.has(action.label);
+  const isChosen = answered && sends && (pressed || chosen.has(action.label));
   return (
-    <button type="button" className={cx(className, isChosen && styles.chosen)} disabled={answered || !onAction} data-chosen={isChosen || undefined} onClick={() => void onAction?.({ label: action.label })}>
+    <button type="button" className={cx(className, isChosen && styles.chosen)} disabled={(answered && sends) || !onAction} data-chosen={isChosen || undefined} onClick={() => void onAction?.({ label: action.label })}>
       {isChosen ? <Icon name="check" size={15} /> : null}
       {action.label}
       {isChosen ? <span className="visually-hidden">{ru.genui.chosen}</span> : null}
@@ -58,8 +59,19 @@ function ActionButton({ action, main, glass, onAction }: { action: Action; main:
 }
 
 export function EntityCard(props: Props): ReactNode {
-  const onAction = useBusyGuard(props.onAction);
-  const onClick = useBusyGuard(props.onClick);
+  const { answered } = useContext(WidgetReplyContext);
+  const [pressed, setPressed] = useState<string | null>(null);
+  const guardedAction = useBusyGuard(props.onAction);
+  const onAction = guardedAction
+    ? async (args: { label: string }) => {
+        setPressed(args.label);
+        const outcome = await guardedAction(args);
+        if (!outcome?.ok) setPressed(null);
+        return outcome;
+      }
+    : undefined;
+  // A press of the whole card sends a message too: not once the widget is answered.
+  const onClick = useBusyGuard(answered ? undefined : props.onClick);
   const glass = props.badge?.color === 'discovery';
   const horizontal = props.layout === 'horizontal';
   const image = typeof props.image === 'string' && props.image !== '' ? props.image : null;
@@ -102,7 +114,7 @@ export function EntityCard(props: Props): ReactNode {
           // A press of a button is not a press of the card.
           <div className={horizontal ? styles.cardActionsSide : styles.cardActions} onClick={(event) => event.stopPropagation()} role="presentation">
             {actions.map((action, i) => (
-              <ActionButton key={`${action.label}-${i}`} action={action} main={mainIndex < 0 ? i === 0 : i === mainIndex} glass={glass} onAction={onAction} />
+              <ActionButton key={`${action.label}-${i}`} action={action} main={mainIndex < 0 ? i === 0 : i === mainIndex} glass={glass} pressed={pressed === action.label} onAction={onAction} />
             ))}
           </div>
         )}

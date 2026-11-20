@@ -31,11 +31,18 @@ function useDrawingWidth(): [React.RefObject<HTMLDivElement | null>, number] {
 }
 const HEIGHT = 220;
 const PAD = { top: 12, right: 8, bottom: 28, left: 48 };
-// The value over each bar (mockup «Экраны агента в разговоре»): for a chart of one series and few bars, with room for it.
+// The value over each bar (mockup «Экраны агента в разговоре»): for a chart of one series and few bars, with room for it
+// over the bar and across it — on a phone twelve bars leave about 20 px each, too narrow for «12 400» (review 20.11).
 const VALUE_BARS_MAX = 12;
 const VALUE_ROOM = 14;
-const writesValues = (block: ChartBlock): boolean => block.kind === 'bar' && block.series.length === 1 && block.labels.length <= VALUE_BARS_MAX;
-const padOf = (block: ChartBlock) => (writesValues(block) ? { ...PAD, top: PAD.top + VALUE_ROOM } : PAD);
+const VALUE_CHAR_PX = 7;
+const writesValues = (block: ChartBlock, width = WIDTH): boolean => {
+  if (block.kind !== 'bar' || block.series.length !== 1 || block.labels.length > VALUE_BARS_MAX) return false;
+  const step = (width - PAD.left - PAD.right) / block.labels.length;
+  const widest = Math.max(...block.series[0]!.values.map((v) => formatValue(v).length));
+  return widest * VALUE_CHAR_PX <= step;
+};
+const padOf = (block: ChartBlock, width: number) => (writesValues(block, width) ? { ...PAD, top: PAD.top + VALUE_ROOM } : PAD);
 const PIE_RADIUS = 96;
 const PIE_SLICES = 6;
 const BAR_RADIUS = 4;
@@ -67,7 +74,7 @@ function barPath(x: number, y: number, w: number, h: number): string {
 }
 
 function Axes({ block, max, width }: { block: ChartBlock; max: number; width: number }) {
-  const PAD = padOf(block);
+  const PAD = padOf(block, width);
   const innerH = HEIGHT - PAD.top - PAD.bottom;
   const step = (width - PAD.left - PAD.right) / block.labels.length;
   // Long label lists keep every n-th label so they do not run into each other: about one label per 48 px.
@@ -94,8 +101,8 @@ function Axes({ block, max, width }: { block: ChartBlock; max: number; width: nu
 }
 
 function BarsOrLines({ block, width }: { block: ChartBlock; width: number }) {
-  const PAD = padOf(block);
-  const valued = writesValues(block);
+  const PAD = padOf(block, width);
+  const valued = writesValues(block, width);
   const max = Math.max(1, ...block.series.flatMap((s) => s.values));
   const innerH = HEIGHT - PAD.top - PAD.bottom;
   const step = (width - PAD.left - PAD.right) / block.labels.length;
