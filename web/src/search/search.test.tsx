@@ -37,10 +37,14 @@ function server(search: Route = { body: FOUND }) {
   });
 }
 
-const KP = { path: 'KP_Yelka_v2.pdf', name: 'KP_Yelka_v2.pdf', projectId: 'p1', modifiedAt: new Date().toISOString(), bytes: 2048 };
-const CONTRACT = { path: 'Договор поставки.docx', name: 'Договор поставки.docx', projectId: null, modifiedAt: '2026-11-02T10:00:00Z', bytes: 18_432 };
+const KP = { path: 'KP_Yelka_v2.pdf', name: 'KP_Yelka_v2.pdf', projectId: 'p1', conversation: null, modifiedAt: new Date().toISOString(), bytes: 2048 };
+const CONTRACT = { path: 'Договор поставки.docx', name: 'Договор поставки.docx', projectId: null, conversation: null, modifiedAt: '2026-11-02T10:00:00Z', bytes: 18_432 };
 const WORKING_COPY = { ...CONTRACT, path: 'work/Договор поставки.docx', modifiedAt: '2026-11-01T10:00:00Z' };
-const RECENT = { files: [KP, CONTRACT, WORKING_COPY], unreadable: [], more: false };
+// Documents of conversations outside projects (spec, section 8.33): named by their conversation, not its folder.
+const ESTIMATE = { path: 'chats/t9/Смета.xlsx', name: 'Смета.xlsx', projectId: null, conversation: { id: 't9', title: 'КП для Ёлки' }, modifiedAt: '2026-10-30T10:00:00Z', bytes: 900 };
+const BILL = { ...ESTIMATE, path: 'chats/t9/Почта/Счёт.pdf', name: 'Счёт.pdf' };
+const OLD = { ...ESTIMATE, path: 'chats/t8/Старое КП.pdf', name: 'Старое КП.pdf', conversation: { id: 't8', title: null } };
+const RECENT = { files: [KP, CONTRACT, WORKING_COPY, ESTIMATE, BILL, OLD], unreadable: [], more: false };
 
 const searches = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/search');
 const lists = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/threads' && c.query.limit !== '7');
@@ -348,6 +352,9 @@ describe('search over conversations and projects', () => {
     const kp = await within(dialog).findByRole('button', { name: /KP_Yelka_v2\.pdf.*Тендер Северный/ });
     // Two files of one name are told apart by the folder inside the project.
     expect(within(dialog).getAllByRole('button', { name: /Договор поставки\.docx/ }).map((row) => row.textContent)).toEqual([expect.stringMatching(/Без проекта$/), expect.stringMatching(/Без проекта \/ work$/)]);
+    expect(within(dialog).getByRole('button', { name: /Смета\.xlsx/ }).textContent).toMatch(/Разговор «КП для Ёлки»$/);
+    expect(within(dialog).getByRole('button', { name: /Счёт\.pdf/ }).textContent).toMatch(/Разговор «КП для Ёлки» \/ Почта$/);
+    expect(within(dialog).getByRole('button', { name: /Старое КП\.pdf/ }).textContent).toMatch(/Удалённый разговор$/);
     await user.click(kp);
     const file = await screen.findByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
     const download = await within(file).findByRole('link', { name: 'Скачать' });

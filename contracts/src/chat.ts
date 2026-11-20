@@ -198,6 +198,9 @@ export interface SearchFile {
   name: string;
   nameMarks: TextMarks;
   projectId: string | null;
+  // The conversation outside projects whose folder (`chats/<id>/`) the file lies in (spec, section 8.33); its title is
+  // null when the conversation is gone. Null for a file of a project.
+  conversation: { id: string; title: string | null } | null;
   modifiedAt: string;
   bytes: number;
 }

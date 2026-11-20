@@ -7,10 +7,12 @@
 import { basename, extname } from 'node:path';
 import { DOCUMENT_EXTENSIONS, type ProjectDto, type SearchFile, type SearchFiles } from '@bba/contracts';
 import type pg from 'pg';
+import { draftResourceId } from '../memory/memory.ts';
 import type { ProjectsDeps } from '../projects/projects.ts';
 import { logEvent } from '../server/log.ts';
 import { setImmediate as pause } from 'node:timers/promises';
 import { projectArea, userArea } from '../storage/areas.ts';
+import { CHATS } from '../workspace/layout.ts';
 import { marksOf } from './marks.ts';
 import { matchNames } from './match-sql.ts';
 import type { WordVariants } from './variants.ts';
@@ -27,6 +29,22 @@ interface Listed extends SearchFile {
 interface Collected {
   files: Listed[];
   unreadable: SearchFiles['unreadable'];
+}
+
+// The folder of a conversation outside projects in the person's area (spec, section 8.33).
+const CHAT_FILE = new RegExp(`^${CHATS}/([^/]+)/`);
+
+// The files of the person's own area, each with the conversation whose folder it lies in, by its title.
+async function withConversations(deps: ProjectsDeps, userId: string, files: Listed[]): Promise<Listed[]> {
+  const ids = [...new Set(files.map((f) => CHAT_FILE.exec(f.path)?.[1]).filter((id): id is string => id !== undefined))];
+  if (ids.length === 0) return files;
+  // A draft check of a prompt works in a folder of the person's area too (core/memory/memory.ts).
+  const { rows } = await deps.db.query<{ id: string; title: string }>('SELECT id, title FROM mastra.mastra_threads WHERE "resourceId" = ANY($1::text[]) AND id = ANY($2::text[])', [[userId, draftResourceId(userId)], ids]);
+  const titles = new Map(rows.map((r) => [r.id, r.title]));
+  return files.map((f) => {
+    const id = CHAT_FILE.exec(f.path)?.[1];
+    return id ? { ...f, conversation: { id, title: titles.get(id) ?? null } } : f;
+  });
 }
 
 // `projects` — what the person sees (listProjects): never an archived one, never someone's own folder.
@@ -46,7 +64,7 @@ async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[
           capped = true;
           return false;
         }
-        found.push({ path: file.rel, name: basename(file.rel), nameMarks: [], projectId: project?.id ?? null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.bytes, modifiedMs: file.modifiedMs });
+        found.push({ path: file.rel, name: basename(file.rel), nameMarks: [], projectId: project?.id ?? null, conversation: null, modifiedAt: new Date(file.modifiedMs).toISOString(), bytes: file.bytes, modifiedMs: file.modifiedMs });
         return true;
       });
     } catch (error) {
@@ -57,7 +75,7 @@ async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[
       continue;
     }
     if (capped) logEvent('warn', 'search_files_capped', { userId, projectId: project?.id ?? null, limit: MAX_FOLDER_DOCUMENTS });
-    out.files.push(...found);
+    out.files.push(...(project ? found : await withConversations(deps, userId, found)));
   }
   return out;
 }

@@ -8,11 +8,15 @@ import { Icon } from '../ui/Icon.tsx';
 import { Marked } from './Marked.tsx';
 import styles from './search.module.css';
 
-// Where a file lies: its project («Без проекта» for the person's own folder) and the folder inside it, so two
-// files of one name — one in a folder the agent made — are told apart.
+// Where a file lies: its project («Без проекта» for the person's own folder) or the conversation outside projects whose
+// folder it is in (spec, section 8.33), and the folder inside, so two files of one name — one in a folder the agent
+// made — are told apart.
 export function placeOf(file: SearchFile, projectName: string): string {
-  const cut = file.path.lastIndexOf('/');
-  return cut < 0 ? projectName : `${projectName} / ${file.path.slice(0, cut)}`;
+  // `chats/<id>/…`: the folder of the conversation is named by the conversation.
+  const inside = file.conversation ? file.path.split('/').slice(2).join('/') : file.path;
+  const where = file.conversation ? ru.search.inConversation(file.conversation.title) : projectName;
+  const cut = inside.lastIndexOf('/');
+  return cut < 0 ? where : `${where} / ${inside.slice(0, cut)}`;
 }
 
 export function FileResult({ file, projectName, wide, onOpen }: { file: SearchFile; projectName: string; wide: boolean; onOpen: () => void }) {

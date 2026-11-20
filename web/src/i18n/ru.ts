@@ -135,6 +135,8 @@ export const ru = {
     firstFifty: 'Показаны первые 50 — уточните запрос',
     unreadable: (project: string | null) => `${project === null ? 'Ваши файлы вне проектов' : `Файлы проекта «${project}»`} сейчас не открываются. Сообщите администратору.`,
     fileMeta: (place: string, day: string, size: string) => `${place} · ${day} · ${size}`,
+    // A document of a conversation outside projects lies in its folder (spec, section 8.33).
+    inConversation: (title: string | null) => (title === null ? 'Удалённый разговор' : `Разговор «${title}»`),
     closeFile: 'Закрыть',
     more: 'Показать ещё',
     projectsFailed: 'Список проектов не загрузился',

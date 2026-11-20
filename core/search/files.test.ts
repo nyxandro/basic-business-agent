@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ensureThread } from '../memory/memory.ts';
 import { listProjects } from '../projects/projects.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { filesRoot } from '../workspace/layout.ts';
@@ -65,6 +66,21 @@ describe('files the person finds by name (spec, section 8.21)', () => {
     expect((await find(olgaId, ',.l;tn')).files.map((f) => f.path)).toEqual(['расчёты/Бюджет 2026.xlsx']);
     expect(await names(olgaId, 'дговор')).toEqual(['Договор поставки.docx']);
     expect(await names(olgaId, 'ёлка pdf')).toEqual(['KP_Yelka_v2.pdf']);
+  });
+
+  // A document of a conversation outside projects lies in its folder (spec, section 8.33): named by the conversation.
+  it('names the conversation a document of the person’s own folder lies in, and a conversation that is gone', async () => {
+    await ensureThread(t.memory, { threadId: 'b1d0c7e2-0000-4000-8000-000000000001', resourceId: olgaId, agentId: 'sales', kind: 'chat', title: 'КП для Ёлки' });
+    const mine = filesRoot(t.workspaceRoot, olgaId, null);
+    put(mine, 'chats/b1d0c7e2-0000-4000-8000-000000000001/Почта/Счёт Ёлки.pdf', 5);
+    put(mine, 'chats/b1d0c7e2-0000-4000-8000-000000000002/Счёт удалённый.pdf', 6);
+    const found = (await find(olgaId, 'счёт')).files;
+    expect(found.find((f) => f.name === 'Счёт Ёлки.pdf')).toMatchObject({ projectId: null, conversation: { id: 'b1d0c7e2-0000-4000-8000-000000000001', title: 'КП для Ёлки' } });
+    expect(found.find((f) => f.name === 'Счёт удалённый.pdf')).toMatchObject({ conversation: { id: 'b1d0c7e2-0000-4000-8000-000000000002', title: null } });
+    expect((await find(olgaId, 'кп ёлка')).files.find((f) => f.name === 'KP_Yelka_v2.pdf')?.conversation).toBeNull();
+    expect((await find(olgaId, 'dogovor')).files[0]!.conversation).toBeNull();
+    // The other tests count the person's documents.
+    for (const n of [1, 2]) rmSync(join(mine, `chats/b1d0c7e2-0000-4000-8000-00000000000${n}`), { recursive: true });
   });
 
   it('finds a short word’s Latin only at the start of a word, and a code exactly', async () => {
