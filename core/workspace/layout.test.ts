@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { contextRoot, deleteUserWorkspace, existingInside, listFiles, openFileInside, removeFileInside, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
+import { chatPath, contextRoot, deleteUserWorkspace, draftsPath, existingInside, listFiles, openFileInside, removeFileInside, removeProjectFolder, resolveInside, saveFile } from './layout.ts';
 
 let ws: string;
 beforeEach(() => {
@@ -23,6 +23,11 @@ describe('workspace layout', () => {
   it('refuses ids that would lead outside the workspace', () => {
     expect(() => contextRoot(ws, '../igor', null)).toThrow();
     expect(() => contextRoot(ws, 'olga', '../../igor')).toThrow();
+    // The number of a conversation comes from the address of a request: refused as wrong data, not a failure.
+    for (const threadId of ['../t1', 'a/b', 'a.b', '']) {
+      expect(() => chatPath(threadId)).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+      expect(() => draftsPath(threadId, true)).toThrow(expect.objectContaining({ code: 'APP_VALIDATION_FAILED' }));
+    }
   });
 
   it('keeps both files with the same name and leaves no half-written file', () => {

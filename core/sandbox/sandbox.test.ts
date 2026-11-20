@@ -17,7 +17,7 @@ import { SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter } from './limiter.ts';
 import { contextRoot, conversationRoot } from '../workspace/layout.ts';
 import { findSandboxGaps } from './environment.ts';
-import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
+import { assertIsolationAvailable, createAgentWorkspace, createImageViewProcessor } from './workspace.ts';
 import { createWidgetHistoryProcessor, DESCRIPTION_DROPPED } from '../widgets/history.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -102,11 +102,11 @@ function lastToolOutput(): string {
 
 const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
-async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл', abilities = '{"web":true,"commands":true,"widgets":true}', on: Agent = agent): Promise<void> {
+async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл', abilities = '{"web":true,"commands":true,"widgets":true}', on: Agent = agent, threadId = `t-${userId}`): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
-  rc.set(REQUEST_KEYS.threadId, `t-${userId}`);
+  rc.set(REQUEST_KEYS.threadId, threadId);
   rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skills));
   rc.set(REQUEST_KEYS.abilities, abilities);
   if (projectId) {
@@ -154,6 +154,40 @@ afterAll(async () => {
 });
 
 describe('sandbox', () => {
+  // Each conversation outside projects has its own folder (spec, section 8.33): its commands run there, not in the
+  // folder of the person's conversation that happened to run a command first (independent review 20.11).
+  it('runs the commands of each conversation of a person in the folder of that conversation', async () => {
+    for (const threadId of ['t-olga-a', 't-olga-b']) writeFileSync(join(conversationRoot(workspaceRoot, { userId: 'olga', threadId, project: null }), 'где.txt'), `папка ${threadId}`);
+    for (const threadId of ['t-olga-a', 't-olga-b', 't-olga-a']) {
+      model.script(command('cat где.txt'), { text: 'Ок.' });
+      await runAs('olga', undefined, [SKILL], 'Где мы?', undefined, agent, threadId);
+      expect(lastToolOutput()).toContain(`папка ${threadId}`);
+    }
+  });
+
+  // A sandbox is kept for the calls that follow (a process left running is looked at later), one per folder: one unused
+  // for a while is stopped and dropped, so they do not pile up with the conversations.
+  it('stops and drops a sandbox unused for a while, and makes a new one when its conversation comes back', async () => {
+    let now = 0;
+    const workspace = createAgentWorkspace({ workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, assertIsolationAvailable(), { idleMs: 1000, now: () => now });
+    const contextOf = (threadId: string) => {
+      const rc = new RequestContext();
+      for (const [key, value] of [[REQUEST_KEYS.userId, 'olga'], [REQUEST_KEYS.threadId, threadId], [REQUEST_KEYS.skillPaths, '[]']] as const) rc.set(key, value);
+      return rc;
+    };
+    const first = await workspace.resolveSandbox({ requestContext: contextOf('t-idle-a') });
+    expect(await workspace.resolveSandbox({ requestContext: contextOf('t-idle-a') })).toBe(first);
+    now = 500;
+    const other = await workspace.resolveSandbox({ requestContext: contextOf('t-idle-b') });
+    expect(other).not.toBe(first);
+    now = 1600;
+    await workspace.resolveSandbox({ requestContext: contextOf('t-idle-b') });
+    await expect.poll(() => first?.status).toBe('destroyed');
+    expect(other?.status).not.toBe('destroyed');
+    const again = await workspace.resolveSandbox({ requestContext: contextOf('t-idle-a') });
+    expect(again).not.toBe(first);
+  });
+
   // «Доступ к выполнению команд терминала» (spec, section 8.30): off — no command tools, for the agent and its
   // sub-agents; the files stay; a hint never offers to run a program; the next run with it on gets them back.
   it('gives an agent without commands, and its sub-agent, no tool to run a program', async () => {

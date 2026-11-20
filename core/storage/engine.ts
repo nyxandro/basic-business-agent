@@ -13,7 +13,7 @@ import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { existingInside, isDraftPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
+import { existingInside, isDraftPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, removeFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';
 import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, unreadableNames, type CopyDeps } from './copies.ts';
 import { storedAreas, storedRows, storedTotals } from './manifest.ts';
@@ -405,7 +405,15 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
           }
           for (const [rel, draft] of drafts) {
             if (draft.modifiedMs >= before) continue;
-            if (existsSync(dir)) rmSync(resolveInside(dir, rel), { force: true });
+            // Removed in the folder opened and checked: the agent may have made a folder of the path a link meanwhile
+            // (a process of it left running) — such a draft stays, and the others are removed.
+            try {
+              if (existsSync(dir)) removeFileInside(dir, rel);
+            } catch (error) {
+              if (!isAppError(error) || error.code !== 'APP_VALIDATION_FAILED') throw error;
+              logEvent('warn', 'draft_behind_link_kept', { area: areaKey(area), code: error.code });
+              continue;
+            }
             if (remote()) await removeStoredFile(copyDeps(), area, rel);
             removed.files += 1;
             removed.bytes += draft.bytes;

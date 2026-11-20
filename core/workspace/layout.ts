@@ -45,10 +45,15 @@ export function filesRoot(workspaceRoot: string, userId: string, projectId: stri
   return projectId ? join(projectRoot(workspaceRoot, userId, projectId), FILES) : join(userRoot(workspaceRoot, userId), FILES);
 }
 
+// A number of a conversation as a name of a folder; it comes from the address of a request too.
+function safeThreadId(threadId: string): string {
+  if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `unsafe thread id for a workspace path: ${threadId}`, { userMessage: 'Неверный номер разговора.' });
+  return threadId;
+}
+
 // A conversation outside projects: its folder in the person's area, and the same as a path of the area.
 export function chatPath(threadId: string): string {
-  if (!SAFE_THREAD_ID.test(threadId)) throw new Error(`unsafe thread id for a workspace path: ${threadId}`);
-  return `${CHATS}/${threadId}`;
+  return `${CHATS}/${safeThreadId(threadId)}`;
 }
 
 export function chatRoot(workspaceRoot: string, userId: string, threadId: string): string {
@@ -58,8 +63,7 @@ export function chatRoot(workspaceRoot: string, userId: string, threadId: string
 // The drafts folder of a conversation, from the folder it works in: `.work` of its own folder, `.work/<number>` in a
 // project, whose folder all its conversations share.
 export function draftsPath(threadId: string, inProject: boolean): string {
-  if (!SAFE_THREAD_ID.test(threadId)) throw new Error(`unsafe thread id for a workspace path: ${threadId}`);
-  return inProject ? `${DRAFTS}/${threadId}` : DRAFTS;
+  return inProject ? `${DRAFTS}/${safeThreadId(threadId)}` : DRAFTS;
 }
 
 export const isDraftPath = (rel: string): boolean => rel.split('/').includes(DRAFTS);

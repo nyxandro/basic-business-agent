@@ -130,6 +130,19 @@ describe('pnpm files:split', () => {
     expect(plan.users.find((u) => u.userId === olgaId)).toMatchObject({ copies: [], removed: [] });
   });
 
+  it('never writes through a link an agent made in the folder of a conversation, and then removes nothing', async () => {
+    put('Почта/акт.pdf', 'акт');
+    const mail = await conversation(olgaId, [['user', [attached('Вот акт', ['Почта/акт.pdf'])]]]);
+    const outside = join(t.workspaceRoot, 'снаружи');
+    mkdirSync(outside);
+    mkdirSync(chatRoot(t.workspaceRoot, olgaId, mail), { recursive: true });
+    symlinkSync(outside, join(chatRoot(t.workspaceRoot, olgaId, mail), 'Почта'));
+    const plan = await planFilesSplit(t.db, t.workspaceRoot);
+    expect(() => applyFilesSplit(t.workspaceRoot, plan)).toThrow(/APP_FILES_SPLIT_FAILED/);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(readFileSync(join(shared(), 'Почта/акт.pdf'), 'utf8')).toBe('акт');
+  });
+
   it('refuses while the files are in a bucket', async () => {
     await t.db.query(
       `UPDATE app.storage_settings SET mode = 's3', provider = 'other', endpoint = 'https://s3.example.com', region = 'ru-1', bucket = 'files', path_style = true,

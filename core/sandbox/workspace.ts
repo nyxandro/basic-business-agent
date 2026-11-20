@@ -106,18 +106,38 @@ function limitedSandbox(options: ConstructorParameters<typeof LocalSandbox>[0], 
   return sandbox;
 }
 
-export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'seatbelt'): Workspace {
+// A sandbox is kept for the calls that follow — a process left running is looked at in a later turn — one per folder
+// of a conversation (spec, section 8.33); one unused this long is stopped (its processes killed) and dropped, so they
+// do not pile up with every conversation the server has seen.
+export const SANDBOX_IDLE_MS = 2 * 60 * 60 * 1000;
+
+export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'seatbelt', keep: { idleMs: number; now: () => number } = { idleMs: SANDBOX_IDLE_MS, now: Date.now }): Workspace {
   const dirOf = (ctx: Ctx) => runRoot(deps.workspaceRoot, ctx);
-  return new Workspace({
+  // A cached sandbox keeps the folders it was made with: the folder of the run — the conversation's own, or its
+  // project's with the project's creator (spec 8.20) — and the set of skills.
+  const keyOf = (ctx: Ctx) => `${dirOf(ctx)}:${createHash('sha256').update(requireContextValue(ctx, REQUEST_KEYS.skillPaths)).digest('hex').slice(0, 16)}`;
+  const kept = new Map<string, { sandbox: LocalSandbox; usedAt: number }>();
+  const workspace: Workspace = new Workspace({
     filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: skillPathsOf(requestContext) }),
     sandbox: ({ requestContext }) => {
-      const dir = dirOf(requestContext);
-      return limitedSandbox(sandboxOptions(deps.skillsVenv, dir, skillPathsOf(requestContext), isolation), deps.limiter);
+      const sandbox = limitedSandbox(sandboxOptions(deps.skillsVenv, dirOf(requestContext), skillPathsOf(requestContext), isolation), deps.limiter);
+      kept.set(keyOf(requestContext), { sandbox, usedAt: keep.now() });
+      return sandbox;
     },
-    // A cached sandbox keeps the folders it was made with, so another set of skills — or the same
-    // project with another creator (an employee removed, spec 8.20) — is another sandbox.
-    sandboxCacheKey: ({ requestContext }) =>
-      `${requireContextValue(requestContext, REQUEST_KEYS.userId)}:${optionalContextValue(requestContext, REQUEST_KEYS.projectId) ?? ''}:${optionalContextValue(requestContext, REQUEST_KEYS.projectOwnerId) ?? ''}:${createHash('sha256').update(requireContextValue(requestContext, REQUEST_KEYS.skillPaths)).digest('hex').slice(0, 16)}`,
+    // Mastra asks for the key on every use of the sandbox: the moment it is used, and the others are looked over.
+    sandboxCacheKey: ({ requestContext }) => {
+      const key = keyOf(requestContext);
+      const now = keep.now();
+      const used = kept.get(key);
+      if (used) used.usedAt = now;
+      for (const [other, { sandbox, usedAt }] of kept) {
+        if (other === key || now - usedAt <= keep.idleMs) continue;
+        kept.delete(other);
+        workspace.clearSandboxCache(other);
+        void sandbox._destroy().catch((error: unknown) => logEvent('error', 'sandbox_destroy_failed', { error }));
+      }
+      return key;
+    },
     skills: ({ requestContext }) => skillPathsOf(requestContext),
     tools: {
       // Without media parts a picture or a PDF read with read_file is only described, not sent.
@@ -131,6 +151,7 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
       hooks: { beforeToolCall: (ctx) => keepBytesOutOfReadFile(ctx) ?? keepPreviousVersion(deps.workspaceRoot, ctx) },
     },
   });
+  return workspace;
 }
 
 // The agent's own tools write a file in place: in a project, the file as it was before this answer

@@ -4,15 +4,16 @@
 // the «Скачать» blocks of the agent — is copied into its folder under the same path, so its history opens them
 // still; the scripts the agent wrote there go into its drafts, `.work/`; the rest of the shared folder is removed.
 // Only for files on the server's disk: with a bucket the files are not where this looks.
-import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync } from 'node:fs';
-import { dirname, isAbsolute, join, posix, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { constants, copyFileSync, existsSync, linkSync, readdirSync, rmSync, statSync, utimesSync } from 'node:fs';
+import { isAbsolute, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import { GENUI_TOOL, splitAttachments } from '@bba/contracts';
 import { createPool, type Db } from '../db/pool.ts';
 import { draftResourceId } from '../memory/memory.ts';
 import { threadProjectState } from '../projects/access.ts';
-import { walkRegularFiles } from '../workspace/held-folder.ts';
+import { inFolderOf, walkRegularFiles } from '../workspace/held-folder.ts';
 import { CHATS, chatPath, DRAFTS, filesRoot } from '../workspace/layout.ts';
 
 const DRAFT_TOOLS: ReadonlySet<string> = new Set([WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE, WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE]);
@@ -148,13 +149,24 @@ export function applyFilesSplit(workspaceRoot: string, plan: FilesSplitPlan): vo
   for (const user of plan.users) {
     const root = filesRoot(workspaceRoot, user.userId, null);
     for (const copy of user.copies) {
-      const [from, to] = [join(root, copy.from), join(root, copy.to)];
-      mkdirSync(dirname(to), { recursive: true });
-      // Two conversations never share a target; one already there is not overwritten.
-      copyFileSync(from, to, constants.COPYFILE_EXCL);
-      // The drafts are cleaned by their age: a copy keeps the age of its file.
-      const stat = statSync(from);
-      utimesSync(to, stat.atime, stat.mtime);
+      const from = join(root, copy.from);
+      // The folders of the target reached without following a link an agent may have made there since the folders
+      // came; the copy appears under its name only whole, so a split stopped halfway leaves no half of a file.
+      const placed = inFolderOf(root, copy.to, true, (held, name) => {
+        const temp = join(held, `.copy-${randomUUID()}`);
+        try {
+          copyFileSync(from, temp, constants.COPYFILE_EXCL);
+          // The drafts are cleaned by their age: a copy keeps the age of its file.
+          const stat = statSync(from);
+          utimesSync(temp, stat.atime, stat.mtime);
+          // A file already there is not overwritten (EEXIST): the split stops before removing anything.
+          linkSync(temp, join(held, name));
+        } finally {
+          rmSync(temp, { force: true });
+        }
+        return true;
+      });
+      if (placed === null) throw new Error(`APP_FILES_SPLIT_FAILED: a folder of ${copy.to} is not a folder`);
     }
   }
   for (const user of plan.users) {

@@ -252,6 +252,19 @@ describe('the drafts of the agent', () => {
     expect(existsSync(join(project, 'files/Смета.xlsx'))).toBe(true);
   });
 
+  it('never removes through a link the agent made of its drafts folder', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'bba-outside-'));
+    try {
+      aged(outside, 'make_kp.js', 90);
+      mkdirSync(join(areaDir(root, olga), 'chats/t1'), { recursive: true });
+      symlinkSync(outside, join(areaDir(root, olga), 'chats/t1/.work'));
+      expect(await storage.removeStaleDrafts(before)).toEqual({ files: 0, bytes: 0 });
+      expect(existsSync(join(outside, 'make_kp.js'))).toBe(true);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('leaves an area an answer works in to the next time', async () => {
     aged(areaDir(root, olga), 'chats/t1/.work/make_kp.js', 31);
     const release = await storage.hold(olga, 'write');
