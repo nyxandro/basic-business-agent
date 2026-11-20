@@ -1,0 +1,411 @@
+/* Widgets in the chat (spec, section 8.31; mockup «Экраны агента»). CopilotKit's standard components take every colour,
+   radius, shadow and font from --a2ui-* variables: here they point at the tokens of our theme, so a widget changes with
+   the theme of the interface and CopilotKit's own dark values (under a `.dark` class we never set) never apply. */
+.widget {
+  --a2ui-font-family: var(--font-sans);
+  --a2ui-color-accent: var(--acc);
+  --a2ui-color-on-accent: var(--on-acc);
+  --a2ui-color-control: var(--surface);
+  --a2ui-color-focus: var(--acc);
+  --a2ui-color-backdrop: var(--scrim);
+  --a2ui-color-panel: var(--surface2);
+  --a2ui-color-surface: var(--surface);
+  --a2ui-color-surface-secondary: var(--surface2);
+  --a2ui-color-surface-tertiary: var(--hover);
+  --a2ui-color-surface-elevated: var(--surface);
+  --a2ui-color-surface-elevated-secondary: var(--surface2);
+  --a2ui-color-surface-inverted: var(--text);
+  --a2ui-color-surface-soft: var(--surface2);
+  --a2ui-color-success: var(--ok-soft);
+  --a2ui-color-warning: var(--warn-soft);
+  --a2ui-color-caution: var(--warn-soft);
+  --a2ui-color-danger: var(--bad-soft);
+  --a2ui-color-info: var(--info-soft);
+  --a2ui-color-discovery: var(--acc-soft);
+  --a2ui-color-success-solid: var(--ok);
+  --a2ui-color-warning-solid: var(--warn);
+  --a2ui-color-caution-solid: var(--warn);
+  --a2ui-color-danger-solid: var(--bad);
+  --a2ui-color-info-solid: var(--info);
+  --a2ui-color-discovery-solid: var(--acc);
+  --a2ui-color-text-default: var(--text);
+  --a2ui-color-text-prose: var(--text);
+  --a2ui-color-text-primary: var(--text);
+  --a2ui-color-text-emphasis: var(--text);
+  --a2ui-color-text-secondary: var(--muted);
+  --a2ui-color-text-tertiary: var(--muted);
+  --a2ui-color-text-success: var(--ok);
+  --a2ui-color-text-warning: var(--warn);
+  --a2ui-color-text-caution: var(--warn);
+  --a2ui-color-text-danger: var(--bad);
+  --a2ui-color-text-info: var(--info);
+  --a2ui-color-text-discovery: var(--acc-text);
+  --a2ui-color-border-default: var(--border);
+  --a2ui-color-border-subtle: var(--border-soft);
+  --a2ui-color-border-strong: var(--off);
+  --a2ui-color-border-control: var(--border);
+  --a2ui-color-border-success: color-mix(in oklab, var(--ok), transparent 55%);
+  --a2ui-color-border-warning: color-mix(in oklab, var(--warn), transparent 55%);
+  --a2ui-color-border-caution: color-mix(in oklab, var(--warn), transparent 55%);
+  --a2ui-color-border-danger: color-mix(in oklab, var(--bad), transparent 55%);
+  --a2ui-color-border-info: color-mix(in oklab, var(--info), transparent 55%);
+  --a2ui-color-border-discovery: var(--acc-mid);
+  --a2ui-color-badge-secondary: var(--surface2);
+  --a2ui-color-chart-cursor: var(--hover);
+  --a2ui-color-slider-track: var(--off);
+  --a2ui-color-shimmer: var(--glow);
+  --a2ui-chart-1: var(--series-1);
+  --a2ui-chart-2: var(--series-2);
+  --a2ui-chart-3: var(--series-3);
+  --a2ui-chart-4: var(--series-4);
+  --a2ui-chart-5: var(--series-5);
+  --a2ui-chart-6: var(--series-6);
+  --a2ui-radius-2xs: 4px;
+  --a2ui-radius-xs: var(--radius-xs);
+  --a2ui-radius-sm: var(--radius-sm);
+  --a2ui-radius-md: var(--radius);
+  --a2ui-radius-lg: var(--radius-md);
+  --a2ui-radius-xl: var(--radius-lg);
+  --a2ui-radius-2xl: var(--radius-xl);
+  --a2ui-shadow-xs: 0 1px 2px var(--shadow);
+  --a2ui-shadow-sm: 0 1px 4px var(--shadow);
+  --a2ui-shadow-soft: 0 1px 3px var(--shadow);
+  --a2ui-shadow-md: 0 10px 30px var(--shadow);
+  color: var(--text);
+  min-width: 0;
+  /* The type of the mockup: 14 px text; CopilotKit's sizes are in em from here (title 2xl — 21 px). */
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* In place of a part CopilotKit could not draw: one quiet line in Russian (its own box says it in English). */
+.widget [data-generative-ui-error] {
+  font-size: 0 !important;
+  border-color: var(--border) !important;
+  background: var(--surface2) !important;
+}
+
+.widget [data-generative-ui-error] > * {
+  display: none !important;
+}
+
+.widget [data-generative-ui-error]::before {
+  content: var(--broken-part);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* A badge keeps its own width in a column. */
+.self {
+  display: flex;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+/* The glass panel: the look of the file block (web/src/genui/genui.module.css, .file; decision of the owner 15.11),
+   one main accent of a screen. Text on it is white: CopilotKit's text colours point here. */
+.glass {
+  --glass-top: color-mix(in oklab, var(--acc), #c4b5fd 38%);
+  --glass-deep: color-mix(in oklab, var(--acc), #0b0820 22%);
+  --a2ui-color-text-default: #ffffff;
+  --a2ui-color-text-prose: #ffffff;
+  --a2ui-color-text-primary: #ffffff;
+  --a2ui-color-text-emphasis: #ffffff;
+  --a2ui-color-text-secondary: rgba(255, 255, 255, 0.86);
+  --a2ui-color-text-tertiary: rgba(255, 255, 255, 0.8);
+  --a2ui-color-border-default: rgba(255, 255, 255, 0.3);
+  --a2ui-color-border-subtle: rgba(255, 255, 255, 0.22);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  color: #ffffff;
+  background:
+    radial-gradient(130% 150% at 0% 0%, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 52%),
+    linear-gradient(135deg, var(--glass-top) 0%, var(--acc) 52%, var(--glass-deep) 100%);
+  box-shadow:
+    0 10px 28px -12px color-mix(in oklab, var(--acc), transparent 20%),
+    0 2px 6px -2px color-mix(in oklab, var(--acc), transparent 55%);
+}
+
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.26) 48%, transparent 61%) no-repeat;
+  background-size: 250% 100%;
+  background-position: 130% 0;
+  transition: background-position 0.9s var(--ease-out);
+}
+
+.glass:hover::before {
+  background-position: -30% 0;
+}
+
+.glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.3) 45%, rgba(255, 255, 255, 0.22) 100%);
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+.glassHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.glassTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.glassPill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.glassMuted {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.glassMeta {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+
+.glassActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* White on the glass — the one main action; clear — the second (the buttons of the file block). */
+.glassMain,
+.widget .glassSecond {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.15s var(--ease-out),
+    box-shadow 0.15s;
+}
+
+.widget .glassMain {
+  border: 0;
+  background: rgba(255, 255, 255, 0.94);
+  color: color-mix(in oklab, var(--acc), #0b0820 18%);
+  box-shadow: 0 1px 2px rgba(10, 8, 40, 0.18);
+}
+
+.widget .glassMain:hover:not(:disabled) {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -2px rgba(10, 8, 40, 0.28);
+}
+
+.glassSecond {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.widget .glassSecond:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.glassMain:disabled,
+.glassSecond:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.glassMain:focus-visible,
+.glassSecond:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.6);
+}
+
+/* The slider of the mockup: a thin track filled with the accent, the value on the right of the label. */
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sliderHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sliderLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sliderValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.range {
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--acc) 0 var(--fill), var(--off) var(--fill) 100%);
+}
+
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--off);
+}
+
+.range::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--acc);
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.range:focus-visible {
+  outline: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 4px var(--ring-strong),
+    0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.range:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.marks {
+  position: relative;
+  height: 16px;
+  margin: 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.marks > span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.check {
+  font-size: 12px;
+  color: var(--bad);
+}
+
+/* A table in the frame of the mockup's table of deals: a header on the second surface, 14 px from the frame. */
+.table {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.table th:first-child,
+.table td:first-child {
+  padding-left: 14px !important;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 14px !important;
+}
+
+.table thead th {
+  background: var(--surface2) !important;
+  color: var(--muted) !important;
+  font-weight: 500 !important;
+}
+
+.formula {
+  font-size: 1.05em;
+}
+
+.formulaBlock {
+  overflow-x: auto;
+  padding: 6px 0;
+  text-align: center;
+}
+
+.picture {
+  align-self: flex-start;
+  font-size: 13px;
+  color: var(--acc-text);
+}
+
+/* A line instead of a screen: the agent rebuilds it, or the answer stopped before it was drawn. */
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}

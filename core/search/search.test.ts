@@ -121,6 +121,17 @@ describe('search', () => {
     }
   });
 
+  // A widget (spec, section 8.31): the words the person saw are found; ids, codes of options and a refused screen not.
+  it('finds the words of a widget, not its ids, and not a screen the check refused', async () => {
+    const operations = [{ version: '1.0', createSurface: { surfaceId: 'qzxsurfaceid', dataModel: { client: 'Виджетклиент' }, components: [{ id: 'root', component: 'Column', children: ['t', 'r'] }, { id: 't', component: 'Title', text: 'Виджетзаголовок' }, { id: 'r', component: 'RadioGroup', options: [{ value: 'wqvcodeopt', label: 'Виджетвариант' }] }] } }];
+    const shown = await conversation(olgaId, 'Экран', [['assistant', [{ type: 'tool-invocation', toolInvocation: { state: 'result', toolCallId: randomUUID(), toolName: 'render_ui', args: { operations }, result: { shown: true, surfaceId: 'qzxsurfaceid' } } }]]]);
+    for (const word of ['Виджетзаголовок', 'Виджетвариант', 'Виджетклиент']) expect((await search(word)).threads.map((x) => x.id), word).toEqual([shown]);
+    for (const word of ['qzxsurfaceid', 'wqvcodeopt']) expect((await search(word)).threads, word).toEqual([]);
+    const refusedOps = [{ version: '1.0', createSurface: { surfaceId: 'x', components: [{ id: 'root', component: 'Title', text: 'Отклонённыйэкран' }] } }];
+    await conversation(olgaId, 'Отказ', [['assistant', [{ type: 'tool-invocation', toolInvocation: { state: 'result', toolCallId: randomUUID(), toolName: 'render_ui', args: { operations: refusedOps }, result: { error: true, code: 'APP_WIDGET_INVALID', message: 'нет' } } }]]]);
+    expect((await search('Отклонённыйэкран')).threads).toEqual([]);
+  });
+
   it('never shows someone else’s conversation and takes % and _ as plain characters', async () => {
     await conversation(petrId, 'Арматура', [['user', [text('Смета по арматуре А500С')]]]);
     expect((await search('арматур')).threads).toEqual([]);

@@ -6,7 +6,7 @@ import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['agents'] };
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, departmentNames: ['Отдел продаж'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, departmentNames: ['Отдел продаж'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true, widgets: true } };
 const ASSISTANT = { ...AGENT, id: 'assistant', name: 'Общий помощник', description: 'Вопросы', departmentNames: [], promptChanged: false, mark: { kind: 'image', icon: 'spark', image: { url: '/app/api/agents/assistant/image?v=0123456789ab' } } };
 const PROMPT = {
   agentId: 'sales',
@@ -102,13 +102,16 @@ describe('the page of an agent', () => {
 
   it('«Настройки»: «Что агенту можно» saves a switch at once and keeps it as it was when the server fails', async () => {
     const s = server();
-    s.set('PUT /app/api/admin/agents/sales/abilities', { body: { abilities: { web: false, commands: true } } });
+    s.set('PUT /app/api/admin/agents/sales/abilities', { body: { abilities: { web: false, commands: true, widgets: true } } });
     renderApp('/admin/agents/sales/settings');
     const user = userEvent.setup();
     const web = await screen.findByRole('switch', { name: 'Доступ к сети интернет' });
     const commands = screen.getByRole('switch', { name: 'Доступ к выполнению команд терминала' });
     expect(web).toHaveAttribute('aria-checked', 'true');
     expect(commands).toHaveAttribute('aria-checked', 'true');
+    // «Виджеты в чате» (spec, section 8.31): the third switch, on by default.
+    expect(screen.getByRole('switch', { name: 'Виджеты в чате' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/Собирает в ответе экраны из готовых элементов/)).toBeInTheDocument();
     expect(screen.getByText(/помощник агента: он видит только задание/)).toBeInTheDocument();
     await user.click(web);
     await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/abilities'))?.body).toEqual({ web: false }));

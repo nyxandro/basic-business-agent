@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { GENUI_TOOL_IDS, WEB_RESEARCH_TOOL } from '@bba/contracts';
+import { GENUI_TOOL_IDS, WEB_RESEARCH_TOOL, WIDGET_TOOL_IDS } from '@bba/contracts';
 import { agentPassportSchema, type AgentPassport } from '../config/schemas.ts';
 import { configError, formatPath, type ConfigProblem, type Installation } from '../config/validate.ts';
 import type { MigrationSource } from '../db/migrate.ts';
@@ -154,7 +154,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     }
     Object.assign(tools, await loadAgentTools(dir, file, problems));
     for (const id of Object.keys(tools)) {
-      if (GENUI_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of an interface block of the core` });
+      if (GENUI_TOOL_IDS.includes(id) || WIDGET_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of an interface block of the core` });
       // The internet of the core (spec, section 8.30): a plugin's tool of that name would shadow it.
       if (WEB_TOOL_IDS.includes(id)) problems.push({ file, field: 'plugins', message: `tool "${id}" has the name of a tool of the core’s internet` });
     }

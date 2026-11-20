@@ -126,17 +126,18 @@ export interface AdminAgent {
   abilities: AgentAbilities;
 }
 
-// What an agent may do (spec, section 8.30): the internet (search and pages, through the researcher) and the
-// commands of the sandbox. Its sub-agents work with the same.
+// What an agent may do (spec, sections 8.30 and 8.31): the internet (search and pages, through the researcher), the
+// commands of the sandbox and the widgets in the chat («Виджеты в чате»). Its sub-agents work with the same.
 export interface AgentAbilities {
   web: boolean;
   commands: boolean;
+  widgets: boolean;
 }
 
-// PUT /app/api/admin/agents/:id/abilities: one switch or both.
+// PUT /app/api/admin/agents/:id/abilities: one switch or several.
 export const agentAbilitiesPatchSchema = z
-  .object({ web: z.boolean().optional(), commands: z.boolean().optional() })
-  .refine((p) => p.web !== undefined || p.commands !== undefined, { message: 'at least one of web, commands' });
+  .object({ web: z.boolean().optional(), commands: z.boolean().optional(), widgets: z.boolean().optional() })
+  .refine((p) => p.web !== undefined || p.commands !== undefined || p.widgets !== undefined, { message: 'at least one of web, commands, widgets' });
 
 export interface AdminAgentsResponse {
   agents: AdminAgent[];

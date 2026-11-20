@@ -1,6 +1,7 @@
 // «Проверить в чате» (spec, scenario 5): the saved draft of the prompt answers here; the check has
 // its own memory and conversations, the spend goes to the admin who checks.
 import { CopilotKit } from '@copilotkit/react-core';
+import { WIDGETS_CONFIG } from '../widgets/catalog.ts';
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { COPILOT_OPTIONS } from '../app/copilot.ts';
@@ -44,7 +45,7 @@ export function DraftCheckPage() {
         }
       />
       <Card className={styles.checkChat}>
-        <CopilotKit {...COPILOT_OPTIONS} headers={DRAFT_HEADERS}>
+        <CopilotKit {...COPILOT_OPTIONS} generativeUI={WIDGETS_CONFIG} headers={DRAFT_HEADERS}>
           <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, mark: chatMarkOf(agent.mark), actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} />
         </CopilotKit>
       </Card>

@@ -298,6 +298,9 @@ export const ru = {
     toolRunningIn: (system: string) => `Ищу в «${system}»…`,
     toolActions: (n: number) => `${n} ${plural(n, ['действие', 'действия', 'действий'])}`,
     skillActivating: 'Активирую навык…',
+    // spec, section 8.31: the agent loads the descriptions of the components of a widget.
+    widgetComponentsLoading: 'Подбираю элементы виджета…',
+    widgetComponents: (count: number) => `Подобраны элементы виджета: ${count}`,
     skillActivated: (title: string | null) => (title ? `Активирован навык «${title}»` : 'Активирован навык'),
     skillNotFound: (name: string) => `Навык «${name}» не найден`,
     // What the agent remembered (spec, section 8.26).
@@ -582,6 +585,9 @@ export const ru = {
         webSub: 'Ищет в интернете и читает страницы сайтов и документы по ссылкам. Поиск ведёт помощник агента: он видит только задание, а не переписку сотрудника.',
         commands: 'Доступ к выполнению команд терминала',
         commandsSub: 'Запускает программы в изолированной папке без сети: создаёт и правит документы Word, Excel, PowerPoint и PDF, считает в таблицах, распаковывает архивы. Без команд агент читает приложенные документы, отвечает текстом и сохраняет простые текстовые файлы, но документов Office и PDF не делает.',
+        // spec, section 8.31.
+        widgets: 'Виджеты в чате',
+        widgetsSub: 'Собирает в ответе экраны из готовых элементов: таблицы, графики, калькуляторы с ползунками, сравнения, формы и кнопки. Ползунки и формулы считают сразу, без агента; кнопка отправляет агенту сообщение от имени сотрудника. Без виджетов агент отвечает текстом и таблицами.',
       },
     },
     // «Значок» of an agent and «Интерфейс» (spec, section 8.17; owner's decision 16.11).
@@ -684,6 +690,15 @@ export const ru = {
       keysSaved: 'Ключи сохранены',
       disconnecting: 'Возвращаем файлы на сервер',
     },
+  },
+  // Widgets in the chat (spec, section 8.31).
+  widgets: {
+    rebuilding: 'Собираю экран заново',
+    stopped: 'Экран не дорисован — ответ прерван',
+    // A picture of another site in a widget is a link (decision of the owner 19.11, F36).
+    picture: (where: string) => `Картинка: ${where}`,
+    // In place of a part CopilotKit could not draw.
+    brokenPart: 'Эта часть экрана не показалась',
   },
   genui: {
     broken: 'Не удалось показать данные',

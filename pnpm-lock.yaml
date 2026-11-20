@@ -23,12 +23,18 @@ importers:
       '@bba/contracts':
         specifier: workspace:*
         version: link:contracts
+      '@copilotkit/core':
+        specifier: 2.0.0-rc.49
+        version: 2.0.0-rc.49
       '@copilotkit/markdown':
         specifier: 2.0.0-rc.49
         version: 2.0.0-rc.49(react@19.3.1)
       '@copilotkit/runtime':
         specifier: 2.0.0-rc.49
         version: 2.0.0-rc.49(@types/express@5.0.6)(express@5.3.0)(react@19.3.1)
+      '@copilotkit/shared':
+        specifier: 2.0.0-rc.49
+        version: 2.0.0-rc.49(@ag-ui/core@1.0.4(zod@4.6.7))
       '@hono/node-server':
         specifier: 2.1.8
         version: 2.1.8(hono@4.13.18)
@@ -159,6 +165,9 @@ importers:
       '@tanstack/react-query':
         specifier: 5.107.1
         version: 5.107.1(@types/react@19.3.0)(react@19.3.1)
+      katex:
+        specifier: 0.19.1
+        version: 0.19.1
       motion:
         specifier: 14.14.0
         version: 14.14.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2432,6 +2441,10 @@ packages:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
 
+  commander@15.1.0:
+    resolution: {integrity: sha512-cgnQ88TRrWcC7pVq46RzJVRMktu3W2RcbnoidnfBsl1bmDCBwJS/udcIZpKoCrbAYYaCqsz1yZCVIgbIaU3ddQ==}
+    engines: {node: '>=22.12.0'}
+
   compare-versions@6.1.1:
     resolution: {integrity: sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg==}
 
@@ -3163,6 +3176,10 @@ packages:
 
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
+
+  katex@0.19.1:
+    resolution: {integrity: sha512-jG8uKntjSEcm2EpQOh0XturpPuuC9r3Sq5HLHdsFdWZT27E672SF19QEi+of0/YeOy15lDgRhKvr5614uRrEfA==}
+    hasBin: true
 
   keyv@5.6.0:
     resolution: {integrity: sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==}
@@ -6958,6 +6975,8 @@ snapshots:
     dependencies:
       delayed-stream: 1.0.0
 
+  commander@15.1.0: {}
+
   compare-versions@6.1.1: {}
 
   content-disposition@2.0.1: {}
@@ -7709,6 +7728,10 @@ snapshots:
     dependencies:
       jwa: 2.0.1
       safe-buffer: 5.2.1
+
+  katex@0.19.1:
+    dependencies:
+      commander: 15.1.0
 
   keyv@5.6.0:
     dependencies:

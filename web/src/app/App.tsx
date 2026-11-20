@@ -1,6 +1,7 @@
 // Routes of the interface (spec, section 7). Public: sign-in and the password links. The admin
 // panel is a separate piece of code, loaded in the background for those with rights (admin-code.ts).
 import { CopilotKit } from '@copilotkit/react-core';
+import { WIDGETS_CONFIG } from '../widgets/catalog.ts';
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router';
 import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
@@ -38,7 +39,7 @@ export function App() {
               <Route
                 element={
                   <RequireAuth>
-                    <CopilotKit {...COPILOT_OPTIONS}>
+                    <CopilotKit {...COPILOT_OPTIONS} generativeUI={WIDGETS_CONFIG}>
                       <Outlet />
                     </CopilotKit>
                   </RequireAuth>

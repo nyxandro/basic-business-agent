@@ -1,7 +1,7 @@
 // What a line of a tool call says (spec, section 7): the call runs, was refused or cancelled, failed,
 // or did its work — with the system, the action, «только чтение» and how many things it found. The
 // line itself (ToolRow) and the head of a stack of lines (ToolStack) say the same.
-import { toolTableResultSchema, type AgentSummary } from '@bba/contracts';
+import { toolTableResultSchema, WIDGET_TOOL, type AgentSummary } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
@@ -107,6 +107,15 @@ function conversationsSummary(status: ToolStatus, result: string | undefined, pa
   return { state: 'done', text, readOnly: true, count: null, value: outcome.value };
 }
 
+// The descriptions of the components of a widget (spec, section 8.31): a step of drawing, said in the person's words.
+function widgetComponentsSummary(status: ToolStatus, result: string | undefined, parameters: unknown): ToolSummary {
+  if (status !== 'complete') return { state: 'running', text: ru.chat.widgetComponentsLoading };
+  const outcome = parseToolResult(result);
+  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.toolFailed(ru.chat.widgetComponentsLoading.replace('…', '')), code: outcome.code };
+  const names = (parameters as { names?: unknown } | null)?.names;
+  return { state: 'done', text: ru.chat.widgetComponents(Array.isArray(names) ? names.length : 0), readOnly: true, count: null, value: null };
+}
+
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
   if (status === 'waiting') return { state: 'waiting', text: ru.chat.toolWaiting };
@@ -116,6 +125,7 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   const memory = MEMORY_TOOLS[name];
   if (memory) return memorySummary(memory, status, result);
   if (name === CONVERSATIONS_TOOL) return conversationsSummary(status, result, parameters);
+  if (name === WIDGET_TOOL.components) return widgetComponentsSummary(status, result, parameters);
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };

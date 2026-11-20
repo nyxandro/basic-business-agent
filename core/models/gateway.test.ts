@@ -165,7 +165,7 @@ describe('model gateway', () => {
       rc.set(REQUEST_KEYS.userId, userId);
       rc.set(REQUEST_KEYS.modelId, model.id);
       rc.set(REQUEST_KEYS.skillPaths, '[]');
-      rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+      rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
       const out = await agent.stream('привет', { requestContext: rc });
       expect(await out.text).toBe('Привет! Чем помочь?');
       expect(provider.requests.length - before).toBe(2);
@@ -204,7 +204,7 @@ describe('model gateway', () => {
       rc.set(REQUEST_KEYS.userId, userId);
       rc.set(REQUEST_KEYS.modelId, model.id);
       rc.set(REQUEST_KEYS.skillPaths, '[]');
-      rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+      rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
       const started = Date.now();
       const out = await agent.stream('привет', { requestContext: rc });
       expect(await out.text).toBe('Привет! Чем помочь?');

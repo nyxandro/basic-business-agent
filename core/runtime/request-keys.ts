@@ -21,7 +21,7 @@ export const REQUEST_KEYS = {
   // Folders of the skills the employee gets (core/skills-admin/runtime.ts), JSON: fixed for the run,
   // so a skill replaced meanwhile does not change under a running answer.
   skillPaths: 'bba.skillPaths',
-  // JSON { web, commands }: what the agent the person talks to may do (spec, section 8.30), read once at the
+  // JSON { web, commands, widgets }: what the agent the person talks to may do (spec, sections 8.30, 8.31), read once at the
   // start of the run; its sub-agents work with the same (core/abilities/abilities.ts).
   abilities: 'bba.abilities',
   // Chat runs only: a function told the id of a message whose words the person already saw when the
@@ -30,6 +30,9 @@ export const REQUEST_KEYS = {
   // Chat runs only: a function told each step of the researcher of the internet, for the live block of its
   // search in the chat (spec, section 8.30).
   webProgress: 'bba.webProgress',
+  // The widgets the agent showed in this run (core/widgets/tools.ts): a later call of the run may change one in
+  // place. Set by the widget tools themselves at the first screen.
+  widgetScreens: 'bba.widgetScreens',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';

@@ -60,7 +60,7 @@ async function answer(agent: Agent, threadId: string, opts: { fallback?: boolean
   if (opts.fallback) rc.set(REQUEST_KEYS.fallbackModelId, 'spare');
   rc.set(REQUEST_KEYS.threadId, threadId);
   rc.set(REQUEST_KEYS.skillPaths, '[]');
-  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
   rc.set(REQUEST_KEYS.messageDiscarded, (messageId: string) => discarded.push(messageId));
   const out = await agent.stream('привет', { memory: { thread: threadId, resource: 'igor' }, requestContext: rc });
   const stepMessageIds: string[] = [];

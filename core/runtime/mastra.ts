@@ -24,6 +24,7 @@ import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
 import { createStreamRetry } from './stream-retry.ts';
 import { createWebTools, type WebDeps } from '../web/research.ts';
+import { createWidgetHistoryProcessor } from '../widgets/history.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -55,6 +56,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const masking = createMaskingProcessor(deps.db);
   const memory = deps.memory;
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
+  const widgetHistory = createWidgetHistoryProcessor();
   const docText = createDocTextProcessor({ service: deps.docText, workspaceRoot: deps.workspaceRoot });
   const agents: Record<string, Agent> = {};
   // The researcher of the internet: masked like every agent, its broken streams asked again (spec, section 8.30).
@@ -106,6 +108,8 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
           // Pictures before masking: a name like «89123456789.png» is found by the real path; the picture itself is
           // never masked (its data is skipped), the text of the request is.
           ...imageView,
+          // Descriptions of components of earlier turns are not sent again (spec, section 8.31).
+          ...(level === 'top' ? [widgetHistory] : []),
           masking,
         ],
         // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,

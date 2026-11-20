@@ -4,7 +4,8 @@
 // sub-agents, what systems returned — the person did not see, and the agent reading an old conversation
 // does not get it either. The rule is a list of what is known: a new block of the interface needs its line
 // here (the test fails for one that has none).
-import { GENUI_TOOL, splitAttachments, tableBlockSchema, type TableBlock } from '@bba/contracts';
+import { GENUI_TOOL, splitAttachments, tableBlockSchema, WIDGET_TOOL, type TableBlock } from '@bba/contracts';
+import { widgetVisibleText } from '../widgets/visible-text.ts';
 
 // How the action of a call ended, from its request for «Да» (app.approval_requests).
 export interface ApprovalOutcome {
@@ -67,6 +68,11 @@ function blockLines(name: string, args: Record<string, unknown>, result: unknown
       return [`вопрос с вариантами: «${str(args.question)}» — ${list(args.options).filter(isObject).map((o) => str(o.label)).join(' / ')}`];
     case GENUI_TOOL.form:
       return [`форма «${str(args.title)}»${list(args.fields).length > 0 ? `: ${list(args.fields).filter(isObject).map((f) => str(f.label)).join(', ')}` : ''}`];
+    // A widget (spec, section 8.31): its words, as the search reads them.
+    case WIDGET_TOOL.render: {
+      const words = widgetVisibleText(args);
+      return words ? [`экран: ${words}`] : null;
+    }
     case GENUI_TOOL.file: {
       const shown = isObject(result) ? str(result.name) : '';
       return [`файл: ${shown || str(args.path).split('/').pop()}`];

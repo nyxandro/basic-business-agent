@@ -1,6 +1,6 @@
 // How a turn of the agent is laid out (decision of the owner 15.11): the status lines between two
 // things the agent shows go into one stack; its words and the blocks it draws stay in sight.
-import { GENUI_TOOL, WEB_RESEARCH_TOOL } from '@bba/contracts';
+import { GENUI_TOOL, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { describe, expect, it } from 'vitest';
 import { turnItems } from './turn-items.ts';
@@ -38,6 +38,11 @@ describe('the layout of a turn', () => {
   // The live block of a search is the search itself (spec, section 8.30), not a line of a stack.
   it('leaves the search of the internet in sight', () => {
     expect(shape([said('a1', '', [call('c1'), call('w1', WEB_RESEARCH_TOOL), call('c2')])])).toEqual(['[c1]', 'w1', '[c2]']);
+  });
+
+  // A widget is a screen the agent drew (spec, section 8.31); the descriptions of its components are a step of a stack.
+  it('leaves a widget in sight and stacks the reading of its components', () => {
+    expect(shape([said('a1', '', [call('d1', WIDGET_TOOL.components), call('u1', WIDGET_TOOL.render), call('c1')])])).toEqual(['[d1]', 'u1', '[c1]']);
   });
 
   it('puts nothing for a message with neither words nor calls', () => {

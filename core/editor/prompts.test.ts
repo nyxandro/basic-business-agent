@@ -58,7 +58,7 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
   rc.set(REQUEST_KEYS.runKind, mode === 'draft' ? 'draft' : 'chat');
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
-  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
   const threadId = `t-${Date.now()}`;
   rc.set(REQUEST_KEYS.threadId, threadId);
   if (projectId) {
@@ -129,7 +129,7 @@ describe('prompt layers', () => {
     rc.set(REQUEST_KEYS.userId, 'olga');
     rc.set(REQUEST_KEYS.modelId, 'test-paid');
     rc.set(REQUEST_KEYS.skillPaths, '[]');
-    rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+    rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
     rc.set(REQUEST_KEYS.threadId, 'time-check');
     model.script({ text: 'Ок.' });
     await agent.generate('который час?', { requestContext: rc, maxSteps: 1, memory: { thread: 'time-check', resource: 'olga' } });

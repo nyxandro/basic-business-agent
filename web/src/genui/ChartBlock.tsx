@@ -2,10 +2,33 @@
 // the theme's series tokens in fixed order (dataviz: validated for colour-blind readers in both
 // themes); identity never rests on colour alone — a legend, and a tooltip on every mark.
 import type { ChartBlock } from '@bba/contracts';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ru } from '../i18n/ru.ts';
 import styles from './genui.module.css';
 
+// The drawing is as wide as its place, so the labels keep their size in a narrow column of a widget (spec, section
+// 8.31); where the place cannot be measured (tests), the width of the chat.
 const WIDTH = 560;
+const MIN_WIDTH = 260;
+const MAX_WIDTH = 900;
+
+function useDrawingWidth(): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(WIDTH);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const measured = element.clientWidth;
+      if (measured > 0) setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(measured))));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
 const HEIGHT = 220;
 const PAD = { top: 12, right: 8, bottom: 28, left: 48 };
 const PIE_RADIUS = 96;
@@ -38,16 +61,16 @@ function barPath(x: number, y: number, w: number, h: number): string {
   return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
 }
 
-function Axes({ block, max }: { block: ChartBlock; max: number }) {
+function Axes({ block, max, width }: { block: ChartBlock; max: number; width: number }) {
   const innerH = HEIGHT - PAD.top - PAD.bottom;
-  const step = (WIDTH - PAD.left - PAD.right) / block.labels.length;
-  // Long label lists keep every n-th label so they do not run into each other.
-  const every = Math.ceil(block.labels.length / 12);
+  const step = (width - PAD.left - PAD.right) / block.labels.length;
+  // Long label lists keep every n-th label so they do not run into each other: about one label per 48 px.
+  const every = Math.ceil(block.labels.length / Math.max(2, Math.min(12, Math.floor((width - PAD.left - PAD.right) / 48))));
   return (
     <g className={styles.axes}>
       {GRID.map((f) => (
         <g key={f}>
-          <line x1={PAD.left} x2={WIDTH - PAD.right} y1={PAD.top + innerH * (1 - f)} y2={PAD.top + innerH * (1 - f)} />
+          <line x1={PAD.left} x2={width - PAD.right} y1={PAD.top + innerH * (1 - f)} y2={PAD.top + innerH * (1 - f)} />
           <text x={PAD.left - 8} y={PAD.top + innerH * (1 - f) + 4} textAnchor="end">
             {formatValue(Math.round(max * f))}
           </text>
@@ -64,14 +87,14 @@ function Axes({ block, max }: { block: ChartBlock; max: number }) {
   );
 }
 
-function BarsOrLines({ block }: { block: ChartBlock }) {
+function BarsOrLines({ block, width }: { block: ChartBlock; width: number }) {
   const max = Math.max(1, ...block.series.flatMap((s) => s.values));
   const innerH = HEIGHT - PAD.top - PAD.bottom;
-  const step = (WIDTH - PAD.left - PAD.right) / block.labels.length;
+  const step = (width - PAD.left - PAD.right) / block.labels.length;
   const y = (v: number) => PAD.top + innerH * (1 - Math.max(0, v) / max);
   return (
-    <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={block.title ?? ru.genui.chart}>
-      <Axes block={block} max={max} />
+    <svg viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={block.title ?? ru.genui.chart}>
+      <Axes block={block} max={max} width={width} />
       {block.series.map((s, si) => {
         const color = seriesColor(si);
         if (block.kind === 'line') {
@@ -138,12 +161,13 @@ function Pie({ block }: { block: ChartBlock }) {
 }
 
 export function ChartBlockView({ block }: { block: ChartBlock }) {
+  const [place, width] = useDrawingWidth();
   const legend = block.kind === 'pie' ? pieSlices(block).map((s) => ({ name: s.label, color: s.color })) : block.series.map((s, i) => ({ name: s.name, color: seriesColor(i) }));
   return (
     <figure className={styles.block}>
       {block.title ? <figcaption className={styles.caption}>{block.title}</figcaption> : null}
-      <div className={styles.chart}>
-        {block.kind === 'pie' ? <Pie block={block} /> : <BarsOrLines block={block} />}
+      <div className={styles.chart} ref={place}>
+        {block.kind === 'pie' ? <Pie block={block} /> : <BarsOrLines block={block} width={width} />}
         <Legend items={legend} />
       </div>
     </figure>

@@ -101,7 +101,7 @@ function lastToolOutput(): string {
 
 const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
-async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл', abilities = '{"web":true,"commands":true}', on: Agent = agent): Promise<void> {
+async function runAs(userId: string, projectId?: string, skills: string[] = [SKILL], text = 'Прочитай файл', abilities = '{"web":true,"commands":true,"widgets":true}', on: Agent = agent): Promise<void> {
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, userId);
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
@@ -157,7 +157,7 @@ describe('sandbox', () => {
   // sub-agents; the files stay; a hint never offers to run a program; the next run with it on gets them back.
   it('gives an agent without commands, and its sub-agent, no tool to run a program', async () => {
     const names = () => (model.requests.at(-1)!.tools ?? []).map((t) => t.function.name);
-    const COMMANDS_OFF = '{"web":true,"commands":false}';
+    const COMMANDS_OFF = '{"web":true,"commands":false,"widgets":true}';
     model.script({ text: 'Ок.' });
     await runAs('olga', undefined, [SKILL], 'Сделай КП', COMMANDS_OFF);
     expect(names().filter((n) => /execute_command|get_process_output|kill_process/.test(n))).toEqual([]);

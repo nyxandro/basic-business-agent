@@ -135,7 +135,7 @@ describe('buildRegistry', () => {
     mkdirSync(skill, { recursive: true });
     writeFileSync(join(skill, 'SKILL.md'), SKILL('note-taking'));
     rc.set(REQUEST_KEYS.skillPaths, JSON.stringify([skill]));
-    rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+    rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
     model.script({ text: 'Привет!' });
     await agent.generate('привет', { requestContext: rc, maxSteps: 1 });
     const req = model.requests.at(-1)!;

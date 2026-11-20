@@ -1,4 +1,5 @@
-// «Что агенту можно» on the page of an agent (spec, section 8.30): the internet and the commands of the sandbox.
+// «Что агенту можно» on the page of an agent (spec, sections 8.30 and 8.31): the internet, the commands of the sandbox
+// and the widgets in the chat.
 // A switch saves at once; on a failure it stays as it was and the error shows under the card.
 import type { AdminAgent, AgentAbilities as Abilities } from '@bba/contracts';
 import { useState } from 'react';
@@ -16,6 +17,7 @@ const t = ru.admin.agents.abilities;
 const ROWS: { key: keyof Abilities; title: string; sub: string }[] = [
   { key: 'web', title: t.web, sub: t.webSub },
   { key: 'commands', title: t.commands, sub: t.commandsSub },
+  { key: 'widgets', title: t.widgets, sub: t.widgetsSub },
 ];
 
 export function AgentAbilities({ agent, onChanged }: { agent: AdminAgent; onChanged: () => void }) {

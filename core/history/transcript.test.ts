@@ -1,6 +1,6 @@
 // What a past conversation reads like for the agent (spec, section 8.28): what the person saw — words,
 // blocks of the interface, files, memory lines and actions after «Да» — and nothing of the service parts.
-import { GENUI_TOOL, GENUI_TOOL_IDS } from '@bba/contracts';
+import { GENUI_TOOL, GENUI_TOOL_IDS, WIDGET_TOOL } from '@bba/contracts';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { type ApprovalOutcome, visibleOf } from './transcript.ts';
@@ -133,6 +133,30 @@ describe('visibleOf', () => {
     ];
     const shown = visibleOf({ role: 'assistant', content: message(parts) }, none);
     expect(shown).toEqual({ text: 'Готово.', marks: [] });
+  });
+
+  // A widget (spec, section 8.31): its words — texts, cells, items, options, the data it shows — not its ids and codes.
+  it('turns a widget into the line of its words and leaves out one the check refused', () => {
+    const operations = [
+      {
+        version: '1.0',
+        createSurface: {
+          surfaceId: 'kp',
+          dataModel: { company: 'ООО Ривер' },
+          components: [
+            { id: 'root', component: 'Card', children: ['t', 'pay', 'tbl', 'sum'] },
+            { id: 't', component: 'Title', text: 'КП для клиента' },
+            { id: 'pay', component: 'RadioGroup', label: 'Оплата', options: [{ value: 'cashless', label: 'Безнал' }] },
+            { id: 'tbl', component: 'Table', columns: ['Позиция'], rows: [['Кровля', 2100000]] },
+            { id: 'sum', component: 'Text', text: { '@call': 'formatString', args: { value: 'Итого ${/total} за год' } } },
+          ],
+        },
+      },
+    ];
+    const shown = visibleOf({ role: 'assistant', content: message([call(WIDGET_TOOL.render, { operations }, { shown: true, surfaceId: 'kp' })]) }, none);
+    expect(shown.marks).toEqual(['экран: КП для клиента Оплата Безнал Позиция Кровля 2100000 Итого за год ООО Ривер']);
+    const refused = visibleOf({ role: 'assistant', content: message([call(WIDGET_TOOL.render, { operations }, { error: true, code: 'APP_WIDGET_INVALID', message: 'Экран не собран' })]) }, none);
+    expect(refused.marks).toEqual([]);
   });
 
   it('has its own line for every block of the interface: a new block without one fails here', () => {

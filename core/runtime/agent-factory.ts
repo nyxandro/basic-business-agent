@@ -1,12 +1,11 @@
 // Builds the Mastra agent of an agent runtime: model on the employee's key, tools of plugins and
-// connected systems, interface blocks, memory, the sandbox and sub-agents.
+// connected systems, widgets in the chat, memory, the sandbox and sub-agents.
 import { GENUI_TOOL } from '@bba/contracts';
 import { Agent, type ModelWithRetries } from '@mastra/core/agent';
 import type { ErrorProcessor, InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
 import { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
 import type { ConnectionManager } from '../connections/manager.ts';
-import { createGenuiTools } from '../genui/tools.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { createShowFileTool } from '../sandbox/show-file.ts';
@@ -18,6 +17,7 @@ import { logEvent } from '../server/log.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import { createStreamRetry, dropShownWords, isGatewayStreamFailure } from './stream-retry.ts';
+import { createWidgetTools } from '../widgets/tools.ts';
 
 // With a fallback model set, a primary that sends nothing for this long gives way to it (spec, 8.1).
 // Only the first chunk is timed: a total deadline would end the run instead of switching.
@@ -88,11 +88,13 @@ export function createMastraAgent(rt: AgentRuntime, deps: AgentFactoryDeps): Age
   return buildAgent(rt, deps, 'top');
 }
 
-// Interface blocks are given only to the agent the person talks to: what a sub-agent "shows"
-// would reach its parent agent, not the screen.
+// Widgets and the file block are given only to the agent the person talks to: what a sub-agent "shows" would reach
+// its parent agent, not the screen.
 function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'sub'): Agent {
   const processors = deps.processorsFor(rt, level);
-  const staticTools: Record<string, AnyTool> = { ...rt.tools, ...(level === 'top' ? createGenuiTools() : {}) };
+  const staticTools: Record<string, AnyTool> = { ...rt.tools };
+  // «Виджеты в чате» (spec, section 8.31): with the switch on, read at the start of the run like the others.
+  const widgetTools = level === 'top' ? createWidgetTools() : {};
   if (deps.sandbox) staticTools[VIEW_IMAGE_TOOL] = createViewImageTool(deps.sandbox.deps.workspaceRoot);
   // The file block, like the other blocks, only for the agent the person talks to (spec, section 8.18).
   if (deps.sandbox && level === 'top') staticTools[GENUI_TOOL.file] = createShowFileTool(deps.sandbox.deps.workspaceRoot);
@@ -132,6 +134,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
         ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
         ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
         ...(abilities.web && deps.web ? deps.web.tools : {}),
+        ...(abilities.widgets ? widgetTools : {}),
       };
     },
     ...(deps.memory ? { memory: deps.memory } : {}),

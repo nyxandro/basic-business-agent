@@ -189,6 +189,6 @@ function contextOf(): RequestContext {
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.runKind, 'chat');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
-  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true}');
+  rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
   return rc;
 }

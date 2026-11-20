@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { abilitiesLayer, COMMANDS_OFF, COMMANDS_RULES, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { contextRoot } from '../workspace/layout.ts';
+import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
 import { AGENT_ABILITY_DEFAULTS, ensureAgentAbilities, readAbilities } from './abilities.ts';
 
 let t: TestApp;
@@ -34,23 +35,27 @@ afterAll(async () => {
 
 describe('what an agent may do', () => {
   it('gives every agent of the installation everything at the start of the server', async () => {
-    expect(AGENT_ABILITY_DEFAULTS).toEqual({ web: true, commands: true });
-    expect(await readAbilities(t.db, 'sales')).toEqual({ web: true, commands: true });
-    expect((await listed('assistant')).abilities).toEqual({ web: true, commands: true });
+    expect(AGENT_ABILITY_DEFAULTS).toEqual({ web: true, commands: true, widgets: true });
+    expect(await readAbilities(t.db, 'sales')).toEqual({ web: true, commands: true, widgets: true });
+    expect((await listed('assistant')).abilities).toEqual({ web: true, commands: true, widgets: true });
   });
 
   it('switches one ability, keeps the other, writes the audit and keeps it over the next start', async () => {
     const res = await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { web: false } });
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ abilities: { web: false, commands: true } });
-    expect((await listed('sales')).abilities).toEqual({ web: false, commands: true });
+    expect(await json(res)).toEqual({ abilities: { web: false, commands: true, widgets: true } });
+    expect((await listed('sales')).abilities).toEqual({ web: false, commands: true, widgets: true });
     const { rows } = await t.db.query<{ details: unknown }>("SELECT details FROM app.admin_audit WHERE action = 'agent.abilities' AND target = 'sales'");
-    expect(rows.at(-1)!.details).toEqual({ web: false, commands: true });
+    expect(rows.at(-1)!.details).toEqual({ web: false, commands: true, widgets: true });
     // The next start of the server: a row the admin changed stays as it is.
     await ensureAgentAbilities(t.db, ['sales', 'assistant']);
-    expect(await readAbilities(t.db, 'sales')).toEqual({ web: false, commands: true });
+    expect(await readAbilities(t.db, 'sales')).toEqual({ web: false, commands: true, widgets: true });
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { web: true, commands: false } });
-    expect(await readAbilities(t.db, 'sales')).toEqual({ web: true, commands: false });
+    expect(await readAbilities(t.db, 'sales')).toEqual({ web: true, commands: false, widgets: true });
+    // «Виджеты в чате» (spec, section 8.31) switches on its own.
+    await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { widgets: false } });
+    expect(await readAbilities(t.db, 'sales')).toEqual({ web: true, commands: false, widgets: false });
+    await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { widgets: true } });
   });
 
   it('refuses an unknown agent, an empty change and a person without «Агенты»', async () => {
@@ -61,9 +66,12 @@ describe('what an agent may do', () => {
 
   // An agent whose passport turns the core's rules off gets no rules of programs either; it is told what is off.
   it('gives the rules of programs only with the core’s rules, and the switched-off lines always', () => {
-    expect(abilitiesLayer({ web: true, commands: true }, false)).toBe(WEB_RULES);
-    expect(abilitiesLayer({ web: false, commands: false }, false)).toBe(`${COMMANDS_OFF}\n\n${WEB_OFF}`);
-    expect(abilitiesLayer({ web: true, commands: true }, true)).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, false, 'sub')).toBe(WEB_RULES);
+    expect(abilitiesLayer({ web: false, commands: false, widgets: false }, false, 'sub')).toBe(`${COMMANDS_OFF}\n\n${WEB_OFF}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'sub')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}`);
+    // Widgets (spec, section 8.31): only the agent the person talks to is told about them, on or off.
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'top')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}\n\n${widgetsRules()}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: false }, true, 'top')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}\n\n${WIDGETS_OFF}`);
   });
 
   it('stops a run of an agent the database has no row of', async () => {
