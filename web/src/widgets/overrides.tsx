@@ -5,6 +5,7 @@
 import { standardUI, type GenerativeUIComponentProps } from '@copilotkit/react-core/generative-ui';
 import { createContext, lazy, Suspense, useContext, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
+import { useBusyGuard } from './busy.tsx';
 import { ChartWidget, chartOf } from './chart.ts';
 import { firstFailedCheck } from './checks.ts';
 import styles from './widgets.module.css';
@@ -30,6 +31,7 @@ const StandardTable = standard('Table');
 const StandardChart = standard('Chart');
 const StandardEntityCard = standard('EntityCard');
 const StandardImage = standard('Image');
+const StandardForm = standard('Form');
 
 // Inside the glass panel the buttons are white and clear, as on the file block (spec, section 8.18).
 const OnGlass = createContext(false);
@@ -77,8 +79,16 @@ function GlassButton(props: Props<'Button'>) {
 }
 
 function Button(props: Props<'Button'>) {
-  if (useContext(OnGlass)) return <GlassButton {...props} />;
-  return <StandardButton {...props} pill={props.pill ?? false} />;
+  const onGlass = useContext(OnGlass);
+  const onClick = useBusyGuard(props.onClick);
+  if (onGlass) return <GlassButton {...props} onClick={onClick} />;
+  return <StandardButton {...props} onClick={onClick} pill={props.pill ?? false} />;
+}
+
+// A form sends what was filled in with its submit button.
+function Form(props: Props<'Form'>) {
+  const onSubmit = useBusyGuard(props.onSubmit);
+  return <StandardForm {...props} onSubmit={onSubmit} />;
 }
 
 // A title without a size is the title of a card of the mockup (15 px), not CopilotKit's larger one.
@@ -177,7 +187,8 @@ function Chart(props: Props<'Chart'>) {
 
 // The recommended one on glass: an EntityCard with a badge of the accent colour (the rules of the agent say so).
 function EntityCard(props: Props<'EntityCard'>) {
-  if (props.badge?.color !== 'discovery') return <StandardEntityCard {...props} />;
+  const onAction = useBusyGuard(props.onAction);
+  if (props.badge?.color !== 'discovery') return <StandardEntityCard {...props} onAction={onAction} />;
   return (
     <div className={styles.glass} style={{ padding: '16px' }}>
       <div className={styles.glassHead}>
@@ -195,7 +206,7 @@ function EntityCard(props: Props<'EntityCard'>) {
                 {action.label}
               </a>
             ) : (
-              <button key={action.label} type="button" className={i === 0 ? styles.glassMain : styles.glassSecond} onClick={() => void props.onAction?.({ label: action.label })}>
+              <button key={action.label} type="button" className={i === 0 ? styles.glassMain : styles.glassSecond} onClick={() => void onAction?.({ label: action.label })}>
                 {action.label}
               </button>
             ),
@@ -247,6 +258,7 @@ export const widgetOverrides = {
   Card: { component: Card },
   Title: { component: Title },
   Button: { component: Button },
+  Form: { component: Form },
   Row: { component: Row },
   Badge: { component: Badge },
   TextField: { component: TextField },

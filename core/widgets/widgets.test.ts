@@ -8,6 +8,7 @@ import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { checkScreen, componentIndex, componentsGuide, widgetManifest, type ShownScreens } from './catalog.ts';
 import { DESCRIPTION_DROPPED, dropOldDescriptions } from './history.ts';
 import { WIDGETS_OFF } from './prompt.ts';
+import { SHOWN_NOTE } from './tools.ts';
 
 let t: TestApp;
 let olga: string;
@@ -20,10 +21,10 @@ interface AguiEvent {
   content?: string;
 }
 
-async function run(text: string, threadId = randomUUID()): Promise<AguiEvent[]> {
+async function run(text: string, threadId = randomUUID(), forwardedProps: Record<string, unknown> = {}): Promise<AguiEvent[]> {
   const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', {
     cookie: olga,
-    body: { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps: {} },
+    body: { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps },
   });
   expect(res.status).toBe(200);
   return (await res.text())
@@ -77,6 +78,10 @@ describe('the catalog of widgets', () => {
     expect(guide).toContain('render_ui');
     expect(guide).toMatch(/Slider/);
     expect(guide).not.toMatch(/EntityCard/);
+    // M11 20.11: CopilotKit's «stream progressively … one updateComponents per child» was taken for a call per part;
+    // our line before it says the operations of a screen go in one call.
+    expect(guide.indexOf('все операции экрана — в одном вызове')).toBeGreaterThan(-1);
+    expect(guide.indexOf('все операции экрана — в одном вызове')).toBeLessThan(guide.indexOf('Stream progressively'));
   });
 
   it('checks a screen: one surface, its root, the children it names, CopilotKit’s own check', () => {
@@ -93,9 +98,37 @@ describe('the catalog of widgets', () => {
     expect(problems([...CALCULATOR, surface([{ id: 'root', component: 'Text', text: 'Второй' }])])).toMatch(/один экран/);
     expect(problems([...CALCULATOR, { version: '1.0', updateDataModel: { surfaceId: 'other', path: '/seats', value: 3 } }])).toMatch(/«other»/);
     expect(problems([...CALCULATOR, { version: '1.0', deleteSurface: { surfaceId: 'kp' } }])).toMatch(/deleteSurface/);
+    // M11 20.11: a change written without its kind, and a screen sent in parts — the reason names the way to write it.
+    const unwrapped = problems([{ version: '1.0', surfaceId: 'kp', path: '/seats', value: 3 }]);
+    expect(unwrapped).toMatch(/нет вида операции/);
+    expect(unwrapped).toContain('"updateDataModel"');
+    expect(problems([...CALCULATOR, { version: '1.0', surfaceId: 'kp', path: '/seats', value: 3 }])).toMatch(/операция 2: нет вида операции/);
+    expect(problems([surface([{ id: 'root', component: 'Column', children: ['gone'] }])])).toMatch(/весь экран — одним вызовом/);
     // A placeholder of the guide taken for a function (live run 20.11): the browser would not draw the part.
     expect(problems([surface([{ id: 'root', component: 'Caption', text: { '@call': 'formatString', args: { value: 'В месяц: ${fn(value: m)}' } } }])])).toMatch(/«fn»/);
     expect(problems([surface([{ id: 'root', component: 'Caption', text: { '@call': 'formatString', args: { value: "${formatCurrency(value: /total, currency: 'RUB', decimals: 0)}" } } }], { dataModel: { total: 1 } })])).toEqual([]);
+  });
+
+  // e2e 20.11: «${formatCurrency(value: ${calc(…)})}» passed the check and the browser showed «this part could not be
+  // displayed». The server computes every value of the screen with its initial data, by CopilotKit's own code.
+  it('computes the values of a screen with its initial data, as the browser will', () => {
+    const problems = (ops: Record<string, unknown>[]) => {
+      const verdict = checkScreen(ops, new Map());
+      return verdict.ok ? '' : verdict.problems.join('\n');
+    };
+    const nested = { '@call': 'formatString', args: { value: "Итого: ${formatCurrency(value: ${calc(expression: 'n * 2', n: ${/seats})}, currency: 'RUB')}" } };
+    expect(problems([surface([{ id: 'root', component: 'Text', text: nested }], { dataModel: { seats: 15 } })])).toMatch(/компонент «root», поле «text»: formatString/);
+    const bad = { '@call': 'calc', args: { expression: 'n * * 2', n: { '@path': '/seats' } } };
+    expect(problems([surface([{ id: 'root', component: 'Text', text: bad }], { dataModel: { seats: 15 } })])).toMatch(/поле «text»: calc/);
+    // The right way of the same: a call inside a call, and the data changed by a later operation of the call.
+    const right = { '@call': 'formatCurrency', args: { value: { '@call': 'calc', args: { expression: 'n * 2900', n: { '@path': '/seats' } } }, currency: 'RUB', decimals: 0 } };
+    expect(problems([surface([{ id: 'root', component: 'Text', text: right }], { dataModel: { seats: 15 } }), { version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 20 } }])).toBe('');
+    // A template of a list is computed per item, with paths of the item: it is not computed against the whole data.
+    const list = [
+      { id: 'root', component: 'List', children: { componentId: 'item', path: '/deals' } },
+      { id: 'item', component: 'ListItem', label: { '@path': 'name' }, value: { '@call': 'formatCurrency', args: { value: { '@path': 'sum' }, currency: 'RUB' } } },
+    ];
+    expect(problems([surface(list, { dataModel: { deals: [{ name: 'Поставка', sum: 120000 }] } })])).toBe('');
   });
 
   it('changes a screen of the same run in place, and refuses a second screen of the same name', () => {
@@ -116,6 +149,24 @@ describe('the catalog of widgets', () => {
 });
 
 describe('widgets in a chat', () => {
+  // A press of a widget: CopilotKit's browser puts its envelope (catalog, surfaces, the action) into the run, and
+  // CopilotKit's runtime would give the model its own `render_ui` and the guide of the whole catalog for that turn.
+  it('a press of a widget gets no second render_ui and no CopilotKit guide', async () => {
+    const text = (widgetManifest() as unknown as { components: Record<string, unknown> }).components.Text;
+    const envelope = {
+      '1.0': { supportedCatalogIds: [WIDGET_CATALOG_ID], inlineCatalogs: [{ catalogId: WIDGET_CATALOG_ID, protocolVersion: '1.0', components: { Text: text }, functions: {} }] },
+      metadata: { extensions: { copilotkit_format: 3, copilotkit_transport: 'tool', copilotkit_targets: [{ id: 'chat', kind: 'chat' }], copilotkit_surfaces: {}, copilotkit_contextSent: false } },
+    };
+    t.model.script({ text: 'Принял.' });
+    await run('Оформи КП\n\nseats: 20', randomUUID(), { copilotkit: { ui: envelope } });
+    // Ours, with the server's check — not CopilotKit's of the same name, which the browser would carry out unchecked.
+    const tools = (t.model.requests.at(-1)!.tools ?? []) as unknown as { function: { name: string; description?: string } }[];
+    const renders = tools.filter((x) => x.function.name === WIDGET_TOOL.render);
+    expect(renders).toHaveLength(1);
+    expect(renders[0]!.function.description).toMatch(/^Показать сотруднику виджет/);
+    expect(JSON.stringify(t.model.requests.at(-1)!.messages)).not.toContain('Call `render_ui` to show UI');
+  });
+
   it('are offered to the agent of a chat, without the five former blocks, with the rules and the list of components', async () => {
     t.model.script({ text: 'Здравствуйте.' });
     await run('Привет');
@@ -130,21 +181,37 @@ describe('widgets in a chat', () => {
     t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { target: 'chat', operations: CALCULATOR } }] }, { text: 'Двигайте ползунок.' });
     const events = await run('Посчитай КП');
     expect(events.find((e) => e.type === 'TOOL_CALL_START')?.toolCallName).toBe(WIDGET_TOOL.render);
-    expect(resultOf(events)).toEqual({ shown: true, surfaceId: 'kp' });
+    expect(resultOf(events)).toEqual({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE });
+    // M11 20.11: the agent retold the screen in words after 3 screens of 4; the note of the result says not to.
+    expect(SHOWN_NOTE).toMatch(/Не пересказывай/);
   });
 
   // A model wrote the list as one JSON string and left out the version mark (live run 20.11): the same screen.
   it('reads a list written as a string and operations without their version', async () => {
     const unmarked = CALCULATOR.map(({ version: _v, ...op }) => op);
     t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: JSON.stringify(unmarked) } }] }, { text: 'Готово.' });
-    expect(resultOf(await run('Посчитай КП'))).toEqual({ shown: true, surfaceId: 'kp' });
+    expect(resultOf(await run('Посчитай КП'))).toEqual({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE });
+  });
+
+  // M11 20.11: a list with a bracket too many reached the server as a string (none of 11 such strings was JSON) and came
+  // back as «expected array», «string <=200 characters» — the reason now points at the brackets and shows the place.
+  it('tells the model that the list is not JSON, and shows where', async () => {
+    const broken = `${JSON.stringify(CALCULATOR).slice(0, -1)}}]`;
+    t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: broken } }] }, { text: 'Исправлю.' });
+    await run('Посчитай КП');
+    const toolMessage = String(t.model.requests.at(-1)!.messages.find((m) => m.role === 'tool')?.content);
+    expect(toolMessage).toContain('operations — не JSON');
+    expect(toolMessage).toContain('скобок');
+    // The place of the mistake: the end of the list, where the bracket too many is.
+    expect(toolMessage).toContain('/seats}');
+    expect(toolMessage).not.toContain('200 characters');
   });
 
   it('lets a later call of the same answer change the screen in place', async () => {
     const update = { version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 20 } };
     t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: CALCULATOR } }] }, { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [update] } }] }, { text: 'Поправил.' });
     const results = (await run('Посчитай КП')).filter((e) => e.type === 'TOOL_CALL_RESULT').map((e) => JSON.parse(e.content!) as unknown);
-    expect(results).toEqual([{ shown: true, surfaceId: 'kp' }, { shown: true, surfaceId: 'kp' }]);
+    expect(results).toEqual([{ shown: true, surfaceId: 'kp', note: SHOWN_NOTE }, { shown: true, surfaceId: 'kp', note: SHOWN_NOTE }]);
     // The next answer is another run: the screen of this one is not changed from there.
     t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [update] } }] }, { text: 'Нарисую заново.' });
     expect(resultOf(await run('Сделай 25'))).toMatchObject({ error: true, code: 'APP_WIDGET_INVALID' });

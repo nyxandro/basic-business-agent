@@ -9,7 +9,8 @@ test('an employee sees only the agents of their department', async ({ browser })
   await expect(page.getByRole('link', { name: /Продажи/ })).toHaveCount(0);
 });
 
-test('the catalog blocks are drawn, broken data is shown as text', async ({ browser }) => {
+// Spec, section 8.31: the agent draws its screens; one the server refuses leaves no trace but the answer in words.
+test('widgets are drawn in the chat; a screen the server refuses is answered with text', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');
   await openAgent(page, 'Продажи');
   await newConversation(page);
@@ -19,8 +20,10 @@ test('the catalog blocks are drawn, broken data is shown as text', async ({ brow
   await expect(page.getByRole('img', { name: 'Выручка по месяцам' })).toBeVisible();
   await say(page, 'Покажи карточку сделки');
   await expect(page.getByRole('heading', { name: 'Поставка бетона' })).toBeVisible();
-  await say(page, 'Сломанный график');
-  await expect(page.getByText('Не удалось показать данные')).toBeVisible();
+  await say(page, 'Сломанный экран: склады на карте');
+  await expect(page.getByText('Экран не получился, отвечу текстом')).toBeVisible();
+  await expect(page.getByText('Собираю экран заново')).toHaveCount(0);
+  await expect(page.locator('[data-generative-ui-error]')).toHaveCount(0);
 });
 
 test('an action waits for «Да»: «Нет» cancels it, «Да» runs it and the journal shows it', async ({ browser }) => {

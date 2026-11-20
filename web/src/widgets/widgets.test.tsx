@@ -11,29 +11,50 @@ import { TurnStateContext, type TurnState } from '../chat/call-progress.ts';
 import { toolSummary } from '../chat/tool-summary.ts';
 import { widgetsUI } from './catalog.ts';
 import { drawableOperations, laterChanges } from './operations.ts';
+import { BUSY_CODE, BusyPress, useBusyGuard } from './busy.tsx';
 import { widgetOverrides } from './overrides.tsx';
 import { WidgetCall } from './WidgetCall.tsx';
 
 const ingest = vi.fn();
 const setActiveThread = vi.fn();
 let messages: unknown[] = [];
+let running = false;
+// The engine's answer to a press of the stub: «busy» while the agent answers, sent once it is done.
+const pressed = vi.fn((_args: unknown) => (running ? BUSY : { ok: true as const, result: undefined }));
 
 vi.mock('@copilotkit/react-core', async (original) => ({
   ...(await original<typeof import('@copilotkit/react-core')>()),
-  useAgent: () => ({ agent: { threadId: 'thread-1', agentId: 'sales', messages } }),
+  useAgent: () => ({ agent: { threadId: 'thread-1', agentId: 'sales', messages, isRunning: running } }),
 }));
 
 vi.mock('@copilotkit/react-core/generative-ui', async (original) => ({
   ...(await original<typeof import('@copilotkit/react-core/generative-ui')>()),
   useGenerativeUIRuntime: () => ({ manager: { ingest, setActiveThread } }),
-  GenerativeUISurface: ({ id }: { id: string }) => <div data-testid="surface">{id}</div>,
+  // The engine's surface: here a button whose press CopilotKit dropped because the agent was answering.
+  GenerativeUISurface: ({ id }: { id: string }) => <SurfaceStub id={id} />,
 }));
 
+function SurfaceStub({ id }: { id: string }) {
+  const press = useBusyGuard((args: unknown) => Promise.resolve(pressed(args)));
+  return (
+    <div data-testid="surface">
+      {id}
+      <button type="button" onClick={() => void press?.({})}>
+        Нажать
+      </button>
+    </div>
+  );
+}
+
 const component = (id: string, text: string) => ({ id, component: 'Text', text });
+// What CopilotKit answers a press while the agent is answering (use-generative-ui-root: «agent_busy»).
+const BUSY = { ok: false as const, error: Object.assign(new Error('the agent is running'), { code: BUSY_CODE }) };
 const SCREEN = [{ version: '1.0', createSurface: { surfaceId: 'kp', dataModel: { seats: 15 }, components: [{ id: 'root', component: 'Column', children: ['a', 'b'] }, component('a', 'Первый'), component('b', 'Второй')] } }];
 
 beforeEach(() => {
   messages = [];
+  running = false;
+  pressed.mockClear();
 });
 afterEach(() => {
   ingest.mockClear();
@@ -112,6 +133,26 @@ describe('our components of the mockup', () => {
     expect(onAction).toHaveBeenCalledWith({ label: 'Сравнить' });
   });
 
+  // e2e 20.11: a button pressed while the agent was still writing did nothing at all.
+  it('tell the block when CopilotKit drops a press because the agent is answering', async () => {
+    const report = vi.fn();
+    const busy = () => Promise.resolve(BUSY);
+    const Card = widgetOverrides.Card.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const Form = widgetOverrides.Form.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const EntityCard = widgetOverrides.EntityCard.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(
+      <BusyPress.Provider value={report}>
+        <Button label="Обычная" onClick={busy} />
+        <Card background="discovery-solid" child={<Button label="На стекле" variant="primary" onClick={busy} />} />
+        <Form onSubmit={busy}>{<Button label="Отправить форму" submit />}</Form>
+        <EntityCard title="Тариф" badge={{ label: 'Рекомендуем', color: 'discovery' }} actions={[{ label: 'Выбрать' }]} onAction={busy} />
+      </BusyPress.Provider>,
+    );
+    for (const name of ['Обычная', 'На стекле', 'Отправить форму', 'Выбрать']) await userEvent.click(screen.getByRole('button', { name }));
+    expect(report).toHaveBeenCalledTimes(4);
+  });
+
   it('show a picture of another site as a link to open', () => {
     draw('Image', { url: 'https://example.com/photo.png' });
     expect(screen.getByRole('link', { name: 'Картинка: example.com/photo.png' })).toHaveAttribute('href', 'https://example.com/photo.png');
@@ -162,6 +203,24 @@ describe('the block of a widget', () => {
   it('says the screen was not finished when the answer stopped in the middle of it', () => {
     show({ status: 'executing' }, 'ended');
     expect(screen.getByText('Экран не дорисован — ответ прерван')).toBeInTheDocument();
+  });
+
+  // e2e 20.11: a press while the agent still wrote its answer did nothing; now it goes once the answer is done.
+  it('sends a press the engine dropped while the agent answered, once the answer is done', async () => {
+    running = true;
+    const view = show({ status: 'complete', result: JSON.stringify({ shown: true, surfaceId: 'kp' }) }, 'answering');
+    await userEvent.click(screen.getByRole('button', { name: 'Нажать' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Нажатие отправится, когда агент закончит ответ');
+    expect(pressed).toHaveBeenCalledTimes(1);
+    running = false;
+    view.rerender(
+      <TurnStateContext.Provider value="ended">
+        <WidgetCall call={{ toolCallId: 'call-1', parameters: { operations: SCREEN }, status: 'complete', result: JSON.stringify({ shown: true, surfaceId: 'kp' }) }} />
+      </TurnStateContext.Provider>,
+    );
+    await vi.waitFor(() => expect(pressed).toHaveBeenCalledTimes(2));
+    expect(pressed).toHaveBeenLastCalledWith({});
+    expect(screen.queryByText(/Нажатие отправится/)).not.toBeInTheDocument();
   });
 
   it('draws nothing for a call that only changed a screen above it', () => {

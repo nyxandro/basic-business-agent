@@ -107,9 +107,29 @@ function listFromText(value: unknown): unknown {
 
 // The arguments of render_ui, as CopilotKit's guide tells the model to write them. Each operation is checked by the
 // server against the catalog; here only its shape of a JSON object.
+// A list that is not JSON reaches the server as a string (none of 11 such strings in M11, 20.11, was JSON: the model
+// lost count of brackets, and the model's service passed the text on as it was — our reading, not checked). zod alone
+// answers «expected array» and «string <=200 characters», and Mastra shows the model only the start of its arguments:
+// the reason names the brackets and shows the text around the mistake.
+const AROUND_MISTAKE = 60;
+
+function notJson(text: string, error: Error): string {
+  const at = Number(/position (\d+)/.exec(error.message)?.[1]);
+  const place = Number.isFinite(at) ? `, около знака ${at}: «${text.slice(Math.max(0, at - AROUND_MISTAKE), at + AROUND_MISTAKE / 3)}»` : '';
+  return `operations — не JSON (${error.message})${place}. Проверь парность скобок { } и [ ] и кавычек и вызови render_ui заново целиком; operations — массив объектов.`;
+}
+
 export const renderUiArgsSchema = z.object({
   target: z.literal(WIDGET_CHAT_TARGET).optional(),
-  operations: z.preprocess(listFromText, z.array(z.record(z.string(), z.unknown())).min(1).max(200)),
+  operations: z.preprocess((value, ctx) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value) as unknown;
+    } catch (error) {
+      ctx.addIssue({ code: 'custom', message: notJson(value, error as Error) });
+      return z.NEVER;
+    }
+  }, z.array(z.record(z.string(), z.unknown())).min(1).max(200).describe('Массив операций A2UI 1.0 — объекты JSON')),
 });
 
 // Every operation of A2UI 1.0 carries this mark; a model that leaves it out means the same operation.
@@ -126,7 +146,8 @@ export type RenderUiArgs = z.infer<typeof renderUiArgsSchema>;
 
 // What render_ui answers: the screen is shown, or why not (the model gets the reasons and rebuilds it).
 export const renderUiResultSchema = z.union([
-  z.object({ shown: z.literal(true), surfaceId: z.string() }),
+  // `note` — for the model only: what to write after the screen (core/widgets/tools.ts).
+  z.object({ shown: z.literal(true), surfaceId: z.string(), note: z.string() }),
   z.object({ error: z.literal(true), code: z.string(), message: z.string() }),
 ]);
 export type RenderUiResult = z.infer<typeof renderUiResultSchema>;

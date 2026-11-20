@@ -22,6 +22,10 @@ const componentsInput = z.object({
 const COMPONENTS_DESCRIPTION = 'Подробное описание компонентов виджета: поля, события, правила записи экрана для render_ui. Вызывай перед render_ui, один раз на экран, сразу со всеми компонентами, которые понадобятся.';
 const RENDER_DESCRIPTION = 'Показать сотруднику виджет — экран из компонентов. Один вызов — один экран: операции A2UI 1.0 по описанию из ui_components. Новый экран начинается с createSurface; экран, показанный раньше в этом ответе, меняется на месте вызовом, который начинается с updateComponents или updateDataModel для его surfaceId. Сервер проверяет экран и возвращает ошибки, если они есть.';
 
+// The one field of a result the agent follows (the core's rules, «Чьи указания»): a constant text, never the screen's
+// words. Without it the agent retold the screen in words after 3 screens of 4 (M11, 20.11).
+export const SHOWN_NOTE = 'Экран уже на виду у сотрудника. Не пересказывай текстом то, что на нём видно, — ни цифр, ни строк, ни полей; если нужно, допиши одну-две фразы вывода или следующего шага.';
+
 // The model fixes a screen by these lines; it is told to answer in text after two failures (the core's rules).
 const REBUILD = 'Исправь это и вызови render_ui заново, целиком. После двух неудач ответь сотруднику текстом.';
 
@@ -63,7 +67,7 @@ export function createWidgetTools(): Record<string, AnyTool> {
       const verdict = checkScreen(operations, shownIn(context?.requestContext));
       if (verdict.ok) {
         logEvent('info', 'widget_shown', { operations: operations.length, created: verdict.created });
-        return Promise.resolve({ shown: true, surfaceId: verdict.surfaceId });
+        return Promise.resolve({ shown: true, surfaceId: verdict.surfaceId, note: SHOWN_NOTE });
       }
       logEvent('info', 'widget_refused', { operations: operations.length, problems: verdict.problems.length });
       return Promise.resolve({ error: true, code: 'APP_WIDGET_INVALID', message: `Экран не собран:\n- ${verdict.problems.join('\n- ')}\n${REBUILD}` } as const);

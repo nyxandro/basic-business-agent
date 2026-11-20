@@ -31,6 +31,7 @@ import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { MEMORY_ACTIONS } from '../memory/tools.ts';
 import { CONVERSATIONS_ACTIONS } from '../history/tool.ts';
+import { withoutWidgetEnvelope } from '../widgets/envelope.ts';
 
 export const DRAFT_HEADER = 'x-bba-draft';
 const INFO_PATH = '/info';
@@ -153,7 +154,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       const naming = await startNaming(deps.naming, run, newMessageOf(input));
       // Messages whose shown words a repeated model call dropped, for the chat (spec, 9.1).
       const discarded: string[] = [];
-      const res = await deps.copilot.handle(c.req.raw, { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId), onAgentEnd: () => settleRun(deps, run) });
+      const res = await deps.copilot.handle(withoutWidgetEnvelope(c.req.raw, input), { kind: 'run', run, onMessageDiscarded: (messageId) => discarded.push(messageId), onAgentEnd: () => settleRun(deps, run) });
       // The cancelled call shows the arguments as the model sent them (the database keeps a summary).
       const sent = run.declinedCalls.length > 0 ? await toolCallArgsOf(deps.memory, run.threadId, run.resourceId) : new Map<string, unknown>();
       const afterStart = run.declinedCalls.flatMap((d) => declinedCallEvents({ ...d, args: sent.get(d.toolCallId) ?? d.args }));

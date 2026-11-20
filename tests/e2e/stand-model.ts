@@ -1,32 +1,8 @@
 // The stand-in model of the browser stand: answers by keywords of the last message, so every
-// block of the catalog, the confirmation card and an answer that broke can be seen in a real browser.
+// widget, the confirmation card and an answer that broke can be seen in a real browser.
 import type { FakeRequest, FakeTurn, GatewayStreamError } from '../../core/models/fake-openai.ts';
-
-const TABLE = {
-  title: 'Сделки без движения',
-  columns: [
-    { key: 'deal', label: 'Сделка' },
-    { key: 'client', label: 'Клиент' },
-    { key: 'sum', label: 'Сумма, ₽' },
-  ],
-  rows: [
-    { deal: 'Поставка бетона', client: 'ООО «Пример»', sum: 120000 },
-    { deal: 'Аренда крана', client: 'ИП Тестов', sum: 45000 },
-  ],
-};
-
-const CHART = { title: 'Выручка по месяцам', kind: 'bar', labels: ['Сен', 'Окт', 'Ноя'], series: [{ name: 'Выручка', values: [120, 180, 150] }] };
-const CARD = { title: 'Поставка бетона', subtitle: 'ООО «Пример»', fields: [{ label: 'Сумма', value: '120 000 ₽' }, { label: 'Этап', value: 'Переговоры' }] };
-const CHOICE = { question: 'Кому написать первым?', options: [{ value: 'primer', label: 'ООО «Пример»' }, { value: 'testov', label: 'ИП Тестов' }] };
-const FORM = {
-  title: 'Новая заявка',
-  fields: [
-    { name: 'client', label: 'Клиент', kind: 'text', required: true },
-    { name: 'sum', label: 'Сумма', kind: 'number', required: false },
-    { name: 'stage', label: 'Этап', kind: 'select', required: true, options: ['Новая', 'Переговоры'] },
-  ],
-  submitLabel: 'Отправить',
-};
+import { WIDGET_TOOL } from '@bba/contracts';
+import { BROKEN_SCREEN, DEAL_CARD, DEALS_TABLE, NEW_REQUEST_FORM, OFFER_CALCULATOR, REVENUE_CHART, WHOM_FIRST } from './stand-screens.ts';
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -89,6 +65,7 @@ function standModel(req: FakeRequest): FakeTurn {
     if (lastCallName(req)?.endsWith('execute_command')) return call('show_file', { path: STAND_DOCUMENT });
     // The memory of the project or of the person (spec, section 8.26).
     if (lastCallName(req)?.endsWith('_memory')) return { text: /"error":\s*true/.test(result) ? 'Не получилось запомнить.' : 'Запомнил.' };
+    if (lastCallName(req) === WIDGET_TOOL.render) return { text: /"shown":\s*true/.test(result) ? 'Готово, показал выше.' : 'Экран не получился, отвечу текстом: карты складов у меня нет.' };
     if (lastCallName(req) === 'show_file') return { text: /"shown":\s*true/.test(result) ? 'Готово: документ ниже, его можно скачать.' : 'Не получилось сделать документ.' };
     if (/not approved|declin|отклон|отмен/i.test(result)) return { text: 'Хорошо, не отправляю.' };
     if (/waitForAnswer/.test(result)) return { text: 'Жду вашего ответа.' };
@@ -107,14 +84,26 @@ function standModel(req: FakeRequest): FakeTurn {
     if (!tool) return { text: 'У этого стенда нет рабочей папки.' };
     return call(tool, { command: MAKE_DOCUMENT });
   }
-  if (text.includes('таблиц')) return call('show_table', TABLE);
-  if (text.includes('сломан')) return call('show_chart', { kind: 'bar', labels: ['Сен', 'Окт'], series: [{ name: 'Выручка', values: [1] }] });
-  if (text.includes('график')) return call('show_chart', CHART);
-  if (text.includes('карточк')) return call('show_card', CARD);
-  if (text.includes('выбор')) return call('ask_choice', CHOICE);
-  if (text.includes('форм')) return call('ask_form', FORM);
+  const screen = widgetFor(text);
+  if (screen) {
+    // An agent with «Виджеты в чате» switched off has no render_ui (spec, section 8.31).
+    if (!req.tools?.some((x) => x.function.name === WIDGET_TOOL.render)) return { text: 'Виджетов у меня нет, отвечаю текстом: Поставка бетона, ООО «Пример», 120 000 ₽.' };
+    return call(WIDGET_TOOL.render, screen);
+  }
   if (text.includes('почтальон') && req.tools?.some((x) => x.function.name === 'agent-mailer')) return call('agent-mailer', { prompt: 'Отправь письмо клиенту client@example.com' });
   if (text.includes('письм')) return call('mail_send', { to: 'client@example.com', text: 'Добрый день! Напоминаю о встрече.' });
   if (text.includes('сделк')) return call('crm_search', { q: 'без движения' });
-  return { text: `Вы написали: «${text.slice(0, 200)}». Попробуйте слова «таблица», «график», «карточка», «выбор», «форма», «письмо» или «сделки».`, chunkSize: 6, delayMs: 300 };
+  return { text: `Вы написали: «${text.slice(0, 200)}». Попробуйте слова «таблица», «график», «карточка», «выбор», «форма», «калькулятор», «письмо» или «сделки».`, chunkSize: 6, delayMs: 300 };
+}
+
+// The screen of the words of a message, if any.
+function widgetFor(text: string): Record<string, unknown> | null {
+  if (text.includes('калькулятор')) return OFFER_CALCULATOR;
+  if (text.includes('таблиц')) return DEALS_TABLE;
+  if (text.includes('сломан')) return BROKEN_SCREEN;
+  if (text.includes('график')) return REVENUE_CHART;
+  if (text.includes('карточк')) return DEAL_CARD;
+  if (text.includes('выбор')) return WHOM_FIRST;
+  if (text.includes('форм')) return NEW_REQUEST_FORM;
+  return null;
 }
