@@ -11,8 +11,10 @@ import { TurnStateContext, useUnfinished } from '../chat/call-progress.ts';
 import { parseToolResult } from '../chat/tool-result.ts';
 import { Preparing, type CallProps } from '../genui/CatalogBlock.tsx';
 import { ru } from '../i18n/ru.ts';
+import { answerOf } from '../genui/answer.ts';
 import { BusyPress } from './busy.tsx';
 import { changesAScreen, drawableOperations, laterChanges } from './operations.ts';
+import { chosenWords, replyHead, WidgetReplyContext } from './reply.ts';
 import styles from './widgets.module.css';
 
 export function WidgetCall({ call }: { call: CallProps }) {
@@ -30,6 +32,9 @@ export function WidgetCall({ call }: { call: CallProps }) {
     return { ...own, ops: [...own.ops, ...laterChanges(messages, call.toolCallId, own.written, own.surfaceId)] };
   }, [own, messages, call.toolCallId, call.status]);
   const threadId = agent.threadId;
+  // The person's answer to the widget: what it marks and makes inactive (reply.ts).
+  const reply = answerOf(messages, call.toolCallId);
+  const replied = useMemo(() => (reply === null ? { answered: false, chosen: new Set<string>() } : { answered: true, chosen: chosenWords(operations.ops, replyHead(reply)) }), [reply, operations.ops]);
   // A press CopilotKit did not send while the agent was answering (busy.tsx): a line says to press again, until the
   // answer is done (state adjusted while rendering, as React advises for a change of a value).
   const [pressedBusy, setPressedBusy] = useState(false);
@@ -63,7 +68,9 @@ export function WidgetCall({ call }: { call: CallProps }) {
   return (
     <div className={styles.widget} style={{ '--broken-part': JSON.stringify(ru.widgets.brokenPart) } as CSSProperties}>
       <BusyPress.Provider value={reportBusy}>
-        <GenerativeUISurface id={target} fallback={<Preparing />} autoScroll={false} />
+        <WidgetReplyContext.Provider value={replied}>
+          <GenerativeUISurface id={target} fallback={<Preparing />} autoScroll={false} />
+        </WidgetReplyContext.Provider>
       </BusyPress.Provider>
       {pressedBusy && running && (
         <p className={styles.note} role="status">

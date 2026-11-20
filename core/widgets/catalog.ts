@@ -4,6 +4,7 @@
 import { WIDGET_CATALOG_ID, WIDGET_CHAT_TARGET, WIDGET_COMPONENTS, WIDGET_OMITTED } from '@bba/contracts';
 import { buildCatalogManifest } from '@copilotkit/core/generative-ui';
 import { A2UI_CHILD_LIST_REF, A2UI_COMPONENT_ID_REF, buildGenerativeUIPrompt, createGenerativeUI, standardDeclarations, STANDARD_CATALOG_ID, validateOperation, withComponents, withStandardParameterOrder } from '@copilotkit/shared/generative-ui';
+import { engineProblems } from './engine.ts';
 import { changedData, valueProblems } from './values.ts';
 
 type Manifest = ReturnType<typeof buildCatalogManifest>;
@@ -11,7 +12,7 @@ type Manifest = ReturnType<typeof buildCatalogManifest>;
 // The server never draws: each component needs a value only so that CopilotKit builds the catalog.
 const NO_COMPONENT = (): null => null;
 
-function buildManifest(): Manifest {
+function buildUi() {
   const names = Object.keys(standardDeclarations) as (keyof typeof standardDeclarations)[];
   const missing = WIDGET_COMPONENTS.filter((name) => !(name in standardDeclarations));
   if (missing.length > 0) throw new Error(`APP_CONFIG_INVALID: CopilotKit has no standard components ${missing.join(', ')}`);
@@ -19,12 +20,14 @@ function buildManifest(): Manifest {
   // The same shape as the browser's catalog (web/src/widgets/catalog.ts): CopilotKit's standard catalog without the
   // components the agent does not get, and ours on top of it — so a screen may name either catalog.
   const standard = createGenerativeUI({ id: STANDARD_CATALOG_ID, components: withComponents(withStandardParameterOrder(standardDeclarations), components) });
-  return buildCatalogManifest(createGenerativeUI({ id: WIDGET_CATALOG_ID, extends: [standard.omit(WIDGET_OMITTED)], components: {} }));
+  return createGenerativeUI({ id: WIDGET_CATALOG_ID, extends: [standard.omit(WIDGET_OMITTED)], components: {} });
 }
 
+let ui: ReturnType<typeof buildUi> | null = null;
 let manifest: Manifest | null = null;
+const widgetUi = () => (ui ??= buildUi());
 export function widgetManifest(): Manifest {
-  manifest ??= buildManifest();
+  manifest ??= buildCatalogManifest(widgetUi());
   return manifest;
 }
 
@@ -198,7 +201,9 @@ export function checkScreen(operations: readonly Op[], shown: ShownScreens): Scr
       partsHint = '';
     }
   }
-  // Last, what the person would see at once: every value computed with the data of the screen.
+  // Then what the browser's manager would drop, and last what the person would see at once: every value computed
+  // with the data of the screen.
+  if (problems.length === 0) problems.push(...engineProblems(widgetUi(), surfaceId, operations, before && { components: before.components.values(), data: before.data }));
   if (problems.length === 0) problems.push(...valueProblems(ids, data, (component) => childIds(component, declaredOf(full, component))));
   if (problems.length > 0) return limited(problems);
   shown.set(surfaceId, { components: ids, data });

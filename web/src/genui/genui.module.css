@@ -108,6 +108,19 @@
   font-size: 11px;
 }
 
+/* The value over a bar; the last one — the month in question — in the colour of the text. */
+.barValue,
+.barValueLast {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.barValueLast {
+  fill: var(--text);
+  font-weight: 600;
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;

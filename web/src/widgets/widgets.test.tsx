@@ -13,6 +13,7 @@ import { widgetsUI } from './catalog.ts';
 import { drawableOperations, laterChanges } from './operations.ts';
 import { BUSY_CODE, BusyPress, useBusyGuard } from './busy.tsx';
 import { widgetOverrides } from './overrides.tsx';
+import { chosenWords, replyHead, WidgetReplyContext } from './reply.ts';
 import { WidgetCall } from './WidgetCall.tsx';
 
 const ingest = vi.fn();
@@ -22,9 +23,12 @@ let running = false;
 // The engine's answer to a press of the stub: «busy» while the agent answers, sent once it is done.
 const pressed = vi.fn((_args: unknown) => (running ? BUSY : { ok: true as const, result: undefined }));
 
+const addMessage = vi.fn();
+const runAgent = vi.fn(() => Promise.resolve());
 vi.mock('@copilotkit/react-core', async (original) => ({
   ...(await original<typeof import('@copilotkit/react-core')>()),
-  useAgent: () => ({ agent: { threadId: 'thread-1', agentId: 'sales', messages, isRunning: running } }),
+  useAgent: () => ({ agent: { threadId: 'thread-1', agentId: 'sales', messages, isRunning: running, addMessage } }),
+  useCopilotKit: () => ({ copilotkit: { runAgent } }),
 }));
 
 vi.mock('@copilotkit/react-core/generative-ui', async (original) => ({
@@ -55,6 +59,8 @@ beforeEach(() => {
   messages = [];
   running = false;
   pressed.mockClear();
+  addMessage.mockClear();
+  runAgent.mockClear();
 });
 afterEach(() => {
   ingest.mockClear();
@@ -225,10 +231,100 @@ describe('our components of the mockup', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  // Owner 20.11 («выбранные кнопки никак не помечаются»), as a choice of the chat (16.11): the control that sent the
+  // answer is marked by colour and a tick, the others that send are inactive; what works in place keeps working.
+  it('mark the button that sent the answer and make the others that send inactive', () => {
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const onClick = vi.fn();
+    render(
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сравнить с планом']) }}>
+        <Button label="Сравнить с планом" onClick={onClick} />
+        <Button label="Разложить по менеджерам" onClick={onClick} />
+        <Button label="Открыть сайт" href="https://example.com" />
+      </WidgetReplyContext.Provider>,
+    );
+    const chosen = screen.getByRole('button', { name: 'Сравнить с планом, выбрано' });
+    expect(chosen).toHaveAttribute('data-chosen', 'true');
+    expect(chosen).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Разложить по менеджерам' })).toBeDisabled();
+    // A link opens what it opens: it sends no message.
+    expect(screen.getByRole('button', { name: 'Открыть сайт' })).toBeEnabled();
+  });
+
+  it('send a follow-up as the person’s message, then mark it and make the pills inactive', async () => {
+    const FollowUp = widgetOverrides.FollowUp.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const items = ['Сравнить с планом', { label: 'Сделать слайд', message: 'Сделай слайд для отчёта' }];
+    const view = render(<FollowUp items={items} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Сделать слайд' }));
+    expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', content: 'Сделай слайд для отчёта' }));
+    expect(runAgent).toHaveBeenCalledOnce();
+    view.rerender(
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сделай слайд для отчёта']) }}>
+        <FollowUp items={items} />
+      </WidgetReplyContext.Provider>,
+    );
+    expect(screen.getByRole('button', { name: 'Сделать слайд, выбрано' })).toHaveAttribute('data-chosen', 'true');
+    expect(screen.getByRole('button', { name: 'Сравнить с планом' })).toBeDisabled();
+  });
+
+  it('do not send a follow-up while the agent answers, and say so', async () => {
+    running = true;
+    const report = vi.fn();
+    const FollowUp = widgetOverrides.FollowUp.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(
+      <BusyPress.Provider value={report}>
+        <FollowUp items={['Сравнить с планом']} />
+      </BusyPress.Provider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Сравнить с планом' }));
+    expect(addMessage).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledOnce();
+  });
+
+  it('draw a card of the mockup: a plan with its price, a client in a row with its letters, the chosen action marked', () => {
+    draw('EntityCard', { title: 'Команда', subtitle: 'до 30 сотрудников', meta: '2 900 ₽ / мес', description: 'CRM и почта', badge: { label: 'Хит', color: 'success' }, actions: [{ label: 'Выбрать' }], onAction: vi.fn() });
+    expect(screen.getByText('2 900 ₽ / мес')).toBeInTheDocument();
+    expect(screen.getByText('Хит')).toBeInTheDocument();
+    draw('EntityCard', { title: 'ООО «Стройресурс»', layout: 'horizontal' });
+    expect(screen.getByText('С')).toBeInTheDocument();
+    const Card = widgetOverrides.EntityCard.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Выбрать']) }}>
+        <Card title="Старт" actions={[{ label: 'Выбрать' }, { label: 'Сравнить' }]} onAction={vi.fn()} />
+      </WidgetReplyContext.Provider>,
+    );
+    expect(screen.getByRole('button', { name: 'Выбрать, выбрано' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Сравнить' })).toBeDisabled();
+  });
+
   it('show a picture of another site as a link to open', () => {
     draw('Image', { url: 'https://example.com/photo.png' });
     expect(screen.getByRole('link', { name: 'Картинка: example.com/photo.png' })).toHaveAttribute('href', 'https://example.com/photo.png');
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
+
+describe('the answer to a widget', () => {
+  it('finds the controls whose press sent it: by their words, by a message of their own, a form by its submit button', () => {
+    const ops = [
+      {
+        version: '1.0',
+        createSurface: {
+          surfaceId: 'kp',
+          components: [
+            { id: 'root', component: 'Column', children: ['plan', 'form'] },
+            { id: 'plan', component: 'Button', label: 'Сравнить с планом', onClick: { event: { name: 'plan', userMessage: 'Сравни с планом' } } },
+            { id: 'form', component: 'Form', children: ['inn', 'send'], onSubmit: { event: { name: 'submit', userMessage: 'Заявка' } } },
+            { id: 'inn', component: 'TextField', label: 'ИНН' },
+            { id: 'send', component: 'Button', label: 'Отправить заявку', submit: true },
+          ],
+        },
+      },
+    ];
+    expect(replyHead('Заявка\n\ninn: 5406012345')).toBe('Заявка');
+    expect([...chosenWords(ops, 'Сравни с планом')]).toEqual(['Сравни с планом', 'Сравнить с планом']);
+    expect([...chosenWords(ops, 'Заявка')]).toEqual(['Заявка', 'Отправить заявку']);
+    expect([...chosenWords(ops, 'Что-то своё')]).toEqual(['Что-то своё']);
   });
 });
 

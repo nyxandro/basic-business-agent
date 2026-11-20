@@ -415,3 +415,281 @@
 .widget :global([data-a2ui-citation]) img {
   display: none;
 }
+
+/* EntityCard (mockup «набор компонентов», № 68): a card of a client, a product, a plan. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cardGlass {
+  gap: 8px;
+  padding: 16px;
+}
+
+.cardRow {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cardClickable {
+  cursor: pointer;
+}
+
+.cardClickable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring-strong);
+}
+
+.cardBody {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card:not(.cardRow) .cardBody,
+.cardGlass:not(.cardRow) .cardBody {
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cardBadge {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badgeSuccess {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.badgeWarning {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badgeDanger {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.badgeInfo {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.cardMuted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cardGlass .cardMuted {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.cardMeta {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardRow .cardMeta {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.cardText {
+  font-size: 13px;
+}
+
+.cardStars {
+  color: var(--warn);
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.cardStarsOff {
+  color: var(--off);
+}
+
+.cardImage {
+  width: 100%;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.cardAvatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.cardInitials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.cardActionsSide {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: center;
+  gap: 8px;
+}
+
+.cardAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cardAction:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.cardActionMain {
+  border-color: var(--acc);
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+.cardActionMain:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--acc), #000 10%);
+}
+
+.cardAction:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cardAction:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring-strong);
+}
+
+/* FollowUp (№ 67): pills at the end of a screen. */
+.followUps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.followUpsTitle {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.followUpRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.followUp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.followUp:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.followUp:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.followUp:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring-strong);
+}
+
+/* The control the person pressed (owner 16.11 and 20.11): the accent frame and a tick, as a choice of the chat. */
+.widget .chosen,
+.chosen {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  color: var(--acc-text);
+  font-weight: 500;
+  opacity: 1;
+}
+
+.widget .glassMain.chosen {
+  background: #ffffff;
+  color: color-mix(in oklab, var(--acc), #0b0820 18%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+/* A card standing upright: its buttons share its width (the plans of the mockup: «Выбрать» across the card). */
+.card:not(.cardRow) .cardActions > *,
+.cardGlass:not(.cardRow) .cardActions > * {
+  flex: 1 1 auto;
+}

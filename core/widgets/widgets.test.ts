@@ -2,7 +2,7 @@
 // чате» on, a screen is checked against the catalog before the person sees it, and the descriptions of components of
 // earlier turns are not sent to the model again.
 import { randomUUID } from 'node:crypto';
-import { WIDGET_CATALOG_ID, WIDGET_COMPONENTS, WIDGET_TOOL } from '@bba/contracts';
+import { operationsOf, WIDGET_CATALOG_ID, WIDGET_COMPONENTS, WIDGET_TOOL } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { checkScreen, componentIndex, componentsGuide, widgetManifest, type ShownScreens } from './catalog.ts';
@@ -137,6 +137,21 @@ describe('the catalog of widgets', () => {
     expect(performance.now() - started).toBeLessThan(500);
   });
 
+  // Owner 20.11 («отступы отсутствуют»; the row of key figures was not drawn): the model wrote gaps as words and
+  // `wrap: true`. Words of spacing and a yes/no of wrapping are read as CopilotKit means them; anything else the
+  // browser's engine would drop is refused by the same engine on the server.
+  it('reads gaps written as words and wrap as yes or no, and refuses what the engine of the browser would drop', () => {
+    const row = (extra: Record<string, unknown>) => [surface([{ id: 'root', component: 'Row', children: ['a'], ...extra }, { id: 'a', component: 'Text', text: 'А' }])];
+    const read = operationsOf({ operations: row({ gap: 'md', padding: 'lg', wrap: true }) });
+    expect((read[0]!.createSurface as { components: Record<string, unknown>[] }).components[0]).toMatchObject({ gap: 3, padding: 4, wrap: 'wrap' });
+    expect(checkScreen(read, new Map())).toMatchObject({ ok: true });
+    const refused = checkScreen(operationsOf({ operations: row({ wrap: 'yes' }) }), new Map());
+    expect(refused.ok ? '' : refused.problems.join('\n')).toMatch(/браузер не покажет: component "root": wrap/);
+    // A screen whose components come after its createSurface is checked as the browser draws it.
+    const later = [{ version: '1.0', createSurface: { surfaceId: 'kp', dataModel: { seats: 1 } } }, { version: '1.0', updateComponents: { surfaceId: 'kp', components: [{ id: 'root', component: 'Text', text: 'А' }] } }];
+    expect(checkScreen(later, new Map())).toMatchObject({ ok: true });
+  });
+
   it('changes a screen of the same run in place, and refuses a second screen of the same name', () => {
     const shown: ShownScreens = new Map();
     expect(checkScreen(CALCULATOR, shown)).toMatchObject({ ok: true, created: true });
@@ -144,6 +159,9 @@ describe('the catalog of widgets', () => {
     expect(checkScreen([update], shown)).toEqual({ ok: true, surfaceId: 'kp', created: false });
     expect(checkScreen([{ version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 20 } }], shown)).toMatchObject({ ok: true, created: false });
     // A child of a change must be on the screen as it is after the change.
+    // A change the browser's manager would drop, on the screen as it is now.
+    const dropped = checkScreen([{ version: '1.0', updateComponents: { surfaceId: 'kp', components: [{ id: 'note', component: 'Caption', text: 'Скидка 5%', size: 'huge' }] } }], shown);
+    expect(dropped.ok ? '' : dropped.problems.join('\n')).toMatch(/браузер не покажет: component "note"/);
     const broken = checkScreen([{ version: '1.0', updateComponents: { surfaceId: 'kp', components: [{ id: 'root', component: 'Card', children: ['gone'] }] } }], shown);
     expect(broken.ok ? '' : broken.problems.join('\n')).toMatch(/«gone»/);
     const again = checkScreen(CALCULATOR, shown);

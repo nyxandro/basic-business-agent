@@ -701,6 +701,8 @@ export const ru = {
     brokenPart: 'Эта часть экрана не показалась',
     // A press of a widget CopilotKit did not send because the agent was still answering.
     busy: 'Агент ещё отвечает — нажмите ещё раз, когда он закончит',
+    // The stars of a card, for a screen reader.
+    rating: (value: number, count: number | undefined) => `Оценка ${value} из 5${count === undefined ? '' : `, отзывов: ${count}`}`,
   },
   genui: {
     broken: 'Не удалось показать данные',

@@ -113,7 +113,8 @@ function widgetComponentsSummary(status: ToolStatus, result: string | undefined,
   const outcome = parseToolResult(result);
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.toolFailed(ru.chat.widgetComponentsLoading.replace('…', '')), code: outcome.code };
   const names = (parameters as { names?: unknown } | null)?.names;
-  return { state: 'done', text: ru.chat.widgetComponents(Array.isArray(names) ? names.length : 0), readOnly: true, count: null, value: null };
+  // A step of drawing, not a reading of the person's data: no «только чтение» (owner 20.11).
+  return { state: 'done', text: ru.chat.widgetComponents(Array.isArray(names) ? names.length : 0), readOnly: false, count: null, value: null };
 }
 
 // `parameters` — what the call was asked, for the lines that name it.

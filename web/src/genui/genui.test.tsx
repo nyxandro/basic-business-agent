@@ -44,6 +44,18 @@ describe('catalog blocks', () => {
     expect(screen.getByText('Юрлица')).toBeInTheDocument();
   });
 
+  // Mockup «Экраны агента в разговоре» (owner 20.11): the value over each bar of a chart of one series, the last one
+  // set apart; a chart of several series or many bars keeps them in its hints.
+  it('writes the value over each bar of one series', () => {
+    const { container, unmount } = render(<ChartBlockView block={{ kind: 'bar', title: 'Выручка, млн ₽', labels: ['Сен', 'Окт'], series: [{ name: 'Выручка', values: [10.4, 12.4] }] }} />);
+    const values = [...container.querySelectorAll('[data-bar-value]')].map((t) => t.textContent);
+    expect(values).toEqual(['10,4', '12,4']);
+    expect(container.querySelector('[data-bar-value="last"]')).toHaveTextContent('12,4');
+    unmount();
+    const many = render(<ChartBlockView block={{ kind: 'bar', labels: ['А', 'Б'], series: [{ name: 'Раз', values: [1, 2] }, { name: 'Два', values: [3, 4] }] }} />);
+    expect(many.container.querySelectorAll('[data-bar-value]')).toHaveLength(0);
+  });
+
   it('folds the smallest slices of a pie into «Другое» past six colours', () => {
     const labels = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
     const slices = pieSlices({ kind: 'pie', labels, series: [{ name: 'Доля', values: [8, 7, 6, 5, 4, 3, 2, 1] }] });

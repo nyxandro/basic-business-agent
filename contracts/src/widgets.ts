@@ -136,11 +136,38 @@ export const renderUiArgsSchema = z.object({
 export const A2UI_VERSION_MARK = '1.0';
 export const withA2uiVersion = (op: Record<string, unknown>): Record<string, unknown> => (op.version === undefined ? { version: A2UI_VERSION_MARK, ...op } : op);
 
+// Spacing is a number of 4 px steps or a CSS length in CopilotKit; the model writes it as the words of its sizes
+// («md»), which the browser drops — the screen loses every gap (owner 20.11, «отступы отсутствуют»). The words are
+// read as steps of the mockup's rhythm. `wrap` written as yes or no means wrapping or not. Only how the screen looks.
+const SPACING_KEYS = ['gap', 'rowGap', 'columnGap', 'padding'];
+const SPACING_STEPS: Record<string, number> = { none: 0, xs: 1, sm: 2, md: 3, lg: 4, xl: 6, '2xl': 8 };
+
+function readComponent(component: unknown): unknown {
+  if (!component || typeof component !== 'object' || Array.isArray(component)) return component;
+  const out: Record<string, unknown> = { ...(component as Record<string, unknown>) };
+  for (const key of SPACING_KEYS) {
+    const value = out[key];
+    if (typeof value === 'string' && value in SPACING_STEPS) out[key] = SPACING_STEPS[value];
+  }
+  if (typeof out.wrap === 'boolean') out.wrap = out.wrap ? 'wrap' : 'nowrap';
+  return out;
+}
+
+function readOperation(op: Record<string, unknown>): Record<string, unknown> {
+  const marked = withA2uiVersion(op);
+  for (const kind of ['createSurface', 'updateComponents']) {
+    const body = marked[kind];
+    if (!body || typeof body !== 'object' || !Array.isArray((body as { components?: unknown }).components)) continue;
+    return { ...marked, [kind]: { ...body, components: (body as { components: unknown[] }).components.map(readComponent) } };
+  }
+  return marked;
+}
+
 // The operations of a call as the server checked them: the list (also when written as a JSON string), each with its
-// version. The browser draws by the same reading.
+// version, spacing and wrapping read as above. The browser draws by the same reading.
 export function operationsOf(parameters: unknown): Record<string, unknown>[] {
   const raw = parameters && typeof parameters === 'object' ? listFromText((parameters as { operations?: unknown }).operations) : undefined;
-  return Array.isArray(raw) ? raw.filter((op): op is Record<string, unknown> => !!op && typeof op === 'object' && !Array.isArray(op)).map(withA2uiVersion) : [];
+  return Array.isArray(raw) ? raw.filter((op): op is Record<string, unknown> => !!op && typeof op === 'object' && !Array.isArray(op)).map(readOperation) : [];
 }
 export type RenderUiArgs = z.infer<typeof renderUiArgsSchema>;
 

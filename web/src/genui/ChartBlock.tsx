@@ -31,6 +31,11 @@ function useDrawingWidth(): [React.RefObject<HTMLDivElement | null>, number] {
 }
 const HEIGHT = 220;
 const PAD = { top: 12, right: 8, bottom: 28, left: 48 };
+// The value over each bar (mockup «Экраны агента в разговоре»): for a chart of one series and few bars, with room for it.
+const VALUE_BARS_MAX = 12;
+const VALUE_ROOM = 14;
+const writesValues = (block: ChartBlock): boolean => block.kind === 'bar' && block.series.length === 1 && block.labels.length <= VALUE_BARS_MAX;
+const padOf = (block: ChartBlock) => (writesValues(block) ? { ...PAD, top: PAD.top + VALUE_ROOM } : PAD);
 const PIE_RADIUS = 96;
 const PIE_SLICES = 6;
 const BAR_RADIUS = 4;
@@ -62,6 +67,7 @@ function barPath(x: number, y: number, w: number, h: number): string {
 }
 
 function Axes({ block, max, width }: { block: ChartBlock; max: number; width: number }) {
+  const PAD = padOf(block);
   const innerH = HEIGHT - PAD.top - PAD.bottom;
   const step = (width - PAD.left - PAD.right) / block.labels.length;
   // Long label lists keep every n-th label so they do not run into each other: about one label per 48 px.
@@ -88,6 +94,8 @@ function Axes({ block, max, width }: { block: ChartBlock; max: number; width: nu
 }
 
 function BarsOrLines({ block, width }: { block: ChartBlock; width: number }) {
+  const PAD = padOf(block);
+  const valued = writesValues(block);
   const max = Math.max(1, ...block.series.flatMap((s) => s.values));
   const innerH = HEIGHT - PAD.top - PAD.bottom;
   const step = (width - PAD.left - PAD.right) / block.labels.length;
@@ -115,10 +123,18 @@ function BarsOrLines({ block, width }: { block: ChartBlock; width: number }) {
         return s.values.map((v, i) => {
           const x = PAD.left + step * i + (step - group) / 2 + (barW + BAR_GAP) * si;
           const h = PAD.top + innerH - y(v);
+          const last = i === s.values.length - 1;
           return (
-            <path key={`${si}-${i}`} d={barPath(x, y(v), barW, h)} fill={color}>
-              <title>{`${s.name}, ${block.labels[i]}: ${formatValue(v)}`}</title>
-            </path>
+            <g key={`${si}-${i}`}>
+              <path d={barPath(x, y(v), barW, h)} fill={color}>
+                <title>{`${s.name}, ${block.labels[i]}: ${formatValue(v)}`}</title>
+              </path>
+              {valued && (
+                <text x={x + barW / 2} y={y(v) - 5} textAnchor="middle" className={last ? styles.barValueLast : styles.barValue} data-bar-value={last ? 'last' : ''}>
+                  {formatValue(v)}
+                </text>
+              )}
+            </g>
           );
         });
       })}

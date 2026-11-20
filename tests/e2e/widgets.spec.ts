@@ -42,6 +42,11 @@ test('a choice and a form send what the person picked and filled', async ({ brow
   await answered(page);
   await page.getByRole('button', { name: 'ИП Тестов' }).click();
   await expect(page.getByText(/Вы написали: «пишем первым: ип тестов/)).toBeVisible();
+  // As a choice of the chat (owner 16.11, 20.11): the pressed one is marked, the other is inactive — after a reload too.
+  await expect(page.getByRole('button', { name: /^ИП Тестов\s*, выбрано$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ООО «Пример»' })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^ИП Тестов\s*, выбрано$/ })).toBeVisible();
 
   await say(page, 'Нужна форма заявки');
   await expect(page.getByText('Готово, показал выше.').nth(1)).toBeVisible();
