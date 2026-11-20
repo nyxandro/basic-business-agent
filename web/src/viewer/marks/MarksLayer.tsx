@@ -193,7 +193,8 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
     fingers.current.delete(event.pointerId);
   };
 
-  const withMarks = new Set(marks.marks.map((m) => m.page));
+  const pending = marks.pending;
+  const withMarks = new Set([...marks.marks, ...(pending ? [pending] : [])].map((m) => m.page));
   // While a tool is chosen every page is a surface to draw on; otherwise only pages with marks have a layer.
   const shown = pages.filter((p) => tool || withMarks.has(p.page) || drawing?.page.page === p.page);
   return (
@@ -225,6 +226,7 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
               />
             ) : null,
           )}
+          {pending && pending.page === box.page ? <MarkShape mark={pending} number={marks.marks.length + 1} box={box} selected={marks.selected === pending.id} /> : null}
           {drawing && drawing.page.page === box.page ? <MarkShape mark={drawing} number={null} box={box} /> : null}
         </svg>
       ))}

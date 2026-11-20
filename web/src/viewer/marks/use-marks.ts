@@ -19,7 +19,11 @@ export interface MarksSession extends MarksTarget, MarksChannel {
 export type MarksNotice = 'changed' | 'noStorage';
 
 export interface MarksController {
+  // Saved marks: each with its comment, in the list and in the browser.
   marks: readonly Mark[];
+  // The mark just drawn, before its comment and «Готово» (owner, 20.11): on the page with its window, not in the list,
+  // not kept; gone when its window closes without «Готово» or the next mark begins.
+  pending: Mark | null;
   paged: boolean;
   // «Пометки» pressed: the tools and the list are shown, the marks answer a press.
   active: boolean;
@@ -33,8 +37,10 @@ export interface MarksController {
   setTool: (tool: MarkTool | null) => void;
   // A new mark opens its window; the tool is let go — one figure a choice of the tool (owner, 20.11).
   add: (mark: { page: number; tool: MarkKind; points: Point[]; text?: string }) => void;
-  setComment: (id: string, comment: string) => void;
+  // «Готово»: the comment, never empty, is saved — a new mark goes into the list with it.
+  save: (id: string, comment: string) => void;
   remove: (id: string) => void;
+  // Opens the window of a mark, or closes it (null); a mark not saved goes with its window.
   select: (id: string | null) => void;
   // Scrolls to a mark and opens its window.
   open: (id: string) => void;
@@ -72,6 +78,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
   const [active, setActive] = useState(start.marks.length > 0 || start.notice === 'changed');
   const [tool, setTool] = useState<MarkTool | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pending, setPending] = useState<Mark | null>(null);
   const [notice, setNotice] = useState<MarksNotice | null>(start.notice);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
@@ -100,8 +107,15 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
     if (!storeDraft(key, { version: session.version, marks: next })) setNotice('noStorage');
   };
 
+  // Another window, another tool, «Пометки» off: the mark not saved goes.
+  const choose = (id: string | null) => {
+    if (pending && pending.id !== id) setPending(null);
+    setSelected(id);
+  };
+
   return {
     marks,
+    pending,
     paged: session.paged,
     active,
     tool,
@@ -113,31 +127,40 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
     toggle: () => {
       setActive((on) => !on);
       setTool(null);
-      setSelected(null);
+      choose(null);
     },
     setTool: (next) => {
       if (sending) return;
       setTool(next);
-      setSelected(null);
+      choose(null);
     },
     add: (mark) => {
       if (sending) return;
       const id = crypto.randomUUID();
-      change([...marks, { id, comment: '', ...mark }]);
+      setPending({ id, comment: '', ...mark });
       setTool(null);
       setSelected(id);
     },
-    setComment: (id, comment) => change(marks.map((m) => (m.id === id ? { ...m, comment } : m))),
+    save: (id, comment) => {
+      const said = comment.trim();
+      if (!said || sending) return;
+      if (pending?.id === id) {
+        change([...marks, { ...pending, comment: said }]);
+        setPending(null);
+      } else change(marks.map((m) => (m.id === id ? { ...m, comment: said } : m)));
+      setSelected(null);
+    },
     remove: (id) => {
-      change(marks.filter((m) => m.id !== id));
+      if (pending?.id === id) setPending(null);
+      else change(marks.filter((m) => m.id !== id));
       setSelected((open) => (open === id ? null : open));
     },
-    select: setSelected,
+    select: choose,
     open: (id) => {
       const mark = marks.find((m) => m.id === id);
       if (!mark || sending) return;
       view.current?.reveal(mark);
-      setSelected(id);
+      choose(id);
     },
     attach,
     send: async () => {
@@ -145,7 +168,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
       if (!document || sending || session.running || marks.length === 0) return;
       setSending(true);
       setError(null);
-      setSelected(null);
+      choose(null);
       setTool(null);
       try {
         // The text under the marks and the picture are made by the browser: a failure here is not the server's.
@@ -184,7 +207,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
     },
     escape: () => {
       if (selected) {
-        setSelected(null);
+        choose(null);
         return true;
       }
       if (tool) {

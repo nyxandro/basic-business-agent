@@ -138,10 +138,16 @@ describe('the marks of the viewer', () => {
     draw(viewer, 1, [60, 80], [300, 200]);
     // One figure a choice of the tool (owner, 20.11).
     expect(within(viewer).getByRole('button', { name: 'Прямоугольник' })).toHaveAttribute('aria-pressed', 'false');
-    expect(within(viewer).getByRole('region', { name: 'Пометки · 1' })).toBeInTheDocument();
     const window1 = within(viewer).getByRole('dialog', { name: 'Пометка 1' });
+    // Not in the list and not kept until it has a comment and «Готово» is pressed (owner, 20.11).
+    expect(within(window1).queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument();
+    expect(within(viewer).queryByRole('region', { name: /^Пометки · / })).not.toBeInTheDocument();
+    expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBeNull();
+    await user.type(within(window1).getByRole('textbox', { name: 'Комментарий к пометке' }), '   ');
+    expect(within(window1).queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument();
     await user.type(within(window1).getByRole('textbox', { name: 'Комментарий к пометке' }), 'срок оплаты 10 дней');
     await user.click(within(window1).getByRole('button', { name: 'Готово' }));
+    expect(within(viewer).getByRole('region', { name: 'Пометки · 1' })).toBeInTheDocument();
     expect(within(viewer).queryByRole('dialog', { name: 'Пометка 1' })).not.toBeInTheDocument();
     const row = within(viewer).getByRole('button', { name: 'Пометка 1' });
     expect(row).toHaveTextContent('1стр. 1срок оплаты 10 дней');
@@ -160,8 +166,20 @@ describe('the marks of the viewer', () => {
     const field = within(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).getByRole('textbox');
     expect(field).toHaveValue('запятая');
     await user.clear(field);
+    // An emptied comment cannot be saved.
+    expect(within(viewer).queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument();
     await user.type(field, 'лишняя запятая');
+    // Changed only by «Готово».
+    expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).toHaveTextContent('запятая');
+    expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).not.toHaveTextContent('лишняя');
+    await user.click(within(viewer).getByRole('button', { name: 'Готово' }));
     expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).toHaveTextContent('лишняя запятая');
+    // Esc leaves the comment as it was.
+    await user.click(within(viewer).getByRole('button', { name: 'Пометка 1' }));
+    await user.type(within(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).getByRole('textbox'), ' и пробел');
+    await user.keyboard('{Escape}');
+    expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).toHaveTextContent(/лишняя запятая$/);
+    await user.click(within(viewer).getByRole('button', { name: 'Пометка 1' }));
     await user.click(within(viewer).getByRole('button', { name: 'Удалить' }));
     expect(within(viewer).queryByRole('button', { name: 'Пометка 1' })).not.toBeInTheDocument();
     expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBeNull();
@@ -312,9 +330,27 @@ describe('the marks of the viewer', () => {
     expect(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(within(viewer).queryByRole('dialog', { name: 'Пометка 1' })).not.toBeInTheDocument();
+    // Not saved — gone with its window.
+    expect(viewer.querySelectorAll('[data-mark-id]')).toHaveLength(0);
     expect(screen.getByRole('dialog', { name: 'Договор.docx' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Договор.docx' })).not.toBeInTheDocument();
+  });
+
+  it('a mark left without «Готово» is gone when the next one is drawn', async () => {
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
+    const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
+    const viewer = await openViewer(user);
+    await user.click(within(viewer).getByRole('button', { name: 'Пометки' }));
+    await user.click(within(viewer).getByRole('button', { name: 'Овал' }));
+    draw(viewer, 1, [60, 80], [300, 200]);
+    await user.type(within(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).getByRole('textbox'), 'не сохраню');
+    await user.click(within(viewer).getByRole('button', { name: 'Прямоугольник' }));
+    expect(viewer.querySelectorAll('[data-mark-id]')).toHaveLength(0);
+    draw(viewer, 1, [100, 300], [400, 400]);
+    expect(viewer.querySelectorAll('[data-mark-id]')).toHaveLength(1);
+    expect(within(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).getByRole('textbox')).toHaveValue('');
+    expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBeNull();
   });
 
   it('the list goes when its last mark is removed', async () => {

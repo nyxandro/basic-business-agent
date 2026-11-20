@@ -183,12 +183,23 @@ function List() {
 // at the bottom of the view across its width.
 export function MarkWindow() {
   const marks = useMarks();
+  const saved = marks?.marks.find((m) => m.id === marks.selected) ?? null;
+  const selected = saved ?? (marks?.pending && marks.pending.id === marks.selected ? marks.pending : null);
+  if (!marks || !selected) return null;
+  // A new mark takes the next number; the window of each mark starts from its own comment.
+  const number = saved ? marks.marks.indexOf(saved) + 1 : marks.marks.length + 1;
+  return <MarkEditor key={selected.id} id={selected.id} comment={selected.comment} number={number} />;
+}
+
+// The comment is the window's own until «Готово»: Esc, another mark or a new one leave the saved comment as it was.
+function MarkEditor({ id, comment, number }: { id: string; comment: string; number: number }) {
+  const marks = useMarks();
   const box = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
-  const selected = marks?.marks.find((m) => m.id === marks.selected) ?? null;
-  const number = selected && marks ? marks.marks.indexOf(selected) + 1 : 0;
-  const id = selected?.id ?? null;
+  const [text, setText] = useState(comment);
+  // An empty comment is not saved (owner, 20.11): no «Готово» without words.
+  const ready = text.trim().length > 0;
 
   // The mark moves with scrolling and scale: the window follows it every frame it is open.
   useLayoutEffect(() => {
@@ -223,11 +234,11 @@ export function MarkWindow() {
     };
   }, [id]);
 
-  if (!marks || !selected) return null;
+  if (!marks) return null;
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
-      marks.select(null);
+      if (ready) marks.save(id, text);
     }
   };
   return (
@@ -246,10 +257,10 @@ export function MarkWindow() {
         ref={field}
         aria-label={ru.marks.commentLabel}
         placeholder={ru.marks.commentPlaceholder}
-        value={selected.comment}
+        value={text}
         maxLength={COMMENT_MAX}
         rows={3}
-        onChange={(event) => marks.setComment(selected.id, event.target.value)}
+        onChange={(event) => setText(event.target.value)}
         onKeyDown={keys}
       />
       <div className={styles.windowActions}>
@@ -258,15 +269,17 @@ export function MarkWindow() {
           size="sm"
           icon="trash"
           onClick={() => {
-            markToSand(selected.id);
-            marks.remove(selected.id);
+            markToSand(id);
+            marks.remove(id);
           }}
         >
           {ru.marks.remove}
         </Button>
-        <Button variant="primary" size="sm" onClick={() => marks.select(null)}>
-          {ru.marks.done}
-        </Button>
+        {ready ? (
+          <Button variant="primary" size="sm" onClick={() => marks.save(id, text)}>
+            {ru.marks.done}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
