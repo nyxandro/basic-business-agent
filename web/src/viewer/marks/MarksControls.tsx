@@ -70,17 +70,18 @@ export function MarksPanel() {
                       <span className={cx(styles.rowText, !first && styles.rowEmpty)}>{first || ru.marks.noComment}</span>
                     </button>
                     {/* Removes at once, from the list and from the page, both turning to sand. */}
-                    <IconButton
-                      icon="x"
-                      size="sm"
-                      label={ru.marks.removeMark(i + 1)}
-                      className={styles.rowRemove}
-                      disabled={marks.sending}
-                      onClick={() => {
-                        markToSand(mark.id);
-                        marks.remove(mark.id);
-                      }}
-                    />
+                    <span className={styles.rowRemove}>
+                      <IconButton
+                        icon="x"
+                        size="sm"
+                        label={ru.marks.removeMark(i + 1)}
+                        disabled={marks.sending}
+                        onClick={() => {
+                          markToSand(mark.id);
+                          marks.remove(mark.id);
+                        }}
+                      />
+                    </span>
                   </li>
                 );
               })}

@@ -2,7 +2,7 @@
 // a picture of marks over each page — not inside the pages: PDF.js clears its pages of everything not its own when
 // the scale changes. With a tool chosen, pages take the pointer: one finger or the mouse draws, two fingers move the
 // pages (and scale them — zoom.ts listens on the scrolled area). Without a tool, text is selected and links open.
-import { useEffect, useEffectEvent, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ru } from '../../i18n/ru.ts';
 import { cx } from '../../ui/Button.tsx';
 import { badgeAt, badgeRadius, clampShare, isMarkTooSmall, markPath, strokeWidth } from './geometry.ts';
@@ -60,13 +60,21 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
   const drawingRef = useRef<Drawing | null>(null);
   // Fingers on the layer: two of them move the pages instead of drawing.
   const fingers = useRef(new Map<number, { x: number; y: number }>());
-  const drawn = useEffectEvent((mark: { page: number; tool: MarkTool; points: Point[] }) => marks?.add(mark));
+  // The latest «add» of the marks, for a drawing that ends after renders since it began.
+  const add = useRef(marks?.add);
+  useLayoutEffect(() => {
+    add.current = marks?.add;
+  });
+  // Stops listening to the pointer of the drawing under way.
+  const stop = useRef<(() => void) | null>(null);
+  useEffect(() => () => stop.current?.(), []);
 
-  useEffect(() => {
-    if (!drawing) return;
+  // The pointer is listened to from the very press: a quick stroke — the press, the moves and the release within one
+  // frame — would end before an effect began to listen, and the drawing would hang.
+  const follow = (pointerId: number) => {
     const move = (event: PointerEvent) => {
       const current = drawingRef.current;
-      if (!current || event.pointerId !== current.pointerId) return;
+      if (!current || event.pointerId !== pointerId) return;
       const point = pointOn(current.surface, event);
       const last = current.points.at(-1)!;
       let next: Point[];
@@ -80,25 +88,27 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
     };
     const end = (event: PointerEvent) => {
       const current = drawingRef.current;
-      if (!current || event.pointerId !== current.pointerId) return;
+      if (!current || event.pointerId !== pointerId) return;
+      stop.current?.();
       drawingRef.current = null;
       setDrawing(null);
       if (event.type === 'pointercancel') return;
-      const points = current.tool === 'pen' ? current.points : [current.points[0]!, current.points.at(-1)!];
+      // The release itself is a point of the line: a stroke quicker than a move ends where the pointer was let go.
+      const release = pointOn(current.surface, event);
+      const points = current.tool === 'pen' ? [...current.points, release] : [current.points[0]!, release];
       if (isMarkTooSmall(points, current.page)) return;
-      drawn({ page: current.page.page, tool: current.tool, points });
+      add.current?.({ page: current.page.page, tool: current.tool, points });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
-    return () => {
+    stop.current = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
+      stop.current = null;
     };
-    // A new drawing starts the listening; its points change through the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawing?.pointerId]);
+  };
 
   if (!marks) return null;
   const { tool, active } = marks;
@@ -111,6 +121,7 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
       fingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       // A second finger: no drawing, the pages move under the two.
       if (fingers.current.size > 1) {
+        stop.current?.();
         drawingRef.current = null;
         setDrawing(null);
         return;
@@ -120,8 +131,10 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
     const page = pages.find((p) => String(p.page) === target?.dataset.page);
     if (!target || !page) return;
     event.preventDefault();
+    stop.current?.();
     drawingRef.current = { pointerId: event.pointerId, page, surface: target, tool, points: [pointOn(target, event)] };
     setDrawing(drawingRef.current);
+    follow(event.pointerId);
   };
   const fingerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const before = fingers.current.get(event.pointerId);

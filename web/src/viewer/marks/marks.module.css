@@ -143,16 +143,19 @@
 }
 
 /* A row and its «×»: the cross shows on hovering and on the keyboard's focus, always on a touch screen (as the
-   rows of conversations of the side panel). */
+   rows of conversations of the side panel). Centred by its holder, not by a transform: a pressed button takes the
+   transform of its press (ui/button.module.css) and would jump from under the pointer. */
 .rowItem {
   position: relative;
 }
 
 .rowRemove {
   position: absolute;
-  top: 50%;
+  top: 0;
   right: 4px;
-  transform: translateY(-50%);
+  bottom: 0;
+  display: flex;
+  align-items: center;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
