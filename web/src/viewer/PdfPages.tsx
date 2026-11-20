@@ -93,6 +93,12 @@ export default function PdfPages({ url, label, zoom, onScale, onReady, onFailure
         measure();
         if (active) onReady();
       });
+      // PDF.js lays every page out at the size of the first one, then gives each its own as it reads it, with no event:
+      // the pages' column changing its size is the sign (a book of Excel sheets, a Word with a landscape part).
+      eventBus.on('pagesloaded', measure);
+      const laidOut = new ResizeObserver(measure);
+      laidOut.observe(container.querySelector('.pdfViewer')!);
+      release.push(() => laidOut.disconnect());
       release.push(attachPinch(container, { read: () => viewer.currentScale, apply: set }));
       const resized = new ResizeObserver(() => {
         if (fitted) fit();

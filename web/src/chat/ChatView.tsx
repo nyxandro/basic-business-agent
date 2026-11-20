@@ -6,7 +6,7 @@
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
@@ -187,13 +187,19 @@ export function ChatView(props: CopilotChatViewProps) {
     onInputChange?.('');
   };
   // A message from outside the input — the marks of the viewer (chat-send.ts): the input, its draft and attachments
-  // stay as they are; nothing goes while the agent answers.
+  // stay as they are; nothing goes while the agent answers. The viewer calls it after the picture of the marks went
+  // up — seconds after the press: it reads the chat as it is then, not as it was at the press.
   const sendText = (text: string): boolean => {
     if (!onSubmitMessage || isRunning) return false;
     if (extras.failure?.broken) extras.keepInterrupted(lastTurnIds(messages));
     submit(text);
     return true;
   };
+  const latestSend = useRef(sendText);
+  useLayoutEffect(() => {
+    latestSend.current = sendText;
+  });
+  const chatSend = useMemo(() => ({ send: (text: string) => latestSend.current(text), running: isRunning }), [isRunning]);
   // While «Ответить заново» waits for the server the button is gone: a second click cannot take out
   // another turn (the server takes out only the question the person sees anyway).
   const [answeringAgain, setAnsweringAgain] = useState(false);
@@ -219,7 +225,7 @@ export function ChatView(props: CopilotChatViewProps) {
   const empty = messages.length === 0;
   return (
     <WebProgressContext value={webProgress}>
-      <ChatSendContext value={{ send: sendText, running: isRunning }}>
+      <ChatSendContext value={chatSend}>
         <div className={styles.view} data-chat-window onDragEnter={drop.onDragEnter}>
           <div
             ref={scroller}

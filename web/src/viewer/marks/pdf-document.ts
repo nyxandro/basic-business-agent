@@ -23,6 +23,8 @@ export function pdfMarksDocument(document: PDFDocumentProxy, viewer: PageViews, 
         const content = await page.getTextContent();
         return { boxes: textBoxes(content.items, viewport), aspect: viewport.height / viewport.width };
       });
+      // A failure is not kept: the next «Отправить агенту» reads the page again.
+      void text.catch(() => texts.delete(number));
       texts.set(number, text);
     }
     return text;

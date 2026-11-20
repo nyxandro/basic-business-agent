@@ -106,6 +106,8 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!tool) return;
     if (event.pointerType === 'touch') {
+      // The first finger of a new touch: fingers lifted off the layer, where it did not hear them, are forgotten.
+      if (event.isPrimary) fingers.current.clear();
       fingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       // A second finger: no drawing, the pages move under the two.
       if (fingers.current.size > 1) {
@@ -123,8 +125,10 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
   };
   const fingerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const before = fingers.current.get(event.pointerId);
-    if (!before || fingers.current.size < 2) return;
+    if (!before) return;
+    // Kept up to date with one finger too: a second one moves the pages from where the first is now.
     fingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (fingers.current.size < 2) return;
     // The middle of the two fingers moves half of what one finger moves.
     scroller()?.scrollBy(-(event.clientX - before.x) / 2, -(event.clientY - before.y) / 2);
   };

@@ -26,6 +26,7 @@ export function MarksToolbar() {
           icon={tool}
           label={ru.marks.tool(tool)}
           aria-pressed={marks.tool === tool}
+          disabled={marks.sending}
           className={cx(styles.tool, marks.tool === tool && styles.toolOn)}
           onClick={() => marks.setTool(marks.tool === tool ? null : tool)}
         />
@@ -36,7 +37,8 @@ export function MarksToolbar() {
 
 export function MarksPanel() {
   const marks = useMarks();
-  const [open, setOpen] = useState(() => !onPhone());
+  // A notice is not folded away on a phone.
+  const [open, setOpen] = useState(() => !onPhone() || marks?.notice != null);
   if (!marks?.active) return null;
   const { marks: list, notice, error, sending, running } = marks;
   return (
@@ -55,7 +57,7 @@ export function MarksPanel() {
                 const first = mark.comment.trim().split('\n')[0];
                 return (
                   <li key={mark.id}>
-                    <button type="button" className={cx(styles.row, marks.selected === mark.id && styles.rowOn)} aria-label={ru.marks.mark(i + 1)} onClick={() => marks.open(mark.id)}>
+                    <button type="button" className={cx(styles.row, marks.selected === mark.id && styles.rowOn)} aria-label={ru.marks.mark(i + 1)} disabled={marks.sending} onClick={() => marks.open(mark.id)}>
                       <span className={styles.number}>{i + 1}</span>
                       {marks.paged ? <span className={styles.rowPage}>{ru.marks.page(mark.page)}</span> : null}
                       <span className={cx(styles.rowText, !first && styles.rowEmpty)}>{first || ru.marks.noComment}</span>

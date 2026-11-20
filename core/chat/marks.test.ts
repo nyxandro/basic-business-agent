@@ -62,6 +62,13 @@ describe('the picture of marks', () => {
     expect(files.files).toEqual([]);
   });
 
+  it('in a conversation without a project lies in «.marks» of the person’s own folder', async () => {
+    const threadId = randomUUID();
+    const res = await send(olga, threadId, 'Счёт.pdf (пометки).jpg', JPEG);
+    expect(res.status).toBe(201);
+    expect(readFileSync(join(contextRoot(t.workspaceRoot, olgaId, null), MARKS_FOLDER, 'Счёт.pdf (пометки).jpg'))).toEqual(Buffer.from(JPEG));
+  });
+
   it('is taken only as a JPEG the model can see', async () => {
     const { threadId, root } = await projectThread('Не картинка');
     for (const [name, bytes] of [

@@ -4,7 +4,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiError, mockServer } from '../../test/fetch-mock.ts';
 import type { ViewerSource } from '../DocumentViewer.tsx';
@@ -49,19 +49,22 @@ const SAVED = { name: 'Договор.docx (пометки).jpg', path: '.marks/
 
 function Page({ source, channel }: { source: ViewerSource; channel: MarksChannel | null }) {
   const { open, viewer } = useDocumentViewer(channel);
+  const location = useLocation();
   return (
     <>
       <button type="button" onClick={() => open(source)}>
         открыть
       </button>
+      <output aria-label="адрес">{location.pathname + location.search}</output>
       {viewer}
     </>
   );
 }
 
 function show(source: ViewerSource, channel: MarksChannel | null) {
+  // A page before the chat: a step «Назад» too many would land there.
   const view = render(
-    <MemoryRouter initialEntries={['/agents/sales?thread=t1']}>
+    <MemoryRouter initialEntries={['/agents/sales', '/agents/sales?thread=t1']} initialIndex={1}>
       <Page source={source} channel={channel} />
     </MemoryRouter>,
   );
@@ -163,7 +166,7 @@ describe('the marks of the viewer', () => {
     localStorage.setItem(draftKey('t1', 'Договор.docx'), JSON.stringify({ version: 'старая', marks: [{ id: 'm1', page: 1, tool: 'pen', points: [{ x: 0.1, y: 0.1 }], comment: '' }] }));
     const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
     const viewer = await openViewer(user);
-    await user.click(within(viewer).getByRole('button', { name: 'Пометки' }));
+    // «Пометки» open by themselves: the marks did not vanish without a word.
     expect(within(viewer).getByText('Документ изменился — прежние пометки к нему убраны')).toBeInTheDocument();
     expect(within(viewer).getByText('Пометки · 0')).toBeInTheDocument();
     expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBeNull();
@@ -233,7 +236,39 @@ describe('the marks of the viewer', () => {
     const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
     const viewer = await openViewer(user);
     await user.click(within(viewer).getByRole('button', { name: 'Отправить агенту' }));
-    expect(await within(viewer).findByRole('alert')).toHaveTextContent('Не получилось подготовить картинку с пометками. Попробуйте ещё раз. APP_MARKS_PICTURE_FAILED');
+    expect(await within(viewer).findByRole('alert')).toHaveTextContent('Не получилось подготовить пометки к отправке. Попробуйте ещё раз. APP_MARKS_PREPARE_FAILED');
+  });
+
+  it('closing the viewer while the marks go sends nothing, keeps the marks and stays in the chat', async () => {
+    let answer: (reply: { status: number; body: unknown }) => void = () => {};
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' }, 'POST /app/api/threads/t1/marks': () => new Promise((resolve) => (answer = resolve)) });
+    const draft = JSON.stringify({ version: '120-1', marks: [{ id: 'm1', page: 1, tool: 'rect', points: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.2 }], comment: 'срок' }] });
+    localStorage.setItem(draftKey('t1', 'Договор.docx'), draft);
+    const send = vi.fn(() => true);
+    const { user } = show(DOCX, { send, running: false });
+    const viewer = await openViewer(user);
+    await user.click(within(viewer).getByRole('button', { name: 'Отправить агенту' }));
+    expect(await within(viewer).findByRole('button', { name: 'Отправляю…' })).toBeDisabled();
+    // While the picture goes, nothing new is drawn or changed: it would not be in the message.
+    for (const name of ['Прямоугольник', 'Овал', 'Карандаш', 'Стрелка', 'Пометка 1']) expect(within(viewer).getByRole('button', { name })).toBeDisabled();
+    await user.click(within(viewer).getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog', { name: 'Договор.docx' })).not.toBeInTheDocument();
+    answer({ status: 201, body: SAVED });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(send).not.toHaveBeenCalled();
+    expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBe(draft);
+    expect(screen.getByRole('status', { name: 'адрес' })).toHaveTextContent('/agents/sales?thread=t1');
+  });
+
+  it('when the agent began to answer while the picture went, the marks stay and the person is told', async () => {
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' }, 'POST /app/api/threads/t1/marks': { status: 201, body: SAVED } });
+    localStorage.setItem(draftKey('t1', 'Договор.docx'), JSON.stringify({ version: '120-1', marks: [{ id: 'm1', page: 1, tool: 'pen', points: [{ x: 0.1, y: 0.1 }], comment: '' }] }));
+    const send = vi.fn(() => false);
+    const { user } = show(DOCX, { send, running: false });
+    const viewer = await openViewer(user);
+    await user.click(within(viewer).getByRole('button', { name: 'Отправить агенту' }));
+    expect(await within(viewer).findByRole('alert')).toHaveTextContent('Агент отвечает — отправить можно после ответа');
+    expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).toBeInTheDocument();
   });
 
   it('Esc closes the window of a mark, then lets the tool go, and only then the viewer', async () => {

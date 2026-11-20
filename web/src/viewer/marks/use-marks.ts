@@ -1,7 +1,7 @@
 // The marks of one open document (spec, section 8.32): what is drawn, the tool, the mark whose window is open, the
 // draft in this browser (F44) and «Отправить агенту». The view of the document gives what only it can (MarksDocument):
 // the text under a mark, the picture for the agent, scrolling to a mark.
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../../api/client.ts';
 import { ru } from '../../i18n/ru.ts';
 import { uploadMarksPicture } from './api.ts';
@@ -67,7 +67,8 @@ function initial(session: MarksSession | null): Initial {
 export function useMarksController(session: MarksSession | null, onSent: () => void): MarksController | null {
   const [start] = useState(() => initial(session));
   const [marks, setMarks] = useState<Mark[]>(start.marks);
-  const [active, setActive] = useState(start.marks.length > 0);
+  // Open by themselves when there are unsent marks — or when they were removed: not without a word.
+  const [active, setActive] = useState(start.marks.length > 0 || start.notice === 'changed');
   const [tool, setTool] = useState<MarkTool | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState<MarksNotice | null>(start.notice);
@@ -77,12 +78,22 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
   const attach = useCallback((document: MarksDocument | null) => {
     view.current = document;
   }, []);
+  // The viewer closed while the marks went: nothing is sent, the marks stay for the next time.
+  const open = useRef(true);
+  useEffect(() => {
+    open.current = true;
+    return () => {
+      open.current = false;
+    };
+  }, []);
 
   if (!session) return null;
   const key = draftKey(session.threadId, session.path);
 
-  // Every change is kept in the browser at once: a reload or «Назад» of a phone loses nothing.
+  // Every change is kept in the browser at once: a reload or «Назад» of a phone loses nothing. While the marks go,
+  // nothing changes: a mark drawn then would not be in the message, and the sent ones are removed after it.
   const change = (next: Mark[]) => {
+    if (sending) return;
     setError(null);
     setMarks(next);
     if (!storeDraft(key, { version: session.version, marks: next })) setNotice('noStorage');
@@ -104,6 +115,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
       setSelected(null);
     },
     setTool: (next) => {
+      if (sending) return;
       setTool(next);
       setSelected(null);
     },
@@ -120,7 +132,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
     select: setSelected,
     open: (id) => {
       const mark = marks.find((m) => m.id === id);
-      if (!mark) return;
+      if (!mark || sending) return;
       view.current?.reveal(mark);
       setSelected(id);
     },
@@ -131,24 +143,32 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
       setSending(true);
       setError(null);
       setSelected(null);
+      setTool(null);
       try {
-        const quotes = await Promise.all(marks.map((m) => document.quote(m)));
+        // The text under the marks and the picture are made by the browser: a failure here is not the server's.
+        let quotes: string[];
         let picture: Blob;
         try {
+          quotes = await Promise.all(marks.map((m) => document.quote(m)));
           picture = await document.picture(marks);
         } catch (cause) {
-          console.error('APP_MARKS_PICTURE_FAILED: the picture of marks was not made', cause);
-          throw new ApiRequestError({ code: 'APP_MARKS_PICTURE_FAILED', message: ru.marks.pictureFailed, status: 0, cause });
+          console.error('APP_MARKS_PREPARE_FAILED: the marks were not made ready to send', cause);
+          throw new ApiRequestError({ code: 'APP_MARKS_PREPARE_FAILED', message: ru.marks.prepareFailed, status: 0, cause });
         }
+        if (!open.current) return;
         const saved = await uploadMarksPicture(session.threadId, new File([picture], ru.marks.pictureName(session.name), { type: 'image/jpeg' }));
+        if (!open.current) return;
         const text = marksMessage({
           document: { name: session.name, path: session.path },
           picture: saved,
           paged: session.paged,
           marks: marks.map((m, i) => ({ tool: m.tool, page: m.page, comment: m.comment, quote: quotes[i]! })),
         });
-        // The agent began to answer while the picture went: the marks stay, the line under the button says why.
-        if (!session.send(text)) return;
+        // The agent began to answer while the picture went: the marks stay, the person is told why.
+        if (!session.send(text)) {
+          setError(new ApiRequestError({ code: 'APP_MARKS_AGENT_BUSY', message: ru.marks.busy, status: 0 }));
+          return;
+        }
         storeDraft(key, null);
         setMarks([]);
         onSent();

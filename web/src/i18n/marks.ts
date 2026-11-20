@@ -25,7 +25,7 @@ export const marksTexts = {
   changed: 'Документ изменился — прежние пометки к нему убраны',
   noStorage: 'Браузер не даёт сохранить пометки: они пропадут, если закрыть просмотрщик',
   pictureName: (documentName: string) => `${documentName} (пометки).jpg`,
-  pictureFailed: 'Не получилось подготовить картинку с пометками. Попробуйте ещё раз.',
+  prepareFailed: 'Не получилось подготовить пометки к отправке. Попробуйте ещё раз.',
   // The message to the agent (spec, section 8.32, «Сообщение»).
   message: {
     document: (name: string, count: number) => `Пометки к документу «${name}» — ${count}:`,

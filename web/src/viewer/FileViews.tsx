@@ -127,7 +127,18 @@ export function ImageView({ url, name, zoom, onScale, onReady, onFailure }: View
       quote: () => Promise.resolve(''),
       picture: (list) =>
         marksPicture(
-          [{ page: 1, ...natural, draw: (canvas, _region, at) => Promise.resolve(canvas.getContext('2d')?.drawImage(image, 0, 0, natural.width * at, natural.height * at)) }],
+          [
+            {
+              page: 1,
+              ...natural,
+              draw: (canvas, _region, at) => {
+                const context = canvas.getContext('2d');
+                if (!context) return Promise.reject(new Error('no 2d context for the picture of marks'));
+                context.drawImage(image, 0, 0, natural.width * at, natural.height * at);
+                return Promise.resolve();
+              },
+            },
+          ],
           list,
           false,
         ),
