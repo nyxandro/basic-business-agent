@@ -101,6 +101,26 @@ describe('«Нейросеть»', () => {
     expect(posted[1]).toMatchObject({ providerModel: 'openai/gpt-4.1-mini', maxOutputTokens: 16384 });
   });
 
+  it('asks for a smaller length of an answer when the provider refuses the model’s one, and sends it', async () => {
+    const s = server();
+    const posted: unknown[] = [];
+    s.set('POST /app/api/admin/models', (call) => {
+      posted.push(call.body);
+      return posted.length === 1
+        ? apiError('APP_MODEL_OUTPUT_LIMIT_REJECTED', 'Провайдер не принял наибольшую длину ответа: 131 072. Укажите меньшую — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).', 400)
+        : { status: 201, body: { ...GIGA, id: 'qwen', maxOutputTokens: 16384 } };
+    });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await fillNewModel(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await within(dialog).findByText(/Провайдер не принял наибольшую длину ответа: 131 072/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Наибольшая длина ответа, токенов'), '16 384');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();
+    expect(posted[1]).toMatchObject({ providerModel: 'openai/gpt-4.1-mini', maxOutputTokens: 16384 });
+  });
+
   // The limit was asked for that model: another one may be known to the gateway.
   it('stops asking for the length of an answer when the admin changes the model', async () => {
     const s = server();

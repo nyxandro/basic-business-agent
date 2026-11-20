@@ -1,5 +1,6 @@
 // «Нейросеть» end to end: the admin's routes, our database and the test LiteLLM, which checks keys
 // against a fake provider it reaches through host.docker.internal (deploy/compose.dev.yaml).
+import { randomUUID } from 'node:crypto';
 import type { ModelDto, ModelsResponse } from '@bba/contracts';
 import { Agent } from '@mastra/core/agent';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -9,7 +10,7 @@ import { createModelCatalog } from './catalog.ts';
 import { GATEWAY_TIMEOUTS } from './gateway-sync.ts';
 import { createGatewayWriter } from './gateway-writer.ts';
 import { TEST_MODEL_IDS } from './test-catalog.ts';
-import { startFakeModel, type FakeModel } from './fake-openai.ts';
+import { startFakeModel, type FakeModel, type FakeRequest, type FakeTurn } from './fake-openai.ts';
 import { createLiteLLMClient, gatewayUnavailable, type LiteLLMClient } from './litellm-client.ts';
 
 const GOOD_KEY = 'sk-test-good-key-7d41';
@@ -331,6 +332,50 @@ describe('the length of an answer (spec, section 8.19)', () => {
     const request = await lastRequestOf(model);
     expect(request.reasoning_format).toBe('parsed');
     expect(request.max_tokens ?? request.max_completion_tokens).toBe(16_384);
+  });
+
+  // «Проверить и сохранить» asks the provider with what every request of the model carries, so a model
+  // that would not answer is not saved (#7). Each test names its own provider model: LiteLLM's probe
+  // takes the settings of any deployment of the same provider model in the shared test gateway.
+  const probeLimit = (req: FakeRequest) => req.max_tokens ?? req.max_completion_tokens;
+  const refusesAbove = (limit: number) => (req: FakeRequest): FakeTurn =>
+    (probeLimit(req) ?? 0) > limit ? { status: 400, error: `\`max_tokens\` must be less than or equal to \`${limit}\`, the maximum value for \`max_tokens\` is less than the \`context_window\` for this model` } : { text: 'ok' };
+  const unsaved = async (label: string) => (await json<ModelsResponse>(await t.call('GET', '/app/api/admin/models', { cookie: igor }))).models.map((m) => m.label).includes(label);
+
+  it('checks the key with the limit of an answer and asks for a smaller limit when the provider refuses it', async () => {
+    const providerModel = `groq/bba-limit-${randomUUID().slice(0, 8)}`;
+    const before = (await deployments()).size;
+    provider.script(refusesAbove(16_384));
+    const refused = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: newModel({ label: 'Предел больше, чем у провайдера', providerModel, maxOutputTokens: 100_000 }) });
+    expect(refused.status).toBe(400);
+    expect(await errorCode(refused)).toMatchObject({
+      code: 'APP_MODEL_OUTPUT_LIMIT_REJECTED',
+      message: `Провайдер не принял наибольшую длину ответа: ${(100_000).toLocaleString('ru-RU')}. Укажите меньшую — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).`,
+    });
+    // The provider saw the model's own limit, not the gateway's short probe of 16 tokens.
+    expect(probeLimit(provider.requests.at(-1)!)).toBe(100_000);
+    expect(provider.requests.at(-1)!.reasoning_format).toBe('parsed');
+    expect(await unsaved('Предел больше, чем у провайдера')).toBe(false);
+    expect((await deployments()).size).toBe(before);
+
+    provider.script(refusesAbove(16_384));
+    const model = await create({ label: 'Предел как у провайдера', providerModel, maxOutputTokens: 16_384 });
+    expect(probeLimit(provider.requests.at(-1)!)).toBe(16_384);
+    expect(model.maxOutputTokens).toBe(16_384);
+  });
+
+  it('does not save a Groq model that cannot keep its reasoning apart from the answer', async () => {
+    provider.script((req) => (req.reasoning_format ? { status: 400, error: '`reasoning_format` is not supported with this model' } : { text: 'ok' }));
+    const res = await t.call('POST', '/app/api/admin/models', {
+      cookie: igor,
+      body: newModel({ label: 'Groq без рассуждений', providerModel: `groq/bba-no-reasoning-${randomUUID().slice(0, 8)}`, maxOutputTokens: 4096 }),
+    });
+    expect(res.status).toBe(400);
+    expect(await errorCode(res)).toMatchObject({
+      code: 'APP_MODEL_CHECK_FAILED',
+      message: 'Эта модель Groq не умеет отдавать рассуждения отдельно от ответа, а база ждёт этого от всех моделей Groq. Выберите другую модель Groq.',
+    });
+    expect(await unsaved('Groq без рассуждений')).toBe(false);
   });
 
   it('gives no limit to recognition and subscription models', async () => {

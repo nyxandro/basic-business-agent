@@ -60,6 +60,10 @@ export const ERROR_CATALOG = {
     status: 400,
     userMessage: 'Шлюз не знает, какой длины ответ даёт эта модель. Укажите наибольшую длину ответа в токенах — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).',
   },
+  APP_MODEL_OUTPUT_LIMIT_REJECTED: {
+    status: 400,
+    userMessage: 'Провайдер не принял наибольшую длину ответа этой модели. Укажите меньшую — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).',
+  },
   APP_VOICE_NOT_CONFIGURED: { status: 409, userMessage: 'Голосовой ввод в этой установке не настроен.' },
   APP_VOICE_FAILED: { status: 502, userMessage: 'Не удалось распознать запись. Попробуйте ещё раз или напишите текстом.' },
   APP_SKILL_INVALID: { status: 400, userMessage: 'Файл скилла не подходит.' },

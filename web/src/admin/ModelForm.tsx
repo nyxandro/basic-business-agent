@@ -6,7 +6,8 @@
 // the prices and the provider's address (owner's list 16.11) — a new address is checked with the
 // model's keys first, so the button says «Проверить и сохранить» then. The keys go to the new
 // address, so only the superadmin may change it; others see it. The longest answer of a chat model comes from the gateway; only when the gateway
-// does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) the form asks for it (spec, section 8.19).
+// does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) or the provider refuses its limit
+// (APP_MODEL_OUTPUT_LIMIT_REJECTED) the form asks for it (spec, section 8.19).
 import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
 import { useMe } from '../auth/session.tsx';
@@ -28,7 +29,8 @@ const PRICE_FIELDS: { key: keyof TokenPricesInput; label: string }[] = [
   { key: 'reasoning', label: 'Рассуждения' },
 ];
 const INVALID_PRICE = 'Цены — числа не меньше нуля. Заполните все поля цен.';
-const LIMIT_REQUIRED = 'APP_MODEL_OUTPUT_LIMIT_REQUIRED';
+// The gateway does not know the model, or the provider refused the limit the gateway knows (#7).
+const LIMIT_ASKED_BY = ['APP_MODEL_OUTPUT_LIMIT_REQUIRED', 'APP_MODEL_OUTPUT_LIMIT_REJECTED'];
 const LIMIT_LABEL = 'Наибольшая длина ответа, токенов';
 const INVALID_LIMIT = 'Длина ответа — целое число токенов больше нуля.';
 type Prices = Record<keyof TokenPricesInput, string>;
@@ -88,7 +90,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   // A chat model has no price per minute; an image price matters only to a chat model.
   const effective: Prices = transcription ? { ...prices, image: prices.image || '0' } : prices;
   // Stays once asked: the server's error goes away with the next attempt.
-  const askLimit = !editing && !subscription && !transcription && (limitAsked || error?.code === LIMIT_REQUIRED);
+  const askLimit = !editing && !subscription && !transcription && (limitAsked || LIMIT_ASKED_BY.includes(error?.code ?? ''));
   // Empty — the provider's standard address.
   const address = apiBase.trim() || null;
   const moved = editing && !subscription && address !== model.apiBase;

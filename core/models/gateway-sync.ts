@@ -77,8 +77,8 @@ function fingerprintOf(value: unknown): string {
 // LiteLLM puts the parameters of a deployment into every request that does not bring its own, so the
 // limit and the reasoning format hold for every caller of the model (spec, section 8.19). Groq stops
 // an answer at 2 048 tokens without a limit, and some of its models write their reasoning into the
-// text of the answer unless asked to keep it apart.
-function answerParams(m: SyncModel): Record<string, string | number> {
+// text of the answer unless asked to keep it apart. The check of a key sends the same (catalog.ts).
+export function answerParams(m: Pick<SyncModel, 'kind' | 'maxOutputTokens' | 'providerModel'>): Record<string, string | number> {
   if (m.kind !== 'chat') return {};
   return { ...(m.maxOutputTokens !== null ? { max_tokens: m.maxOutputTokens } : {}), ...(m.providerModel.startsWith('groq/') ? { reasoning_format: 'parsed' } : {}) };
 }

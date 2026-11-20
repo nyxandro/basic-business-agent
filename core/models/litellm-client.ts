@@ -45,8 +45,11 @@ export interface LiteLLMClient {
   addDeployment(spec: DeploymentSpec): Promise<void>;
   updateDeployment(spec: DeploymentSpec): Promise<void>;
   deleteDeployment(id: string): Promise<void>;
-  // LiteLLM's own probe of a provider with these parameters: nothing is stored.
-  checkConnection(params: Record<string, string | number | boolean>, mode: CheckMode): Promise<ConnectionCheck>;
+  // LiteLLM's own probe of a provider with these parameters: nothing is stored. The probe asks for 16
+  // tokens of answer unless `probeMaxTokens` says how many (`model_info.health_check_max_tokens`).
+  // LiteLLM 1.109.1 takes the probe's model_info from a deployment of the same provider model when one
+  // exists, and then the number given here is not used.
+  checkConnection(params: Record<string, string | number | boolean>, mode: CheckMode, probeMaxTokens?: number): Promise<ConnectionCheck>;
   // LiteLLM's model map, about 3 MB (output-limit.ts reads it): asked only when a model is added and
   // at start for models without a limit of an answer.
   modelMap(): Promise<Record<string, unknown>>;
@@ -165,8 +168,9 @@ export function createLiteLLMClient(baseUrl: string, masterKey: string, teamId: 
     async deleteDeployment(id) {
       await call('POST', '/model/delete', { id }, true);
     },
-    async checkConnection(params, mode) {
-      const res = await call<{ status: string; result?: { error?: string } }>('POST', '/health/test_connection', { litellm_params: params, mode });
+    async checkConnection(params, mode, probeMaxTokens) {
+      const modelInfo = probeMaxTokens === undefined ? {} : { model_info: { health_check_max_tokens: probeMaxTokens } };
+      const res = await call<{ status: string; result?: { error?: string } }>('POST', '/health/test_connection', { litellm_params: params, mode, ...modelInfo });
       if (res?.status === 'success') return { ok: true };
       return { ok: false, error: res?.result?.error ?? `LiteLLM answered status ${res?.status ?? 'none'}` };
     },
