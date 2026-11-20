@@ -129,7 +129,8 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   if (name === WIDGET_TOOL.components) return widgetComponentsSummary(status, result, parameters);
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
-  if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : ru.chat.toolRunning };
+  // Under way: named by its action (owner, 20.11) — «Запись файла…», «Команда в рабочей папке…».
+  if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : action ? ru.chat.toolRunningAction(action.title) : ru.chat.toolRunning };
   const outcome = parseToolResult(result);
   if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.toolFailed(system ?? action?.title ?? name), code: outcome.code ?? null };

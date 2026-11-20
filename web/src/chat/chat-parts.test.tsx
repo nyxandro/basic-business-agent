@@ -280,9 +280,38 @@ describe('stack of status lines', () => {
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
+  it('while the model writes what the action is to do, says how much it has written; then only turns', () => {
+    const writing = (text: string) => (
+      <MemoryRouter>
+        <TurnStateContext value="answering">
+          <ToolStack calls={[{ id: 'w1', type: 'function', function: { name: COMMAND, arguments: text } }]} messages={[]} agent={STACK_AGENT} renderCall={() => null} />
+        </TurnStateContext>
+      </MemoryRouter>
+    );
+    // Nothing written yet: only the name of the action, turning.
+    const { rerender } = render(writing(''));
+    expect(screen.getByRole('button', { name: 'Команда в рабочей папке…' })).toBeInTheDocument();
+    // The model is writing: the count of what came, as it comes.
+    const part = `{"command":"cat > build.js <<'EOF'\\n${'x'.repeat(4194)}`;
+    rerender(writing(part));
+    expect(screen.getByRole('button', { name: `Команда в рабочей папке… ${part.length.toLocaleString('ru-RU')} знаков` })).toBeInTheDocument();
+    // Written whole: the action runs — no count that would stand still.
+    rerender(writing(`${part}\\nEOF\\nnode build.js"}`));
+    expect(screen.getByRole('button', { name: 'Команда в рабочей папке…' })).toBeInTheDocument();
+    // An action with no name of its own is said in general words.
+    rerender(
+      <MemoryRouter>
+        <TurnStateContext value="answering">
+          <ToolStack calls={[{ id: 'w2', type: 'function', function: { name: 'something_unknown', arguments: '{"a":' } }]} messages={[]} agent={STACK_AGENT} renderCall={() => null} />
+        </TurnStateContext>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: /^Выполняю действие… 5 знаков$/ })).toBeInTheDocument();
+  });
+
   it('turns while the last line runs', () => {
     render(stack(done(['c1', 'c2', 'c3', 'c4'])));
-    expect(screen.getByRole('button', { name: /Выполняю действие….*5 действий/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Команда в рабочей папке….*5 действий/ })).toBeInTheDocument();
   });
 
   it('stops turning when its answer ended: the last line waits for «Да» or was stopped', () => {
@@ -302,7 +331,7 @@ describe('stack of status lines', () => {
       </MemoryRouter>
     );
     const { rerender } = render(one([]));
-    expect(screen.getByRole('button', { name: 'Выполняю действие…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Команда в рабочей папке…' })).toBeDisabled();
 
     rerender(one(done(['c1'])));
     const line = screen.getByRole('button', { name: 'Команда в рабочей папке' });
