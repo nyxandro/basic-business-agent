@@ -6,12 +6,14 @@
 // place; «Убрать все» turns the whole card to sand.
 import type { UploadedFile } from '@bba/contracts';
 import { AnimatePresence, motion } from 'motion/react';
-import { useId, useState, type Ref } from 'react';
+import { useContext, useId, useState, type Ref } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { fileStackClass, FileStackHead, kindsLine } from '../ui/FileStack.tsx';
 import { turnToSand } from '../ui/dissolve.ts';
+import { ChatExtrasContext } from './chat-context.ts';
+import { peekOf, useImagePeek } from './image-peek.tsx';
 import { fileSize } from '../ui/format.ts';
 import type { WaitingFile } from './attach.ts';
 import { FileName } from './FileName.tsx';
@@ -39,6 +41,8 @@ export function AttachmentStack({
 }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
+  // A row of a picture shows it on hovering (image-peek.tsx).
+  const { bind, peek } = useImagePeek(useContext(ChatExtrasContext)?.threadId ?? null);
   const names = files.map((f) => f.name);
   const total = files.length + uploading.length;
   return (
@@ -61,10 +65,11 @@ export function AttachmentStack({
       <AnimatePresence initial={false}>
         {open ? (
           <motion.div id={listId} className={styles.stackBody} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.ul layoutScroll className={`${styles.stackList} scroll-thin`} aria-label={ru.chat.attachedFiles}>
+            {peek}
+            <motion.ul layoutScroll className={`${styles.stackList} scroll-thin`} aria-label={ru.chat.attachedFiles} {...bind}>
               <AnimatePresence mode="popLayout" initial={false}>
                 {files.map((f) => (
-                  <motion.li key={f.path} layout className={styles.stackRow} exit={{ opacity: 0 }}>
+                  <motion.li key={f.path} layout className={styles.stackRow} exit={{ opacity: 0 }} {...peekOf(f.name, f.path)}>
                     <FileIcon name={f.name} />
                     <FileName name={f.name} />
                     <span className={styles.stackSize}>{fileSize(f.bytes)}</span>

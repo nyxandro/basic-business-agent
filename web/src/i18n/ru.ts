@@ -297,6 +297,7 @@ export const ru = {
     executingWhat: (what: string) => `Выполняю: ${what}`,
     toolRunning: 'Выполняю действие…',
     toolRunningAction: (title: string) => `${title}…`,
+    peekFailed: 'Картинку не удалось показать',
     // How much of what the action is to do the model has written so far (owner, 20.11: only real progress).
     written: (n: number) => `${n.toLocaleString('ru-RU')} ${plural(n, ['знак', 'знака', 'знаков'])}`,
     toolRunningIn: (system: string) => `Ищу в «${system}»…`,

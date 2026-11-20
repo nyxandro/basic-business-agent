@@ -16,6 +16,7 @@ import { AutoHeight } from '../ui/AutoHeight.tsx';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { turnToSand } from '../ui/dissolve.ts';
+import { peekOf, useImagePeek } from './image-peek.tsx';
 import { EASING, MOVE_S } from '../ui/motion.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import type { WaitingFile } from './attach.ts';
@@ -132,7 +133,9 @@ export function Attachments({ uploading, progress, voice }: { uploading: readonl
     extras.removeAttachment(path);
   }
 
-  const chip = (id: string, content: ReactNode, status?: boolean) => {
+  // A chip of a picture shows it on hovering (image-peek.tsx).
+  const { bind: peekBind, peek } = useImagePeek(extras.threadId);
+  const chip = (id: string, content: ReactNode, status?: boolean, mark: ReturnType<typeof peekOf> = {}) => {
     const width = layout?.widths.get(id);
     return (
       <motion.span
@@ -145,6 +148,7 @@ export function Attachments({ uploading, progress, voice }: { uploading: readonl
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0 }}
         {...(status ? { role: 'status' } : {})}
+        {...mark}
       >
         {content}
       </motion.span>
@@ -158,10 +162,12 @@ export function Attachments({ uploading, progress, voice }: { uploading: readonl
       layoutRoot
       layoutScroll
       className={`${styles.chips} scroll-thin`}
+      {...peekBind}
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
     >
+      {peek}
       <AnimatePresence mode="popLayout" initial={false}>
               {extras.attachments.map((f) =>
                 chip(
@@ -175,6 +181,8 @@ export function Attachments({ uploading, progress, voice }: { uploading: readonl
                       <IconButton icon="x" size="sm" label={`${ru.chat.removeAttachment} ${f.name}`} onClick={(e) => remove(f.path, e.currentTarget.closest<HTMLElement>('[data-chip]'))} />
                     </motion.span>
                   </>,
+                  false,
+                  peekOf(f.name, f.path),
                 ),
               )}
               {uploading.map((file) =>
