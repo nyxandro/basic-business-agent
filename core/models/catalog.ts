@@ -12,6 +12,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
+import { checkFailure } from './check-failure.ts';
 import type { ChatGptAccounts } from './chatgpt-accounts.ts';
 import { answerParams, pendingModels, type SyncModel, type SyncResult } from './gateway-sync.ts';
 import type { GatewayWriter } from './gateway-writer.ts';
@@ -26,13 +27,6 @@ const KEY_TAIL = 4;
 const PROVIDER_MODEL = /^[a-z0-9][a-z0-9_-]*\/\S{1,190}$/;
 // A model of the ChatGPT subscription: LiteLLM's provider chatgpt, e.g. chatgpt/gpt-5.4.
 const SUBSCRIPTION_MODEL = /^chatgpt\/\S{1,190}$/;
-// Errors of LiteLLM's probe that mean the provider did not answer rather than refused the key.
-const NO_ANSWER = /timeout|timed out|connection error|connecterror|connection refused|econnrefused|unreachable|name resolution|nodename/i;
-// Refusals of the parameters every request of a model carries (#7): a limit of an answer above the
-// provider's, and Groq's separate reasoning, which its models without reasoning do not take.
-const LIMIT_REFUSED = /max_tokens|max_completion_tokens/i;
-const REASONING_REFUSED = /reasoning_format/i;
-const NO_SEPARATE_REASONING = 'Эта модель Groq не умеет отдавать рассуждения отдельно от ответа, а база ждёт этого от всех моделей Groq. Выберите другую модель Groq.';
 
 const PRICES_MISSING = 'Укажите все цены в рублях — без них расход посчитается неверно.';
 const NO_VISION = 'Эта модель не видит картинки — агенты перестанут читать сканы. Выберите модель с картинками.';
@@ -112,8 +106,8 @@ function checkPrices(kind: ModelKind, prices: TokenPricesInput | null, perMinute
   throw invalid(`incomplete prices for a ${kind} model`, PRICES_MISSING);
 }
 
-function redact(text: string, key: string): string {
-  return text.split(key).join(`…${key.slice(-KEY_TAIL)}`).split('\n')[0]!.slice(0, 300);
+function hideKey(text: string, key: string): string {
+  return text.split(key).join(`…${key.slice(-KEY_TAIL)}`);
 }
 
 export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
@@ -147,22 +141,18 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     return refs.map((r) => r.agent_id);
   }
 
-  // The probe carries what every request of the model carries (answerParams, section 8.19): a model the
-  // provider would refuse on every message is not saved (#7).
-  async function checkKey(m: Pick<SyncModel, 'providerModel' | 'apiBase' | 'kind' | 'maxOutputTokens'>, key: string): Promise<void> {
-    const params = { model: m.providerModel, api_key: key, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...answerParams(m) };
-    const probeMaxTokens = m.kind === 'chat' && m.maxOutputTokens !== null ? m.maxOutputTokens : undefined;
-    const res = await client.checkConnection(params, m.kind === 'transcription' ? 'audio_transcription' : 'chat', probeMaxTokens);
+  // The probe of a new model carries what every request of it carries (answerParams, section 8.19): a model
+  // the provider would refuse on every message is not saved (#7). The limit of a model does not change
+  // after it is added, so a second key and a new address are checked by LiteLLM's short probe — a refused
+  // limit there would leave the admin nothing to do but remove the model.
+  async function checkKey(m: Pick<SyncModel, 'providerModel' | 'apiBase' | 'kind' | 'maxOutputTokens'>, key: string, checkLimit: boolean): Promise<void> {
+    const limit = checkLimit && m.kind === 'chat' && m.maxOutputTokens !== null ? m.maxOutputTokens : undefined;
+    const params = { model: m.providerModel, api_key: key, ...(m.apiBase ? { api_base: m.apiBase } : {}), ...answerParams({ ...m, maxOutputTokens: limit ?? null }) };
+    const res = await client.checkConnection(params, m.kind === 'transcription' ? 'audio_transcription' : 'chat', limit);
     if (res.ok) return;
-    const error = redact(res.error, key);
-    logEvent('warn', 'model_check_failed', { providerModel: m.providerModel, keyLast4: key.slice(-KEY_TAIL), error });
-    if (probeMaxTokens !== undefined && LIMIT_REFUSED.test(error)) {
-      throw appError('APP_MODEL_OUTPUT_LIMIT_REJECTED', `provider refused the limit of an answer ${probeMaxTokens} of ${m.providerModel}: ${error}`, {
-        userMessage: `Провайдер не принял наибольшую длину ответа: ${probeMaxTokens.toLocaleString('ru-RU')}. Укажите меньшую — она есть в описании модели у провайдера (у Groq — «Max completion tokens»).`,
-      });
-    }
-    if (REASONING_REFUSED.test(error)) throw appError('APP_MODEL_CHECK_FAILED', `provider refused separate reasoning of ${m.providerModel}: ${error}`, { userMessage: NO_SEPARATE_REASONING });
-    throw appError('APP_MODEL_CHECK_FAILED', `provider check of ${m.providerModel} failed: ${error}`, NO_ANSWER.test(error) ? { userMessage: 'Провайдер не ответил. Попробуйте ещё раз.' } : {});
+    const failure = checkFailure(hideKey(res.error, key), m.providerModel, limit);
+    logEvent('warn', 'model_check_failed', { providerModel: m.providerModel, keyLast4: key.slice(-KEY_TAIL), code: failure.code, error: failure.message });
+    throw failure;
   }
 
   // The admin's limit, or the one the gateway knows; none — the admin is asked for it (section 8.19).
@@ -234,7 +224,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     // Before the provider is called: a model without a known limit waits for the admin's number.
     const maxOutputTokens = await outputLimit(input, providerModel);
     const model: SyncModel = { id: newId('m'), kind: input.kind, connection: 'api_key', providerModel, apiBase, enabled: true, prices, pricePerMinute: perMinute, maxOutputTokens };
-    await checkKey(model, key);
+    await checkKey(model, key, true);
     const keyId = newId('k');
     const state = await syncState();
     await apply({ ...state, models: [...state.models, model], keys: [...state.keys, { id: keyId, modelId: model.id, secret: key }] });
@@ -348,7 +338,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
           const state = await syncState();
           // Every key of the model must work at the new address before LiteLLM goes there: a wrong
           // address would otherwise break the model for everyone at the next answer.
-          if (moved) for (const k of state.keys.filter((key) => key.modelId === modelId)) await checkKey({ providerModel: row.provider_model, apiBase, kind: row.kind, maxOutputTokens: row.max_output_tokens }, k.secret);
+          if (moved) for (const k of state.keys.filter((key) => key.modelId === modelId)) await checkKey({ providerModel: row.provider_model, apiBase, kind: row.kind, maxOutputTokens: row.max_output_tokens }, k.secret, false);
           await apply({ ...state, models: state.models.map((m) => (m.id === modelId ? { ...m, enabled, prices, pricePerMinute: perMinute, apiBase } : m)) });
         }
         await inTransaction(db, async (c) => {
@@ -387,7 +377,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         const row = await modelRow(modelId);
         if (row.connection !== 'api_key') throw invalid(`model ${modelId} is a subscription`, 'Модель подписки работает через аккаунты ChatGPT, ключ ей не нужен.');
         const key = cleanKey(rawKey);
-        await checkKey({ providerModel: row.provider_model, apiBase: row.api_base, kind: row.kind, maxOutputTokens: row.max_output_tokens }, key);
+        await checkKey({ providerModel: row.provider_model, apiBase: row.api_base, kind: row.kind, maxOutputTokens: row.max_output_tokens }, key, false);
         const keyId = newId('k');
         const state = await syncState();
         await apply({ ...state, keys: [...state.keys, { id: keyId, modelId, secret: key }] });

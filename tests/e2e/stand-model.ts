@@ -33,7 +33,7 @@ export const STAND_WEB_QUERY = 'профнастил С21 цена';
 export const STAND_WEB_PAGE = { address: 'https://example.com/c21', title: 'Профнастил С21 — цены' };
 export const STAND_WEB_ANSWER = 'Профнастил С21 стоит 520 ₽ за лист, источник — example.com.';
 export const STAND_NO_WEB = 'Интернета у меня нет: отвечу только по тому, что знаю.';
-const WEB_STEP_MS = 2000;
+const WEB_STEP_MS = 4000;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 export const standWeb: { searcher: WebSearcher; reader: PageReader } = {
   searcher: {

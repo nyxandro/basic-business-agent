@@ -364,6 +364,22 @@ describe('the length of an answer (spec, section 8.19)', () => {
     expect(model.maxOutputTokens).toBe(16_384);
   });
 
+  // The limit of a model is not changed after it is added, so a second key is checked by LiteLLM's short
+  // probe: a model whose limit no provider takes would leave the admin with nothing to do but remove it.
+  it('checks a new key of a model by the short probe, still with the separate reasoning of Groq', async () => {
+    provider.script(refusesAbove(16_384));
+    const model = await create({ label: 'Groq, ключ добавят', providerModel: `groq/bba-key-${randomUUID().slice(0, 8)}`, maxOutputTokens: 16_384 });
+    // A model added before 20.11 with a limit the provider does not take; switched off, it has no
+    // deployment in the gateway, so the probe would carry the model's own limit.
+    await t.db.query('UPDATE app.models SET max_output_tokens = 100000 WHERE id = $1', [model.id]);
+    await t.call('PUT', `/app/api/admin/models/${model.id}`, { cookie: igor, body: { enabled: false } });
+    provider.script(refusesAbove(16_384));
+    const added = await t.call('POST', `/app/api/admin/models/${model.id}/keys`, { cookie: igor, body: { key: GOOD_KEY } });
+    expect(added.status, await added.clone().text()).toBe(201);
+    expect(probeLimit(provider.requests.at(-1)!)).toBe(16);
+    expect(provider.requests.at(-1)!.reasoning_format).toBe('parsed');
+  });
+
   it('does not save a Groq model that cannot keep its reasoning apart from the answer', async () => {
     provider.script((req) => (req.reasoning_format ? { status: 400, error: '`reasoning_format` is not supported with this model' } : { text: 'ok' }));
     const res = await t.call('POST', '/app/api/admin/models', {

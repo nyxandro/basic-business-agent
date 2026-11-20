@@ -115,6 +115,9 @@ describe('«Нейросеть»', () => {
     const dialog = await fillNewModel(user);
     await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
     expect(await within(dialog).findByText(/Провайдер не принял наибольшую длину ответа: 131 072/)).toBeInTheDocument();
+    // The gateway knows this model: the hint says why the number is asked for.
+    expect(within(dialog).getByText('Провайдер не принял прежнее число — укажите меньшее, оно есть в описании модели у провайдера.')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Шлюз не знает эту модель — число есть в её описании у провайдера.')).not.toBeInTheDocument();
     await user.type(within(dialog).getByLabelText('Наибольшая длина ответа, токенов'), '16 384');
     await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
     expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();

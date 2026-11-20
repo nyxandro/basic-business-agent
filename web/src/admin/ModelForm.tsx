@@ -29,8 +29,12 @@ const PRICE_FIELDS: { key: keyof TokenPricesInput; label: string }[] = [
   { key: 'reasoning', label: 'Рассуждения' },
 ];
 const INVALID_PRICE = 'Цены — числа не меньше нуля. Заполните все поля цен.';
-// The gateway does not know the model, or the provider refused the limit the gateway knows (#7).
-const LIMIT_ASKED_BY = ['APP_MODEL_OUTPUT_LIMIT_REQUIRED', 'APP_MODEL_OUTPUT_LIMIT_REJECTED'];
+// Why the form asks for the limit, by the server's code: the gateway does not know the model, or the
+// provider refused the limit the gateway knows (#7).
+const LIMIT_HINTS: Record<string, string> = {
+  APP_MODEL_OUTPUT_LIMIT_REQUIRED: 'Шлюз не знает эту модель — число есть в её описании у провайдера.',
+  APP_MODEL_OUTPUT_LIMIT_REJECTED: 'Провайдер не принял прежнее число — укажите меньшее, оно есть в описании модели у провайдера.',
+};
 const LIMIT_LABEL = 'Наибольшая длина ответа, токенов';
 const INVALID_LIMIT = 'Длина ответа — целое число токенов больше нуля.';
 type Prices = Record<keyof TokenPricesInput, string>;
@@ -81,7 +85,8 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const [prices, setPrices] = useState<Prices>(pricesOf(model));
   const [perMinute, setPerMinute] = useState(toField(model?.pricePerMinute ?? null));
   const [limit, setLimit] = useState('');
-  const [limitAsked, setLimitAsked] = useState(false);
+  // The code that asked for the limit: stays once asked, the server's error goes away with the next attempt.
+  const [limitAskedBy, setLimitAskedBy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { busy, error, run, clearError } = useAction();
   const transcription = kind === 'transcription';
@@ -89,8 +94,8 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const subscription = conn === 'chatgpt' && !transcription;
   // A chat model has no price per minute; an image price matters only to a chat model.
   const effective: Prices = transcription ? { ...prices, image: prices.image || '0' } : prices;
-  // Stays once asked: the server's error goes away with the next attempt.
-  const askLimit = !editing && !subscription && !transcription && (limitAsked || LIMIT_ASKED_BY.includes(error?.code ?? ''));
+  const askedBy = error && error.code in LIMIT_HINTS ? error.code : limitAskedBy;
+  const askLimit = !editing && !subscription && !transcription && askedBy !== null;
   // Empty — the provider's standard address.
   const address = apiBase.trim() || null;
   const moved = editing && !subscription && address !== model.apiBase;
@@ -99,7 +104,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   function changeProviderModel(value: string) {
     setProviderModel(value);
     if (!askLimit) return;
-    setLimitAsked(false);
+    setLimitAskedBy(null);
     setLimit('');
     clearError();
   }
@@ -113,7 +118,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
     const pricePerMinute = typeof minute === 'number' ? minute : null;
     // «16 384» is how people write it.
     const maxOutputTokens = askLimit ? fromField(limit.replace(/\s/g, ''), 'tokens') : null;
-    if (askLimit) setLimitAsked(true);
+    if (askLimit) setLimitAskedBy(askedBy);
     if (maxOutputTokens === 'invalid' || (askLimit && maxOutputTokens === null)) return setProblem(INVALID_LIMIT);
     if (editing) {
       const change = { label: label.trim(), vision: transcription ? false : vision, ...(subscription ? {} : { prices: tokenPrices, pricePerMinute }), ...(moved ? { apiBase: address } : {}) };
@@ -181,7 +186,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
         </div>
       )}
       {askLimit ? (
-        <Field label={LIMIT_LABEL} hint="Шлюз не знает эту модель — число есть в её описании у провайдера.">
+        <Field label={LIMIT_LABEL} hint={askedBy ? LIMIT_HINTS[askedBy] : undefined}>
           <Input inputMode="numeric" required value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="16 384" />
         </Field>
       ) : null}
