@@ -41,11 +41,23 @@
   stroke-linejoin: round;
 }
 
+/* Selected text: the colour over the letters, as with a marker (the same strength on the picture — picture.ts). */
+.marker {
+  fill: var(--mark);
+  fill-opacity: 0.3;
+  stroke: none;
+}
+
+.markSelected .marker {
+  fill-opacity: 0.42;
+}
+
 .markActive {
   cursor: pointer;
 }
 
 .markActive .hit,
+.markActive .marker,
 .markActive .badge {
   pointer-events: visiblePainted;
 }
@@ -65,16 +77,18 @@
   font-family: var(--font-sans);
 }
 
-/* The tools: a glass pill at the top of the view. */
+/* The tools: a glass pill at the top of the view, centred without a transform — its flight is one (MarksControls). */
 .toolbar {
   position: absolute;
   top: 12px;
-  left: 50%;
+  left: 0;
+  right: 0;
   z-index: 6;
   display: flex;
   gap: 2px;
+  width: max-content;
+  margin: 0 auto;
   padding: 4px;
-  transform: translateX(-50%);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
@@ -107,7 +121,6 @@
   border-radius: var(--radius-lg);
   box-shadow: 0 18px 44px var(--shadow);
   overflow: hidden;
-  animation: global(bba-rise) 0.28s var(--ease-rise) both;
 }
 
 .panelHead {
@@ -239,14 +252,9 @@
   color: var(--muted);
 }
 
-.start,
 .notice {
   margin: 8px 6px 0;
   font-size: 13px;
-  color: var(--muted);
-}
-
-.notice {
   padding: 8px 10px;
   border-radius: var(--radius);
   background: var(--info-soft);

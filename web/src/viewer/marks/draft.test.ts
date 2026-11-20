@@ -8,9 +8,19 @@ import { MARK_TOOLS, type Mark } from './types.ts';
 // A share of the page as the layer makes it: from 0 to 1, never −0 (clampShare gives +0).
 const share = fc.double({ min: 0, max: 1, noNaN: true }).map((v) => (Object.is(v, -0) ? 0 : v));
 const point = fc.record({ x: share, y: share });
-const mark: fc.Arbitrary<Mark> = fc
+const drawn: fc.Arbitrary<Mark> = fc
   .record({ id: fc.uuid(), page: fc.integer({ min: 1, max: 5000 }), tool: fc.constantFrom(...MARK_TOOLS), comment: fc.string({ unit: 'binary', maxLength: 300 }) })
   .chain((m) => (m.tool === 'pen' ? fc.array(point, { minLength: 1, maxLength: 40 }) : fc.tuple(point, point)).map((points) => ({ ...m, points })));
+// Selected text: its lines as pairs of corners, and the text itself.
+const marker: fc.Arbitrary<Mark> = fc.record({
+  id: fc.uuid(),
+  page: fc.integer({ min: 1, max: 5000 }),
+  tool: fc.constant('highlight' as const),
+  comment: fc.string({ unit: 'binary', maxLength: 300 }),
+  points: fc.array(fc.tuple(point, point), { minLength: 1, maxLength: 6 }).map((pairs) => pairs.flat()),
+  text: fc.string({ unit: 'binary', minLength: 1, maxLength: 300 }),
+});
+const mark = fc.oneof(drawn, marker);
 const draft: fc.Arbitrary<MarksDraft> = fc.record({ version: fc.string({ minLength: 1, maxLength: 40 }), marks: fc.array(mark, { maxLength: 12 }) });
 
 describe('the draft of marks', () => {
@@ -37,6 +47,9 @@ describe('the draft of marks', () => {
     expect(parseDraft('not json')).toBeNull();
     expect(parseDraft(JSON.stringify({ version: '1', marks: [{ id: 'a', page: 1, tool: 'rect', points: [{ x: 0, y: 0 }], comment: '' }] }))).toBeNull();
     expect(parseDraft(JSON.stringify({ version: '1', marks: [{ id: 'a', page: 0, tool: 'pen', points: [{ x: 2, y: 0 }], comment: '' }] }))).toBeNull();
+    // Selected text without its text, or with half a box.
+    expect(parseDraft(JSON.stringify({ version: '1', marks: [{ id: 'a', page: 1, tool: 'highlight', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], comment: '' }] }))).toBeNull();
+    expect(parseDraft(JSON.stringify({ version: '1', marks: [{ id: 'a', page: 1, tool: 'highlight', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 0 }], comment: '', text: 'а' }] }))).toBeNull();
   });
 
   it('is kept per conversation and file, and gone when emptied', () => {

@@ -1,7 +1,12 @@
 // What stands over the document while «Пометки» is on (spec, section 8.32): the four tools at the top, the list of
 // marks in the corner with «Отправить агенту» under it, and the window of the comment beside the mark it belongs to.
+// The tools fly out of «Пометки» and back into it, the list rises from below with the first mark and goes with the
+// last (requests of the owner 20.11); with «уменьшить движение» in the system they simply show and go.
+import { AnimatePresence, motion, MotionConfig, useAnimate, usePresence } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ru } from '../../i18n/ru.ts';
+import { stillMotion } from '../../ui/dissolve.ts';
+import { EASING, MOVE_S } from '../../ui/motion.ts';
 import { Button, cx, IconButton } from '../../ui/Button.tsx';
 import { TextArea } from '../../ui/Field.tsx';
 import { Icon } from '../../ui/Icon.tsx';
@@ -16,11 +21,58 @@ const onPhone = () => typeof window.matchMedia === 'function' && !window.matchMe
 // Room between the mark and its window, and between the window and the edges of the view.
 const GAP = 8;
 
-export function MarksToolbar() {
+// The tools pour out of «Пометки» like a genie out of a lamp: a narrow strip leaves the button, flies to its place
+// stretching downwards and widens; closed, they go back the same way.
+const GENIE_IN_S = 0.5;
+const GENIE_OUT_S = 0.34;
+
+// Where the button «Пометки» is from the tools: the start of their flight and the side they grow from.
+function genieFrom(tools: HTMLElement): { x: number; y: number; originX: number } | null {
+  const button = tools.closest('[role="dialog"]')?.querySelector('[data-marks-toggle]');
+  if (!button) return null;
+  const from = button.getBoundingClientRect();
+  const to = tools.getBoundingClientRect();
+  const originX = Math.min(1, Math.max(0, (from.left + from.width / 2 - to.left) / to.width));
+  return { x: from.left + from.width / 2 - (to.left + to.width / 2), y: from.top + from.height / 2 - (to.top + to.height / 2), originX };
+}
+
+function Tools() {
   const marks = useMarks();
-  if (!marks?.active) return null;
+  const [scope, animate] = useAnimate<HTMLDivElement>();
+  const [present, safeToRemove] = usePresence();
+  const from = useRef<ReturnType<typeof genieFrom>>(null);
+
+  useLayoutEffect(() => {
+    const tools = scope.current;
+    from.current = genieFrom(tools);
+    const f = from.current;
+    if (!f || stillMotion()) return;
+    // They grow from the side facing the button.
+    void animate(tools, { originX: f.originX, originY: 0 }, { duration: 0 });
+    void animate(
+      tools,
+      { x: [f.x, f.x * 0.35, 0], y: [f.y, f.y * 0.25, 0], scaleX: [0.06, 0.3, 1], scaleY: [0.25, 1.08, 1], opacity: [0, 1, 1] },
+      { duration: GENIE_IN_S, ease: EASING, times: [0, 0.5, 1] },
+    );
+  }, [animate, scope]);
+
+  useEffect(() => {
+    if (present) return;
+    const f = from.current;
+    if (!f || stillMotion()) {
+      safeToRemove();
+      return;
+    }
+    void animate(
+      scope.current,
+      { x: [0, f.x * 0.35, f.x], y: [0, f.y * 0.25, f.y], scaleX: [1, 0.3, 0.06], scaleY: [1, 1.08, 0.25], opacity: [1, 1, 0] },
+      { duration: GENIE_OUT_S, ease: EASING, times: [0, 0.5, 1] },
+    ).then(safeToRemove);
+  }, [present, animate, scope, safeToRemove]);
+
+  if (!marks) return null;
   return (
-    <div className={styles.toolbar} role="toolbar" aria-label={ru.marks.tools}>
+    <div ref={scope} className={styles.toolbar} role="toolbar" aria-label={ru.marks.tools}>
       {MARK_TOOLS.map((tool) => (
         <IconButton
           key={tool}
@@ -36,14 +88,36 @@ export function MarksToolbar() {
   );
 }
 
+export function MarksToolbar() {
+  const marks = useMarks();
+  return <AnimatePresence>{marks?.active ? <Tools key="tools" /> : null}</AnimatePresence>;
+}
+
+// The list is there only with marks — or to say why the marks are gone (a new version of the file, no storage).
 export function MarksPanel() {
+  const marks = useMarks();
+  const shown = Boolean(marks?.active && (marks.marks.length > 0 || marks.notice));
+  return (
+    <MotionConfig reducedMotion="user" transition={{ duration: MOVE_S, ease: EASING }}>
+      <AnimatePresence>{shown ? <List key="list" /> : null}</AnimatePresence>
+    </MotionConfig>
+  );
+}
+
+function List() {
   const marks = useMarks();
   // A notice is not folded away on a phone.
   const [open, setOpen] = useState(() => !onPhone() || marks?.notice != null);
-  if (!marks?.active) return null;
+  if (!marks) return null;
   const { marks: list, notice, error, sending, running } = marks;
   return (
-    <section className={cx(styles.panel, marks.selected && styles.panelUnderWindow)} aria-label={ru.marks.list(list.length)}>
+    <motion.section
+      className={cx(styles.panel, marks.selected && styles.panelUnderWindow)}
+      aria-label={ru.marks.list(list.length)}
+      initial={{ opacity: 0, y: 32, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 32, scale: 0.97 }}
+    >
       <button type="button" className={styles.panelHead} aria-expanded={open} aria-label={open ? ru.marks.collapse : ru.marks.expand} onClick={() => setOpen((v) => !v)}>
         <span>{ru.marks.list(list.length)}</span>
         <Icon name={open ? 'down' : 'up'} size={16} />
@@ -51,7 +125,6 @@ export function MarksPanel() {
       {open ? (
         <div className={styles.panelBody}>
           {notice ? <p className={styles.notice}>{notice === 'changed' ? ru.marks.changed : ru.marks.noStorage}</p> : null}
-          {list.length === 0 ? <p className={styles.start}>{ru.marks.start}</p> : null}
           {list.length > 0 ? (
             <ol className={styles.rows}>
               {list.map((mark, i) => {
@@ -102,7 +175,7 @@ export function MarksPanel() {
           {running && !sending ? <p className={styles.busy}>{ru.marks.busy}</p> : null}
         </div>
       ) : null}
-    </section>
+    </motion.section>
   );
 }
 

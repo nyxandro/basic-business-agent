@@ -1,17 +1,23 @@
 // The layer of marks over the pages (spec, section 8.32): one transparent layer inside the scrolled area of the view,
 // a picture of marks over each page — not inside the pages: PDF.js clears its pages of everything not its own when
 // the scale changes. With a tool chosen, pages take the pointer: one finger or the mouse draws, two fingers move the
-// pages (and scale them — zoom.ts listens on the scrolled area). Without a tool, text is selected and links open.
+// pages (and scale them — zoom.ts listens on the scrolled area); a figure drawn lets the tool go. Without a tool,
+// links open and text is selected — and selected text becomes a mark by itself (highlight.ts).
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ru } from '../../i18n/ru.ts';
 import { cx } from '../../ui/Button.tsx';
 import { badgeAt, badgeRadius, clampShare, isMarkTooSmall, markPath, strokeWidth } from './geometry.ts';
-import type { Mark, MarkTool, PageBox, Point } from './types.ts';
+import { selectionMark } from './highlight.ts';
+import type { Mark, MarkKind, MarkTool, PageBox, Point } from './types.ts';
 import { useMarks } from './use-marks.ts';
 import styles from './marks.module.css';
 
 // The pen keeps a new point only after the pointer moved this far (points of the screen): a line stays light.
 const PEN_STEP = 2;
+// On a touch screen text is selected by handles, with no release of a pointer: the selection is taken once it has
+// not changed for this long.
+const TOUCH_SELECTION_SETTLED_MS = 800;
+const TOUCH_SCREEN = '(hover: none)';
 
 interface Drawing {
   pointerId: number;
@@ -27,11 +33,13 @@ function pointOn(surface: Element, event: { clientX: number; clientY: number }):
   return { x: clampShare((event.clientX - rect.left) / rect.width), y: clampShare((event.clientY - rect.top) / rect.height) };
 }
 
-function MarkShape({ mark, number, box, selected, onOpen }: { mark: Pick<Mark, 'tool' | 'points'> & { id?: string }; number: number | null; box: PageBox; selected?: boolean; onOpen?: () => void }) {
+function MarkShape({ mark, number, box, selected, onOpen }: { mark: Pick<Mark, 'points'> & { tool: MarkKind; id?: string }; number: number | null; box: PageBox; selected?: boolean; onOpen?: () => void }) {
   const path = markPath(mark, box.width, box.height);
   const line = strokeWidth(box.width);
   const radius = badgeRadius(box.width);
   const at = badgeAt(mark);
+  // Selected text is filled, as with a marker; the drawn marks are lines.
+  const marker = mark.tool === 'highlight';
   const open = onOpen
     ? {
         onPointerDown: (event: ReactPointerEvent) => event.stopPropagation(),
@@ -40,8 +48,8 @@ function MarkShape({ mark, number, box, selected, onOpen }: { mark: Pick<Mark, '
     : {};
   return (
     <g className={cx(styles.mark, onOpen && styles.markActive, selected && styles.markSelected)} data-mark-id={mark.id} {...open}>
-      {onOpen ? <path d={path} className={styles.hit} strokeWidth={line * 5} data-mark-hit /> : null}
-      <path d={path} className={styles.line} strokeWidth={selected ? line * 1.6 : line} data-mark-line />
+      {onOpen && !marker ? <path d={path} className={styles.hit} strokeWidth={line * 5} data-mark-hit /> : null}
+      {marker ? <path d={path} className={styles.marker} data-mark-line data-marker /> : <path d={path} className={styles.line} strokeWidth={selected ? line * 1.6 : line} data-mark-line />}
       {number !== null ? (
         <g className={styles.badge}>
           <circle cx={at.x * box.width} cy={at.y * box.height} r={radius} />
@@ -68,6 +76,42 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
   // Stops listening to the pointer of the drawing under way.
   const stop = useRef<(() => void) | null>(null);
   useEffect(() => () => stop.current?.(), []);
+  const area = useRef(scroller);
+  useLayoutEffect(() => {
+    area.current = scroller;
+  });
+
+  // Text selected in the pages while «Пометки» is on and no tool is chosen becomes a mark: after the release of the
+  // mouse; on a touch screen — once the handles stopped moving.
+  const active = marks?.active ?? false;
+  const choosing = Boolean(marks?.tool);
+  useEffect(() => {
+    if (!active || choosing) return;
+    let settle = 0;
+    const take = () => {
+      const pages = area.current();
+      const selection = window.getSelection();
+      const found = pages ? selectionMark(selection, pages) : null;
+      if (!found) return;
+      selection?.removeAllRanges();
+      add.current?.({ page: found.page, tool: 'highlight', points: found.points, text: found.text });
+    };
+    const released = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch') window.setTimeout(take);
+    };
+    const changed = () => {
+      if (!window.matchMedia(TOUCH_SCREEN).matches) return;
+      window.clearTimeout(settle);
+      settle = window.setTimeout(take, TOUCH_SELECTION_SETTLED_MS);
+    };
+    document.addEventListener('pointerup', released);
+    document.addEventListener('selectionchange', changed);
+    return () => {
+      window.clearTimeout(settle);
+      document.removeEventListener('pointerup', released);
+      document.removeEventListener('selectionchange', changed);
+    };
+  }, [active, choosing]);
 
   // The pointer is listened to from the very press: a quick stroke — the press, the moves and the release within one
   // frame — would end before an effect began to listen, and the drawing would hang.
@@ -111,7 +155,7 @@ export function MarksLayer({ pages, scroller }: { pages: readonly PageBox[]; scr
   };
 
   if (!marks) return null;
-  const { tool, active } = marks;
+  const { tool } = marks;
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!tool) return;

@@ -121,18 +121,24 @@ describe('the marks of the viewer', () => {
     expect(within(viewer).queryByRole('button', { name: 'Пометки' })).not.toBeInTheDocument();
   });
 
-  it('a frame drawn opens its window; the comment becomes a row of the list and is kept in the browser', async () => {
+  it('a frame drawn opens its window and lets the tool go; the comment becomes a row of the list and is kept in the browser', async () => {
     mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
     const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
     const viewer = await openViewer(user);
     await user.click(within(viewer).getByRole('button', { name: 'Пометки' }));
-    expect(within(viewer).getByText('Выберите инструмент и нарисуйте на странице')).toBeInTheDocument();
+    expect(within(viewer).getByRole('toolbar', { name: 'Инструменты пометок' })).toBeInTheDocument();
+    // No list while there are no marks.
+    expect(within(viewer).queryByRole('region', { name: /^Пометки · / })).not.toBeInTheDocument();
     await user.click(within(viewer).getByRole('button', { name: 'Прямоугольник' }));
     expect(within(viewer).getByRole('button', { name: 'Прямоугольник' })).toHaveAttribute('aria-pressed', 'true');
-    // A press is not a mark.
+    // A press is not a mark, and the tool stays.
     draw(viewer, 1, [60, 80], [62, 82]);
     expect(within(viewer).queryByRole('dialog', { name: 'Пометка 1' })).not.toBeInTheDocument();
+    expect(within(viewer).getByRole('button', { name: 'Прямоугольник' })).toHaveAttribute('aria-pressed', 'true');
     draw(viewer, 1, [60, 80], [300, 200]);
+    // One figure a choice of the tool (owner, 20.11).
+    expect(within(viewer).getByRole('button', { name: 'Прямоугольник' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(viewer).getByRole('region', { name: 'Пометки · 1' })).toBeInTheDocument();
     const window1 = within(viewer).getByRole('dialog', { name: 'Пометка 1' });
     await user.type(within(window1).getByRole('textbox', { name: 'Комментарий к пометке' }), 'срок оплаты 10 дней');
     await user.click(within(window1).getByRole('button', { name: 'Готово' }));
@@ -293,20 +299,31 @@ describe('the marks of the viewer', () => {
     expect(within(viewer).getByRole('button', { name: 'Пометка 1' })).toBeInTheDocument();
   });
 
-  it('Esc closes the window of a mark, then lets the tool go, and only then the viewer', async () => {
+  it('Esc lets a chosen tool go, closes the window of a mark, and only then the viewer', async () => {
     mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
     const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
     const viewer = await openViewer(user);
     await user.click(within(viewer).getByRole('button', { name: 'Пометки' }));
     await user.click(within(viewer).getByRole('button', { name: 'Стрелка' }));
+    await user.keyboard('{Escape}');
+    expect(within(viewer).getByRole('button', { name: 'Стрелка' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(within(viewer).getByRole('button', { name: 'Стрелка' }));
     draw(viewer, 2, [100, 100], [300, 300]);
     expect(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(within(viewer).queryByRole('dialog', { name: 'Пометка 1' })).not.toBeInTheDocument();
-    expect(within(viewer).getByRole('button', { name: 'Стрелка' })).toHaveAttribute('aria-pressed', 'true');
-    await user.keyboard('{Escape}');
-    expect(within(viewer).getByRole('button', { name: 'Стрелка' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('dialog', { name: 'Договор.docx' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Договор.docx' })).not.toBeInTheDocument();
+  });
+
+  it('the list goes when its last mark is removed', async () => {
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
+    localStorage.setItem(draftKey('t1', 'Договор.docx'), JSON.stringify({ version: '120-1', marks: [{ id: 'm1', page: 1, tool: 'pen', points: [{ x: 0.1, y: 0.1 }], comment: '' }] }));
+    const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
+    const viewer = await openViewer(user);
+    await user.click(within(viewer).getByRole('button', { name: 'Удалить пометку 1' }));
+    await waitFor(() => expect(within(viewer).queryByRole('region', { name: /^Пометки · / })).not.toBeInTheDocument());
+    expect(within(viewer).getByRole('toolbar', { name: 'Инструменты пометок' })).toBeInTheDocument();
   });
 });

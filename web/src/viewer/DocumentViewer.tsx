@@ -166,6 +166,7 @@ export function DocumentViewer({ source, channel, onClose }: { source: ViewerSou
               variant={marks.active ? 'primary' : 'ghost'}
               aria-pressed={marks.active}
               aria-label={ru.marks.toggle}
+              data-marks-toggle
               disabled={!ready}
               className={styles.marksToggle}
               onClick={marks.toggle}

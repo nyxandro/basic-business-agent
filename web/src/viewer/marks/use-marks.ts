@@ -7,7 +7,7 @@ import { ru } from '../../i18n/ru.ts';
 import { uploadMarksPicture } from './api.ts';
 import { draftKey, readStoredDraft, storeDraft } from './draft.ts';
 import { marksMessage } from './message.ts';
-import type { Mark, MarkTool, MarksChannel, MarksDocument, MarksTarget, Point } from './types.ts';
+import type { Mark, MarkKind, MarkTool, MarksChannel, MarksDocument, MarksTarget, Point } from './types.ts';
 
 export interface MarksSession extends MarksTarget, MarksChannel {
   // The name of the document, as the chat shows it.
@@ -31,7 +31,8 @@ export interface MarksController {
   error: ApiRequestError | null;
   toggle: () => void;
   setTool: (tool: MarkTool | null) => void;
-  add: (mark: { page: number; tool: MarkTool; points: Point[] }) => void;
+  // A new mark opens its window; the tool is let go — one figure a choice of the tool (owner, 20.11).
+  add: (mark: { page: number; tool: MarkKind; points: Point[]; text?: string }) => void;
   setComment: (id: string, comment: string) => void;
   remove: (id: string) => void;
   select: (id: string | null) => void;
@@ -120,8 +121,10 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
       setSelected(null);
     },
     add: (mark) => {
+      if (sending) return;
       const id = crypto.randomUUID();
       change([...marks, { id, comment: '', ...mark }]);
+      setTool(null);
       setSelected(id);
     },
     setComment: (id, comment) => change(marks.map((m) => (m.id === id ? { ...m, comment } : m))),
@@ -149,7 +152,8 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
         let quotes: string[];
         let picture: Blob;
         try {
-          quotes = await Promise.all(marks.map((m) => document.quote(m)));
+          // Selected text is quoted as it was selected; under a drawn mark — read from the page.
+          quotes = await Promise.all(marks.map((m) => (m.tool === 'highlight' && m.text ? Promise.resolve(m.text) : document.quote(m))));
           picture = await document.picture(marks);
         } catch (cause) {
           console.error('APP_MARKS_PREPARE_FAILED: the marks were not made ready to send', cause);

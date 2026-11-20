@@ -1,6 +1,7 @@
 // A mark removed turns to sand, as a file removed from the next message (request of the owner 20.11; ui/dissolve.ts):
 // the shape with its number, in its colours, from where it stands on the page; its row of the list — the same way.
 import { stillMotion, turnSvgToSand, turnToSand } from '../../ui/dissolve.ts';
+import { HIGHLIGHT_ALPHA } from './picture.ts';
 
 // Room round the shape: its line and its number reach out of the outline the browser measures.
 const ROOM = 8;
@@ -22,17 +23,25 @@ function sand(id: string): void {
   if (!mark || !page) return;
   const line = mark.querySelector<SVGPathElement>('[data-mark-line]');
   const badge = mark.querySelector<SVGTextElement>('text');
-  const color = line ? getComputedStyle(line).stroke : '';
+  // Selected text is a fill of the colour, the drawn marks — a line of it.
+  const marker = line?.hasAttribute('data-marker') ?? false;
+  const color = line ? (marker ? getComputedStyle(line).fill : getComputedStyle(line).stroke) : '';
   const copy = mark.cloneNode(true) as SVGGElement;
   // The picture knows no CSS of the page: the colours and the look go into it as they are now.
   copy.querySelector('[data-mark-hit]')?.remove();
   copy.removeAttribute('class');
   copy.querySelectorAll('[class]').forEach((node) => node.removeAttribute('class'));
   const drawn = copy.querySelector('[data-mark-line]');
-  drawn?.setAttribute('stroke', color);
-  drawn?.setAttribute('fill', 'none');
-  drawn?.setAttribute('stroke-linecap', 'round');
-  drawn?.setAttribute('stroke-linejoin', 'round');
+  if (marker) {
+    drawn?.setAttribute('fill', color);
+    drawn?.setAttribute('fill-opacity', String(HIGHLIGHT_ALPHA));
+    drawn?.setAttribute('stroke', 'none');
+  } else {
+    drawn?.setAttribute('stroke', color);
+    drawn?.setAttribute('fill', 'none');
+    drawn?.setAttribute('stroke-linecap', 'round');
+    drawn?.setAttribute('stroke-linejoin', 'round');
+  }
   copy.querySelector('circle')?.setAttribute('fill', color);
   const text = copy.querySelector('text');
   if (text && badge) {

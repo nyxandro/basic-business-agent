@@ -40,6 +40,14 @@ const n = (value: number): string => String(Math.round(value * 100) / 100);
 export function markPath(mark: Pick<Mark, 'tool' | 'points'>, width: number, height: number): string {
   const px = mark.points.map((p) => ({ x: p.x * width, y: p.y * height }));
   if (mark.tool === 'pen') return penPath(px);
+  if (mark.tool === 'highlight') {
+    const lines: string[] = [];
+    for (let i = 0; i + 1 < px.length; i += 2) {
+      const b = boundsOf([px[i]!, px[i + 1]!]);
+      lines.push(`M ${n(b.x0)} ${n(b.y0)} H ${n(b.x1)} V ${n(b.y1)} H ${n(b.x0)} Z`);
+    }
+    return lines.join(' ');
+  }
   const [from, to] = [px[0]!, px.at(-1)!];
   if (mark.tool === 'arrow') {
     const length = Math.hypot(to.x - from.x, to.y - from.y);
@@ -71,9 +79,14 @@ function penPath(px: readonly Point[]): string {
   return parts.join(' ');
 }
 
-// Where the number of a mark stands: at the start of its shape — the tail of an arrow, the top left of the others.
+// Where the number of a mark stands: at the start of its shape — the tail of an arrow, the start of the first line of
+// selected text, the top left of the others.
 export function badgeAt(mark: Pick<Mark, 'tool' | 'points'>): Point {
   if (mark.tool === 'arrow') return mark.points[0]!;
+  if (mark.tool === 'highlight') {
+    const first = boundsOf(mark.points.slice(0, 2));
+    return { x: first.x0, y: first.y0 };
+  }
   const b = boundsOf(mark.points);
   return { x: b.x0, y: b.y0 };
 }

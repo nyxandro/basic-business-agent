@@ -1,14 +1,13 @@
 // Texts of the marks in the viewer (spec, section 8.32), in `ru` as `ru.marks`: ru.ts is near the limit of a file.
-import type { MarkTool } from '../viewer/marks/types.ts';
+import type { MarkKind, MarkTool } from '../viewer/marks/types.ts';
 
-const TOOL: Record<MarkTool, string> = { rect: 'прямоугольник', ellipse: 'овал', pen: 'карандаш', arrow: 'стрелка' };
+const TOOL: Record<MarkKind, string> = { rect: 'прямоугольник', ellipse: 'овал', pen: 'карандаш', arrow: 'стрелка', highlight: 'выделенный текст' };
 const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 export const marksTexts = {
   toggle: 'Пометки',
   tools: 'Инструменты пометок',
   tool: (tool: MarkTool) => capital(TOOL[tool]),
-  start: 'Выберите инструмент и нарисуйте на странице',
   commentLabel: 'Комментарий к пометке',
   commentPlaceholder: 'Что здесь поправить?',
   done: 'Готово',
@@ -32,10 +31,11 @@ export const marksTexts = {
     document: (name: string, count: number) => `Пометки к документу «${name}» — ${count}:`,
     picture: (name: string, count: number) => `Пометки к картинке «${name}» — ${count}:`,
     page: (page: number) => `Стр. ${page}`,
-    tool: (tool: MarkTool) => TOOL[tool],
-    toolFirst: (tool: MarkTool) => capital(TOOL[tool]),
+    tool: (tool: MarkKind) => TOOL[tool],
+    toolFirst: (tool: MarkKind) => capital(TOOL[tool]),
     noComment: 'без комментария',
     under: 'Под пометкой',
     atArrow: 'У стрелки',
+    selected: 'Выделено',
   },
 };

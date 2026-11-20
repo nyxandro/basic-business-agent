@@ -17,12 +17,13 @@ const markSchema = z
   .object({
     id: z.string().min(1),
     page: z.number().int().min(1),
-    tool: z.enum(MARK_TOOLS),
+    tool: z.enum([...MARK_TOOLS, 'highlight']),
     points: z.array(z.object({ x: share, y: share })).min(1),
     comment: z.string().max(COMMENT_MAX),
+    text: z.string().min(1).max(COMMENT_MAX).optional(),
   })
-  // Only the line of the pen has more than its two ends.
-  .refine((m) => m.tool === 'pen' || m.points.length === 2);
+  // The line of the pen — any number of points; selected text — two a line and its text; the others — their two ends.
+  .refine((m) => (m.tool === 'pen' ? true : m.tool === 'highlight' ? m.points.length % 2 === 0 && m.text !== undefined : m.points.length === 2 && m.text === undefined));
 const draftSchema = z.object({ version: z.string().min(1), marks: z.array(markSchema) });
 
 export const draftKey = (threadId: string, path: string): string => `bba:marks:${threadId}:${path}`;

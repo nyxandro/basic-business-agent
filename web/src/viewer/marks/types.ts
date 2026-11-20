@@ -1,6 +1,8 @@
-// A mark on a page of a document in the viewer (spec, section 8.32).
+// A mark on a page of a document in the viewer (spec, section 8.32): drawn with one of the four tools, or selected
+// text — made by itself when text is selected while «Пометки» is on (request of the owner 20.11), no tool for it.
 export const MARK_TOOLS = ['rect', 'ellipse', 'pen', 'arrow'] as const;
 export type MarkTool = (typeof MARK_TOOLS)[number];
+export type MarkKind = MarkTool | 'highlight';
 
 // A place on a page as shares of the page as it is shown: 0 — its left or top edge, 1 — its right or bottom one.
 // The same mark lies on the screen at any scale and on the picture for the agent.
@@ -13,11 +15,13 @@ export interface Mark {
   id: string;
   // The page, from 1; a picture is page 1.
   page: number;
-  tool: MarkTool;
+  tool: MarkKind;
   // A rectangle, an oval and an arrow — where the drawing began and where it ended (an arrow points at the end);
-  // the pen — the whole line.
+  // the pen — the whole line; selected text — the corners of the box of each of its lines, two points a line.
   points: Point[];
   comment: string;
+  // Selected text: the text itself, as it was selected.
+  text?: string;
 }
 
 // The longest comment: the message stays readable (spec, section 8.32).

@@ -3,6 +3,7 @@
 import { splitAttachments } from '@bba/contracts';
 import { describe, expect, it } from 'vitest';
 import { badgeAt, boundsOf, clampShare, isMarkTooSmall, markPath } from './geometry.ts';
+import { lineRects } from './highlight.ts';
 import { marksMessage } from './message.ts';
 import { textBoxes, textUnder, type TextBox } from './text-under.ts';
 
@@ -44,6 +45,10 @@ describe('the place of a mark', () => {
     expect(pen).toBe('M 0 0 Q 50 0 50 25 L 50 50');
     const arrow = markPath({ tool: 'arrow', points: [{ x: 0, y: 0.5 }, { x: 1, y: 0.5 }] }, 100, 100);
     expect(arrow.startsWith('M 0 50 L 100 50 M ')).toBe(true);
+    // Selected text — its lines filled, the number at the start of the first.
+    const marker = { tool: 'highlight' as const, points: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.12 }, { x: 0.1, y: 0.13 }, { x: 0.3, y: 0.15 }] };
+    expect(markPath(marker, 100, 100)).toBe('M 10 10 H 50 V 12 H 10 Z M 10 13 H 30 V 15 H 10 Z');
+    expect(badgeAt(marker)).toEqual({ x: 0.1, y: 0.1 });
     expect(badgeAt(rect)).toEqual({ x: 0.25, y: 0.25 });
     expect(badgeAt({ tool: 'arrow', points: [{ x: 0.9, y: 0.9 }, { x: 0.1, y: 0.1 }] })).toEqual({ x: 0.9, y: 0.9 });
   });
@@ -137,8 +142,33 @@ describe('the message to the agent', () => {
     });
   });
 
+  it('selected text is named «выделенный текст» and quoted whole as it was selected', () => {
+    const text = marksMessage({ document, picture, paged: true, marks: [{ tool: 'highlight', page: 2, comment: 'перефразируй', quote: 'Оплата производится в течение 30 дней' }] });
+    expect(splitAttachments(text).text).toBe(['Пометки к документу «Договор.docx» — 1:', '1. Стр. 2, выделенный текст: перефразируй', '   Выделено: «Оплата производится в течение 30 дней»'].join('\n'));
+  });
+
   it('a picture has no pages', () => {
     const text = marksMessage({ document: { name: 'фото.png', path: 'фото.png' }, picture, paged: false, marks: [{ tool: 'ellipse', page: 1, comment: 'обрезать', quote: '' }] });
     expect(splitAttachments(text).text).toBe('Пометки к картинке «фото.png» — 1:\n1. Овал: обрезать');
+  });
+});
+
+describe('the lines of selected text', () => {
+  const page = { left: 100, top: 50, width: 400, height: 800 };
+  const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height });
+
+  it('joins the pieces of a line into one box, a line under it into another, as shares of the page', () => {
+    // Two pieces of the first line (two spans of PDF.js), one of the second.
+    const points = lineRects([rect(140, 90, 80, 16), rect(222, 91, 120, 15), rect(140, 110, 60, 16)], page);
+    expect(points).toEqual([
+      { x: 0.1, y: 0.05 },
+      { x: 0.605, y: 0.07 },
+      { x: 0.1, y: 0.075 },
+      { x: 0.25, y: 0.095 },
+    ]);
+  });
+
+  it('leaves out what is not on the page and empty boxes', () => {
+    expect(lineRects([rect(140, 900, 80, 16), rect(140, 90, 0, 16)], page)).toEqual([]);
   });
 });

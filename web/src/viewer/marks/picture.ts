@@ -21,6 +21,8 @@ const SIDE_ROOM = 150;
 const MIN_BAND_WIDTH = 600;
 const LABEL_HEIGHT = 36;
 const JPEG_QUALITY = 0.85;
+// How strong the marker of selected text is — the same on the screen (marks.module.css).
+export const HIGHLIGHT_ALPHA = 0.3;
 
 // A page of the picture: its size (PDF points, or pixels of a picture file) and how its part is drawn.
 export interface PicturePage {
@@ -91,7 +93,19 @@ function drawMarks(context: CanvasRenderingContext2D, part: SheetPart, marks: re
   context.lineWidth = strokeWidth(pageWidth);
   context.lineCap = 'round';
   context.lineJoin = 'round';
-  for (const { mark } of marks) context.stroke(new Path2D(markPath(mark, pageWidth, pageHeight)));
+  for (const { mark } of marks) {
+    const path = new Path2D(markPath(mark, pageWidth, pageHeight));
+    if (mark.tool !== 'highlight') {
+      context.stroke(path);
+      continue;
+    }
+    // Selected text — as with a marker: the colour over the letters, which stay readable.
+    context.save();
+    context.globalAlpha = HIGHLIGHT_ALPHA;
+    context.globalCompositeOperation = 'multiply';
+    context.fill(path);
+    context.restore();
+  }
   const radius = badgeRadius(pageWidth);
   context.font = `700 ${Math.round(radius * 1.15)}px system-ui, sans-serif`;
   context.textAlign = 'center';

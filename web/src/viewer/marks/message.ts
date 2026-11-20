@@ -3,10 +3,10 @@
 // picture of the marks among its attachments, so the model gets the text of the document (8.29) and the picture.
 import { withAttachments, type AttachedFile } from '@bba/contracts';
 import { ru } from '../../i18n/ru.ts';
-import type { MarkTool } from './types.ts';
+import type { MarkKind } from './types.ts';
 
 export interface MarkInMessage {
-  tool: MarkTool;
+  tool: MarkKind;
   page: number;
   comment: string;
   // The text under the mark (text-under.ts); empty on a scan or a picture.
@@ -28,7 +28,7 @@ export function marksMessage(input: { document: AttachedFile; picture: AttachedF
       .map((line) => line.trimEnd());
     const said = comment[0] ? `: ${comment.join(`\n${INDENT}`)}` : ` — ${t.noComment}`;
     lines.push(`${i + 1}. ${shape}${said}`);
-    if (mark.quote) lines.push(`${INDENT}${mark.tool === 'arrow' ? t.atArrow : t.under}: «${mark.quote}»`);
+    if (mark.quote) lines.push(`${INDENT}${mark.tool === 'arrow' ? t.atArrow : mark.tool === 'highlight' ? t.selected : t.under}: «${mark.quote}»`);
   });
   return withAttachments(lines.join('\n'), [document, picture]);
 }
