@@ -1,7 +1,7 @@
 // Widgets in the chat (spec, section 8.31), in a browser: a screen works without the agent, its buttons and forms send
 // the person's message with the values, it stays after a reload, and the switch of the agent takes widgets away.
-import { expect, test, type Page } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { type Page } from '@playwright/test';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 
 // The person's message the press of a widget sent, as the chat shows it.
 const sentByWidget = (page: Page, text: RegExp) => page.getByText(text).first();

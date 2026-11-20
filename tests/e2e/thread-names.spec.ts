@@ -1,8 +1,8 @@
 // The name of a conversation (spec, section 8.16): named once its task is clear, renamed by hand from
 // its three dots in «Недавние». The stand's model names a conversation by the person's last message
 // and says «-» to a greeting (stand-model.ts).
-import { expect, test, type Page } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { type Page } from '@playwright/test';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 
 // The open conversation in «Недавние»: its link carries the id of the thread.
 function ownRow(page: Page) {

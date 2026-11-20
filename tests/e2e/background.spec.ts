@@ -1,8 +1,7 @@
 // Criteria 6 and 30 of the spec (section 23): a background task's question waits on «Ждёт
 // подтверждения», «Да» runs the action, the result is in the task's conversation marked «новое»;
 // on a phone the bell opens the questions as a sheet.
-import { expect, test } from '@playwright/test';
-import { openAgent, pageAs } from './helpers.ts';
+import { expect, openAgent, pageAs, test } from './helpers.ts';
 
 // First, while the stand's only question still waits: the bell is there only when there is
 // something to answer.

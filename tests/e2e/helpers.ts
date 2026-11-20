@@ -1,5 +1,19 @@
 // Steps shared by the end-to-end scenarios.
-import { expect, type Browser, type Page } from '@playwright/test';
+import { test as base, expect, type Browser, type Page } from '@playwright/test';
+
+// Every scenario closes the windows it opened with pageAs: left open, they keep asking the stand for
+// news and holding their connections, and by the end of a full run dozens of them slowed the stand
+// down until scenarios ran out of time («Настройки» did not show, «Нет связи с сервером»).
+export const test = base.extend<{ closeWindows: void }>({
+  closeWindows: [
+    async ({ browser }, use) => {
+      await use();
+      await Promise.all(browser.contexts().map((context) => context.close()));
+    },
+    { auto: true },
+  ],
+});
+export { expect };
 
 // TEST_PASSWORD of core/server/test-app.ts: the stand creates its people with it.
 export const STAND_PASSWORD = 'correct-horse-battery';
@@ -33,6 +47,9 @@ export async function openAgent(page: Page, name: string): Promise<void> {
   await page.goto('/');
   await page.getByRole('link', { name: new RegExp(name) }).first().click();
   await expect(page.getByRole('button', { name: `${name}. Выбрать агента` })).toBeVisible();
+  // The link opens the agent without a conversation, and the page puts a new one into the address a
+  // moment later: a «Новый разговор» pressed before that would be replaced by it (ChatPage.tsx).
+  await expect(page).toHaveURL(/[?&]thread=/);
 }
 
 // The chat view is recreated for the new conversation: wait for its greeting before typing.

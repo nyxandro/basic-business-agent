@@ -1,6 +1,5 @@
 // Criteria 2–3 and 31 of the spec (section 23) and the admin panel, in a browser.
-import { expect, test } from '@playwright/test';
-import { newConversation, openAgent, say, pageAs } from './helpers.ts';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 
 test('a person without rights has no «Админка» and a section sends them back with a notice', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');

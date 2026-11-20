@@ -1,7 +1,6 @@
 // Criteria 34–46 of the spec (section 23; section 8.20): a project opened to a colleague, closed and
 // opened again, archived; a removed file comes back from the project's trash.
-import { expect, test } from '@playwright/test';
-import { pageAs } from './helpers.ts';
+import { expect, pageAs, test } from './helpers.ts';
 
 test('a project opened to a colleague, closed and opened again, archived', async ({ browser }) => {
   const olga = await pageAs(browser, 'olga@example.com');
@@ -21,8 +20,11 @@ test('a project opened to a colleague, closed and opened again, archived', async
   await expect(link).toContainText('новое');
   await link.click();
   await expect(petr.getByText('Открыл(а): Ольга')).toBeVisible();
-  await expect(petr.getByText('Инструкции меняет создатель проекта.')).toBeVisible();
   await expect(petr.getByRole('button', { name: 'В архив' })).toHaveCount(0);
+  // The instructions are in «Настройки проекта»: a colleague reads them, only the creator changes them.
+  await petr.getByRole('button', { name: 'Настройки проекта' }).click();
+  await expect(petr.getByText('Инструкции меняет создатель проекта.')).toBeVisible();
+  await petr.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Разговоры' }).click();
   await petr.getByRole('button', { name: 'Новый разговор в проекте' }).click();
   await expect(petr.getByRole('button', { name: /Совместный тендер/, expanded: false })).toBeVisible();
   const conversation = petr.url();
@@ -67,15 +69,15 @@ test('a removed file of a project lies in its trash and comes back', async ({ br
   await expect(olga.getByRole('heading', { name: 'Тендер' })).toBeVisible();
   await olga.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Файлы' }).click();
   await olga.getByLabel('Загрузить файл', { exact: true }).setInputFiles({ name: 'смета.txt', mimeType: 'text/plain', buffer: Buffer.from('СМЕТА') });
-  await expect(olga.getByRole('link', { name: 'смета.txt' })).toBeVisible();
+  await expect(olga.getByRole('button', { name: 'смета.txt', exact: true })).toBeVisible();
   await olga.getByRole('button', { name: 'Удалить смета.txt' }).click();
   await expect(olga.getByText('Файл «смета.txt» в корзине')).toBeVisible();
-  await expect(olga.getByRole('link', { name: 'смета.txt' })).toHaveCount(0);
+  await expect(olga.getByRole('button', { name: 'смета.txt', exact: true })).toHaveCount(0);
   await olga.getByRole('button', { name: 'Корзина · 1' }).click();
   const trash = olga.getByRole('dialog', { name: 'Корзина проекта' });
   await expect(trash.getByText('Удалил(а) Ольга', { exact: false })).toBeVisible();
   await trash.getByRole('button', { name: 'Вернуть' }).click();
   await expect(trash.getByText('Корзина пуста.', { exact: false })).toBeVisible();
   await olga.keyboard.press('Escape');
-  await expect(olga.getByRole('link', { name: 'смета.txt' })).toBeVisible();
+  await expect(olga.getByRole('button', { name: 'смета.txt', exact: true })).toBeVisible();
 });

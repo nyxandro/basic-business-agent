@@ -1,6 +1,5 @@
 // The employee's settings in a browser: memory with a question before forgetting, spend.
-import { expect, test } from '@playwright/test';
-import { pageAs } from './helpers.ts';
+import { expect, pageAs, test } from './helpers.ts';
 
 test('memory is added by hand and forgotten only after the question', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');

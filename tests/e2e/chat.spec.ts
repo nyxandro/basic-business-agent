@@ -1,6 +1,5 @@
 // Criteria 1 and 5 of the spec (section 23) and the chat of step 17, in a browser.
-import { expect, test } from '@playwright/test';
-import { newConversation, openAgent, say, pageAs } from './helpers.ts';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 import { AFTER_ANSWER_AGAIN, AFTER_ONE_BREAK } from './stand-model.ts';
 
 test('an employee sees only the agents of their department', async ({ browser }) => {

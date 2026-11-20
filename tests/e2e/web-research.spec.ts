@@ -1,8 +1,7 @@
 // The internet of an agent (spec, section 8.30, #17): the live block of the search while the researcher
 // works, one folded line when the answer is ready and after a reload; «Что агенту можно» takes the
 // internet and the commands away from the next message.
-import { expect, test } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 import { STAND_NO_WEB, STAND_WEB_ANSWER, STAND_WEB_PAGE, STAND_WEB_QUERY } from './stand-model.ts';
 
 test('the agent searches the internet: the block names the query and the site, then folds into one line', async ({ browser }) => {

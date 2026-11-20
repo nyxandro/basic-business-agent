@@ -1,6 +1,5 @@
 // Criteria 26–27 of the spec (section 23): projects of conversations and the search over one's own.
-import { expect, test } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 
 test('a conversation started in a project carries the project; the project lists it', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');
@@ -52,7 +51,7 @@ test('a colleague finds a document of a shared project by Russian words, opens i
   await expect(olga.getByRole('heading', { name: 'Тендер ЖК Северный' })).toBeVisible();
   await olga.getByRole('navigation', { name: 'Разделы проекта' }).getByRole('link', { name: 'Файлы' }).click();
   await olga.getByLabel('Загрузить файл', { exact: true }).setInputFiles({ name: 'KP_Yelka_v2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n') });
-  await expect(olga.getByRole('link', { name: 'KP_Yelka_v2.pdf' })).toBeVisible();
+  await expect(olga.getByRole('button', { name: 'KP_Yelka_v2.pdf', exact: true })).toBeVisible();
 
   const petr = await pageAs(browser, 'petr@example.com');
   await petr.keyboard.press('Control+k');
@@ -61,7 +60,7 @@ test('a colleague finds a document of a shared project by Russian words, opens i
   await field.fill('кп ёлка');
   await search.getByRole('button', { name: /KP_Yelka_v2\.pdf.*Тендер ЖК Северный/ }).click();
   const file = petr.getByRole('dialog', { name: 'KP_Yelka_v2.pdf' });
-  await expect(file.getByRole('link', { name: 'Посмотреть' })).toBeVisible();
+  await expect(file.getByRole('button', { name: 'Посмотреть' })).toBeVisible();
   const download = petr.waitForEvent('download');
   await file.getByRole('link', { name: 'Скачать' }).click();
   expect((await download).suggestedFilename()).toBe('KP_Yelka_v2.pdf');

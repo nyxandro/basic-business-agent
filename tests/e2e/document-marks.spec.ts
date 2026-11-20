@@ -2,8 +2,8 @@
 // agent made, opened from the chat, a frame is drawn over its first page, commented and sent — one message of the
 // person with the document and the picture of the marks; the viewer closes. Only from the chat — the component test
 // (web/src/viewer/marks/marks-viewer.test.tsx).
-import { expect, test, type Page } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { type Page } from '@playwright/test';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 import { STAND_DOCUMENT } from './stand-model.ts';
 
 async function openDocument(page: Page) {

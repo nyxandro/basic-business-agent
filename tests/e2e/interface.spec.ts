@@ -3,8 +3,8 @@
 // agent's words for every employee; the switch of «Интерфейс» turned off leaves only the words. The
 // installation gets its spark and its switch back at the end: scenarios share one stand.
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Locator, type Page } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { type Locator, type Page } from '@playwright/test';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 
 // 120×80 pixels stored sideways with EXIF Orientation 6; seen upright it is red above, blue below.
 const PHOTO = fileURLToPath(new URL('./fixtures/rotated-photo.jpg', import.meta.url));

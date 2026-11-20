@@ -1,7 +1,6 @@
 // The admin panel of stage 2 in a browser (criteria 21, 25, 29): «Нейросеть», «Скиллы», «Режимы
 // работы», on a computer and on a phone.
-import { expect, test } from '@playwright/test';
-import { pageAs } from './helpers.ts';
+import { expect, pageAs, test } from './helpers.ts';
 
 test('«Нейросеть» shows the gateway, the catalog and the parameters', async ({ browser }) => {
   const page = await pageAs(browser, 'igor@example.com');

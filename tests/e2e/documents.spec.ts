@@ -1,8 +1,7 @@
 // Documents of the agent (spec, section 8.18): the agent makes a Word file in the employee's folder
 // with the package the document skills use, and the answer shows it with «Скачать».
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
-import { newConversation, openAgent, pageAs, say } from './helpers.ts';
+import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 import { STAND_DOCUMENT } from './stand-model.ts';
 
 test('an employee asks for a Word document and downloads it from the answer', async ({ browser }) => {
