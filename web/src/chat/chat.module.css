@@ -386,6 +386,13 @@
   white-space: nowrap;
 }
 
+/* How much of an action the model has written: digits of one width, so the line does not shake as it grows. */
+.toolWritten {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The head of a stack: a status turns in and out past its edges (ui/Ticker.tsx). */
 .toolHead {
   overflow: hidden;
