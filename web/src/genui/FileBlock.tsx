@@ -10,6 +10,7 @@ import { parseToolResult } from '../chat/tool-result.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
+import { useChatSend } from '../chat/chat-send.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { fileSize, fullDate } from '../ui/format.ts';
 import { Preparing, type CallProps } from './CatalogBlock.tsx';
@@ -52,14 +53,16 @@ export function FileNote({ status, onRestored }: { status: Exclude<ThreadFileSta
   );
 }
 
-export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus> }) {
+// `marks` — the file lies in the folder of this conversation: in the viewer marks can be drawn on it and sent to the
+// agent of the conversation (spec, section 8.32).
+export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus>; marks?: { threadId: string; path: string } }) {
   const [note, setNote] = useState<Exclude<ThreadFileStatus, { state: 'ok' }> | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const { open, viewer } = useDocumentViewer();
+  const { open, viewer } = useDocumentViewer(useChatSend());
   // While the file is asked about, a second press does nothing: a double tap opens one viewer.
   const asking = useRef(false);
   // «Открыть» and «Скачать» ask first what they will find: a file removed is said so, as before.
-  async function whenThere(then: () => void) {
+  async function whenThere(then: (version: string) => void) {
     if (asking.current) return;
     asking.current = true;
     setFailed(null);
@@ -67,7 +70,7 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { n
       const status = await checkFile();
       if (status.state !== 'ok') return setNote(status);
       setNote(null);
-      then();
+      then(status.version);
     } catch (raw) {
       setFailed(asApiError(raw).message);
     } finally {
@@ -96,7 +99,7 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile }: { n
         <div className={styles.fileSize}>{fileSize(bytes)}</div>
       </div>
       {previewKindOf(name) ? (
-        <Button icon="eye" size="sm" className={styles.fileOpen} aria-label={ru.viewer.openFile(name)} onClick={() => void whenThere(() => open({ name, downloadUrl: href, previewUrl: previewHref }))}>
+        <Button icon="eye" size="sm" className={styles.fileOpen} aria-label={ru.viewer.openFile(name)} onClick={() => void whenThere((version) => open({ name, downloadUrl: href, previewUrl: previewHref, ...(marks ? { marks: { ...marks, version } } : {}) }))}>
           {ru.viewer.open}
         </Button>
       ) : null}
@@ -119,5 +122,14 @@ export function FileCall({ call, threadId }: { call: CallProps; threadId: string
   const parsed = fileBlockResultSchema.safeParse(outcome.value);
   if (!parsed.success || !parsed.data.shown) return null;
   const path = parsed.data.path;
-  return <FileBlockView name={parsed.data.name} bytes={parsed.data.bytes} href={threadFileUrl(threadId, path)} previewHref={threadFilePreviewUrl(threadId, path)} checkFile={() => fetchThreadFileStatus(threadId, path)} />;
+  return (
+    <FileBlockView
+      name={parsed.data.name}
+      bytes={parsed.data.bytes}
+      href={threadFileUrl(threadId, path)}
+      previewHref={threadFilePreviewUrl(threadId, path)}
+      checkFile={() => fetchThreadFileStatus(threadId, path)}
+      marks={{ threadId, path }}
+    />
+  );
 }

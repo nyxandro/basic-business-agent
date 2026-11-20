@@ -1,5 +1,5 @@
 // The unsent marks of a file live in this browser until they are sent (spec, section 8.32; decision of the owner
-// 20.11, F44): per person, conversation and file, with the version of the file they were drawn on.
+// 20.11, F44): per conversation and file, with the version of the file they were drawn on.
 import fc from 'fast-check';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { draftKey, parseDraft, readStoredDraft, serializeDraft, storeDraft, type MarksDraft } from './draft.ts';
@@ -39,9 +39,10 @@ describe('the draft of marks', () => {
     expect(parseDraft(JSON.stringify({ version: '1', marks: [{ id: 'a', page: 0, tool: 'pen', points: [{ x: 2, y: 0 }], comment: '' }] }))).toBeNull();
   });
 
-  it('is kept per person, conversation and file, and gone when emptied', () => {
-    const key = draftKey('u1', 't1', 'Договор.docx');
-    expect(key).not.toBe(draftKey('u2', 't1', 'Договор.docx'));
+  it('is kept per conversation and file, and gone when emptied', () => {
+    const key = draftKey('t1', 'Договор.docx');
+    expect(key).not.toBe(draftKey('t2', 'Договор.docx'));
+    expect(key).not.toBe(draftKey('t1', 'Счёт.pdf'));
     expect(readStoredDraft(key)).toEqual({ state: 'none' });
     const d: MarksDraft = { version: '10-1', marks: [{ id: 'a', page: 2, tool: 'rect', points: [{ x: 0.1, y: 0.2 }, { x: 0.3, y: 0.4 }], comment: 'срок' }] };
     expect(storeDraft(key, d)).toBe(true);
@@ -57,7 +58,7 @@ describe('the draft of marks', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
-    const key = draftKey('u1', 't1', 'a.pdf');
+    const key = draftKey('t1', 'a.pdf');
     expect(readStoredDraft(key)).toEqual({ state: 'unavailable' });
     expect(storeDraft(key, { version: '1', marks: [{ id: 'a', page: 1, tool: 'pen', points: [{ x: 0.5, y: 0.5 }], comment: '' }] })).toBe(false);
   });

@@ -1,0 +1,173 @@
+// The marks of one open document (spec, section 8.32): what is drawn, the tool, the mark whose window is open, the
+// draft in this browser (F44) and «Отправить агенту». The view of the document gives what only it can (MarksDocument):
+// the text under a mark, the picture for the agent, scrolling to a mark.
+import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { ApiRequestError, asApiError } from '../../api/client.ts';
+import { ru } from '../../i18n/ru.ts';
+import { uploadMarksPicture } from './api.ts';
+import { draftKey, readStoredDraft, storeDraft } from './draft.ts';
+import { marksMessage } from './message.ts';
+import type { Mark, MarkTool, MarksChannel, MarksDocument, MarksTarget, Point } from './types.ts';
+
+export interface MarksSession extends MarksTarget, MarksChannel {
+  // The name of the document, as the chat shows it.
+  name: string;
+  // Pages of a PDF (Word, Excel, PowerPoint through PDF) — or one picture.
+  paged: boolean;
+}
+
+export type MarksNotice = 'changed' | 'noStorage';
+
+export interface MarksController {
+  marks: readonly Mark[];
+  paged: boolean;
+  // «Пометки» pressed: the tools and the list are shown, the marks answer a press.
+  active: boolean;
+  tool: MarkTool | null;
+  selected: string | null;
+  notice: MarksNotice | null;
+  sending: boolean;
+  running: boolean;
+  error: ApiRequestError | null;
+  toggle: () => void;
+  setTool: (tool: MarkTool | null) => void;
+  add: (mark: { page: number; tool: MarkTool; points: Point[] }) => void;
+  setComment: (id: string, comment: string) => void;
+  remove: (id: string) => void;
+  select: (id: string | null) => void;
+  // Scrolls to a mark and opens its window.
+  open: (id: string) => void;
+  // The view of the document says what it can do; null when it closes. The same function for the whole viewer.
+  attach: (document: MarksDocument | null) => void;
+  send: () => Promise<void>;
+  // Esc closes the window of a mark, then lets the tool go; true — it did, the viewer stays open.
+  escape: () => boolean;
+}
+
+export const MarksContext = createContext<MarksController | null>(null);
+export const useMarks = (): MarksController | null => useContext(MarksContext);
+
+interface Initial {
+  marks: Mark[];
+  notice: MarksNotice | null;
+}
+
+// The draft of this version of the file; a draft of another version is removed and the person is told.
+function initial(session: MarksSession | null): Initial {
+  if (!session) return { marks: [], notice: null };
+  const key = draftKey(session.threadId, session.path);
+  const stored = readStoredDraft(key);
+  if (stored.state === 'unavailable') return { marks: [], notice: 'noStorage' };
+  if (stored.state === 'none') return { marks: [], notice: null };
+  if (stored.draft.version === session.version) return { marks: stored.draft.marks, notice: null };
+  storeDraft(key, null);
+  return { marks: [], notice: 'changed' };
+}
+
+export function useMarksController(session: MarksSession | null, onSent: () => void): MarksController | null {
+  const [start] = useState(() => initial(session));
+  const [marks, setMarks] = useState<Mark[]>(start.marks);
+  const [active, setActive] = useState(start.marks.length > 0);
+  const [tool, setTool] = useState<MarkTool | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [notice, setNotice] = useState<MarksNotice | null>(start.notice);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<ApiRequestError | null>(null);
+  const view = useRef<MarksDocument | null>(null);
+  const attach = useCallback((document: MarksDocument | null) => {
+    view.current = document;
+  }, []);
+
+  if (!session) return null;
+  const key = draftKey(session.threadId, session.path);
+
+  // Every change is kept in the browser at once: a reload or «Назад» of a phone loses nothing.
+  const change = (next: Mark[]) => {
+    setError(null);
+    setMarks(next);
+    if (!storeDraft(key, { version: session.version, marks: next })) setNotice('noStorage');
+  };
+
+  return {
+    marks,
+    paged: session.paged,
+    active,
+    tool,
+    selected,
+    notice,
+    sending,
+    running: session.running,
+    error,
+    toggle: () => {
+      setActive((on) => !on);
+      setTool(null);
+      setSelected(null);
+    },
+    setTool: (next) => {
+      setTool(next);
+      setSelected(null);
+    },
+    add: (mark) => {
+      const id = crypto.randomUUID();
+      change([...marks, { id, comment: '', ...mark }]);
+      setSelected(id);
+    },
+    setComment: (id, comment) => change(marks.map((m) => (m.id === id ? { ...m, comment } : m))),
+    remove: (id) => {
+      change(marks.filter((m) => m.id !== id));
+      setSelected(null);
+    },
+    select: setSelected,
+    open: (id) => {
+      const mark = marks.find((m) => m.id === id);
+      if (!mark) return;
+      view.current?.reveal(mark);
+      setSelected(id);
+    },
+    attach,
+    send: async () => {
+      const document = view.current;
+      if (!document || sending || session.running || marks.length === 0) return;
+      setSending(true);
+      setError(null);
+      setSelected(null);
+      try {
+        const quotes = await Promise.all(marks.map((m) => document.quote(m)));
+        let picture: Blob;
+        try {
+          picture = await document.picture(marks);
+        } catch (cause) {
+          console.error('APP_MARKS_PICTURE_FAILED: the picture of marks was not made', cause);
+          throw new ApiRequestError({ code: 'APP_MARKS_PICTURE_FAILED', message: ru.marks.pictureFailed, status: 0, cause });
+        }
+        const saved = await uploadMarksPicture(session.threadId, new File([picture], ru.marks.pictureName(session.name), { type: 'image/jpeg' }));
+        const text = marksMessage({
+          document: { name: session.name, path: session.path },
+          picture: saved,
+          paged: session.paged,
+          marks: marks.map((m, i) => ({ tool: m.tool, page: m.page, comment: m.comment, quote: quotes[i]! })),
+        });
+        // The agent began to answer while the picture went: the marks stay, the line under the button says why.
+        if (!session.send(text)) return;
+        storeDraft(key, null);
+        setMarks([]);
+        onSent();
+      } catch (raw) {
+        setError(asApiError(raw));
+      } finally {
+        setSending(false);
+      }
+    },
+    escape: () => {
+      if (selected) {
+        setSelected(null);
+        return true;
+      }
+      if (tool) {
+        setTool(null);
+        return true;
+      }
+      return false;
+    },
+  };
+}

@@ -5,6 +5,9 @@ import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type ComponentProps, type CSSProperties, type Ref, type RefObject } from 'react';
 import { asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
+import { MarksLayer } from './marks/MarksLayer.tsx';
+import { marksPicture } from './marks/picture.ts';
+import { useMarks } from './marks/use-marks.ts';
 import type { ViewerFailure, ZoomControl } from './types.ts';
 import { imageType, readCapped } from './read.ts';
 import { decodeText } from './text.ts';
@@ -79,14 +82,18 @@ export function TextView({ url, markdown, zoom, onScale, onReady, onFailure }: V
 
 export function ImageView({ url, name, zoom, onScale, onReady, onFailure }: ViewProps & { name: string }) {
   const box = useRef<HTMLDivElement>(null);
+  const picture = useRef<HTMLImageElement>(null);
   const [src, setSrc] = useState<string | null>(null);
-  const [natural, setNatural] = useState<number | null>(null);
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  // The marks of the viewer opened from the chat (spec, section 8.32): the picture is their one page.
+  const marks = useMarks();
+  const attach = marks?.attach;
   const [scale, setScale] = useState(1);
   const set = (next: number) => {
     setScale(clampZoom(next));
     onScale(clampZoom(next));
   };
-  const fit = (width = natural) => {
+  const fit = (width = natural?.width) => {
     if (width && box.current) set(fitScale(box.current.clientWidth, width));
   };
   usePinch(box, scale, set);
@@ -113,21 +120,47 @@ export function ImageView({ url, name, zoom, onScale, onReady, onFailure }: View
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, name]);
 
+  useEffect(() => {
+    const image = picture.current;
+    if (!attach || !natural || !image) return;
+    attach({
+      quote: () => Promise.resolve(''),
+      picture: (list) =>
+        marksPicture(
+          [{ page: 1, ...natural, draw: (canvas, _region, at) => Promise.resolve(canvas.getContext('2d')?.drawImage(image, 0, 0, natural.width * at, natural.height * at)) }],
+          list,
+          false,
+        ),
+      reveal: (mark) => {
+        const area = box.current;
+        if (!area) return;
+        const y = Math.min(...mark.points.map((p) => p.y));
+        area.scrollTo({ top: Math.max(0, y * image.clientHeight - area.clientHeight / 3), behavior: 'smooth' });
+      },
+    });
+    return () => attach(null);
+  }, [attach, natural]);
+
+  const shown = natural ? { width: natural.width * scale, height: natural.height * scale } : null;
   return (
     <div ref={box} className={styles.image} tabIndex={0}>
       {src ? (
-        <img
-          src={src}
-          alt={name}
-          style={natural ? { width: natural * scale } : undefined}
-          onLoad={(event) => {
-            const width = event.currentTarget.naturalWidth;
-            setNatural(width);
-            fit(width);
-            onReady();
-          }}
-          onError={() => onFailure({ code: 'APP_PREVIEW_FAILED', message: ru.clientErrors.APP_PREVIEW_FAILED })}
-        />
+        <div className={styles.imageFrame}>
+          <img
+            ref={picture}
+            src={src}
+            alt={name}
+            style={shown ? { width: shown.width } : undefined}
+            onLoad={(event) => {
+              const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+              setNatural({ width, height });
+              fit(width);
+              onReady();
+            }}
+            onError={() => onFailure({ code: 'APP_PREVIEW_FAILED', message: ru.clientErrors.APP_PREVIEW_FAILED })}
+          />
+          {marks && shown ? <MarksLayer pages={[{ page: 1, left: 0, top: 0, ...shown }]} scroller={() => box.current} /> : null}
+        </div>
       ) : null}
     </div>
   );

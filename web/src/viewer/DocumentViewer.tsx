@@ -3,7 +3,7 @@
 // the document, edge to edge. Word, Excel and PowerPoint the server turns into PDF first: a request of one
 // byte starts it and brings back its refusal as a code and a text; PDF.js then reads the PDF in parts.
 import { CONVERTED_KINDS, previewKindOf } from '@bba/contracts';
-import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiRequestError, toError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -12,6 +12,9 @@ import { useDialogFocus } from '../ui/dialog-focus.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { ImageView, TextView } from './FileViews.tsx';
+import { MarksPanel, MarksToolbar, MarkWindow } from './marks/MarksControls.tsx';
+import type { MarksChannel, MarksTarget } from './marks/types.ts';
+import { MarksContext, useMarksController } from './marks/use-marks.ts';
 import type { ViewerFailure, ZoomControl } from './types.ts';
 import { percent } from './zoom.ts';
 import styles from './viewer.module.css';
@@ -22,7 +25,12 @@ export interface ViewerSource {
   downloadUrl: string;
   // The PDF the server makes of Word, Excel and PowerPoint.
   previewUrl: string;
+  // Opened from a file block of the chat: marks can be drawn on it and sent to the agent (spec, section 8.32).
+  marks?: MarksTarget;
 }
+
+// Marks go on what is shown as pages and on pictures; not on text and Markdown (F45).
+const NO_MARKS: ReadonlySet<string> = new Set(['text', 'markdown']);
 
 // PDF.js with its styles comes with the first PDF opened, not with the chat.
 const PdfPages = lazy(() => import('./PdfPages.tsx'));
@@ -76,8 +84,13 @@ function Content({ source, attempt, zoom, onScale, onReady, onFailure }: { sourc
   );
 }
 
-export function DocumentViewer({ source, onClose }: { source: ViewerSource; onClose: () => void }) {
+export function DocumentViewer({ source, channel, onClose }: { source: ViewerSource; channel: MarksChannel | null; onClose: () => void }) {
   const box = useDialogFocus(true, onClose);
+  const kind = previewKindOf(source.name);
+  const marks = useMarksController(
+    source.marks && channel && kind && !NO_MARKS.has(kind) ? { ...source.marks, ...channel, name: source.name, paged: kind !== 'image' } : null,
+    onClose,
+  );
   const zoom = useRef<ZoomControl | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | ViewerFailure>('loading');
@@ -85,6 +98,17 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
   const [slow, setSlow] = useState(false);
   // A window over the dimmed page; the whole screen by the button (the first request of the owner, 18.11).
   const [wholeScreen, setWholeScreen] = useState(false);
+
+  // Esc closes the window of a mark, then lets the tool go, and only then the viewer: heard before the viewer's own
+  // listener (ui/dialog-focus.ts), wherever the focus is.
+  const onEscape = useEffectEvent((): boolean => marks?.escape() ?? false);
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && onEscape()) event.stopPropagation();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, []);
 
   useEffect(() => {
     if (state !== 'loading') return;
@@ -135,6 +159,20 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
             <IconButton icon="plus" size="sm" label={ru.viewer.zoomIn} disabled={!ready} onClick={() => zoom.current?.zoomIn()} />
             <IconButton icon="fitWidth" size="sm" label={ru.viewer.fit} disabled={!ready} onClick={() => zoom.current?.fit()} />
           </div>
+          {marks ? (
+            <Button
+              icon="markup"
+              size="sm"
+              variant={marks.active ? 'secondary' : 'ghost'}
+              aria-pressed={marks.active}
+              aria-label={ru.marks.toggle}
+              disabled={!ready}
+              className={styles.marksToggle}
+              onClick={marks.toggle}
+            >
+              <span className={styles.marksText}>{ru.marks.toggle}</span>
+            </Button>
+          ) : null}
           <IconButton
             icon={wholeScreen ? 'collapse' : 'expand'}
             size="sm"
@@ -147,6 +185,7 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
           </ButtonLink>
           <IconButton icon="x" size="sm" label={ru.viewer.close} onClick={onClose} />
         </div>
+        <MarksContext value={marks}>
         <div className={styles.body}>
           {state === 'loading' ? <DelayedBar /> : null}
           {state === 'loading' && slow ? <p className={styles.preparing}>{ru.viewer.preparing}</p> : null}
@@ -175,7 +214,15 @@ export function DocumentViewer({ source, onClose }: { source: ViewerSource; onCl
               onFailure={(f) => setState(f)}
             />
           )}
+          {ready && marks ? (
+            <>
+              <MarksToolbar />
+              <MarkWindow />
+              <MarksPanel />
+            </>
+          ) : null}
         </div>
+        </MarksContext>
       </div>
     </div>,
     document.body,

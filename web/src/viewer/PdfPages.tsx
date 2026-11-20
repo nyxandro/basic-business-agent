@@ -4,8 +4,12 @@
 // and on closing the viewer is stopped before the loading of the document is broken off — otherwise its
 // queue of drawing goes on into a destroyed document.
 import 'pdfjs-dist/legacy/web/pdf_viewer.css';
-import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { ru } from '../i18n/ru.ts';
+import { MarksLayer } from './marks/MarksLayer.tsx';
+import { pdfMarksDocument } from './marks/pdf-document.ts';
+import type { PageBox } from './marks/types.ts';
+import { useMarks } from './marks/use-marks.ts';
 import { PDFJS_ASSETS, loadPdfjs, loadViewerComponents } from './pdfjs.ts';
 import type { ViewerFailure, ZoomControl } from './types.ts';
 import { attachPinch, clampZoom, fitScale, zoomIn, zoomOut } from './zoom.ts';
@@ -21,6 +25,11 @@ export default function PdfPages({ url, label, zoom, onScale, onReady, onFailure
   // The scale of the open document; nothing to scale until it opens.
   const control = useRef<ZoomControl | null>(null);
   useImperativeHandle(zoom, () => ({ zoomIn: () => control.current?.zoomIn(), zoomOut: () => control.current?.zoomOut(), fit: () => control.current?.fit() }));
+  // The marks of the viewer opened from the chat (spec, section 8.32): where the pages are, for the layer over them.
+  const marks = useMarks();
+  // The same function for the whole life of the viewer (use-marks.ts).
+  const attach = marks?.attach;
+  const [pages, setPages] = useState<PageBox[]>([]);
 
   useEffect(() => {
     const container = box.current;
@@ -55,15 +64,39 @@ export default function PdfPages({ url, label, zoom, onScale, onReady, onFailure
       release.push(() => {
         control.current = null;
       });
-      eventBus.on('scalechanging', ({ scale }: { scale: number }) => onScale(scale));
+      // Where every page is in the scrolled area, measured after the browser laid the pages out anew.
+      let measuring = 0;
+      const measure = () => {
+        if (!attach) return;
+        cancelAnimationFrame(measuring);
+        measuring = requestAnimationFrame(() => {
+          const area = container.getBoundingClientRect();
+          const boxes: PageBox[] = [];
+          for (let i = 0; i < viewer.pagesCount; i++) {
+            // PDF.js types the page view as any: its element.
+            const div = (viewer.getPageView(i) as { div?: HTMLElement } | undefined)?.div;
+            if (!div) continue;
+            const rect = div.getBoundingClientRect();
+            boxes.push({ page: i + 1, left: rect.left - area.left + container.scrollLeft - container.clientLeft, top: rect.top - area.top + container.scrollTop - container.clientTop, width: rect.width, height: rect.height });
+          }
+          if (active) setPages(boxes);
+        });
+      };
+      release.push(() => cancelAnimationFrame(measuring));
+      eventBus.on('scalechanging', ({ scale }: { scale: number }) => {
+        onScale(scale);
+        measure();
+      });
       eventBus.on('pagesinit', () => {
         fit();
         container.scrollTop = 0;
+        measure();
         if (active) onReady();
       });
       release.push(attachPinch(container, { read: () => viewer.currentScale, apply: set }));
       const resized = new ResizeObserver(() => {
         if (fitted) fit();
+        measure();
       });
       resized.observe(container);
       release.push(() => resized.disconnect());
@@ -79,6 +112,8 @@ export default function PdfPages({ url, label, zoom, onScale, onReady, onFailure
       if (!active) return;
       viewer.setDocument(document);
       linkService.setDocument(document);
+      attach?.(pdfMarksDocument(document, viewer, container));
+      release.push(() => attach?.(null));
     };
 
     open().catch((error: unknown) => {
@@ -94,12 +129,13 @@ export default function PdfPages({ url, label, zoom, onScale, onReady, onFailure
     };
     // The document is opened once per address; the callbacks of the viewer do not reopen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [url, attach]);
 
   // PDF.js scrolls the container itself and needs it positioned; `.pdfViewer` it fills with pages.
   return (
     <div ref={box} className={styles.pdf} aria-label={label} tabIndex={0}>
       <div className="pdfViewer" />
+      {marks ? <MarksLayer pages={pages} scroller={() => box.current} /> : null}
     </div>
   );
 }

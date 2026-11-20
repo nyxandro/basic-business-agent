@@ -1,5 +1,5 @@
-// The unsent marks of a file (spec, section 8.32; decision of the owner 20.11, F44): kept in this browser per person,
-// conversation and file until they are sent, with the version of the file they were drawn on. Storage may be
+// The unsent marks of a file (spec, section 8.32; decision of the owner 20.11, F44): kept in this browser per
+// conversation and file until they are sent (a conversation is always one person's), with the version of the file they were drawn on. Storage may be
 // unavailable (private mode): then the marks live while the viewer is open, and the person is told.
 import { z } from 'zod';
 import { COMMENT_MAX, MARK_TOOLS, type Mark } from './types.ts';
@@ -25,7 +25,7 @@ const markSchema = z
   .refine((m) => m.tool === 'pen' || m.points.length === 2);
 const draftSchema = z.object({ version: z.string().min(1), marks: z.array(markSchema) });
 
-export const draftKey = (userId: string, threadId: string, path: string): string => `bba:marks:${userId}:${threadId}:${path}`;
+export const draftKey = (threadId: string, path: string): string => `bba:marks:${threadId}:${path}`;
 
 export const serializeDraft = (draft: MarksDraft): string => JSON.stringify(draft);
 

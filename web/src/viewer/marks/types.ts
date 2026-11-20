@@ -22,3 +22,36 @@ export interface Mark {
 
 // The longest comment: the message stays readable (spec, section 8.32).
 export const COMMENT_MAX = 2000;
+
+// The file the marks are drawn on, opened from a file block of the chat (F43): its conversation, its path in the
+// conversation's folder and the version it had when opened (`version` of its status).
+export interface MarksTarget {
+  threadId: string;
+  path: string;
+  version: string;
+}
+
+// How the marks reach the agent: the chat's own sending (web/src/chat/chat-send.ts); false — nothing was sent.
+export interface MarksChannel {
+  send: (text: string) => boolean;
+  running: boolean;
+}
+
+// What the view of the document (pages of a PDF or a picture) does for the marks.
+export interface MarksDocument {
+  // The text under a mark; empty on a scan or a picture.
+  quote: (mark: Mark) => Promise<string>;
+  // The picture of the marks for the agent (picture.ts).
+  picture: (marks: readonly Mark[]) => Promise<Blob>;
+  // Scrolls the mark into view.
+  reveal: (mark: Mark) => void;
+}
+
+// A page as the layer of marks lies over it, in points of the scrolled content of the view.
+export interface PageBox {
+  page: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}

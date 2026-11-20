@@ -9,10 +9,15 @@ export interface TextBox extends Box {
 
 // The longest quote under a mark in the message; the whole text the model gets with the document (spec, 8.29).
 export const QUOTE_MAX = 300;
-// A line of the pen takes the text this far round it (shares of the page): an underline takes its words.
-const PEN_ROOM = 0.015;
-// An arrow points at text this far off its tip (shares of the width of the page).
+// A line of the pen lower than this (a share of the height of the page) is an underline or a crossing-out, not a loop:
+// it takes the text up to a line over it and a little under it. A loop takes what it goes round.
+const PEN_THIN = 0.012;
+const PEN_ABOVE = 0.015;
+const PEN_BELOW = 0.003;
+// An arrow points at text this far off its tip (shares of the width of the page)…
 const ARROW_REACH = 0.04;
+// …looked for a little beyond the tip, the way it points: a tip stopping between two lines points into one of them.
+const ARROW_AHEAD = 0.01;
 // A piece of text is under a frame when the frame covers at least this part of its height.
 const COVERED_HEIGHT = 0.5;
 // Pieces of a line further apart than this part of its height are separate words.
@@ -106,16 +111,20 @@ function distance(point: { x: number; y: number }, box: Box, aspect: number): nu
 
 export function textUnder(mark: Pick<Mark, 'tool' | 'points'>, boxes: readonly TextBox[], aspect: number): string {
   if (mark.tool === 'arrow') {
-    const tip = mark.points.at(-1)!;
-    const near = boxes.map((box) => ({ box, d: distance(tip, box, aspect) })).filter((b) => b.d <= ARROW_REACH);
+    const [tail, tip] = [mark.points[0]!, mark.points.at(-1)!];
+    // The way the arrow points, in shares of the width of the page.
+    const way = { x: tip.x - tail.x, y: (tip.y - tail.y) * aspect };
+    const length = Math.hypot(way.x, way.y) || 1;
+    const ahead = { x: tip.x + (way.x / length) * ARROW_AHEAD, y: tip.y + (way.y / length) * (ARROW_AHEAD / aspect) };
+    const near = boxes.map((box) => ({ box, d: distance(ahead, box, aspect) })).filter((b) => b.d <= ARROW_REACH);
     if (near.length === 0) return '';
     const { box } = near.reduce((best, b) => (b.d < best.d ? b : best));
     const line = boxes.filter((b) => (b.y0 + b.y1) / 2 >= box.y0 && (b.y0 + b.y1) / 2 <= box.y1);
     return join(line, aspect);
   }
   const b = boundsOf(mark.points);
-  const room = mark.tool === 'pen' ? PEN_ROOM : 0;
-  const region = { x0: b.x0 - room, y0: b.y0 - room, x1: b.x1 + room, y1: b.y1 + room };
+  const line = mark.tool === 'pen' && b.y1 - b.y0 < PEN_THIN;
+  const region = line ? { ...b, y0: b.y0 - PEN_ABOVE, y1: b.y1 + PEN_BELOW } : b;
   const pieces = boxes
     .filter((box) => overlap(region.y0, region.y1, box.y0, box.y1) >= COVERED_HEIGHT * (box.y1 - box.y0) && overlap(region.x0, region.x1, box.x0, box.x1) > 0)
     .map((box) => ({ ...box, text: cut(box, region) }))

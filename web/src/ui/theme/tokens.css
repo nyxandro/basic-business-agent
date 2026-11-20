@@ -21,6 +21,10 @@
   --ease-rise: cubic-bezier(0.2, 0.7, 0.2, 1);
   /* Fast at first, settling softly: a sent message. */
   --ease-send: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* The marks on the pages of the document viewer (spec, section 8.32): one colour in both themes — the pages are
+     white in both. The picture of the marks for the agent reads it too (web/src/viewer/marks/picture.ts). */
+  --mark: #e5484d;
 }
 
 /* [data-theme-scope] gives a part of the page the other theme: the sample of «Интерфейс» shows

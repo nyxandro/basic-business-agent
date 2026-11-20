@@ -1,4 +1,4 @@
-import { cloneElement, useId, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { cloneElement, useId, type InputHTMLAttributes, type Ref, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from './Button.tsx';
 import styles from './controls.module.css';
 import { Icon } from './Icon.tsx';
@@ -30,7 +30,7 @@ export function Input({ className, mono, ...rest }: InputHTMLAttributes<HTMLInpu
   return <input className={cx(styles.input, mono && styles.mono, className)} {...rest} />;
 }
 
-export function TextArea({ className, mono, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { mono?: boolean }) {
+export function TextArea({ className, mono, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement> & { mono?: boolean; ref?: Ref<HTMLTextAreaElement> }) {
   return <textarea className={cx(styles.input, styles.textarea, mono && styles.mono, className)} {...rest} />;
 }
 

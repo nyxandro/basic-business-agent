@@ -235,6 +235,12 @@ const PATHS = {
     </>
   ),
   logout: <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" />,
+  // The marks of the document viewer (spec, section 8.32): «Пометки» and its four tools.
+  markup: <path d="M14 5l4 4-9 9H5v-4zM12 7l4 4M4 21h4.5M12 21h8" />,
+  rect: <rect x="4" y="6" width="16" height="12" rx="1.5" />,
+  ellipse: <ellipse cx="12" cy="12" rx="9" ry="6.5" />,
+  pen: <path d="M4 17c2.5-6 4.5-9 6-9s1 6 3 6 3.5-5 7-7" />,
+  arrow: <path d="M5 19L19 5M10 5h9v9" />,
   // «A» over «Z» and an arrow down: by name.
   sortName: <path d="M4 11l2.5-7 2.5 7M5 8.6h3M4 14h5l-5 6h5M17 4v16M13.5 16.5L17 20l3.5-3.5" />,
 } satisfies Record<string, ReactNode>;

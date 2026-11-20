@@ -74,6 +74,25 @@ describe('the text under a mark', () => {
     expect(textUnder(nowhere, page, ASPECT)).toBe('');
   });
 
+  it('an arrow from below whose tip stops between two lines takes the line it points into', () => {
+    // Lines 14 points apart; the tip 1.5 points under the upper one, 0.5 over the lower one, coming from below.
+    const lines = textBoxes([item('Иванова Ивана Ивановича', 60, 700, 150), item('на основании Устава', 60, 686, 120)], viewport);
+    const arrow = { tool: 'arrow' as const, points: [{ x: 0.3, y: 0.25 }, { x: 120 / 600, y: 101.5 / 800 }] };
+    expect(textUnder(arrow, lines, ASPECT)).toBe('Иванова Ивана Ивановича');
+  });
+
+  it('a loop of the pen takes only what it goes round, not the lines next to it', () => {
+    // A table: a head, a row, the next row; the loop round «15 000,00» of the middle one.
+    const table = textBoxes([item('Цена, руб.', 300, 720, 60), item('15 000,00', 300, 700, 54), item('8 500,00', 300, 680, 48)], viewport);
+    const loop = { tool: 'pen' as const, points: [{ x: 296 / 600, y: 85 / 800 }, { x: 358 / 600, y: 84 / 800 }, { x: 358 / 600, y: 103 / 800 }, { x: 296 / 600, y: 103 / 800 }] };
+    expect(textUnder(loop, table, ASPECT)).toBe('15 000,00');
+  });
+
+  it('a line of the pen through the words takes them', () => {
+    const strike = { tool: 'pen' as const, points: [{ x: 62 / 600, y: (800 - 684) / 800 }, { x: 120 / 600, y: (800 - 684) / 800 }] };
+    expect(textUnder(strike, page, ASPECT)).toBe('Покупатель,');
+  });
+
   it('a long text is cut at 300 characters and ends with «…»', () => {
     const long = textBoxes([item('слово '.repeat(80).trim(), 0, 700, 600)], viewport);
     const quote = textUnder({ tool: 'rect', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, long, ASPECT);

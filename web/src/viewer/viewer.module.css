@@ -38,6 +38,11 @@
   animation: bba-modal 0.32s var(--ease-out) both;
 }
 
+/* The window takes the focus back from the window of a mark (spec, section 8.32): no ring round the whole viewer. */
+.window:focus-visible {
+  outline: none;
+}
+
 .wholeScreen {
   padding: 0;
 }
@@ -83,6 +88,11 @@
 }
 
 .download {
+  margin-left: 4px;
+}
+
+/* «Пометки» of the viewer opened from the chat (spec, section 8.32). */
+.marksToggle {
   margin-left: 4px;
 }
 
@@ -164,10 +174,16 @@
   outline: none;
 }
 
+/* The picture and the layer of its marks (spec, section 8.32) move and scale together. */
+.imageFrame {
+  position: relative;
+  flex: none;
+  margin: auto;
+}
+
 .image img {
   display: block;
   max-width: none;
-  margin: auto;
 }
 
 .preparing {
@@ -216,7 +232,8 @@
   }
 
   .wholeScreenToggle,
-  .downloadText {
+  .downloadText,
+  .marksText {
     display: none;
   }
 
