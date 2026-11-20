@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectDto, ThreadPage } from '@bba/contracts';
@@ -111,6 +111,9 @@ describe('projects', () => {
     const id = await thread(olgaId);
     await t.call('PUT', `/app/api/threads/${id}/project`, { cookie: olga, body: { projectId: project.id } });
     expect((await upload(`/app/api/threads/${id}/files`, olga, 'отчёт.pdf', [1, 2, 3])).status).toBe(201);
+    // The drafts of the agent are not among the files of the project (spec, section 8.33).
+    mkdirSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), '.work', id), { recursive: true });
+    writeFileSync(join(contextRoot(t.workspaceRoot, olgaId, project.id), '.work', id, 'Черновик.docx'), 'x');
 
     const files = await json<{ files: { path: string; bytes: number }[] }>(await t.call('GET', `/app/api/projects/${project.id}/files`, { cookie: olga }));
     expect(files.files).toEqual([{ path: 'отчёт.pdf', bytes: 3 }]);

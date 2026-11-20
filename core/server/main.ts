@@ -3,6 +3,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { recoverProjectFolders, startTrashPurge } from '../projects/trash.ts';
+import { startDraftsSweep } from '../storage/drafts-sweep.ts';
 import { serve } from '@hono/node-server';
 import { fileURLToPath } from 'node:url';
 import { createAuth } from '../auth/auth.ts';
@@ -161,6 +162,7 @@ async function main(): Promise<void> {
   // After the recovery: copies a stopped server left are stored into the bucket by the first pass.
   await files.start();
   const stopTrashPurge = startTrashPurge(db, files);
+  const stopDraftsSweep = startDraftsSweep(files);
   const stopPreviewPurge = startPreviewPurge(previewCache, 'preview');
   const stopDocTextPurge = startPreviewPurge(docTextCache, 'doctext');
   const stopWebTextPurge = startPreviewPurge(webTextCache, 'webtext');
@@ -181,6 +183,7 @@ async function main(): Promise<void> {
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
     stopTrashPurge();
+    stopDraftsSweep();
     stopPreviewPurge();
     stopDocTextPurge();
     stopWebTextPurge();

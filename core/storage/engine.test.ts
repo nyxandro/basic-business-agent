@@ -13,6 +13,7 @@ import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 import { areaDir, projectArea, userArea } from './areas.ts';
+import { sweepDrafts } from './drafts-sweep.ts';
 import { createFileStorage, type FileStorage } from './engine.ts';
 import { startFakeS3, type FakeS3 } from './fake-s3.ts';
 
@@ -129,8 +130,9 @@ describe('a working copy', () => {
     expect(read(dir, 'a.txt')).toBe('one');
     put(dir, 'отчёт/b.docx', 'two');
     writeFileSync(join(dir, 'a.txt'), 'one more');
-    put(dir, '.renders/page-1.png', 'png');
-    // A file of the person's computer brought for an answer (spec, section 8.25) is not stored either.
+    // The agent's drafts are stored as any file (spec, section 8.33); a file of the person's computer brought for an
+    // answer (8.25) is not.
+    put(dir, 'chats/t1/.work/make_kp.js', 'js');
     put(dir, '.computer/Договоры/договор.docx', 'docx');
     // Held: the pass leaves it alone.
     await storage.sweep();
@@ -138,7 +140,8 @@ describe('a working copy', () => {
     await release();
     expect(s3.objects.get('bba/users/olga/files/a.txt')?.toString()).toBe('one more');
     expect(s3.objects.get('bba/users/olga/files/отчёт/b.docx')?.toString()).toBe('two');
-    expect(bucketKeys().some((k) => k.includes('.renders') || k.includes('.computer'))).toBe(false);
+    expect(s3.objects.get('bba/users/olga/files/chats/t1/.work/make_kp.js')?.toString()).toBe('js');
+    expect(bucketKeys().some((k) => k.includes('.computer'))).toBe(false);
     await storage.sweep();
     expect(existsSync(dir)).toBe(false);
   });
@@ -220,6 +223,56 @@ describe('a working copy', () => {
     await storage.drop(tender);
     expect(bucketKeys()).toEqual([]);
     expect((await storage.status()).stored.files).toBe(0);
+  });
+});
+
+// The drafts of the agent (spec, section 8.33): removed once a day when not changed for 30 days, from the disk and
+// from the bucket; the documents of the person stay, and so does every file of an area an answer works in now.
+describe('the drafts of the agent', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.parse('2026-12-20T10:00:00Z');
+  const before = now - 30 * DAY;
+  function aged(dir: string, path: string, days: number): number {
+    put(dir, path, path);
+    const at = new Date(now - days * DAY);
+    utimesSync(join(dir, path), at, at);
+    return Buffer.byteLength(path);
+  }
+
+  it('removes the drafts not changed for 30 days, in conversations and in projects; documents and fresh drafts stay', async () => {
+    const [mine, project] = [areaDir(root, olga), areaDir(root, tender)];
+    const bytes = aged(mine, 'chats/t1/.work/make_kp.js', 31) + aged(mine, 'chats/t1/.work/pages/p-1.png', 45) + aged(project, 'files/.work/t2/build.js', 31);
+    aged(mine, 'chats/t1/.work/fresh.js', 29);
+    aged(mine, 'chats/t1/КП.docx', 90);
+    aged(project, 'files/Смета.xlsx', 90);
+    expect(await sweepDrafts(storage, now)).toEqual({ files: 3, bytes });
+    for (const gone of ['chats/t1/.work/make_kp.js', 'chats/t1/.work/pages/p-1.png']) expect(existsSync(join(mine, gone))).toBe(false);
+    expect(existsSync(join(project, 'files/.work/t2/build.js'))).toBe(false);
+    for (const kept of ['chats/t1/.work/fresh.js', 'chats/t1/КП.docx']) expect(existsSync(join(mine, kept))).toBe(true);
+    expect(existsSync(join(project, 'files/Смета.xlsx'))).toBe(true);
+  });
+
+  it('leaves an area an answer works in to the next time', async () => {
+    aged(areaDir(root, olga), 'chats/t1/.work/make_kp.js', 31);
+    const release = await storage.hold(olga, 'write');
+    expect(await storage.removeStaleDrafts(before)).toEqual({ files: 0, bytes: 0 });
+    expect(existsSync(join(areaDir(root, olga), 'chats/t1/.work/make_kp.js'))).toBe(true);
+    await release();
+    expect((await storage.removeStaleDrafts(before)).files).toBe(1);
+  });
+
+  it('with a bucket, removes them from it while the area has no copy on the disk', async () => {
+    await connected();
+    const release = await storage.hold(olga, 'write');
+    aged(areaDir(root, olga), 'chats/t1/.work/make_kp.js', 31);
+    aged(areaDir(root, olga), 'chats/t1/.work/fresh.js', 1);
+    aged(areaDir(root, olga), 'chats/t1/КП.docx', 90);
+    await release();
+    await storage.sweep();
+    expect(existsSync(areaDir(root, olga))).toBe(false);
+    expect((await storage.removeStaleDrafts(before)).files).toBe(1);
+    expect(bucketKeys()).toEqual(['bba/users/olga/files/chats/t1/.work/fresh.js', 'bba/users/olga/files/chats/t1/КП.docx']);
+    expect((await storage.status()).stored.files).toBe(2);
   });
 });
 

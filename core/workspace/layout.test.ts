@@ -50,7 +50,7 @@ describe('workspace layout', () => {
   it('lists the files of a folder without hidden working folders, nested ones with their path', () => {
     const root = contextRoot(ws, 'olga', null);
     saveFile(root, 'договор.pdf', new Uint8Array([1, 2]));
-    saveFile(join(root, '.renders'), 'scan-p1.png', new Uint8Array([1]));
+    saveFile(join(root, '.work'), 'scan-p1.png', new Uint8Array([1]));
     saveFile(join(root, 'выгрузки'), 'итог.csv', new Uint8Array([1, 2, 3]));
     expect(listFiles(root)).toEqual([
       { path: 'выгрузки/итог.csv', bytes: 3 },

@@ -301,7 +301,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     await runAs('olga');
     expect(lastToolOutput()).toMatch(/\b0\b/);
 
-    model.script(command('mkdir -p .renders && pdftoppm -png -r 50 -f 1 -l 1 scan.pdf .renders/scan'), { toolCalls: [{ name: 'view_image', args: { path: '.renders/scan-1.png' } }] }, { text: 'Вижу пустую страницу.' });
+    model.script(command('mkdir -p .work && pdftoppm -png -r 50 -f 1 -l 1 scan.pdf .work/scan'), { toolCalls: [{ name: 'view_image', args: { path: '.work/scan-1.png' } }] }, { text: 'Вижу пустую страницу.' });
     await runAs('olga');
     const last = JSON.stringify(model.requests.at(-1)!.messages);
     expect(last).toContain('data:image/png;base64,');
@@ -416,9 +416,11 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     model.script({ toolCalls: [{ name: 'view_image', args: { path: 'files/скан.webp' } }] }, { text: 'Ок.' });
     await runAs('olga');
     expect(lastToolOutput()).toContain('переведи');
+    // Into the drafts of the conversation (spec, section 8.33), never among the files of the person.
+    expect(lastToolOutput()).toContain(".save('.work/ВЫХОД.png')");
     model.script(readFile({ path: 'files/архив.zip' }), { text: 'Ок.' });
     await runAs('olga');
-    expect(lastToolOutput()).toContain('python3 -m zipfile -e');
+    expect(lastToolOutput()).toContain('python3 -m zipfile -e АРХИВ.zip .work/ПАПКА');
   });
 });
 

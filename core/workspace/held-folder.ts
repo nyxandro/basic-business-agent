@@ -44,8 +44,8 @@ export interface HeldFile {
   path: string;
 }
 
-// Every regular file of `root`, its folders entered without following links. Hidden entries (".renders"
-// of the skills, the snapshots) are skipped unless `hidden`. `visit` returning false stops the walk.
+// Every regular file of `root`, its folders entered without following links. Hidden entries (the drafts of the
+// agent, the snapshots) are skipped unless `hidden`. `visit` returning false stops the walk.
 export function walkRegularFiles(root: string, visit: (file: HeldFile) => unknown, hidden = false): void {
   let real: string;
   try {

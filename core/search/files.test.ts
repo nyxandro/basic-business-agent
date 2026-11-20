@@ -39,7 +39,10 @@ beforeAll(async () => {
   const project = filesRoot(t.workspaceRoot, olgaId, tender);
   put(project, 'KP_Yelka_v2.pdf', 30);
   put(project, 'расчёты/Бюджет 2026.xlsx', 20);
-  for (const junk of ['build_yelka.js', 'document.xml', 'slide-2.jpg', '.renders/page-1.png']) put(project, junk, 1);
+  for (const junk of ['build_yelka.js', 'document.xml', 'slide-2.jpg', '.work/t1/page-1.png']) put(project, junk, 1);
+  // The drafts of the agent (spec, section 8.33): even a document there is not the person's.
+  put(project, '.work/t1/Черновик договора.docx', 1);
+  put(filesRoot(t.workspaceRoot, olgaId, null), 'chats/t2/.work/Черновик сметы.xlsx', 1);
   put(filesRoot(t.workspaceRoot, olgaId, null), 'Договор поставки.docx', 10);
   put(filesRoot(t.workspaceRoot, olgaId, null), 'Margin.xlsx', 40);
   put(filesRoot(t.workspaceRoot, olgaId, null), 'КП-12 бетон.pdf', 41);
@@ -73,6 +76,7 @@ describe('files the person finds by name (spec, section 8.21)', () => {
 
   it('never finds the working files of the agent: scripts, parts of documents, pictures, hidden folders', async () => {
     for (const q of ['build', 'yelka', 'document', 'slide', 'page']) expect(await names(olgaId, q)).not.toEqual(expect.arrayContaining(['build_yelka.js', 'document.xml', 'slide-2.jpg', 'page-1.png']));
+    expect(await names(olgaId, 'черновик')).toEqual([]);
   });
 
   it('shows a colleague the files of a project opened to them and never anyone’s own files', async () => {

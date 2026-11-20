@@ -76,12 +76,12 @@ describe('the trash of a project', () => {
     put(p.files, 'договор.pdf', 'Д');
     put(p.files, 'прайс.xlsx', 'П');
     put(p.files, 'старое/акт.docx', 'А');
-    put(p.files, '.renders/стр-1.png', 'R');
+    put(p.files, '.work/t1/стр-1.png', 'R');
     const snapshot = snapshotOf(p.id);
     rmSync(join(p.files, 'договор.pdf'));
     renameSync(join(p.files, 'прайс.xlsx'), join(p.files, 'прайс 2026.xlsx'));
     rmSync(join(p.files, 'старое'), { recursive: true });
-    rmSync(join(p.files, '.renders'), { recursive: true });
+    rmSync(join(p.files, '.work'), { recursive: true });
     put(p.files, 'черновик.js', 'x');
     rmSync(join(p.files, 'черновик.js'));
     expect(await settleSnapshot(t.db, t.workspaceRoot, snapshot)).toBe(2);

@@ -21,13 +21,17 @@ import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import type { AgentAbilities } from '@bba/contracts';
-import { contextRoot, listFiles } from '../workspace/layout.ts';
+import { contextRoot, draftsPath, DRAFTS_KEEP_DAYS, listFiles } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
 
 export const BASE_RULES = readFileSync(new URL('./base-rules.md', import.meta.url), 'utf8');
 // What the agent may do (spec, section 8.30): the rules of programs only to the agent that may run them; the
 // others are told plainly what is switched off, so they say so instead of trying.
-export const COMMANDS_RULES = readFileSync(new URL('./rules-commands.md', import.meta.url), 'utf8');
+const COMMANDS_TEMPLATE = readFileSync(new URL('./rules-commands.md', import.meta.url), 'utf8');
+// The rules of programs name the drafts folder of the conversation (spec, section 8.33): the same every turn of it.
+export function commandsRules(drafts: string): string {
+  return COMMANDS_TEMPLATE.replaceAll('{{drafts}}', drafts).replaceAll('{{days}}', String(DRAFTS_KEEP_DAYS)).trim();
+}
 const SWITCHED_OFF = 'выключен в настройках агента';
 export const COMMANDS_OFF = `Запуск программ тебе ${SWITCHED_OFF}: скрипты и программы ты не запускаешь, файлы Word, Excel, PowerPoint и PDF не создаёшь и не правишь, архивы не распаковываешь, документ дальше показанного фрагмента не дочитываешь. Если сотруднику нужно это — скажи, что запуск программ ${SWITCHED_OFF}, и сделай, что можешь, текстом.`;
 export const WEB_RULES = `## Интернет\n- Свежие сведения из интернета и чтение страниц по ссылкам — через \`web_research\`: опиши задание полностью (что найти, ссылки, в каком виде вернуть) — исследователь не видит этот разговор.\n- В ответе называй источники ссылками.\n- Не ищи в интернете то, что есть в документах, памяти и подключённых системах.`;
@@ -38,8 +42,9 @@ export const WEB_OFF = `Интернета у тебя нет — он ${SWITCHE
 // An agent whose passport turns the core's rules off (baseRules: false) gets no rules of programs either — they
 // were a part of the core's rules; what is switched off it is told still.
 // Widgets (spec, section 8.31) are only the agent's the person talks to: a sub-agent is told nothing about them.
-export function abilitiesLayer(abilities: AgentAbilities, baseRules: boolean, level: 'top' | 'sub'): string {
-  const commands = abilities.commands ? (baseRules ? COMMANDS_RULES.trim() : null) : COMMANDS_OFF;
+// `drafts` — the drafts folder of the conversation, asked only when the rules of programs are given.
+export function abilitiesLayer(abilities: AgentAbilities, baseRules: boolean, level: 'top' | 'sub', drafts: () => string): string {
+  const commands = abilities.commands ? (baseRules ? commandsRules(drafts()) : null) : COMMANDS_OFF;
   const widgets = level === 'top' ? (abilities.widgets ? widgetsRules() : WIDGETS_OFF) : null;
   return [commands, abilities.web ? WEB_RULES : WEB_OFF, widgets].filter((part): part is string => part !== null).join('\n\n');
 }
@@ -193,7 +198,10 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         messages,
         systemMessages: [
           ...(deps.baseRules ? [{ role: 'system' as const, content: BASE_RULES }] : []),
-          { role: 'system' as const, content: abilitiesLayer(abilitiesOf(requestContext), deps.baseRules, deps.level) },
+          {
+            role: 'system' as const,
+            content: abilitiesLayer(abilitiesOf(requestContext), deps.baseRules, deps.level, () => draftsPath(requireContextValue(requestContext, REQUEST_KEYS.threadId), projectId !== null)),
+          },
           ...systemMessages,
           { role: 'system' as const, content: org },
           { role: 'system' as const, content: employee },

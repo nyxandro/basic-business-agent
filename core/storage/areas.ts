@@ -34,9 +34,9 @@ export function markerPath(workspaceRoot: string, area: Area): string {
   return area.kind === 'user' ? join(userRoot(workspaceRoot, area.userId), '.storage-files.json') : join(projectRoot(workspaceRoot, area.ownerId, area.projectId), '.storage.json');
 }
 
-// Working files that are not stored: snapshots of an answer, pictures of pages the skills draw, files of
-// the person's computer brought for one answer (section 8.25), half-written uploads.
-const WORKING_FOLDERS: ReadonlySet<string> = new Set(['.snapshots', '.renders', '.computer']);
+// Working files that are not stored: snapshots of an answer, files of the person's computer brought for one answer
+// (section 8.25), half-written uploads. The agent's drafts (`.work`, section 8.33) are stored: they live a month.
+const WORKING_FOLDERS: ReadonlySet<string> = new Set(['.snapshots', '.computer']);
 const WORKING_FILE = /^\.(?:upload|copy|hydrate|evict)-/;
 
 export function isWorkingPath(rel: string): boolean {

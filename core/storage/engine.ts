@@ -13,7 +13,7 @@ import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../server/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { existingInside, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
+import { existingInside, isDraftPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';
 import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, unreadableNames, type CopyDeps } from './copies.ts';
 import { storedAreas, storedRows, storedTotals } from './manifest.ts';
@@ -57,6 +57,9 @@ export interface FileStorage {
   list(area: Area): Promise<{ path: string; bytes: number }[]>;
   // A file of the area removed for good (the trash empties itself).
   removeFile(area: Area, rel: string): Promise<void>;
+  // The agent's drafts (spec, section 8.33) not changed since `before` (ms), removed for good in every area, from the
+  // disk and the bucket. An area held now is left to the next time: an answer may be using an old script.
+  removeStaleDrafts(before: number): Promise<{ files: number; bytes: number }>;
   // The area removed for good with all its files.
   drop(area: Area): Promise<void>;
   status(): Promise<StorageStatus>;
@@ -365,6 +368,51 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
         if (existsSync(dir)) rmSync(resolveInside(dir, rel), { force: true });
         if (remote()) await removeStoredFile(copyDeps(), area, rel);
       });
+    },
+
+    async removeStaleDrafts(before) {
+      const areas = new Map(localAreas(workspaceRoot).map((a) => [areaKey(a), a]));
+      if (remote()) {
+        for (const key of await storedAreas(db)) {
+          const area = areas.has(key) ? null : await areaOfKey(key);
+          if (area) areas.set(key, area);
+        }
+      }
+      const removed = { files: 0, bytes: 0 };
+      for (const area of areas.values()) {
+        if (stateOf(area).holders > 0) continue;
+        await exclusive(area, async () => {
+          if (stateOf(area).holders > 0) return;
+          const dir = areaDir(workspaceRoot, area);
+          const prefix = filesPrefix(area);
+          // A draft is old when neither its copy on the disk nor the bucket has it changed since `before`.
+          const drafts = new Map<string, { bytes: number; modifiedMs: number }>();
+          if (existsSync(dir)) {
+            walkRegularFiles(
+              join(dir, prefix),
+              (f) => {
+                if (isDraftPath(f.rel)) drafts.set(prefix + f.rel, { bytes: f.size, modifiedMs: f.modifiedMs });
+              },
+              true,
+            );
+          }
+          if (remote()) {
+            for (const row of await storedRows(db, areaKey(area), prefix)) {
+              if (!isDraftPath(row.path.slice(prefix.length))) continue;
+              const disk = drafts.get(row.path);
+              drafts.set(row.path, { bytes: disk?.bytes ?? row.bytes, modifiedMs: Math.max(disk?.modifiedMs ?? 0, row.mtimeMs) });
+            }
+          }
+          for (const [rel, draft] of drafts) {
+            if (draft.modifiedMs >= before) continue;
+            if (existsSync(dir)) rmSync(resolveInside(dir, rel), { force: true });
+            if (remote()) await removeStoredFile(copyDeps(), area, rel);
+            removed.files += 1;
+            removed.bytes += draft.bytes;
+          }
+        });
+      }
+      return removed;
     },
 
     drop(area) {

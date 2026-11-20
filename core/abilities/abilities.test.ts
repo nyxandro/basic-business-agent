@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { withAttachments, type AdminAgentsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { abilitiesLayer, COMMANDS_OFF, COMMANDS_RULES, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
+import { abilitiesLayer, commandsRules, COMMANDS_OFF, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { conversationRoot } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
@@ -66,12 +66,13 @@ describe('what an agent may do', () => {
 
   // An agent whose passport turns the core's rules off gets no rules of programs either; it is told what is off.
   it('gives the rules of programs only with the core’s rules, and the switched-off lines always', () => {
-    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, false, 'sub')).toBe(WEB_RULES);
-    expect(abilitiesLayer({ web: false, commands: false, widgets: false }, false, 'sub')).toBe(`${COMMANDS_OFF}\n\n${WEB_OFF}`);
-    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'sub')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}`);
+    const drafts = () => '.work';
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, false, 'sub', drafts)).toBe(WEB_RULES);
+    expect(abilitiesLayer({ web: false, commands: false, widgets: false }, false, 'sub', drafts)).toBe(`${COMMANDS_OFF}\n\n${WEB_OFF}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'sub', drafts)).toBe(`${commandsRules('.work')}\n\n${WEB_RULES}`);
     // Widgets (spec, section 8.31): only the agent the person talks to is told about them, on or off.
-    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'top')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}\n\n${widgetsRules()}`);
-    expect(abilitiesLayer({ web: true, commands: true, widgets: false }, true, 'top')).toBe(`${COMMANDS_RULES.trim()}\n\n${WEB_RULES}\n\n${WIDGETS_OFF}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: true }, true, 'top', drafts)).toBe(`${commandsRules('.work')}\n\n${WEB_RULES}\n\n${widgetsRules()}`);
+    expect(abilitiesLayer({ web: true, commands: true, widgets: false }, true, 'top', drafts)).toBe(`${commandsRules('.work')}\n\n${WEB_RULES}\n\n${WIDGETS_OFF}`);
   });
 
   it('stops a run of an agent the database has no row of', async () => {
@@ -107,7 +108,14 @@ describe('what an agent may do', () => {
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { web: true, commands: true } });
     t.model.script({ text: 'Готово.' });
     await chat('Сделай КП в Word');
-    expect(systemOf()).toContain(JSON.stringify(COMMANDS_RULES.trim()).slice(1, -1));
+    expect(systemOf()).toContain(JSON.stringify(commandsRules('.work')).slice(1, -1));
+    // In a project, whose folder all its conversations share, the drafts are the conversation's own (spec, 8.33).
+    const project = ((await (await t.call('POST', '/app/api/projects', { cookie: olga, body: { name: 'Кровля', access: { mode: 'private', departmentIds: [], userIds: [] } } })).json()) as { id: string }).id;
+    const inProject = randomUUID();
+    expect((await t.call('PUT', `/app/api/threads/${inProject}/project`, { cookie: olga, body: { projectId: project } })).status).toBe(200);
+    t.model.script({ text: 'Готово.' });
+    await chat('Сделай КП в Word', {}, inProject);
+    expect(systemOf()).toContain(JSON.stringify(commandsRules(`.work/${inProject}`)).slice(1, -1));
     expect(systemOf()).toContain(JSON.stringify(WEB_RULES).slice(1, -1));
     expect(systemOf()).not.toContain(JSON.stringify(COMMANDS_OFF).slice(1, -1));
   });

@@ -1,7 +1,8 @@
 // The employee's workspace (spec, sections 8.7, 8.9 and 8.33):
 //   /workspace/<userId>/files/                     — the area of the person's conversations outside projects
-//   /workspace/<userId>/files/chats/<threadId>/    — the folder of one such conversation
-//   /workspace/<userId>/projects/<projectId>/files — files of a project, shared by all its conversations
+//   /workspace/<userId>/files/chats/<threadId>/    — the folder of one such conversation; its drafts in `.work/`
+//   /workspace/<userId>/projects/<projectId>/files — files of a project, shared by all its conversations; the drafts
+//                                                    of each in `.work/<threadId>/`
 // A conversation's sandbox root is its own folder, or its project's: the agent works freely inside it, cannot
 // see the others, and cannot remove the root itself (it is the sandbox mount point).
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -18,6 +19,10 @@ const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
 const FILES = 'files';
 // The folders of the conversations outside projects, inside the person's area (spec, section 8.33).
 export const CHATS = 'chats';
+// The agent's drafts (spec, section 8.33): scripts, pictures of pages, unpacked archives — stored as any file, hidden
+// from people, removed when not changed for DRAFTS_KEEP_DAYS (owner's decision 20.11: a month).
+export const DRAFTS = '.work';
+export const DRAFTS_KEEP_DAYS = 30;
 const MAX_NAME_LENGTH = 120;
 // The listing shown to people and the model stops here; a project with more needs the knowledge base.
 export const MAX_LISTED_FILES = 500;
@@ -49,6 +54,15 @@ export function chatPath(threadId: string): string {
 export function chatRoot(workspaceRoot: string, userId: string, threadId: string): string {
   return join(filesRoot(workspaceRoot, userId, null), chatPath(threadId));
 }
+
+// The drafts folder of a conversation, from the folder it works in: `.work` of its own folder, `.work/<number>` in a
+// project, whose folder all its conversations share.
+export function draftsPath(threadId: string, inProject: boolean): string {
+  if (!SAFE_THREAD_ID.test(threadId)) throw new Error(`unsafe thread id for a workspace path: ${threadId}`);
+  return inProject ? `${DRAFTS}/${threadId}` : DRAFTS;
+}
+
+export const isDraftPath = (rel: string): boolean => rel.split('/').includes(DRAFTS);
 
 // The folder a conversation works in (spec, section 8.33): its project's, shared by all the project's conversations
 // (`ownerId` — the project's creator), or its own; created on first use.
@@ -158,7 +172,7 @@ export function pruneOlderThan(root: string, folder: string, ms: number): number
   return removed;
 }
 
-// Files of a folder for people and for the model: hidden working folders (".renders") are skipped.
+// Files of a folder for people and for the model: hidden folders (the drafts, `.work`) are skipped.
 export function listFiles(dir: string): { path: string; bytes: number }[] {
   const out: { path: string; bytes: number }[] = [];
   const walk = (current: string) => {

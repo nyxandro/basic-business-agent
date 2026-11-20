@@ -13,10 +13,8 @@ import { createPool, type Db } from '../db/pool.ts';
 import { draftResourceId } from '../memory/memory.ts';
 import { threadProjectState } from '../projects/access.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { CHATS, chatPath, filesRoot } from '../workspace/layout.ts';
+import { CHATS, chatPath, DRAFTS, filesRoot } from '../workspace/layout.ts';
 
-// Where a conversation's scripts and other drafts go in its folder (spec, section 8.33).
-const DRAFTS = '.work';
 const DRAFT_TOOLS: ReadonlySet<string> = new Set([WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE, WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE]);
 
 export interface SplitCopy {

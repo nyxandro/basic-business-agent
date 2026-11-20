@@ -17,7 +17,7 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
 import { keepBeforeWrite } from '../projects/trash.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
-import { conversationRoot, existingInside, openFileInside } from '../workspace/layout.ts';
+import { conversationRoot, draftsPath, existingInside, openFileInside } from '../workspace/layout.ts';
 import { sandboxOptions } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
@@ -31,8 +31,11 @@ export const VIEW_IMAGE_TOOL = 'view_image';
 // raw bytes read by Mastra's read_file would go to the model as text and overflow its window.
 const RAW_ENCODINGS = new Set(['base64', 'binary', 'hex']);
 const NO_PICTURE_IN_READ_FILE = 'Это картинка: её содержимое через чтение файла не передаётся. Чтобы увидеть её, вызови view_image с этим путём.';
-const TURN_INTO_PNG = 'Эту картинку модель как есть не видит: сначала переведи её в PNG в рабочей папке (python3 -c "from PIL import Image; Image.open(\'ВХОД\').convert(\'RGB\').save(\'.renders/ВЫХОД.png\')"; у многостраничного TIFF — каждую страницу), затем открой PNG через view_image.';
-const UNPACK_ARCHIVE = 'Это архив: прочитать его как текст нельзя. Распакуй в рабочей папке: python3 -m zipfile -e АРХИВ.zip ПАПКА — и читай файлы из папки.';
+// What the agent makes of a picture or an archive goes into the drafts of the conversation (spec, section 8.33).
+const turnIntoPng = (drafts: string) =>
+  `Эту картинку модель как есть не видит: сначала переведи её в PNG в черновой папке (python3 -c "from PIL import Image; Image.open('ВХОД').convert('RGB').save('${drafts}/ВЫХОД.png')"; у многостраничного TIFF — каждую страницу), затем открой PNG через view_image.`;
+const unpackArchive = (drafts: string) => `Это архив: прочитать его как текст нельзя. Распакуй в черновую папку: python3 -m zipfile -e АРХИВ.zip ${drafts}/ПАПКА — и читай файлы оттуда.`;
+const NOT_PNG = 'Это не PNG или JPG';
 const NO_RAW_BYTES = 'Сырые байты файла в разговор не передаются. Картинку открой через view_image; PDF, Word, Excel и PowerPoint читай скиллами pdf, docx, xlsx и pptx.';
 // The same answers for an agent that may run no commands (spec, section 8.30): nothing it cannot do is offered.
 const NO_COMMANDS = 'запуск программ выключен в настройках агента';
@@ -79,6 +82,11 @@ export function runRoot(workspaceRoot: string, ctx: Ctx): string {
   const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
   const project = projectId ? { id: projectId, ownerId: requireContextValue(ctx, REQUEST_KEYS.projectOwnerId) } : null;
   return conversationRoot(workspaceRoot, { userId: requireContextValue(ctx, REQUEST_KEYS.userId), threadId: requireContextValue(ctx, REQUEST_KEYS.threadId), project });
+}
+
+// The drafts folder of the run, from its folder (spec, section 8.33).
+function draftsOf(ctx: Ctx): string {
+  return draftsPath(requireContextValue(ctx, REQUEST_KEYS.threadId), optionalContextValue(ctx, REQUEST_KEYS.projectId) !== null);
 }
 
 // Isolation is required: without it a skill script could reach the server (spec, anti-goals).
@@ -151,14 +159,15 @@ const commandsOn = ({ requestContext }: { requestContext: Record<string, unknown
 
 function keepBytesOutOfReadFile({ workspaceToolName, input, context }: WorkspaceToolHookContext): void | { proceed: false; output: string } {
   if (workspaceToolName !== WORKSPACE_TOOLS.FILESYSTEM.READ_FILE) return;
-  const commands = abilitiesOf((context as { requestContext?: Ctx } | undefined)?.requestContext).commands;
+  const ctx = (context as { requestContext?: Ctx } | undefined)?.requestContext;
+  const commands = abilitiesOf(ctx).commands;
   const { path, encoding } = (input ?? {}) as { path?: unknown; encoding?: unknown };
   if (typeof encoding === 'string' && RAW_ENCODINGS.has(encoding)) return { proceed: false, output: commands ? NO_RAW_BYTES : NO_RAW_BYTES_OFF };
   if (typeof path !== 'string') return;
   const ext = extname(path).toLowerCase();
   if (IMAGE_TYPES[ext]) return { proceed: false, output: NO_PICTURE_IN_READ_FILE };
-  if (OTHER_PICTURES.has(ext)) return { proceed: false, output: commands ? TURN_INTO_PNG : TURN_INTO_PNG_OFF };
-  if (ARCHIVES.has(ext)) return { proceed: false, output: commands ? UNPACK_ARCHIVE : UNPACK_ARCHIVE_OFF };
+  if (OTHER_PICTURES.has(ext)) return { proceed: false, output: commands ? turnIntoPng(draftsOf(ctx)) : TURN_INTO_PNG_OFF };
+  if (ARCHIVES.has(ext)) return { proceed: false, output: commands ? unpackArchive(draftsOf(ctx)) : UNPACK_ARCHIVE_OFF };
 }
 
 // A core tool: shows the model an image from the employee's folder (a scanned page, a photo).
@@ -166,9 +175,10 @@ export function createViewImageTool(workspaceRoot: string): AnyTool {
   return createTool({
     id: VIEW_IMAGE_TOOL,
     description: 'Посмотреть картинку из рабочей папки сотрудника (PNG или JPG): отрисованную страницу скана, фото документа.',
-    inputSchema: z.object({ path: z.string().min(1).describe('Путь от рабочей папки или абсолютный путь внутри неё, например .renders/dogovor-p3.png') }),
+    inputSchema: z.object({ path: z.string().min(1).describe('Путь от рабочей папки или абсолютный путь внутри неё, например «Скан договора.png» или снимок страницы в черновой папке') }),
     execute: ({ path }, context) => {
-      const picture = findPicture(runRoot(workspaceRoot, context?.requestContext), path, abilitiesOf(context?.requestContext).commands);
+      const ctx = context?.requestContext;
+      const picture = findPicture(runRoot(workspaceRoot, ctx), path, () => (abilitiesOf(ctx).commands ? turnIntoPng(draftsOf(ctx)) : TURN_INTO_PNG_OFF));
       return Promise.resolve(typeof picture === 'string' ? { ok: false, error: picture } : { ok: true, path, mediaType: picture.mediaType });
     },
   }) as AnyTool;
@@ -185,9 +195,10 @@ type FilePart = { type: 'file'; data: string; mediaType: string };
 
 // A picture of the employee's folder, or why there is none. Only a file inside the folder: the server
 // reads it outside the sandbox, so a link the agent made to a file of the server is refused.
-function findPicture(dir: string, path: string, commands: boolean): { real: string; mediaType: string } | string {
+// `otherPicture` — what to do with a picture the model cannot see as it is (WebP, TIFF…).
+function findPicture(dir: string, path: string, otherPicture: () => string): { real: string; mediaType: string } | string {
   const mediaType = IMAGE_TYPES[extname(path).toLowerCase()];
-  if (!mediaType) return OTHER_PICTURES.has(extname(path).toLowerCase()) ? (commands ? TURN_INTO_PNG : TURN_INTO_PNG_OFF) : 'Это не PNG или JPG';
+  if (!mediaType) return OTHER_PICTURES.has(extname(path).toLowerCase()) ? otherPicture() : NOT_PNG;
   let real: string | null;
   try {
     real = existingInside(dir, path);
@@ -204,7 +215,7 @@ function findPicture(dir: string, path: string, commands: boolean): { real: stri
 // checked once (a link swapped in after the check is not followed).
 function pictureOf(dir: string, path: string): FilePart | string {
   // Only PNG and JPG come here (attached ones, or shown by view_image): a refusal is only logged.
-  const picture = findPicture(dir, path, true);
+  const picture = findPicture(dir, path, () => NOT_PNG);
   if (typeof picture === 'string') return picture;
   let file: { fd: number; size: number } | null;
   try {
