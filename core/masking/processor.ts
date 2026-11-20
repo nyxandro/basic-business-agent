@@ -4,6 +4,7 @@
 //   processOutputStep   — tool-call arguments before the tool runs;
 //   processOutputStream — the text streamed to the person, including a placeholder cut between chunks.
 // Any failure stops the request: data is never sent unmasked "just in case".
+import { WIDGET_TOOL } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
@@ -13,16 +14,23 @@ import { getMaskingKinds } from './settings.ts';
 
 // Keys that hold identifiers, binary data or protocol fields rather than text the person wrote.
 const SKIPPED_KEYS = new Set(['type', 'role', 'toolCallId', 'toolName', 'mediaType', 'data', 'url', 'id', 'providerOptions', 'providerMetadata']);
+// Inside a widget the agent drew (spec, section 8.31) `data` (the rows of a chart), `id`, `type`, `url` are what the
+// screen shows: only the fields of the call itself are skipped there (review 20.11).
+const WIDGET_CALL_KEYS = new Set(['type', 'toolCallId', 'toolName', 'providerOptions', 'providerMetadata']);
+const NOTHING_SKIPPED = new Set<string>();
 const BUFFER_KEY = 'bbaMaskingTail';
 
 type Ctx = { get(key: string): unknown } | undefined;
 
-async function mapStrings(value: unknown, fn: (s: string) => Promise<string>): Promise<unknown> {
+async function mapStrings(value: unknown, fn: (s: string) => Promise<string>, skipped: ReadonlySet<string> = SKIPPED_KEYS): Promise<unknown> {
   if (typeof value === 'string') return fn(value);
-  if (Array.isArray(value)) return Promise.all(value.map((v) => mapStrings(v, fn)));
+  if (Array.isArray(value)) return Promise.all(value.map((v) => mapStrings(v, fn, skipped)));
   if (value && typeof value === 'object' && !(value instanceof Uint8Array) && !(value instanceof URL)) {
+    const widget = (value as { toolName?: unknown }).toolName === WIDGET_TOOL.render;
+    const here = widget ? WIDGET_CALL_KEYS : skipped;
+    const inside = widget ? NOTHING_SKIPPED : skipped;
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = SKIPPED_KEYS.has(k) ? v : await mapStrings(v, fn);
+    for (const [k, v] of Object.entries(value)) out[k] = here.has(k) ? v : await mapStrings(v, fn, inside);
     return out;
   }
   return value;

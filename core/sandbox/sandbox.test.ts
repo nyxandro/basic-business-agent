@@ -18,6 +18,7 @@ import { createLimiter } from './limiter.ts';
 import { contextRoot } from '../workspace/layout.ts';
 import { findSandboxGaps } from './environment.ts';
 import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
+import { createWidgetHistoryProcessor, DESCRIPTION_DROPPED } from '../widgets/history.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 // A skill of the company as the run of an employee gets it: the folder of one skill.
@@ -135,7 +136,7 @@ beforeAll(async () => {
     stepMs: MODEL_CALL_MAX_MS,
     sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
     // As in core/runtime/mastra.ts: the layers add the time to the latest message before the pictures are looked for.
-    processorsFor: () => ({ input: [stampTime, createImageViewProcessor(workspaceRoot)], output: [] }),
+    processorsFor: () => ({ input: [stampTime, createWidgetHistoryProcessor(), createImageViewProcessor(workspaceRoot)], output: [] }),
   });
   // An agent with a sub-agent: the sub-agent works with the abilities of the run (spec, section 8.30).
   parent = createMastraAgent({ ...rt, passport: { ...rt.passport, id: 'parent' }, subagents: [{ ...rt, passport: { ...rt.passport, id: 'helper', name: 'Помощник', description: 'Делает файлы.' } }] }, {
@@ -363,6 +364,18 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     const messages = model.requests.at(-1)!.messages;
     expect(messages.filter((m) => m.role === 'user' && Array.isArray(m.content) && m.content.length === 0)).toEqual([]);
     expect(JSON.stringify(messages)).not.toContain('data:image/png;base64,');
+  });
+
+  // Review 20.11: the pictures go as a message of their own at the end of the request, and the descriptions of
+  // components of this answer were taken for an earlier answer's (spec, section 8.31).
+  it('keeps the description of components of this answer after view_image', async () => {
+    const dir = contextRoot(workspaceRoot, 'olga', null);
+    writeFileSync(join(dir, 'page-2.png'), png(16));
+    model.script({ toolCalls: [{ name: 'ui_components', args: { names: ['Card'] } }] }, { toolCalls: [{ name: 'view_image', args: { path: 'page-2.png' } }] }, { text: 'Готово.' });
+    await runAs('olga');
+    const sent = JSON.stringify(model.requests.at(-1)!.messages);
+    expect(sent).toContain('data:image/png;base64,');
+    expect(sent).not.toContain(DESCRIPTION_DROPPED);
   });
 
   it('gives the model the picture attached to the message with the message itself', async () => {

@@ -105,11 +105,12 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
         input: [
           docText,
           createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
+          // Descriptions of components of earlier turns are not sent again (spec, section 8.31). Before the pictures:
+          // they come as a message of their own at the end, and would be taken for the person's latest message.
+          ...(level === 'top' ? [widgetHistory] : []),
           // Pictures before masking: a name like «89123456789.png» is found by the real path; the picture itself is
           // never masked (its data is skipped), the text of the request is.
           ...imageView,
-          // Descriptions of components of earlier turns are not sent again (spec, section 8.31).
-          ...(level === 'top' ? [widgetHistory] : []),
           masking,
         ],
         // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,

@@ -28,6 +28,14 @@ const readOld = createTool({
   execute: () => Promise.resolve({ title: 'Письмо для olga@example.com', transcript: '[1] Сотрудник: напиши ivan@example.com', conversations: [{ ref: 'a1b2c3d4', title: 'Счёт petr@example.com', fragment: 'паспорт 4510 123456' }] }),
 });
 
+// A widget (spec, section 8.31): the rows of a chart are its `data` — text the person sees, not protocol data.
+const renderUi = createTool({
+  id: 'render_ui',
+  description: 'Показать экран',
+  inputSchema: z.object({ operations: z.array(z.record(z.string(), z.unknown())) }),
+  execute: () => Promise.resolve({ shown: true }),
+});
+
 const sendEmail = createTool({
   id: 'sendEmail',
   description: 'Отправить письмо',
@@ -49,7 +57,7 @@ function agentWith(processorDb: Db): Agent {
     name: 'Продажи',
     instructions: 'Ты помощник отдела продаж.',
     model: { providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x' },
-    tools: { sendEmail, readOld },
+    tools: { sendEmail, readOld, render_ui: renderUi },
     memory: new Memory({ storage }),
     inputProcessors: [masking],
     outputProcessors: [masking],
@@ -130,6 +138,17 @@ describe('masking processor', () => {
     for (const value of ['olga@example.com', 'ivan@example.com', 'petr@example.com', '4510 123456']) expect(answerRequest).not.toContain(value);
     expect(answerRequest).toContain('[ПОЧТА_');
     expect(answerRequest).toContain('[ПАСПОРТ_');
+  });
+
+  // Review 20.11: `data`, `id`, `type`, `url` are skipped as protocol fields — inside a widget they are what it shows.
+  it('hides data in the rows of a widget the agent drew, on the next request', async () => {
+    const agent = agentWith(db);
+    const chart = (who: string) => [{ version: '1.0', createSurface: { surfaceId: 'c', components: [{ id: 'root', component: 'Chart', xKey: 'who', data: [{ who, deals: 3 }] }] } }];
+    model.script((req) => ({ toolCalls: [{ name: 'render_ui', args: { operations: chart(placeholderIn(req, 'ПОЧТА')) } }] }), { text: 'Готово.' });
+    await run(agent, 'thread-w', 'Нарисуй график по клиенту anna@example.com');
+    model.script({ text: 'Да.' });
+    await run(agent, 'thread-w', 'Это всё?');
+    expect(JSON.stringify(model.requests.at(-1)?.messages)).not.toContain('anna@example.com');
   });
 
   it('does not run a tool with a placeholder the model made up', async () => {

@@ -6,13 +6,13 @@
 import { WIDGET_CATALOG_ID } from '@bba/contracts';
 import { useAgent } from '@copilotkit/react-core';
 import { GenerativeUISurface, useGenerativeUIRuntime } from '@copilotkit/react-core/generative-ui';
-import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useContext, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { TurnStateContext, useUnfinished } from '../chat/call-progress.ts';
 import { parseToolResult } from '../chat/tool-result.ts';
 import { Preparing, type CallProps } from '../genui/CatalogBlock.tsx';
 import { ru } from '../i18n/ru.ts';
 import { BusyPress } from './busy.tsx';
-import { drawableOperations, laterChanges } from './operations.ts';
+import { changesAScreen, drawableOperations, laterChanges } from './operations.ts';
 import styles from './widgets.module.css';
 
 export function WidgetCall({ call }: { call: CallProps }) {
@@ -30,30 +30,16 @@ export function WidgetCall({ call }: { call: CallProps }) {
     return { ...own, ops: [...own.ops, ...laterChanges(messages, call.toolCallId, own.written, own.surfaceId)] };
   }, [own, messages, call.toolCallId, call.status]);
   const threadId = agent.threadId;
-  // A press CopilotKit dropped while the agent was answering (busy.tsx) is made again once the answer is done; the
-  // latest one wins. Meanwhile a line says so.
-  const again = useRef<(() => void) | null>(null);
-  const [waiting, setWaiting] = useState(false);
+  // A press CopilotKit did not send while the agent was answering (busy.tsx): a line says to press again, until the
+  // answer is done (state adjusted while rendering, as React advises for a change of a value).
+  const [pressedBusy, setPressedBusy] = useState(false);
   const running = agent.isRunning;
-  // The end of the answer clears the line (state adjusted while rendering, as React advises for a change of a value).
   const [wasRunning, setWasRunning] = useState(running);
   if (wasRunning !== running) {
     setWasRunning(running);
-    if (!running) setWaiting(false);
+    if (!running) setPressedBusy(false);
   }
-  useEffect(() => {
-    if (running) return;
-    const press = again.current;
-    again.current = null;
-    press?.();
-  }, [running]);
-  const reportBusy = useMemo(
-    () => (press: () => void) => {
-      again.current = press;
-      setWaiting(true);
-    },
-    [],
-  );
+  const reportBusy = useMemo(() => () => setPressedBusy(true), []);
 
   useEffect(() => {
     if (!runtime || !threadId || refused || operations.ops.length === 0 || !operations.surfaceId) return;
@@ -72,14 +58,14 @@ export function WidgetCall({ call }: { call: CallProps }) {
   if (refused) return turn === 'answering' ? <p className={styles.note}>{ru.widgets.rebuilding}</p> : null;
   // The answer ended without the result: «Стоп» or a broken answer — what was drawn is not a screen to work with.
   if (call.status !== 'complete' && unfinished === 'stopped') return <p className={styles.note}>{ru.widgets.stopped}</p>;
-  // A change of a screen drawn above it: the screen shows it.
-  if (!runtime || (call.status === 'complete' && !own.written)) return null;
+  // A change of a screen drawn above it: the screen shows it, also while the change is written.
+  if (!runtime || (!own.written && (call.status === 'complete' || changesAScreen(call.parameters)))) return null;
   return (
     <div className={styles.widget} style={{ '--broken-part': JSON.stringify(ru.widgets.brokenPart) } as CSSProperties}>
       <BusyPress.Provider value={reportBusy}>
         <GenerativeUISurface id={target} fallback={<Preparing />} autoScroll={false} />
       </BusyPress.Provider>
-      {waiting && running && (
+      {pressedBusy && running && (
         <p className={styles.note} role="status">
           {ru.widgets.busy}
         </p>

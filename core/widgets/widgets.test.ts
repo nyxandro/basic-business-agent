@@ -129,6 +129,12 @@ describe('the catalog of widgets', () => {
       { id: 'item', component: 'ListItem', label: { '@path': 'name' }, value: { '@call': 'formatCurrency', args: { value: { '@path': 'sum' }, currency: 'RUB' } } },
     ];
     expect(problems([surface(list, { dataModel: { deals: [{ name: 'Поставка', sum: 120000 }] } })])).toBe('');
+    // Review 20.11: a pattern of the model runs on the server's only thread — `^(a+)+$` on 40 letters would hold
+    // every request for minutes. Values with `regex` are left to the browser.
+    const slow = { '@call': 'regex', args: { value: { '@path': '/inn' }, pattern: '^(a+)+$' } };
+    const started = performance.now();
+    expect(problems([surface([{ id: 'root', component: 'TextField', label: 'ИНН', value: { '@path': '/inn' }, checks: [{ condition: slow, message: 'нет' }] }], { dataModel: { inn: `${'a'.repeat(40)}!` } })])).toBe('');
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('changes a screen of the same run in place, and refuses a second screen of the same name', () => {

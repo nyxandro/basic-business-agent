@@ -409,3 +409,9 @@
   font-size: 13px;
   color: var(--muted);
 }
+
+/* The icon of a cited site comes from google.com (CopilotKit's Citation, no switch): not shown — a picture only from
+   our own server (F36); in an installation Caddy's CSP does not load it either. */
+.widget :global([data-a2ui-citation]) img {
+  display: none;
+}

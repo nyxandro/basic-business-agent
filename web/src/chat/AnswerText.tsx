@@ -32,7 +32,8 @@ function foreign(url: string): string {
   }
 }
 
-const OWN_PICTURES_ONLY: NonNullable<ComponentProps<typeof StreamingMarkdownDefaultRenderer>['nodeRenderers']> = {
+// Also the rule of the Markdown of a widget (web/src/widgets/overrides.tsx).
+export const OWN_PICTURES_ONLY: NonNullable<ComponentProps<typeof StreamingMarkdownDefaultRenderer>['nodeRenderers']> = {
   image: ({ node }) => {
     const own = ownAddress(node.url);
     if (own) return <img src={own.pathname + own.search} alt={node.alt} className={styles.answerImage} />;

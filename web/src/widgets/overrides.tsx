@@ -2,8 +2,11 @@
 // (spec, section 8.31; mockup «Экраны агента»). The agent sees the same component with the same props. Where a prop
 // is enough (no pill shapes, rows that wrap) the standard component draws with it; where the mockup has its own
 // thing — the glass panel, the slider, the chart, the formula, a picture of our server only — ours draws.
+import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import { standardUI, type GenerativeUIComponentProps } from '@copilotkit/react-core/generative-ui';
 import { createContext, lazy, Suspense, useContext, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { OWN_PICTURES_ONLY } from '../chat/AnswerText.tsx';
+import chatStyles from '../chat/chat.module.css';
 import { ru } from '../i18n/ru.ts';
 import { useBusyGuard } from './busy.tsx';
 import { ChartWidget, chartOf } from './chart.ts';
@@ -50,13 +53,17 @@ function Card(props: Props<'Card'>) {
   );
 }
 
+// An address a button or an action may open: of the web or of mail, as CopilotKit's own components allow.
+const safeHref = (href: unknown): string | null => (typeof href === 'string' && /^(https?:|mailto:)/i.test(href.trim()) ? href.trim() : null);
+
 function GlassButton(props: Props<'Button'>) {
   const blocked = firstFailedCheck(props.checks);
   const disabled = Boolean(props.disabled || props.loading || (blocked && blocked.severity !== 'warning' && blocked.severity !== 'info'));
   const className = props.variant === 'primary' ? styles.glassMain : styles.glassSecond;
-  if (props.href) {
+  const href = safeHref(props.href);
+  if (href) {
     return (
-      <a className={className} href={props.href} target="_blank" rel="noopener noreferrer">
+      <a className={className} href={href} target="_blank" rel="noopener noreferrer">
         {props.label ?? props.text}
       </a>
     );
@@ -69,7 +76,12 @@ function GlassButton(props: Props<'Button'>) {
       aria-busy={props.loading || undefined}
       onClick={(event) => {
         if (props.submit && event.currentTarget.form !== null) return;
-        if (typeof props.copy === 'string') void navigator.clipboard.writeText(props.copy).catch(() => undefined);
+        // «copy» only copies, as CopilotKit's own button: it sends no message.
+        if (typeof props.copy === 'string') {
+          // No clipboard (a page not over HTTPS): nothing to copy into.
+          void navigator.clipboard?.writeText(props.copy).catch(() => undefined);
+          return;
+        }
         void props.onClick?.({});
       }}
     >
@@ -188,7 +200,16 @@ function Chart(props: Props<'Chart'>) {
 // The recommended one on glass: an EntityCard with a badge of the accent colour (the rules of the agent say so).
 function EntityCard(props: Props<'EntityCard'>) {
   const onAction = useBusyGuard(props.onAction);
-  if (props.badge?.color !== 'discovery') return <StandardEntityCard {...props} onAction={onAction} />;
+  // A picture of another site is a link under the card (F36), not the card's picture.
+  const foreignImage = typeof props.image === 'string' && !ownAddress(props.image) ? props.image : null;
+  if (props.badge?.color !== 'discovery') {
+    return (
+      <>
+        <StandardEntityCard {...props} image={foreignImage ? undefined : props.image} onAction={onAction} />
+        {foreignImage && <ForeignPicture url={foreignImage} />}
+      </>
+    );
+  }
   return (
     <div className={styles.glass} style={{ padding: '16px' }}>
       <div className={styles.glassHead}>
@@ -201,8 +222,8 @@ function EntityCard(props: Props<'EntityCard'>) {
       {props.actions && props.actions.length > 0 && (
         <span className={styles.glassActions}>
           {props.actions.map((action, i) =>
-            action.href ? (
-              <a key={action.label} className={i === 0 ? styles.glassMain : styles.glassSecond} href={action.href} target="_blank" rel="noopener noreferrer">
+            safeHref(action.href) ? (
+              <a key={action.label} className={i === 0 ? styles.glassMain : styles.glassSecond} href={safeHref(action.href)!} target="_blank" rel="noopener noreferrer">
                 {action.label}
               </a>
             ) : (
@@ -213,6 +234,16 @@ function EntityCard(props: Props<'EntityCard'>) {
           )}
         </span>
       )}
+    </div>
+  );
+}
+
+// Markdown of a widget is drawn as the words of an answer: a picture of another site is a link (F36; review 20.11 —
+// CopilotKit's renderer showed any picture).
+function Markdown(props: Props<'Markdown'>) {
+  return (
+    <div className="a2ui-markdown">
+      <StreamingMarkdownDefaultRenderer content={props.text ?? ''} isStreaming={props.streaming === true} caret={false} className={chatStyles.markdown} nodeRenderers={OWN_PICTURES_ONLY} />
     </div>
   );
 }
@@ -269,5 +300,6 @@ export const widgetOverrides = {
   Chart: { component: Chart },
   EntityCard: { component: EntityCard },
   Math: { component: MathFormula },
+  Markdown: { component: Markdown },
   Image: { component: Image },
 };

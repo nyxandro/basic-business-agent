@@ -699,8 +699,8 @@ export const ru = {
     picture: (where: string) => `Картинка: ${where}`,
     // In place of a part CopilotKit could not draw.
     brokenPart: 'Эта часть экрана не показалась',
-    // A press of a widget made while the agent was still answering: it goes when the answer is done.
-    busy: 'Нажатие отправится, когда агент закончит ответ',
+    // A press of a widget CopilotKit did not send because the agent was still answering.
+    busy: 'Агент ещё отвечает — нажмите ещё раз, когда он закончит',
   },
   genui: {
     broken: 'Не удалось показать данные',

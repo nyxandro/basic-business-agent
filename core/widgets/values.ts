@@ -2,7 +2,8 @@
 // `${…}` of formatString, calc and every other function, by CopilotKit's own code, with the screen's initial data.
 // A value that fails here fails in the browser too, and the person sees «this part could not be displayed» in place
 // of it — an e2e screen with a `${…}` inside `${…}` passed the other checks and broke so (20.11).
-// The components drawn per item of a template list are left out: their paths are of an item, not of the whole data.
+// The components drawn per item of a template list are left out: their paths are of an item, not of the whole data;
+// so are values with `regex` (below).
 import { containsDynamicValue, tryResolveDynamicValue } from '@copilotkit/core/generative-ui';
 
 type Component = Record<string, unknown>;
@@ -63,6 +64,11 @@ function perItem(components: ReadonlyMap<string, Component>, childrenOf: (compon
 
 const OWN_KEYS = new Set(['id', 'component']);
 
+// `regex` runs a pattern the model wrote on the server's only thread: `^(a+)+$` on 40 letters holds every request for
+// minutes (review 20.11). A value that calls it, as a binding or inside `${…}`, is left to the browser.
+const REGEX_CALL = /"@call":"regex"|\bregex\s*\(/;
+const callsRegex = (value: unknown): boolean => REGEX_CALL.test(JSON.stringify(value));
+
 export function valueProblems(components: ReadonlyMap<string, Component>, data: unknown, childrenOf: (component: Component) => Set<string>): string[] {
   const skipped = perItem(components, childrenOf);
   const reader = { get: (path: string) => read(data, path) };
@@ -70,7 +76,7 @@ export function valueProblems(components: ReadonlyMap<string, Component>, data: 
   for (const [id, component] of components) {
     if (skipped.has(id)) continue;
     for (const [key, value] of Object.entries(component)) {
-      if (OWN_KEYS.has(key) || !containsDynamicValue(value)) continue;
+      if (OWN_KEYS.has(key) || !containsDynamicValue(value) || callsRegex(value)) continue;
       const attempt = tryResolveDynamicValue(value, { data: reader, basePath: undefined }, key === 'checks' ? { isChecks: true } : {});
       if (!attempt.ok) problems.push(`компонент «${id}», поле «${key}»: ${attempt.error.message}`);
     }

@@ -91,6 +91,29 @@ describe('the operations of a call', () => {
     expect(drawableOperations({ operations: [{ version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 3 } }] }, 'call-2', true).written).toBeNull();
   });
 
+  // Review 20.11: «createSurface» with its data and no component, the components after it — as CopilotKit's guide
+  // allows; CopilotKit wants a component in createSurface, and the data went missing with it.
+  it('keep the data of a screen whose components come after its createSurface', () => {
+    const ops = [
+      { version: '1.0', createSurface: { surfaceId: 'kp', dataModel: { seats: 15 } } },
+      { version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 20 } },
+      { version: '1.0', updateComponents: { surfaceId: 'kp', components: [{ id: 'root', component: 'Column', children: ['a'] }, component('a', 'Первый')] } },
+    ];
+    expect(drawableOperations({ operations: ops }, 'call-1', true).ops).toEqual([
+      { version: '1.0', createSurface: { surfaceId: 'kp@call-1', dataModel: { seats: 15 }, components: [{ id: 'root', component: 'Column', children: ['a'] }] } },
+      { version: '1.0', updateDataModel: { surfaceId: 'kp@call-1', path: '/seats', value: 20 } },
+      { version: '1.0', updateComponents: { surfaceId: 'kp@call-1', components: [component('a', 'Первый')] } },
+    ]);
+  });
+
+  // The data written after the components may be cut while the call is written, and CopilotKit does not apply the
+  // first operation again: the screen waits for its data.
+  it('draw nothing of a screen whose data is still being written after its components', () => {
+    const late = [{ version: '1.0', createSurface: { surfaceId: 'kp', components: [{ id: 'root', component: 'Column', children: ['a'] }, component('a', 'Первый')], dataModel: { seats: 2 } } }];
+    expect(drawableOperations({ operations: late }, 'call-1', false).ops).toEqual([]);
+    expect(drawableOperations({ operations: late }, 'call-1', true).ops).toHaveLength(2);
+  });
+
   it('take the changes later calls of the answer made, shown ones only, up to the next screen of the name', () => {
     const call = (id: string, operations: unknown) => ({ role: 'assistant', toolCalls: [{ id, function: { name: 'render_ui', arguments: JSON.stringify({ operations }) } }] });
     const result = (id: string, content: unknown) => ({ role: 'tool', toolCallId: id, content: JSON.stringify(content) });
@@ -109,6 +132,16 @@ describe('the operations of a call', () => {
     ];
     expect(laterChanges(all, 'c1', 'kp', 'kp@c1')).toEqual([{ version: '1.0', updateDataModel: { surfaceId: 'kp@c1', path: '/seats', value: 20 } }]);
     expect(laterChanges(all, 'c4', 'kp', 'kp@c4')).toEqual([{ version: '1.0', updateDataModel: { surfaceId: 'kp@c4', path: '/seats', value: 40 } }]);
+    // Review 20.11: a screen of the same name the server refused is not a new screen — the change after it is this one's.
+    const afterRefused = [
+      call('c1', SCREEN),
+      result('c1', { shown: true, surfaceId: 'kp' }),
+      call('c2', SCREEN),
+      result('c2', { error: true, code: 'APP_WIDGET_INVALID', message: 'уже показан' }),
+      call('c3', change(25)),
+      result('c3', { shown: true, surfaceId: 'kp' }),
+    ];
+    expect(laterChanges(afterRefused, 'c1', 'kp', 'kp@c1')).toEqual([{ version: '1.0', updateDataModel: { surfaceId: 'kp@c1', path: '/seats', value: 25 } }]);
   });
 });
 
@@ -151,6 +184,45 @@ describe('our components of the mockup', () => {
     );
     for (const name of ['Обычная', 'На стекле', 'Отправить форму', 'Выбрать']) await userEvent.click(screen.getByRole('button', { name }));
     expect(report).toHaveBeenCalledTimes(4);
+  });
+
+  // Review 20.11: the second click of a double click came back «busy» from the run the first one started.
+  it('do not send a press again while its first one is still going', async () => {
+    let finish = () => undefined as void;
+    const onClick = vi.fn(() => new Promise<{ ok: true; result: undefined }>((resolve) => (finish = () => resolve({ ok: true, result: undefined }))));
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(<Button label="Оформить КП" onClick={onClick} />);
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Оформить КП' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    finish();
+    await vi.waitFor(() => expect(onClick).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Оформить КП' }));
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  // Review 20.11 (decision of the owner 19.11, F36): a picture of another site in a widget is a link, as in answers.
+  it('show the pictures of other sites in Markdown and on a card as links', () => {
+    draw('Markdown', { text: 'Схема: ![склад](https://example.com/plan.png)' });
+    expect(screen.getByRole('link', { name: /example\.com\/plan\.png/ })).toHaveAttribute('href', 'https://example.com/plan.png');
+    draw('EntityCard', { title: 'Склад Северный', image: 'https://example.com/sklad.jpg' });
+    expect(screen.getByRole('link', { name: 'Картинка: example.com/sklad.jpg' })).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('give a glass button only an address of the web or of mail, and only copy with «copy»', async () => {
+    const onClick = vi.fn();
+    const Card = widgetOverrides.Card.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
+    render(
+      <Card
+        background="discovery-solid"
+        children={[<Button key="a" label="Сайт" href="javascript:alert(1)" onClick={onClick} />, <Button key="b" label="Почта" href="mailto:sales@example.com" />, <Button key="c" label="Скопировать" copy="ИНН 5406012345" onClick={onClick} />]}
+      />,
+    );
+    expect(screen.queryByRole('link', { name: 'Сайт' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Почта' })).toHaveAttribute('href', 'mailto:sales@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Скопировать' }));
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it('show a picture of another site as a link to open', () => {
@@ -205,22 +277,27 @@ describe('the block of a widget', () => {
     expect(screen.getByText('Экран не дорисован — ответ прерван')).toBeInTheDocument();
   });
 
-  // e2e 20.11: a press while the agent still wrote its answer did nothing; now it goes once the answer is done.
-  it('sends a press the engine dropped while the agent answered, once the answer is done', async () => {
+  // e2e 20.11: a press while the agent still wrote its answer did nothing at all. It is not sent later by itself: that
+  // would cancel a «Да» question the answer ends with, and go after «Стоп» (review 20.11).
+  it('says to press again when the answer is done, and sends nothing by itself', async () => {
     running = true;
     const view = show({ status: 'complete', result: JSON.stringify({ shown: true, surfaceId: 'kp' }) }, 'answering');
     await userEvent.click(screen.getByRole('button', { name: 'Нажать' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Нажатие отправится, когда агент закончит ответ');
-    expect(pressed).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent('Агент ещё отвечает — нажмите ещё раз, когда он закончит');
     running = false;
     view.rerender(
       <TurnStateContext.Provider value="ended">
         <WidgetCall call={{ toolCallId: 'call-1', parameters: { operations: SCREEN }, status: 'complete', result: JSON.stringify({ shown: true, surfaceId: 'kp' }) }} />
       </TurnStateContext.Provider>,
     );
-    await vi.waitFor(() => expect(pressed).toHaveBeenCalledTimes(2));
-    expect(pressed).toHaveBeenLastCalledWith({});
-    expect(screen.queryByText(/Нажатие отправится/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Агент ещё отвечает/)).not.toBeInTheDocument();
+    expect(pressed).toHaveBeenCalledTimes(1);
+  });
+
+  // Review 20.11: a change of a screen above, while it is written, showed «Готовлю…» under the screen for nothing.
+  it('draws nothing while a call that changes a screen above is written', () => {
+    const { container } = show({ status: 'inProgress', parameters: { operations: [{ version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats' } }] } }, 'answering');
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('draws nothing for a call that only changed a screen above it', () => {

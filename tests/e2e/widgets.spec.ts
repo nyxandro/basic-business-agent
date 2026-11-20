@@ -6,6 +6,9 @@ import { newConversation, openAgent, pageAs, say } from './helpers.ts';
 // The person's message the press of a widget sent, as the chat shows it.
 const sentByWidget = (page: Page, text: RegExp) => page.getByText(text).first();
 
+// A press is sent once the answer is over (while it goes, the widget says to press again).
+const answered = (page: Page) => expect(page.getByRole('button', { name: 'Остановить ответ' })).toHaveCount(0);
+
 test('a calculator recalculates in the browser; its button sends the message with the values; a reload keeps it', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com');
   await openAgent(page, 'Продажи');
@@ -13,6 +16,7 @@ test('a calculator recalculates in the browser; its button sends the message wit
   await say(page, 'Нужен калькулятор КП');
   await expect(page.getByText('43 500 ₽')).toBeVisible();
   await expect(page.getByText('Готово, показал выше.')).toBeVisible();
+  await answered(page);
 
   const slider = page.getByRole('slider', { name: 'Сотрудников' });
   await slider.focus();
@@ -35,11 +39,13 @@ test('a choice and a form send what the person picked and filled', async ({ brow
   await newConversation(page);
   await say(page, 'Дай выбор, кому писать');
   await expect(page.getByText('Готово, показал выше.')).toBeVisible();
+  await answered(page);
   await page.getByRole('button', { name: 'ИП Тестов' }).click();
   await expect(page.getByText(/Вы написали: «пишем первым: ип тестов/)).toBeVisible();
 
   await say(page, 'Нужна форма заявки');
   await expect(page.getByText('Готово, показал выше.').nth(1)).toBeVisible();
+  await answered(page);
   const form = page.locator('[data-generative-ui-surface]').filter({ hasText: 'Новая заявка' });
   await form.getByRole('textbox', { name: 'Клиент' }).fill('ООО Сибирь');
   await form.getByRole('radio', { name: 'Переговоры' }).click();
