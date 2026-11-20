@@ -14,6 +14,8 @@ import styles from './marks.module.css';
 
 // The pen keeps a new point only after the pointer moved this far (points of the screen): a line stays light.
 const PEN_STEP = 2;
+// The mark whose window is open: only a little bolder, no glow (owner, 20.11: «мягче, минималистичнее»).
+const SELECTED_LINE = 1.3;
 // On a touch screen text is selected by handles, with no release of a pointer: the selection is taken once it has
 // not changed for this long.
 const TOUCH_SELECTION_SETTLED_MS = 800;
@@ -49,7 +51,7 @@ function MarkShape({ mark, number, box, selected, onOpen }: { mark: Pick<Mark, '
   return (
     <g className={cx(styles.mark, onOpen && styles.markActive, selected && styles.markSelected)} data-mark-id={mark.id} {...open}>
       {onOpen && !marker ? <path d={path} className={styles.hit} strokeWidth={line * 5} data-mark-hit /> : null}
-      {marker ? <path d={path} className={styles.marker} data-mark-line data-marker /> : <path d={path} className={styles.line} strokeWidth={selected ? line * 1.6 : line} data-mark-line />}
+      {marker ? <path d={path} className={styles.marker} data-mark-line data-marker /> : <path d={path} className={styles.line} strokeWidth={selected ? line * SELECTED_LINE : line} data-mark-line />}
       {number !== null ? (
         <g className={styles.badge}>
           <circle cx={at.x * box.width} cy={at.y * box.height} r={radius} />

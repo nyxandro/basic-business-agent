@@ -62,10 +62,6 @@
   pointer-events: visiblePainted;
 }
 
-.markSelected .line {
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--mark) 55%, transparent));
-}
-
 .badge circle {
   fill: var(--mark);
 }
