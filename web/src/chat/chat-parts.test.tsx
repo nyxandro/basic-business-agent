@@ -280,33 +280,22 @@ describe('stack of status lines', () => {
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
-  it('while the model writes what the action is to do, says how much it has written; then only turns', () => {
-    const writing = (text: string) => (
+  it('names the action under way and only turns — no count of anything (owner, 20.11)', () => {
+    const writing = (text: string, name = COMMAND) => (
       <MemoryRouter>
         <TurnStateContext value="answering">
-          <ToolStack calls={[{ id: 'w1', type: 'function', function: { name: COMMAND, arguments: text } }]} messages={[]} agent={STACK_AGENT} renderCall={() => null} />
+          <ToolStack calls={[{ id: 'w1', type: 'function', function: { name, arguments: text } }]} messages={[]} agent={STACK_AGENT} renderCall={() => null} />
         </TurnStateContext>
       </MemoryRouter>
     );
-    // Nothing written yet: only the name of the action, turning.
     const { rerender } = render(writing(''));
     expect(screen.getByRole('button', { name: 'Команда в рабочей папке…' })).toBeInTheDocument();
-    // The model is writing: the count of what came, as it comes.
-    const part = `{"command":"cat > build.js <<'EOF'\\n${'x'.repeat(4194)}`;
-    rerender(writing(part));
-    expect(screen.getByRole('button', { name: `Команда в рабочей папке… ${part.length.toLocaleString('ru-RU')} знаков` })).toBeInTheDocument();
-    // Written whole: the action runs — no count that would stand still.
-    rerender(writing(`${part}\\nEOF\\nnode build.js"}`));
+    // While the model writes what the action is to do — the same line, nothing more.
+    rerender(writing(`{"command":"cat > build.js <<'EOF'\\n${'x'.repeat(4000)}`));
     expect(screen.getByRole('button', { name: 'Команда в рабочей папке…' })).toBeInTheDocument();
     // An action with no name of its own is said in general words.
-    rerender(
-      <MemoryRouter>
-        <TurnStateContext value="answering">
-          <ToolStack calls={[{ id: 'w2', type: 'function', function: { name: 'something_unknown', arguments: '{"a":' } }]} messages={[]} agent={STACK_AGENT} renderCall={() => null} />
-        </TurnStateContext>
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('button', { name: /^Выполняю действие… 5 знаков$/ })).toBeInTheDocument();
+    rerender(writing('{"a":', 'something_unknown'));
+    expect(screen.getByRole('button', { name: 'Выполняю действие…' })).toBeInTheDocument();
   });
 
   it('turns while the last line runs', () => {

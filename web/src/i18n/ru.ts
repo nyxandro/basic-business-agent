@@ -297,8 +297,6 @@ export const ru = {
     executingWhat: (what: string) => `Выполняю: ${what}`,
     toolRunning: 'Выполняю действие…',
     toolRunningAction: (title: string) => `${title}…`,
-    // How much of what the action is to do the model has written so far (owner, 20.11: only real progress).
-    written: (n: number) => `${n.toLocaleString('ru-RU')} ${plural(n, ['знак', 'знака', 'знаков'])}`,
     toolRunningIn: (system: string) => `Ищу в «${system}»…`,
     toolActions: (n: number) => `${n} ${plural(n, ['действие', 'действия', 'действий'])}`,
     skillActivating: 'Активирую навык…',
@@ -697,7 +695,6 @@ export const ru = {
   },
   // Widgets in the chat (spec, section 8.31).
   widgets: {
-    rebuilding: 'Собираю экран заново',
     stopped: 'Экран не дорисован — ответ прерван',
     // A picture of another site in a widget is a link (decision of the owner 19.11, F36).
     picture: (where: string) => `Картинка: ${where}`,

@@ -2,12 +2,12 @@
 // call — and the changes later calls of the same answer made to its screen — go to the engine's manager of surfaces
 // with a place of their own (a target per call), and `GenerativeUISurface` draws it: live while the agent writes the
 // call, and again from the stored calls after a reload. A call that only changed a screen draws nothing of its own.
-// A call the server's check refused draws nothing: while the agent rebuilds the screen, a line says so.
+// A call the server's check refused draws nothing: no line «rebuilding» — the agent may not rebuild (owner, 20.11).
 import { WIDGET_CATALOG_ID } from '@bba/contracts';
 import { useAgent } from '@copilotkit/react-core';
 import { GenerativeUISurface, useGenerativeUIRuntime } from '@copilotkit/react-core/generative-ui';
-import { useContext, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { TurnStateContext, useUnfinished } from '../chat/call-progress.ts';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useUnfinished } from '../chat/call-progress.ts';
 import { parseToolResult } from '../chat/tool-result.ts';
 import { Preparing, type CallProps } from '../genui/CatalogBlock.tsx';
 import { ru } from '../i18n/ru.ts';
@@ -20,7 +20,6 @@ import styles from './widgets.module.css';
 export function WidgetCall({ call }: { call: CallProps }) {
   const runtime = useGenerativeUIRuntime();
   const { agent } = useAgent();
-  const turn = useContext(TurnStateContext);
   const unfinished = useUnfinished()({ name: '' });
   const outcome = call.status === 'complete' ? parseToolResult(call.result).kind : null;
   const refused = outcome === 'failed';
@@ -60,7 +59,7 @@ export function WidgetCall({ call }: { call: CallProps }) {
     });
   }, [runtime, threadId, agent.agentId, refused, operations, target, call.status]);
 
-  if (refused) return turn === 'answering' ? <p className={styles.note}>{ru.widgets.rebuilding}</p> : null;
+  if (refused) return null;
   // The answer ended without the result: «Стоп» or a broken answer — what was drawn is not a screen to work with.
   if (call.status !== 'complete' && unfinished === 'stopped') return <p className={styles.note}>{ru.widgets.stopped}</p>;
   // A change of a screen drawn above it: the screen shows it, also while the change is written.

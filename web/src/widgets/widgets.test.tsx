@@ -428,10 +428,10 @@ describe('the block of a widget', () => {
     expect(ingest).toHaveBeenCalledWith('thread-1', 'sales', expect.objectContaining({ status: 'streaming' }));
   });
 
-  it('says the screen is being rebuilt while the agent answers, and draws nothing after a refused call', () => {
+  it('draws nothing for a refused call — no status the agent may not live up to (owner, 20.11)', () => {
     const refused = JSON.stringify({ error: true, code: 'APP_WIDGET_INVALID', message: 'Экран не собран' });
     const answering = show({ status: 'complete', result: refused }, 'answering');
-    expect(screen.getByText('Собираю экран заново')).toBeInTheDocument();
+    expect(answering.container).toBeEmptyDOMElement();
     answering.unmount();
     const { container } = show({ status: 'complete', result: refused }, 'ended');
     expect(container).toBeEmptyDOMElement();
