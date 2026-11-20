@@ -40,8 +40,8 @@ function MarkShape({ mark, number, box, selected, onOpen }: { mark: Pick<Mark, '
     : {};
   return (
     <g className={cx(styles.mark, onOpen && styles.markActive, selected && styles.markSelected)} data-mark-id={mark.id} {...open}>
-      {onOpen ? <path d={path} className={styles.hit} strokeWidth={line * 5} /> : null}
-      <path d={path} className={styles.line} strokeWidth={selected ? line * 1.6 : line} />
+      {onOpen ? <path d={path} className={styles.hit} strokeWidth={line * 5} data-mark-hit /> : null}
+      <path d={path} className={styles.line} strokeWidth={selected ? line * 1.6 : line} data-mark-line />
       {number !== null ? (
         <g className={styles.badge}>
           <circle cx={at.x * box.width} cy={at.y * box.height} r={radius} />

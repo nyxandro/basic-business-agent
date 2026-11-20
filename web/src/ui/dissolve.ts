@@ -78,9 +78,12 @@ function seenRect(node: Element, element: HTMLElement): Rect {
   return { x: left - box.left, y: top - box.top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
 }
 
-interface Picture {
+interface Size {
   w: number;
   h: number;
+}
+
+interface Picture extends Size {
   background: string;
   borderColor: string;
   borderWidth: number;
@@ -196,9 +199,9 @@ async function draw(picture: Picture, dpr: number): Promise<HTMLCanvasElement | 
   return canvas;
 }
 
-const grainOf = (picture: Picture) => Math.max(GRAIN, Math.ceil(Math.sqrt((picture.w * picture.h) / MAX_GRAINS)));
+const grainOf = (picture: Size) => Math.max(GRAIN, Math.ceil(Math.sqrt((picture.w * picture.h) / MAX_GRAINS)));
 
-function grainsOf(canvas: HTMLCanvasElement, picture: Picture, dpr: number): Grain[] {
+function grainsOf(canvas: HTMLCanvasElement, picture: Size, dpr: number): Grain[] {
   const ctx = canvas.getContext('2d');
   if (!ctx) return [];
   const { data, width } = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -251,6 +254,11 @@ export async function dissolve(element: HTMLElement): Promise<void> {
   const dpr = window.devicePixelRatio || 1;
   const snapshot = await draw(picture, dpr);
   if (!snapshot) return;
+  await scatter(snapshot, box, picture, dpr);
+}
+
+// The grains of a drawn element fly from where it stood on the screen (`at`, CSS px).
+async function scatter(snapshot: HTMLCanvasElement, box: { left: number; top: number }, picture: Size, dpr: number): Promise<void> {
   const grains = grainsOf(snapshot, picture, dpr);
 
   const overlay = document.createElement('canvas');
@@ -302,9 +310,32 @@ export async function dissolve(element: HTMLElement): Promise<void> {
 }
 
 // What the person removes turns to sand wherever it is (request of the owner 18.11): a file of the next
-// message, alone or in its card, «Убрать все», a file of a project. With «уменьшить движение» in the
-// system it simply goes. The sand is only a picture: if it cannot be drawn, the thing still goes.
+// message, alone or in its card, «Убрать все», a file of a project, a mark on a document (20.11). With
+// «уменьшить движение» in the system it simply goes. The sand is only a picture: if it cannot be drawn, the thing
+// still goes.
+export const stillMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export function turnToSand(element: HTMLElement | null): void {
-  if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!element || stillMotion()) return;
   dissolve(element).catch((error: unknown) => console.warn('sand failed', error));
+}
+
+// What is not an HTML element of the kind `pictureOf` reads (a mark drawn in SVG over a page): its own picture as
+// SVG markup, already in its colours, and where it stands on the screen (CSS px).
+export function turnSvgToSand(markup: string, box: { left: number; top: number; w: number; h: number }): void {
+  if (stillMotion()) return;
+  const sand = async () => {
+    const image = new Image();
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+    await image.decode();
+    const dpr = window.devicePixelRatio || 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(box.w * dpr);
+    canvas.height = Math.ceil(box.h * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    await scatter(canvas, box, box, dpr);
+  };
+  sand().catch((error: unknown) => console.warn('sand failed', error));
 }

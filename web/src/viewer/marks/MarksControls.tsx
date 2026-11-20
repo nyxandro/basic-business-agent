@@ -5,6 +5,7 @@ import { ru } from '../../i18n/ru.ts';
 import { Button, cx, IconButton } from '../../ui/Button.tsx';
 import { TextArea } from '../../ui/Field.tsx';
 import { Icon } from '../../ui/Icon.tsx';
+import { markToSand } from './sand.ts';
 import { MARK_TOOLS, COMMENT_MAX } from './types.ts';
 import { useMarks } from './use-marks.ts';
 import styles from './marks.module.css';
@@ -57,7 +58,14 @@ export function MarksPanel() {
                 const first = mark.comment.trim().split('\n')[0];
                 return (
                   <li key={mark.id}>
-                    <button type="button" className={cx(styles.row, marks.selected === mark.id && styles.rowOn)} aria-label={ru.marks.mark(i + 1)} disabled={marks.sending} onClick={() => marks.open(mark.id)}>
+                    <button
+                      type="button"
+                      className={cx(styles.row, marks.selected === mark.id && styles.rowOn)}
+                      aria-label={ru.marks.mark(i + 1)}
+                      disabled={marks.sending}
+                      data-mark-row={mark.id}
+                      onClick={() => marks.open(mark.id)}
+                    >
                       <span className={styles.number}>{i + 1}</span>
                       {marks.paged ? <span className={styles.rowPage}>{ru.marks.page(mark.page)}</span> : null}
                       <span className={cx(styles.rowText, !first && styles.rowEmpty)}>{first || ru.marks.noComment}</span>
@@ -160,7 +168,15 @@ export function MarkWindow() {
         onKeyDown={keys}
       />
       <div className={styles.windowActions}>
-        <Button variant="ghost" size="sm" icon="trash" onClick={() => marks.remove(selected.id)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="trash"
+          onClick={() => {
+            markToSand(selected.id);
+            marks.remove(selected.id);
+          }}
+        >
           {ru.marks.remove}
         </Button>
         <Button variant="primary" size="sm" onClick={() => marks.select(null)}>
