@@ -1,11 +1,10 @@
 // What stands over the document while «Пометки» is on (spec, section 8.32): the four tools at the top, the list of
 // marks in the corner with «Отправить агенту» under it, and the window of the comment beside the mark it belongs to.
-// The tools fly out of «Пометки» and back into it, the list rises from below with the first mark and goes with the
-// last (requests of the owner 20.11); with «уменьшить движение» in the system they simply show and go.
-import { AnimatePresence, motion, MotionConfig, useAnimate, usePresence } from 'motion/react';
+// The tools drop from behind the top edge of the document and go back up, the list rises from below with the first
+// mark and goes with the last (requests of the owner 20.11); with «уменьшить движение» they simply show and go.
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ru } from '../../i18n/ru.ts';
-import { stillMotion } from '../../ui/dissolve.ts';
 import { EASING, MOVE_S } from '../../ui/motion.ts';
 import { Button, cx, IconButton } from '../../ui/Button.tsx';
 import { TextArea } from '../../ui/Field.tsx';
@@ -21,58 +20,23 @@ const onPhone = () => typeof window.matchMedia === 'function' && !window.matchMe
 // Room between the mark and its window, and between the window and the edges of the view.
 const GAP = 8;
 
-// The tools pour out of «Пометки» like a genie out of a lamp: a narrow strip leaves the button, flies to its place
-// stretching downwards and widens; closed, they go back the same way.
-const GENIE_IN_S = 0.5;
-const GENIE_OUT_S = 0.34;
-
-// Where the button «Пометки» is from the tools: the start of their flight and the side they grow from.
-function genieFrom(tools: HTMLElement): { x: number; y: number; originX: number } | null {
-  const button = tools.closest('[role="dialog"]')?.querySelector('[data-marks-toggle]');
-  if (!button) return null;
-  const from = button.getBoundingClientRect();
-  const to = tools.getBoundingClientRect();
-  const originX = Math.min(1, Math.max(0, (from.left + from.width / 2 - to.left) / to.width));
-  return { x: from.left + from.width / 2 - (to.left + to.width / 2), y: from.top + from.height / 2 - (to.top + to.height / 2), originX };
-}
+// The tools drop from behind the top edge of the document and go back up behind it (owner, 20.11).
+const DROP_S = 0.34;
+const HIDDEN = { y: '-130%', opacity: 0 };
 
 function Tools() {
   const marks = useMarks();
-  const [scope, animate] = useAnimate<HTMLDivElement>();
-  const [present, safeToRemove] = usePresence();
-  const from = useRef<ReturnType<typeof genieFrom>>(null);
-
-  useLayoutEffect(() => {
-    const tools = scope.current;
-    from.current = genieFrom(tools);
-    const f = from.current;
-    if (!f || stillMotion()) return;
-    // They grow from the side facing the button.
-    void animate(tools, { originX: f.originX, originY: 0 }, { duration: 0 });
-    void animate(
-      tools,
-      { x: [f.x, f.x * 0.35, 0], y: [f.y, f.y * 0.25, 0], scaleX: [0.06, 0.3, 1], scaleY: [0.25, 1.08, 1], opacity: [0, 1, 1] },
-      { duration: GENIE_IN_S, ease: EASING, times: [0, 0.5, 1] },
-    );
-  }, [animate, scope]);
-
-  useEffect(() => {
-    if (present) return;
-    const f = from.current;
-    if (!f || stillMotion()) {
-      safeToRemove();
-      return;
-    }
-    void animate(
-      scope.current,
-      { x: [0, f.x * 0.35, f.x], y: [0, f.y * 0.25, f.y], scaleX: [1, 0.3, 0.06], scaleY: [1, 1.08, 0.25], opacity: [1, 1, 0] },
-      { duration: GENIE_OUT_S, ease: EASING, times: [0, 0.5, 1] },
-    ).then(safeToRemove);
-  }, [present, animate, scope, safeToRemove]);
-
   if (!marks) return null;
   return (
-    <div ref={scope} className={styles.toolbar} role="toolbar" aria-label={ru.marks.tools}>
+    <motion.div
+      className={styles.toolbar}
+      role="toolbar"
+      aria-label={ru.marks.tools}
+      initial={HIDDEN}
+      animate={{ y: 0, opacity: 1 }}
+      exit={HIDDEN}
+      transition={{ duration: DROP_S, ease: EASING }}
+    >
       {MARK_TOOLS.map((tool) => (
         <IconButton
           key={tool}
@@ -84,13 +48,20 @@ function Tools() {
           onClick={() => marks.setTool(marks.tool === tool ? null : tool)}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
+// The slot under the bar hides the tools above its top edge: they come out from behind the document's edge.
 export function MarksToolbar() {
   const marks = useMarks();
-  return <AnimatePresence>{marks?.active ? <Tools key="tools" /> : null}</AnimatePresence>;
+  return (
+    <div className={styles.toolbarSlot}>
+      <MotionConfig reducedMotion="user">
+        <AnimatePresence>{marks?.active ? <Tools key="tools" /> : null}</AnimatePresence>
+      </MotionConfig>
+    </div>
+  );
 }
 
 // The list is there only with marks — or to say why the marks are gone (a new version of the file, no storage).
