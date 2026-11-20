@@ -314,18 +314,16 @@
   box-shadow: 0 18px 44px var(--shadow);
 }
 
-.windowHead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-}
-
 .windowActions {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+}
+
+/* «Готово» stands at the right edge; the number and «Удалить» — at the left. */
+.windowDone {
+  margin-left: auto;
 }
 
 /* On a phone: the list is a bar at the bottom, the window stands over it across the width. */

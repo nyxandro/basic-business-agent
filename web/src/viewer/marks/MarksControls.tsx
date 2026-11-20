@@ -220,10 +220,6 @@ function MarkEditor({ id, comment, number }: { id: string; comment: string; numb
       role="dialog"
       aria-label={ru.marks.mark(number)}
     >
-      <div className={styles.windowHead}>
-        <span className={styles.number}>{number}</span>
-        <span>{ru.marks.mark(number)}</span>
-      </div>
       <TextArea
         ref={field}
         aria-label={ru.marks.commentLabel}
@@ -234,23 +230,19 @@ function MarkEditor({ id, comment, number }: { id: string; comment: string; numb
         onChange={(event) => setText(event.target.value)}
         onKeyDown={keys}
       />
+      {/* Under the comment: the number of the mark, then «Удалить» and «Готово» as icons (owner, 20.11). */}
       <div className={styles.windowActions}>
-        <Button
-          variant="ghost"
-          size="sm"
+        <span className={styles.number}>{number}</span>
+        <IconButton
           icon="trash"
+          size="sm"
+          label={ru.marks.remove}
           onClick={() => {
             markToSand(id);
             marks.remove(id);
           }}
-        >
-          {ru.marks.remove}
-        </Button>
-        {ready ? (
-          <Button variant="primary" size="sm" onClick={() => marks.save(id, text)}>
-            {ru.marks.done}
-          </Button>
-        ) : null}
+        />
+        {ready ? <IconButton icon="check" size="sm" variant="primary" label={ru.marks.done} className={styles.windowDone} onClick={() => marks.save(id, text)} /> : null}
       </div>
     </div>
   );
