@@ -327,7 +327,7 @@
   display: grid;
   place-items: center;
   font-variant-numeric: tabular-nums;
-  animation: bba-ring 1.6s infinite;
+  animation: global(bba-ring) 1.6s infinite;
 }
 
 .footLink {
@@ -372,7 +372,7 @@
   height: 100%;
   border-radius: 3px;
   background: var(--acc);
-  animation: bba-grow 1.2s var(--ease-out) both;
+  animation: global(bba-grow) 1.2s var(--ease-out) both;
 }
 
 .limitBarFull {
@@ -455,7 +455,7 @@
 
 .bellRinging svg {
   transform-origin: 50% 15%;
-  animation: bba-bell 3.2s ease-in-out infinite;
+  animation: global(bba-bell) 3.2s ease-in-out infinite;
 }
 
 .bellCount {

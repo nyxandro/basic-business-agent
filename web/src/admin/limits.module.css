@@ -181,7 +181,7 @@
   border-radius: 4px 4px 0 0;
   background: var(--bar-past);
   transform-origin: bottom;
-  animation: bba-grow-y 0.7s var(--ease-out) both;
+  animation: global(bba-grow-y) 0.7s var(--ease-out) both;
   transition: filter 0.15s ease;
 }
 

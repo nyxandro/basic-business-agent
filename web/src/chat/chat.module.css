@@ -18,7 +18,7 @@
   padding: 24px;
   background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(3px);
-  animation: bba-fade 0.15s ease-out both;
+  animation: global(bba-fade) 0.15s ease-out both;
 }
 
 /* The hint takes the drag itself: entering its parts is not leaving it. */
@@ -42,7 +42,7 @@
   align-items: center;
   gap: 8px;
   text-align: center;
-  animation: bba-rise 0.25s var(--ease-rise) both;
+  animation: global(bba-rise) 0.25s var(--ease-rise) both;
 }
 
 .dropIcon {
@@ -91,7 +91,7 @@
 .welcome {
   padding: 120px 0 20px;
   text-align: center;
-  animation: bba-rise 0.5s var(--ease-rise) both;
+  animation: global(bba-rise) 0.5s var(--ease-rise) both;
 }
 
 .welcomeMark {
@@ -126,7 +126,7 @@
   color: var(--text);
   font: inherit;
   cursor: pointer;
-  animation: bba-rise 0.5s var(--ease-rise) both;
+  animation: global(bba-rise) 0.5s var(--ease-rise) both;
   transition: background-color 0.2s ease, transform 0.15s ease;
 }
 
@@ -158,7 +158,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   transform-origin: bottom right;
-  animation: bba-send 0.45s var(--ease-send) both;
+  animation: global(bba-send) 0.45s var(--ease-send) both;
 }
 
 /* The files of the message at the top of its bubble, above the words (request of the owner 19.11). */
@@ -172,7 +172,7 @@
 .assistant {
   display: flex;
   gap: 14px;
-  animation: bba-rise 0.45s var(--ease-rise) both;
+  animation: global(bba-rise) 0.45s var(--ease-rise) both;
 }
 
 .body {
@@ -274,7 +274,7 @@
   min-height: 26px;
   padding-left: 44px;
   font-weight: 500;
-  animation: bba-rise 0.45s var(--ease-rise) both;
+  animation: global(bba-rise) 0.45s var(--ease-rise) both;
 }
 
 /* global(): CSS modules rename an animation to one of the module, and the keyframes are in base.css. */
@@ -440,7 +440,7 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: bba-shimmer 2.2s linear infinite;
+  animation: global(bba-shimmer) 2.2s linear infinite;
   font-weight: 500;
 }
 
@@ -451,7 +451,7 @@
   background: var(--surface);
   box-shadow: 0 10px 30px var(--shadow);
   overflow: hidden;
-  animation: bba-pop 0.4s var(--ease-out) both;
+  animation: global(bba-pop) 0.4s var(--ease-out) both;
 }
 
 .approvalHead {

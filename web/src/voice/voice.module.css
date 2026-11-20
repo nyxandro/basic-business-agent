@@ -8,7 +8,7 @@
   border: 1px solid var(--acc);
   background: var(--surface);
   box-shadow: 0 0 0 4px var(--ring), 0 8px 28px var(--shadow);
-  animation: bba-pop 0.4s var(--ease-out) both;
+  animation: global(bba-pop) 0.4s var(--ease-out) both;
 }
 
 .dot {
@@ -17,7 +17,7 @@
   flex: none;
   border-radius: 50%;
   background: var(--acc);
-  animation: bba-ring 1.6s infinite;
+  animation: global(bba-ring) 1.6s infinite;
 }
 
 .time {
@@ -45,7 +45,7 @@
   border-radius: 3px;
   background: var(--acc);
   transform-origin: center;
-  animation: bba-wave 1s infinite ease-in-out;
+  animation: global(bba-wave) 1s infinite ease-in-out;
 }
 
 .done {
@@ -132,7 +132,7 @@
   border-radius: 50%;
   border: 2px solid var(--ring);
   border-top-color: var(--acc);
-  animation: bba-spin 0.8s linear infinite;
+  animation: global(bba-spin) 0.8s linear infinite;
 }
 
 .shimmer {
@@ -141,7 +141,7 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: bba-shimmer 2.2s linear infinite;
+  animation: global(bba-shimmer) 2.2s linear infinite;
   font-weight: 500;
 }
 

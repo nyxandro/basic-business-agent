@@ -8,7 +8,7 @@
   background: var(--surface);
   box-shadow: 0 0 0 3px var(--ring);
   color: var(--muted);
-  animation: bba-pop 0.4s var(--ease-out) both;
+  animation: global(bba-pop) 0.4s var(--ease-out) both;
 }
 
 .newInput {

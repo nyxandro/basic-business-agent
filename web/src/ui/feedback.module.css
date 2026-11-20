@@ -53,7 +53,7 @@
   border-radius: 50%;
   border: 2px solid var(--ring);
   border-top-color: var(--acc);
-  animation: bba-spin 0.8s linear infinite;
+  animation: global(bba-spin) 0.8s linear infinite;
 }
 
 /* A wait longer than a second (spec, section 8.22): a thin line running along the top of the page. */
@@ -65,7 +65,7 @@
   overflow: hidden;
   pointer-events: none;
   background: color-mix(in srgb, var(--acc) 18%, transparent);
-  animation: bba-fade 0.2s ease-out both;
+  animation: global(bba-fade) 0.2s ease-out both;
 }
 
 .loadingBar::after {

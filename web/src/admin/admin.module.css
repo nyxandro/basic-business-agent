@@ -151,7 +151,7 @@
   max-width: 1080px;
   margin: 0 auto;
   padding: 32px 36px 48px;
-  animation: bba-fade 0.18s ease-out both;
+  animation: global(bba-fade) 0.18s ease-out both;
 }
 
 /* A phone: the header, the chips of the sections, the content under them. */

@@ -141,7 +141,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  animation: bba-rise 0.35s var(--ease-rise) both;
+  animation: global(bba-rise) 0.35s var(--ease-rise) both;
   transition: background-color 0.2s ease, transform 0.15s ease;
 }
 
@@ -299,7 +299,7 @@
   border-radius: 50%;
   border: 2px solid var(--ring);
   border-top-color: var(--acc);
-  animation: bba-spin 0.8s linear infinite;
+  animation: global(bba-spin) 0.8s linear infinite;
 }
 
 .nothing {

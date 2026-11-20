@@ -128,7 +128,7 @@
   background: var(--surface2);
   color: var(--muted);
   font-weight: 600;
-  animation: bba-pop 0.4s var(--ease-out) both;
+  animation: global(bba-pop) 0.4s var(--ease-out) both;
 }
 
 .resultOk {

@@ -19,7 +19,7 @@
   background: var(--scrim);
   backdrop-filter: blur(3px);
   cursor: default;
-  animation: bba-fade 0.25s ease both;
+  animation: global(bba-fade) 0.25s ease both;
 }
 
 .window {
@@ -35,7 +35,7 @@
   border-radius: 18px;
   box-shadow: 0 28px 70px var(--shadow);
   outline: none;
-  animation: bba-modal 0.32s var(--ease-out) both;
+  animation: global(bba-modal) 0.32s var(--ease-out) both;
 }
 
 /* The window takes the focus back from the window of a mark (spec, section 8.32): no ring round the whole viewer. */
