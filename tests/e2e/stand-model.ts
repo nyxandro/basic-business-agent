@@ -1,7 +1,9 @@
 // The stand-in model of the browser stand: answers by keywords of the last message, so every
 // widget, the confirmation card and an answer that broke can be seen in a real browser.
 import type { FakeRequest, FakeTurn, GatewayStreamError } from '../../core/models/fake-openai.ts';
-import { WIDGET_TOOL } from '@bba/contracts';
+import { WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
+import type { FetchedPage, PageReader } from '../../core/web/fetch.ts';
+import type { WebSearcher } from '../../core/web/search.ts';
 import { BROKEN_SCREEN, DEAL_CARD, DEALS_TABLE, NEW_REQUEST_FORM, OFFER_CALCULATOR, REVENUE_CHART, WHOM_FIRST } from './stand-screens.ts';
 
 function textOf(content: unknown): string {
@@ -22,6 +24,40 @@ const MAKE_DOCUMENT =
 function lastCallName(req: FakeRequest): string | undefined {
   const calls = [...req.messages].reverse().find((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))?.tool_calls as { function: { name: string } }[] | undefined;
   return calls?.at(-1)?.function.name;
+}
+
+// The internet of the stand (spec, section 8.30): «в интернете» in a message sends the researcher to
+// a made-up shop. The search and the page each take a while, so the live block of the search shows
+// its query and its site in a real browser.
+export const STAND_WEB_QUERY = 'профнастил С21 цена';
+export const STAND_WEB_PAGE = { address: 'https://example.com/c21', title: 'Профнастил С21 — цены' };
+export const STAND_WEB_ANSWER = 'Профнастил С21 стоит 520 ₽ за лист, источник — example.com.';
+export const STAND_NO_WEB = 'Интернета у меня нет: отвечу только по тому, что знаю.';
+const WEB_STEP_MS = 2000;
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+export const standWeb: { searcher: WebSearcher; reader: PageReader } = {
+  searcher: {
+    search: async () => {
+      await pause(WEB_STEP_MS);
+      return [{ title: STAND_WEB_PAGE.title, address: STAND_WEB_PAGE.address, snippet: 'от 520 ₽', date: null }];
+    },
+  },
+  reader: {
+    read: async (address, offset): Promise<FetchedPage> => {
+      await pause(WEB_STEP_MS);
+      const text = 'Профнастил С21: 520 ₽ за лист.';
+      return { address, final_address: address, title: STAND_WEB_PAGE.title, kind: 'html', text, from: offset, to: offset + text.length, total_chars: text.length };
+    },
+  },
+};
+
+// The researcher of the internet gets its own instructions and the task only (core/web/research.ts):
+// it searches, reads the page it found and answers with the source.
+const isResearcher = (req: FakeRequest) => textOf(req.messages[0]?.content).includes('Ты — исследователь');
+function standResearcher(req: FakeRequest): FakeTurn {
+  if (req.messages.at(-1)?.role !== 'tool') return call('web_search', { query: STAND_WEB_QUERY });
+  if (lastCallName(req) === 'web_search') return call('web_fetch', { address: STAND_WEB_PAGE.address });
+  return { text: `Профнастил С21 — 520 ₽ за лист (${STAND_WEB_PAGE.address}).` };
 }
 
 // What LiteLLM sends inside the stream when the provider goes away mid-answer (core/models/gateway.test.ts).
@@ -59,9 +95,11 @@ export function standNaming(req: FakeRequest): FakeTurn {
 }
 
 function standModel(req: FakeRequest): FakeTurn {
+  if (isResearcher(req)) return standResearcher(req);
   const last = req.messages.at(-1);
   if (last?.role === 'tool') {
     const result = textOf(last.content);
+    if (lastCallName(req) === WEB_RESEARCH_TOOL) return { text: STAND_WEB_ANSWER };
     if (lastCallName(req)?.endsWith('execute_command')) return call('show_file', { path: STAND_DOCUMENT });
     // The memory of the project or of the person (spec, section 8.26).
     if (lastCallName(req)?.endsWith('_memory')) return { text: /"error":\s*true/.test(result) ? 'Не получилось запомнить.' : 'Запомнил.' };
@@ -81,8 +119,13 @@ function standModel(req: FakeRequest): FakeTurn {
   }
   if (text.includes('документ word')) {
     const tool = req.tools?.map((x) => x.function.name).find((n) => n.endsWith('execute_command'));
-    if (!tool) return { text: 'У этого стенда нет рабочей папки.' };
+    // An agent with «Доступ к выполнению команд терминала» switched off has no commands (spec, section 8.30).
+    if (!tool) return { text: 'Команд у меня нет: документ Word сделать не могу.' };
     return call(tool, { command: MAKE_DOCUMENT });
+  }
+  if (text.includes('в интернете')) {
+    if (!req.tools?.some((x) => x.function.name === WEB_RESEARCH_TOOL)) return { text: STAND_NO_WEB };
+    return call(WEB_RESEARCH_TOOL, { task: 'Найди цену профнастила С21, с адресами страниц' });
   }
   const screen = widgetFor(text);
   if (screen) {

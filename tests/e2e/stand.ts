@@ -6,6 +6,7 @@
 // «Бухгалтерия»: «Помощник» only) or igor@example.com (superadmin); password from TEST_PASSWORD.
 // «Нейросеть» has a subscription model and a pool of three ChatGPT accounts in a fake OpenAI; a new
 // account is connected through its page «Открыть сайт OpenAI» (enter the code and any e-mail).
+// «в интернете» in a message sends the researcher to a made-up shop (stand-model.ts, standWeb).
 import { serve } from '@hono/node-server';
 import { readFileSync } from 'node:fs';
 import { createTask } from '../../core/background/tasks.ts';
@@ -13,12 +14,12 @@ import { createProject } from '../../core/projects/projects.ts';
 import { createSkill } from '../../core/skills-admin/store.ts';
 import { startFakeChatGpt } from '../../core/models/fake-chatgpt.ts';
 import { createTestApp, TEST_PASSWORD } from '../../core/server/test-app.ts';
-import { createStandModel, standNaming } from './stand-model.ts';
+import { createStandModel, standNaming, standWeb } from './stand-model.ts';
 
 const PORT = 3000;
 
 const openai = await startFakeChatGpt();
-const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true });
+const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true, web: standWeb });
 const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
 await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
 const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
