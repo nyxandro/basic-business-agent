@@ -2,6 +2,8 @@
 // person's own conversations, in a project or everywhere, found by words, read as the person saw them — and
 // never a colleague's, even in a project open to the whole department.
 import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { ProjectDto } from '@bba/contracts';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,6 +12,7 @@ import type { FakeRequest } from '../models/fake-openai.ts';
 import { BASE_RULES } from '../prompts/layers.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
+import { chatRoot, filesRoot } from '../workspace/layout.ts';
 import { CONVERSATIONS_TOOL } from './tool.ts';
 
 let t: TestApp;
@@ -51,6 +54,7 @@ const toolOutput = (req: FakeRequest): string => {
   const content = req.messages.filter((m) => m.role === 'tool').at(-1)?.content;
   return typeof content === 'string' ? content : JSON.stringify(content ?? '');
 };
+const readdirNames = (dir: string) => readdirSync(dir).filter((n) => !n.startsWith('.'));
 const toolNames = (req: FakeRequest) => (req.tools ?? []).map((x) => x.function.name);
 
 // One turn in a new conversation (in `projectId` when given): the model calls the tool, then answers.
@@ -268,6 +272,66 @@ describe('conversations tool', () => {
 
   it('is named in the core rules by the name it is registered under', () => {
     expect(BASE_RULES).toContain(`\`${CONVERSATIONS_TOOL}\``);
+  });
+});
+
+// A file of a past conversation (spec, section 8.33): a copy in the folder of this one; the original stays as it is.
+describe('taking a file from a past conversation', () => {
+  let elka: string;
+  const put = (dir: string, path: string, content: string) => {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content);
+  };
+  const here = (threadId: string, path: string) => readFileSync(join(chatRoot(t.workspaceRoot, olgaId, threadId), path), 'utf8');
+
+  beforeAll(async () => {
+    elka = await conversation(olgaId, 'КП для «Ёлки»', [
+      ['user', [text('Сделай КП\n\nВложения:\n- Смета.xlsx (файл в рабочей папке: Смета.xlsx)')]],
+      ['assistant', [call('show_file', { path: 'КП Ёлка.docx' }, { shown: true, path: 'КП Ёлка.docx', name: 'КП Ёлка.docx', bytes: 2 }), text('Готово.')]],
+    ]);
+    const folder = chatRoot(t.workspaceRoot, olgaId, elka);
+    put(folder, 'КП Ёлка.docx', 'КП');
+    put(folder, 'Смета.xlsx', 'смета');
+    put(folder, '.work/make_kp.js', 'скрипт');
+    writeFileSync(join(t.workspaceRoot, 'чужое.docx'), 'чужое');
+    symlinkSync(join(t.workspaceRoot, 'чужое.docx'), join(folder, 'Ярлык.docx'));
+    put(filesRoot(t.workspaceRoot, olgaId, shared), 'КП_v2.docx', 'кп проекта');
+  });
+
+  it('copies a file the conversation showed, by its name, into the folder of this one under a free name; the original stays', async () => {
+    const current = randomUUID();
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: 'КП Ёлка.docx' }, undefined, current))).toMatchObject({ name: 'КП Ёлка.docx', path: 'КП Ёлка.docx', bytes: 4 });
+    expect(here(current, 'КП Ёлка.docx')).toBe('КП');
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: 'КП Ёлка.docx' }, undefined, current))).toMatchObject({ name: 'КП Ёлка (2).docx' });
+    expect(here(current, 'КП Ёлка (2).docx')).toBe('КП');
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: 'Смета.xlsx' }, undefined, current))).toMatchObject({ name: 'Смета.xlsx' });
+    // A draft is taken by its path in the folder of its conversation.
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: '.work/make_kp.js' }, undefined, current))).toMatchObject({ name: 'make_kp.js', path: 'make_kp.js' });
+    expect(here(current, 'make_kp.js')).toBe('скрипт');
+    expect(here(elka, 'КП Ёлка.docx')).toBe('КП');
+  });
+
+  it('takes a file of a project conversation outside the project, and copies nothing within the same project', async () => {
+    const current = randomUUID();
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(kp), file: 'КП_v2.docx' }, undefined, current))).toMatchObject({ name: 'КП_v2.docx' });
+    expect(here(current, 'КП_v2.docx')).toBe('кп проекта');
+    const same = parsed(await ask(olga, { mode: 'take', conversation: ref(kp), file: 'КП_v2.docx' }, shared));
+    expect(same).toMatchObject({ name: 'КП_v2.docx', path: 'КП_v2.docx', copied: false });
+    expect(existsSync(join(filesRoot(t.workspaceRoot, olgaId, shared), 'КП_v2 (2).docx'))).toBe(false);
+  });
+
+  it('refuses a colleague’s conversation, a path out of the folder, a link and a file the conversation has not', async () => {
+    const current = randomUUID();
+    expect(parsed(await ask(petr, { mode: 'take', conversation: ref(elka), file: 'КП Ёлка.docx' }, shared))).toMatchObject({ error: true, code: 'APP_NOT_FOUND' });
+    for (const file of ['../../чужое.docx', '/etc/passwd']) expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file }, undefined, current))).toMatchObject({ error: true, code: 'APP_VALIDATION_FAILED' });
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: 'Ярлык.docx' }, undefined, current))).toMatchObject({ error: true });
+    const missing = parsed(await ask(olga, { mode: 'take', conversation: ref(elka), file: 'Договор.docx' }, undefined, current));
+    expect(missing).toMatchObject({ error: true, code: 'APP_NOT_FOUND' });
+    // What the conversation has, to choose from.
+    expect(missing.message).toContain('КП Ёлка.docx');
+    expect(missing.message).toContain('Смета.xlsx');
+    expect(parsed(await ask(olga, { mode: 'take', conversation: ref(elka) }, undefined, current))).toMatchObject({ error: true, code: 'APP_VALIDATION_FAILED' });
+    expect(existsSync(chatRoot(t.workspaceRoot, olgaId, current)) ? readdirNames(chatRoot(t.workspaceRoot, olgaId, current)) : []).toEqual([]);
   });
 });
 

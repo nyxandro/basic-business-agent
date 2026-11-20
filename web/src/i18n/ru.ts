@@ -323,6 +323,10 @@ export const ru = {
     conversationRead: (title: string) => `Прочитал разговор «${title}»`,
     conversationReadCurrent: 'Перечитал ранние сообщения разговора',
     conversationsFailed: 'Не получилось посмотреть прошлые разговоры',
+    // A file the agent took from a past conversation into its folder (spec, section 8.33).
+    conversationFileTaking: 'Беру файл из прошлого разговора…',
+    conversationFileTaken: (name: string) => `Взял файл «${name}» из прошлого разговора`,
+    conversationFileFailed: 'Не получилось взять файл из прошлого разговора',
     // The live block of a search (spec, section 8.30; decision of the owner 20.11).
     webSearch: {
       starting: 'Начинаю поиск в интернете…',

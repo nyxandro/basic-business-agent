@@ -149,7 +149,7 @@ async function main(): Promise<void> {
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, docText, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;

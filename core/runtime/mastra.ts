@@ -22,6 +22,7 @@ import type { DocTextService } from '../doctext/service.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createImageViewProcessor, type SandboxDeps } from '../sandbox/workspace.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { createStreamRetry } from './stream-retry.ts';
 import { createWebTools, type WebDeps } from '../web/research.ts';
 import { createWidgetHistoryProcessor } from '../widgets/history.ts';
@@ -35,6 +36,8 @@ export interface MastraRuntimeDeps {
   app: Pick<AppConfig, 'timezone'>;
   // Root of the employees' workspaces: the project layer of the prompt lists the project's files.
   workspaceRoot: string;
+  // Where the files of an area are while a tool reads it (a file taken from a past conversation, spec 8.33).
+  files: Pick<FileStorage, 'hold'>;
   // FALLBACK_FIRST_CHUNK_MS unless a test shortens it.
   firstChunkMs?: number;
   // MODEL_CALL_MAX_MS unless a test shortens it.
@@ -81,7 +84,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const memoryTools = createMemoryTools(deps.db);
   // An agent no longer in the registry keeps its id as its name in the lists of past conversations.
   const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
-  const historyTools = createHistoryTools({ db: deps.db, timezone: deps.app.timezone, agentName });
+  const historyTools = createHistoryTools({ db: deps.db, timezone: deps.app.timezone, agentName, workspaceRoot: deps.workspaceRoot, files: deps.files });
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);

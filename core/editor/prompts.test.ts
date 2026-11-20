@@ -14,6 +14,9 @@ import { ensureMaskingSettings } from '../masking/settings.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
 import { addEntry } from '../memory/entries.ts';
 import { createMemory } from '../memory/memory.ts';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
+import { createFileStorage } from '../storage/engine.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
@@ -51,7 +54,7 @@ const registry: Registry = {
   triggers: [],
 };
 
-async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string): Promise<string[]> {
+async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string, threadId = `t-${Date.now()}`): Promise<string[]> {
   const agent = await resolveAgent(deps, agentId, mode);
   const rc = new RequestContext();
   rc.set(REQUEST_KEYS.userId, 'olga');
@@ -59,7 +62,6 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
   rc.set(REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}');
-  const threadId = `t-${Date.now()}`;
   rc.set(REQUEST_KEYS.threadId, threadId);
   if (projectId) {
     rc.set(REQUEST_KEYS.projectId, projectId);
@@ -84,7 +86,8 @@ beforeAll(async () => {
   const storage = new PostgresStore({ id: 'test', connectionString: database.url, schemaName: 'mastra' });
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-prompts-'));
-  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot, docText: { text: () => Promise.resolve(null) } });
+  const files = createFileStorage({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), workspaceRoot, keepCopyMs: 0 });
+  mastra = createMastraRuntime({ registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot, files, docText: { text: () => Promise.resolve(null) } });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {
@@ -110,7 +113,8 @@ describe('prompt layers', () => {
   it('puts the project after the employee and the current time only into the outgoing last message, so the prompt and the history do not change between requests', async () => {
     await db.query(`INSERT INTO app.projects (id, user_id, name, instructions, access) VALUES ($1, 'olga', 'Тендер ЖК Северный', 'Заказчик тендера — ООО Стройресурс.', 'private')`, [PROJECT]);
     saveFile(contextRoot(workspaceRoot, 'olga', PROJECT), 'договор.pdf', new Uint8Array(2048));
-    const first = await systemPromptOf('sales', 'published', PROJECT);
+    const thread = `t-${Date.now()}`;
+    const first = await systemPromptOf('sales', 'published', PROJECT, thread);
     const all = first.join('\n');
     expect(all.indexOf('# Проект «Тендер ЖК Северный»')).toBeGreaterThan(all.indexOf('# Сотрудник, с которым ты говоришь'));
     expect(all).toContain('Заказчик тендера — ООО Стройресурс.');
@@ -118,7 +122,7 @@ describe('prompt layers', () => {
     expect(all).not.toContain('Сейчас:');
     const lastUser = model.requests.at(-1)!.messages.filter((m) => m.role === 'user').at(-1)!;
     expect(JSON.stringify(lastUser.content)).toMatch(/привет.*Сейчас: .+ \(Europe\/Moscow\)/s);
-    const second = await systemPromptOf('sales', 'published', PROJECT);
+    const second = await systemPromptOf('sales', 'published', PROJECT, thread);
     expect(second).toEqual(first);
     expect((await systemPromptOf('sales', 'published')).join('\n')).not.toContain('# Проект');
   });

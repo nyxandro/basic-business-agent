@@ -75,30 +75,36 @@ function memorySummary(where: 'project' | 'personal', status: ToolStatus, result
 }
 
 // The agent's tool of past conversations (spec, section 8.28): the line says what it looked at — the list, a
-// search and how many it found, the conversation it read; it only reads.
+// search and how many it found, the conversation it read; or which file it took into its folder (8.33).
 const CONVERSATIONS_TOOL = 'conversations';
 
 interface ConversationsAsked {
   mode?: unknown;
   query?: unknown;
   conversation?: unknown;
+  file?: unknown;
 }
 
 interface ConversationsResult {
   total?: unknown;
   conversations?: unknown;
   title?: unknown;
+  name?: unknown;
 }
 
 function conversationsSummary(status: ToolStatus, result: string | undefined, parameters: unknown): ToolSummary {
-  if (status !== 'complete') return { state: 'running', text: ru.chat.conversationsRunning };
+  const asked = (parameters ?? {}) as ConversationsAsked;
+  const taking = asked.mode === 'take';
+  if (status !== 'complete') return { state: 'running', text: taking ? ru.chat.conversationFileTaking : ru.chat.conversationsRunning };
   const outcome = parseToolResult(result);
   if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
-  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.conversationsFailed, code: outcome.code };
+  const failedText = taking ? ru.chat.conversationFileFailed : ru.chat.conversationsFailed;
+  if (outcome.kind === 'failed') return { state: 'failed', text: failedText, code: outcome.code };
   const value = (typeof outcome.value === 'object' && outcome.value !== null ? outcome.value : null) as ConversationsResult | null;
   // A call that ended without our result (the answer broke off in it) looked at nothing the line could name.
-  if (!value) return { state: 'failed', text: ru.chat.conversationsFailed, code: null };
-  const asked = (parameters ?? {}) as ConversationsAsked;
+  if (!value) return { state: 'failed', text: failedText, code: null };
+  // The name the person knows it by: the copy may be «… (2)».
+  if (taking) return { state: 'done', text: ru.chat.conversationFileTaken(typeof asked.file === 'string' ? asked.file : typeof value.name === 'string' ? value.name : ''), readOnly: false, count: null, value: outcome.value };
   const found = Array.isArray(value.conversations) ? value.conversations.length : 0;
   let text: string;
   if (asked.mode === 'read') text = asked.conversation === 'current' ? ru.chat.conversationReadCurrent : ru.chat.conversationRead(typeof value.title === 'string' ? value.title : '');

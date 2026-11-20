@@ -300,6 +300,7 @@ export async function createTestApp(
     db,
     app: { timezone: 'Europe/Moscow' },
     workspaceRoot,
+    files,
     docText,
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),

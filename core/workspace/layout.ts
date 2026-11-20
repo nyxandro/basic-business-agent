@@ -114,13 +114,14 @@ export function saveFile(dir: string, fileName: string, data: Uint8Array): { nam
 }
 
 // Saves a file into a subfolder of a folder the agent writes into (an attachment of a letter, a file of the
-// person's computer): the subfolder and its folders are reached without following a link the agent may
-// have put there, the name gets « (2)» when taken, the bytes appear under the name only when whole.
+// person's computer; `folder` '' — the folder itself): the subfolder and its folders are reached without following
+// a link the agent may have put there, the name gets « (2)» when taken, the bytes appear under the name only when
+// whole.
 export function saveInFolder(root: string, folder: string, fileName: string, data: Uint8Array, options: { anyType?: boolean } = {}): { name: string; path: string; bytes: number } {
   const clean = safeFileName(fileName);
   if (!options.anyType && !ALLOWED_EXTENSIONS.has(extname(clean).toLowerCase())) throw appError('APP_UPLOAD_TYPE_UNSUPPORTED', `extension of ${clean} is not allowed`);
   if (data.byteLength > MAX_UPLOAD_BYTES) throw appError('APP_UPLOAD_TOO_LARGE', `${clean} is ${data.byteLength} bytes`);
-  const placed = inFolderOf(root, `${folder}/${clean}`, true, (held) => {
+  const placed = inFolderOf(root, folder ? `${folder}/${clean}` : clean, true, (held) => {
     const name = freeName(held, clean);
     const temp = join(held, `.upload-${randomUUID()}`);
     try {
@@ -132,7 +133,7 @@ export function saveInFolder(root: string, folder: string, fileName: string, dat
     return name;
   });
   if (placed === null) throw appError('APP_VALIDATION_FAILED', `${folder} in the working folder is not a folder`, { userMessage: `«${folder}» в рабочей папке — не папка. Переименуйте этот файл и повторите.` });
-  return { name: placed, path: `${folder}/${placed}`, bytes: data.byteLength };
+  return { name: placed, path: folder ? `${folder}/${placed}` : placed, bytes: data.byteLength };
 }
 
 // A copy kept at a path of its own inside a folder the agent writes into (a file of the person's computer,

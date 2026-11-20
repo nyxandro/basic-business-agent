@@ -228,6 +228,19 @@ describe('a line of past conversations', () => {
     expect(screen.getByRole('button', { name: /Перечитал ранние сообщения разговора/ })).toBeInTheDocument();
   });
 
+  // A file taken from a past conversation (spec, section 8.33) is a copy in the agent's folder: not «reading only».
+  it('says which file the agent took from a past conversation', () => {
+    historyRow({ mode: 'take', conversation: '7c1e9a02', file: 'КП Ёлка.docx' }, undefined, 'executing');
+    expect(screen.getByText('Беру файл из прошлого разговора…')).toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'take', conversation: '7c1e9a02', file: 'КП Ёлка.docx' }, { name: 'КП Ёлка (2).docx', path: 'КП Ёлка (2).docx', bytes: 4, copied: true, result: '…' });
+    expect(screen.getByRole('button', { name: /Взял файл «КП Ёлка\.docx» из прошлого разговора/ })).toBeInTheDocument();
+    expect(screen.queryByText('только чтение')).not.toBeInTheDocument();
+    cleanup();
+    historyRow({ mode: 'take', conversation: '7c1e9a02', file: 'Договор.docx' }, { error: true, code: 'APP_NOT_FOUND', message: 'нет файла' });
+    expect(screen.getByText(/Не получилось взять файл из прошлого разговора/)).toBeInTheDocument();
+  });
+
   it('says it is looking while it runs, and what failed with the code', () => {
     historyRow({ mode: 'list' }, undefined, 'executing');
     expect(screen.getByText('Смотрю прошлые разговоры…')).toBeInTheDocument();
