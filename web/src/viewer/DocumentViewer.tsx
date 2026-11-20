@@ -163,7 +163,7 @@ export function DocumentViewer({ source, channel, onClose }: { source: ViewerSou
             <Button
               icon="markup"
               size="sm"
-              variant={marks.active ? 'secondary' : 'ghost'}
+              variant={marks.active ? 'primary' : 'ghost'}
               aria-pressed={marks.active}
               aria-label={ru.marks.toggle}
               disabled={!ready}
