@@ -2,7 +2,7 @@
 // service's sign-in after a real check of IMAP and SMTP, used by the agent — reading without asking,
 // sending only after «Да» — and kept only encrypted.
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -11,7 +11,7 @@ import { simpleParser } from 'mailparser';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FakeRequest } from '../models/fake-openai.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { contextRoot } from '../workspace/layout.ts';
+import { chatRoot, conversationRoot } from '../workspace/layout.ts';
 import type { MailLogin } from './client.ts';
 import { discoverMail, parseAutoconfig, type DiscoverDeps } from './discover.ts';
 import { deliver, inbox, TEST_MAIL_SERVERS, testMailbox, testMailReady } from './test-server.ts';
@@ -199,13 +199,18 @@ describe('the agent with the mailbox', () => {
       const found = lastResult<{ letters: { uid: number }[] }>();
       return call(req, 'mailbox_save_attachment', { uid: found.letters[0]!.uid, number: 1 });
     }, { text: 'Сохранил.' });
-    await run(randomUUID(), 'Сохрани счёт');
+    const threadId = randomUUID();
+    await run(threadId, 'Сохрани счёт');
     expect(lastToolResult()).toContain('Почта/счёт.pdf');
-    expect(readFileSync(join(contextRoot(t.workspaceRoot, olgaId, null), 'Почта', 'счёт.pdf'), 'utf8')).toBe('%PDF-1.4 счёт');
+    expect(readFileSync(join(chatRoot(t.workspaceRoot, olgaId, threadId), 'Почта', 'счёт.pdf'), 'utf8')).toBe('%PDF-1.4 счёт');
   }, 60_000);
 
   it('sends a reply only after «Да», in the same thread, from the person', async () => {
     const threadId = randomUUID();
+    // The file attached to the reply lies in this conversation's folder.
+    const folder = conversationRoot(t.workspaceRoot, { userId: olgaId, threadId, project: null });
+    mkdirSync(join(folder, 'Почта'), { recursive: true });
+    writeFileSync(join(folder, 'Почта', 'счёт.pdf'), '%PDF-1.4 счёт');
     t.model.script((req) => call(req, 'mailbox_search', { from: client.email }), (req) => {
       const found = lastResult<{ letters: { uid: number }[] }>();
       return call(req, 'mailbox_send', { to: [client.email], text: 'Спасибо, оплатим в пятницу.', replyToUid: found.letters[0]!.uid, attachments: ['Почта/счёт.pdf'] });

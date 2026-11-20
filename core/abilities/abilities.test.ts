@@ -1,13 +1,13 @@
 // «Что агенту можно» (spec, section 8.30): every agent has its row from the start of the server, a new one with
 // everything on (decision of the owner 19.11); the admin switches the internet and the commands per agent.
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { withAttachments, type AdminAgentsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { abilitiesLayer, COMMANDS_OFF, COMMANDS_RULES, WEB_OFF, WEB_RULES } from '../prompts/layers.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { contextRoot } from '../workspace/layout.ts';
+import { conversationRoot } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
 import { AGENT_ABILITY_DEFAULTS, ensureAgentAbilities, readAbilities } from './abilities.ts';
 
@@ -81,8 +81,8 @@ describe('what an agent may do', () => {
   // What the model of every entry point of a run sees (acceptance 10): the rules of programs or the line that they
   // are switched off, the internet or the line that it is off.
   const systemOf = () => JSON.stringify(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'system'));
-  async function chat(text: string, headers: Record<string, string> = {}): Promise<void> {
-    const body = { threadId: randomUUID(), runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps: {} };
+  async function chat(text: string, headers: Record<string, string> = {}, threadId = randomUUID()): Promise<void> {
+    const body = { threadId, runId: randomUUID(), messages: [{ id: randomUUID(), role: 'user', content: text }], tools: [], context: [], state: {}, forwardedProps: {} };
     const res = await t.app.request('/app/api/copilotkit/agent/sales/run', { method: 'POST', headers: { cookie: headers.cookie ?? olga, origin: 'http://localhost:8080', 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
     expect(res.status).toBe(200);
     await res.text();
@@ -114,11 +114,10 @@ describe('what an agent may do', () => {
 
   it('offers no skill in the card of a document the agent without commands cannot read', async () => {
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { commands: false } });
-    const dir = contextRoot(t.workspaceRoot, olgaId, null);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'КП.docx'), 'not a real document');
+    const threadId = randomUUID();
+    writeFileSync(join(conversationRoot(t.workspaceRoot, { userId: olgaId, threadId, project: null }), 'КП.docx'), 'not a real document');
     t.model.script({ text: 'Не прочитал.' });
-    await chat(withAttachments('Что тут?', [{ name: 'КП.docx', path: 'КП.docx' }]));
+    await chat(withAttachments('Что тут?', [{ name: 'КП.docx', path: 'КП.docx' }]), {}, threadId);
     const user = JSON.stringify(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'user'));
     expect(user).toContain('не разобрался');
     expect(user).not.toContain('скиллом');

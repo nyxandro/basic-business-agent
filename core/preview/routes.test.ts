@@ -6,6 +6,7 @@ import type { ProjectDto } from '@bba/contracts';
 import fc from 'fast-check';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
+import { chatRoot } from '../workspace/layout.ts';
 import type { RunCommand } from './convert.ts';
 import { parseRange } from './response.ts';
 
@@ -45,8 +46,9 @@ async function thread(userId: string): Promise<string> {
   return id;
 }
 
-function ownFile(userId: string, rel: string, content = 'DOCX-BYTES'): string {
-  const path = join(t.workspaceRoot, userId, 'files', rel);
+// A file of the person's own files (the search) — or, with `threadId`, of that conversation's folder (spec, 8.33).
+function ownFile(userId: string, rel: string, content = 'DOCX-BYTES', threadId?: string): string {
+  const path = join(threadId ? chatRoot(t.workspaceRoot, userId, threadId) : join(t.workspaceRoot, userId, 'files'), rel);
   mkdirSync(join(path, '..'), { recursive: true });
   writeFileSync(path, content);
   return path;
@@ -55,7 +57,7 @@ function ownFile(userId: string, rel: string, content = 'DOCX-BYTES'): string {
 describe('the PDF of a document of a conversation', () => {
   it('is given to the person in place, in parts on request, and to nobody else', async () => {
     const threadId = await thread(olgaId);
-    ownFile(olgaId, 'итоги/КП «Ёлка».docx');
+    ownFile(olgaId, 'итоги/КП «Ёлка».docx', 'DOCX-BYTES', threadId);
     const url = (path: string) => `/app/api/threads/${threadId}/file/preview?path=${encodeURIComponent(path)}`;
     const res = await t.call('GET', url('итоги/КП «Ёлка».docx'), { cookie: olga });
     expect(res.status).toBe(200);
@@ -83,16 +85,16 @@ describe('the PDF of a document of a conversation', () => {
     const gone = await t.call('GET', url('нет.docx'), { cookie: olga });
     expect(gone.status).toBe(404);
     expect(await errorOf(gone)).toMatchObject({ code: 'APP_FILE_DELETED', message: 'Файл «нет.docx» удалён из рабочей папки — скачать его нельзя.' });
-    ownFile(olgaId, 'архив.zip');
+    ownFile(olgaId, 'архив.zip', 'DOCX-BYTES', threadId);
     const zip = await t.call('GET', url('архив.zip'), { cookie: olga });
     expect(zip.status).toBe(415);
     expect((await errorOf(zip)).code).toBe('APP_PREVIEW_UNSUPPORTED');
     // 50 MB and a byte: a sparse file, nothing written.
-    truncateSync(ownFile(olgaId, 'огромный.pptx', ''), 50 * 1024 * 1024 + 1);
+    truncateSync(ownFile(olgaId, 'огромный.pptx', '', threadId), 50 * 1024 * 1024 + 1);
     const big = await t.call('GET', url('огромный.pptx'), { cookie: olga });
     expect(big.status).toBe(413);
     expect(await errorOf(big)).toMatchObject({ code: 'APP_PREVIEW_TOO_BIG', message: 'Файл больше 50 МБ — посмотреть его здесь нельзя. Скачайте его.' });
-    rmSync(join(t.workspaceRoot, olgaId, 'files', 'огромный.pptx'));
+    rmSync(join(chatRoot(t.workspaceRoot, olgaId, threadId), 'огромный.pptx'));
   });
 });
 

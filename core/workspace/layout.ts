@@ -1,8 +1,9 @@
-// The employee's workspace (spec, sections 8.7 and 8.9):
-//   /workspace/<userId>/files/                     — files of conversations outside projects
-//   /workspace/<userId>/projects/<projectId>/files — files of a project
-// A conversation's sandbox root is one of these files folders: the agent works freely inside it,
-// cannot see the others, and cannot remove the root itself (it is the sandbox mount point).
+// The employee's workspace (spec, sections 8.7, 8.9 and 8.33):
+//   /workspace/<userId>/files/                     — the area of the person's conversations outside projects
+//   /workspace/<userId>/files/chats/<threadId>/    — the folder of one such conversation
+//   /workspace/<userId>/projects/<projectId>/files — files of a project, shared by all its conversations
+// A conversation's sandbox root is its own folder, or its project's: the agent works freely inside it, cannot
+// see the others, and cannot remove the root itself (it is the sandbox mount point).
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { inFolderOf, walkRegularFiles } from './held-folder.ts';
 import { randomUUID } from 'node:crypto';
@@ -12,7 +13,11 @@ import { appError } from '../errors/catalog.ts';
 
 const SAFE_USER_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const SAFE_PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// As the numbers of conversations are (core/chat/run.ts): no dot, no slash — a name of one folder.
+const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
 const FILES = 'files';
+// The folders of the conversations outside projects, inside the person's area (spec, section 8.33).
+export const CHATS = 'chats';
 const MAX_NAME_LENGTH = 120;
 // The listing shown to people and the model stops here; a project with more needs the knowledge base.
 export const MAX_LISTED_FILES = 500;
@@ -35,7 +40,25 @@ export function filesRoot(workspaceRoot: string, userId: string, projectId: stri
   return projectId ? join(projectRoot(workspaceRoot, userId, projectId), FILES) : join(userRoot(workspaceRoot, userId), FILES);
 }
 
-// The files folder a conversation works in; created on first use.
+// A conversation outside projects: its folder in the person's area, and the same as a path of the area.
+export function chatPath(threadId: string): string {
+  if (!SAFE_THREAD_ID.test(threadId)) throw new Error(`unsafe thread id for a workspace path: ${threadId}`);
+  return `${CHATS}/${threadId}`;
+}
+
+export function chatRoot(workspaceRoot: string, userId: string, threadId: string): string {
+  return join(filesRoot(workspaceRoot, userId, null), chatPath(threadId));
+}
+
+// The folder a conversation works in (spec, section 8.33): its project's, shared by all the project's conversations
+// (`ownerId` — the project's creator), or its own; created on first use.
+export function conversationRoot(workspaceRoot: string, place: { userId: string; threadId: string; project: { id: string; ownerId: string } | null }): string {
+  const dir = place.project ? filesRoot(workspaceRoot, place.project.ownerId, place.project.id) : chatRoot(workspaceRoot, place.userId, place.threadId);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+// The files folder of a project or of the person's area; created on first use.
 export function contextRoot(workspaceRoot: string, userId: string, projectId: string | null): string {
   const dir = filesRoot(workspaceRoot, userId, projectId);
   mkdirSync(dir, { recursive: true });

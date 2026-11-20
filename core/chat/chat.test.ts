@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MEMORY_ACTIONS } from '../memory/tools.ts';
 import { CONVERSATIONS_ACTIONS } from '../history/tool.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
-import { contextRoot } from '../workspace/layout.ts';
+import { chatRoot, contextRoot } from '../workspace/layout.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 let t: TestApp;
@@ -323,14 +323,30 @@ describe('addresses of the CopilotKit runtime', () => {
 });
 
 describe('attachments', () => {
-  it('stores an attachment of a conversation in the person’s files folder, and deleting the conversation keeps it', async () => {
+  it('stores an attachment of a conversation in its own folder (spec, section 8.33)', async () => {
     const threadId = randomUUID();
     const form = new FormData();
     form.append('file', new File([new Uint8Array([1, 2, 3])], 'Счёт.pdf', { type: 'application/pdf' }));
     const res = await t.app.request(`/app/api/threads/${threadId}/files`, { method: 'POST', body: form, headers: { cookie: olga, origin: 'http://localhost:8080' } });
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ name: 'Счёт.pdf', path: 'Счёт.pdf', bytes: 3 });
-    expect(existsSync(join(t.workspaceRoot, olgaId, 'files', 'Счёт.pdf'))).toBe(true);
+    expect(existsSync(join(chatRoot(t.workspaceRoot, olgaId, threadId), 'Счёт.pdf'))).toBe(true);
+  });
+
+  it('two conversations keep a file of the same name each in its own folder (spec, section 8.33)', async () => {
+    const upload = async (threadId: string, bytes: number[]) => {
+      const form = new FormData();
+      form.append('file', new File([new Uint8Array(bytes)], 'Договор.docx'));
+      const res = await t.app.request(`/app/api/threads/${threadId}/files`, { method: 'POST', body: form, headers: { cookie: olga, origin: 'http://localhost:8080' } });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({ path: 'Договор.docx' });
+    };
+    const [first, second] = [randomUUID(), randomUUID()];
+    await upload(first, [1]);
+    await upload(second, [2, 2]);
+    const download = async (threadId: string) => new Uint8Array(await (await t.call('GET', `/app/api/threads/${threadId}/file?path=${encodeURIComponent('Договор.docx')}`, { cookie: olga })).arrayBuffer());
+    expect([...(await download(first))]).toEqual([1]);
+    expect([...(await download(second))]).toEqual([2, 2]);
   });
 
   it('takes presentations and old Word, Excel and PowerPoint files as attachments (spec, section 8.18)', async () => {
@@ -348,7 +364,7 @@ describe('attachments', () => {
     const threadId = randomUUID();
     const now = new Date();
     await t.memory.saveThread({ thread: { id: threadId, resourceId: olgaId, title: 'КП', metadata: { agentId: 'sales', kind: 'chat' }, createdAt: now, updatedAt: now } });
-    const folder = join(t.workspaceRoot, olgaId, 'files');
+    const folder = chatRoot(t.workspaceRoot, olgaId, threadId);
     mkdirSync(join(folder, 'итоги'), { recursive: true });
     writeFileSync(join(folder, 'итоги', 'КП «Ёлка».docx'), 'DOCX-BYTES');
     const url = (path: string) => `/app/api/threads/${threadId}/file?path=${encodeURIComponent(path)}`;

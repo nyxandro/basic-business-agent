@@ -17,7 +17,7 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
 import { keepBeforeWrite } from '../projects/trash.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
-import { contextRoot, existingInside, openFileInside } from '../workspace/layout.ts';
+import { conversationRoot, existingInside, openFileInside } from '../workspace/layout.ts';
 import { sandboxOptions } from './environment.ts';
 import type { Limiter } from './limiter.ts';
 
@@ -77,8 +77,8 @@ type Ctx = { get(key: string): unknown } | undefined;
 // project's creator, who may be someone else (spec, section 8.20) — otherwise the person's.
 export function runRoot(workspaceRoot: string, ctx: Ctx): string {
   const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
-  if (projectId) return contextRoot(workspaceRoot, requireContextValue(ctx, REQUEST_KEYS.projectOwnerId), projectId);
-  return contextRoot(workspaceRoot, requireContextValue(ctx, REQUEST_KEYS.userId), null);
+  const project = projectId ? { id: projectId, ownerId: requireContextValue(ctx, REQUEST_KEYS.projectOwnerId) } : null;
+  return conversationRoot(workspaceRoot, { userId: requireContextValue(ctx, REQUEST_KEYS.userId), threadId: requireContextValue(ctx, REQUEST_KEYS.threadId), project });
 }
 
 // Isolation is required: without it a skill script could reach the server (spec, anti-goals).

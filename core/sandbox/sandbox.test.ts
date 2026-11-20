@@ -15,7 +15,7 @@ import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '.
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter } from './limiter.ts';
-import { contextRoot } from '../workspace/layout.ts';
+import { contextRoot, conversationRoot } from '../workspace/layout.ts';
 import { findSandboxGaps } from './environment.ts';
 import { assertIsolationAvailable, createImageViewProcessor } from './workspace.ts';
 import { createWidgetHistoryProcessor, DESCRIPTION_DROPPED } from '../widgets/history.ts';
@@ -168,7 +168,7 @@ describe('sandbox', () => {
     await runAs('olga', undefined, [SKILL], 'Сделай КП');
     expect(names().some((n) => n.endsWith('execute_command'))).toBe(true);
 
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(dir, 'docs.zip'), 'PK');
     model.script(readFile({ path: 'docs.zip' }), { text: 'Ок.' });
     await runAs('olga', undefined, [SKILL], 'Что в архиве?', COMMANDS_OFF);
@@ -184,7 +184,7 @@ describe('sandbox', () => {
 
   // The ways the document skills read files (spec, section 8.18), inside the employee's folder.
   it('reads PDF, Word and Excel the way the document skills do, inside the employee’s folder', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(dir, 'invoice.pdf'), pdfWithText('Invoice total 98765'));
     execFileSync(join(VENV, 'bin/python'), ['-c', `
 from docx import Document; d=Document(); d.add_paragraph('Договор поставки №17'); t=d.add_table(rows=2, cols=2); t.cell(0,0).text='Позиция'; t.cell(0,1).text='Цена'; t.cell(1,0).text='Бетон'; t.cell(1,1).text='4500'; d.save('${dir}/contract.docx')
@@ -210,7 +210,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.title='Цены'; s.a
   });
 
   it('runs LibreOffice, pandoc, poppler, tesseract, the Python libraries and the Node packages inside the isolation', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     execFileSync(join(VENV, 'bin/python'), ['-c', `
 from docx import Document; d=Document(); d.add_paragraph('Договор поставки №17'); d.save('${dir}/env.docx')
 from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1']); w.save('${dir}/env.xlsx')
@@ -246,7 +246,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
     for (const dir of system) expect(prompt).toContain(dir);
 
     // The wrapper of LibreOffice the instructions of the skills call (scripts/office/soffice.py).
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     execFileSync(join(VENV, 'bin/python'), ['-c', `from docx import Document; d=Document(); d.add_paragraph('КП'); d.save('${dir}/kp.docx')`]);
     model.script(command(`python "${join(SYSTEM_SKILLS_DIR, 'docx')}/scripts/office/soffice.py" --headless --convert-to pdf kp.docx >/dev/null 2>&1; test -s kp.pdf && echo converted-kp`), { text: 'Готово.' });
     await runAs('olga', undefined, system);
@@ -279,7 +279,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('keeps other employees’ folders, the app’s secrets, the network and the code out of reach', async () => {
-    const other = contextRoot(workspaceRoot, 'igor', null);
+    const other = conversationRoot(workspaceRoot, { userId: 'igor', threadId: 't-igor', project: null });
     writeFileSync(join(other, 'secret.txt'), 'IGOR-ONLY');
     const probes: [string, string][] = [
       [`cat ${other}/secret.txt`, 'No such file'],
@@ -295,7 +295,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('shows the model a scanned page: render it, then view_image puts the picture into the next request', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(dir, 'scan.pdf'), pdfWithText(null));
     model.script(command('pdftotext scan.pdf - | wc -w'), { text: 'Текста нет — похоже на скан.' });
     await runAs('olga');
@@ -309,10 +309,10 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
 
   // Spec, section 8.18: the file block of the chat with «Скачать».
   it('shows the employee a ready file of the folder with show_file, and refuses what is not a file there', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     mkdirSync(join(dir, 'черновики'), { recursive: true });
     writeFileSync(join(dir, 'КП «Ёлка».docx'), 'DOCX');
-    const other = contextRoot(workspaceRoot, 'igor', null);
+    const other = conversationRoot(workspaceRoot, { userId: 'igor', threadId: 't-igor', project: null });
     writeFileSync(join(other, 'чужой.docx'), 'X');
     const show = (path: string) => ({ toolCalls: [{ name: 'show_file', args: { path } }] });
 
@@ -335,7 +335,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('does not send the model a file of the server behind a link that looks like a picture', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     const secret = join(workspaceRoot, 'server-secret.png');
     writeFileSync(secret, png(16));
     symlinkSync(secret, join(dir, 'leak.png'));
@@ -346,7 +346,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('opens a picture by its absolute path inside the folder, as the document skills pass it', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     mkdirSync(join(dir, 'слайды'), { recursive: true });
     writeFileSync(join(dir, 'слайды', 'slide-1.png'), png(32));
     model.script({ toolCalls: [{ name: 'view_image', args: { path: join(dir, 'слайды', 'slide-1.png') } }] }, { text: 'Вижу слайд.' });
@@ -357,7 +357,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   // A document skill renders a page, looks at it, then renders it anew: the first picture is gone.
   // Groq refuses a user message without content, which broke the whole answer (task #7).
   it('sends no empty message when a picture the model looked at earlier in the answer is gone', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(dir, 'page-1.png'), png(16));
     model.script({ toolCalls: [{ name: 'view_image', args: { path: 'page-1.png' } }] }, command('rm page-1.png'), { text: 'Перерисую страницу.' });
     await runAs('olga');
@@ -369,7 +369,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   // Review 20.11: the pictures go as a message of their own at the end of the request, and the descriptions of
   // components of this answer were taken for an earlier answer's (spec, section 8.31).
   it('keeps the description of components of this answer after view_image', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(dir, 'page-2.png'), png(16));
     model.script({ toolCalls: [{ name: 'ui_components', args: { names: ['Card'] } }] }, { toolCalls: [{ name: 'view_image', args: { path: 'page-2.png' } }] }, { text: 'Готово.' });
     await runAs('olga');
@@ -379,7 +379,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('gives the model the picture attached to the message with the message itself', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     mkdirSync(join(dir, 'files'), { recursive: true });
     writeFileSync(join(dir, 'files', 'яхта.png'), png(64));
     model.script({ text: 'Вижу красный квадрат.' });
@@ -390,7 +390,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('keeps pictures and raw bytes out of read_file: the model is told to use view_image or the skill', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     mkdirSync(join(dir, 'files'), { recursive: true });
     writeFileSync(join(dir, 'files', 'фото.png'), png(64));
     writeFileSync(join(dir, 'files', 'счёт.pdf'), pdfWithText('Invoice'));
@@ -405,7 +405,7 @@ from openpyxl import Workbook; w=Workbook(); s=w.active; s.append([2, 3, '=A1*B1
   });
 
   it('tells the model how to open the pictures it cannot see as they are and an archive (request of the owner 17.11)', async () => {
-    const dir = contextRoot(workspaceRoot, 'olga', null);
+    const dir = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     mkdirSync(join(dir, 'files'), { recursive: true });
     writeFileSync(join(dir, 'files', 'скан.webp'), png(64));
     writeFileSync(join(dir, 'files', 'архив.zip'), 'PK\u0003\u0004');
@@ -438,7 +438,7 @@ describe('concurrency limit', () => {
 
 describe('project folder (V21)', () => {
   it('lets the agent of a project conversation work only inside the project files and never remove the folder itself', async () => {
-    const general = contextRoot(workspaceRoot, 'olga', null);
+    const general = conversationRoot(workspaceRoot, { userId: 'olga', threadId: 't-olga', project: null });
     writeFileSync(join(general, 'personal.txt'), 'PERSONAL');
     const root = contextRoot(workspaceRoot, 'olga', PROJECT);
     writeFileSync(join(root, 'смета.txt'), 'SMETA');

@@ -17,7 +17,7 @@ import { fileResponse } from '../workspace/download.ts';
 import { pdfResponse } from '../preview/response.ts';
 import type { PreviewService } from '../preview/service.ts';
 import { areaOf, filesPrefix, type Area } from '../storage/areas.ts';
-import { contextRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile, saveInFolder } from '../workspace/layout.ts';
+import { chatPath, chatRoot, conversationRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile, saveInFolder } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
@@ -250,18 +250,17 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     }
     const state = await threadProjectState(deps.db, userId, threadId);
     const area = areaOf(userId, state.state === 'active' ? state.project : null);
-    const owner = state.state === 'active' ? state.project.user_id : userId;
-    const projectId = state.state === 'active' ? state.project.id : null;
+    // The project's folder, or the conversation's own (spec, section 8.33).
+    const project = state.state === 'active' ? { id: state.project.id, ownerId: state.project.user_id } : null;
+    const files = project ? filesRoot(deps.workspaceRoot, project.ownerId, project.id) : chatRoot(deps.workspaceRoot, userId, threadId);
+    const inFiles = project ? filesPrefix(area) : `${chatPath(threadId)}/`;
     return {
       state,
       area,
       // Made on first use, so only while the area is held.
-      folder: () => contextRoot(deps.workspaceRoot, owner, projectId),
-      // A path from the files folder as the path of the area (core/storage).
-      inArea: (path: string) => {
-        const files = filesRoot(deps.workspaceRoot, owner, projectId);
-        return `${filesPrefix(area)}${relative(files, resolveInside(files, path))}`;
-      },
+      folder: () => conversationRoot(deps.workspaceRoot, { userId, threadId, project }),
+      // A path from the conversation's folder as the path of the area (core/storage).
+      inArea: (path: string) => `${inFiles}${relative(files, resolveInside(files, path))}`,
     };
   }
 

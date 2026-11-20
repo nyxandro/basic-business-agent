@@ -8,7 +8,7 @@ import { MARKS_FOLDER, MODEL_PICTURE_MAX_BYTES, type ProjectDto, type ThreadFile
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
-import { contextRoot } from '../workspace/layout.ts';
+import { chatRoot, contextRoot } from '../workspace/layout.ts';
 
 let t: TestApp;
 let olga: string;
@@ -62,11 +62,11 @@ describe('the picture of marks', () => {
     expect(files.files).toEqual([]);
   });
 
-  it('in a conversation without a project lies in «.marks» of the person’s own folder', async () => {
+  it('in a conversation without a project lies in «.marks» of the conversation’s own folder', async () => {
     const threadId = randomUUID();
     const res = await send(olga, threadId, 'Счёт.pdf (пометки).jpg', JPEG);
     expect(res.status).toBe(201);
-    expect(readFileSync(join(contextRoot(t.workspaceRoot, olgaId, null), MARKS_FOLDER, 'Счёт.pdf (пометки).jpg'))).toEqual(Buffer.from(JPEG));
+    expect(readFileSync(join(chatRoot(t.workspaceRoot, olgaId, threadId), MARKS_FOLDER, 'Счёт.pdf (пометки).jpg'))).toEqual(Buffer.from(JPEG));
   });
 
   it('is taken only as a JPEG the model can see', async () => {
