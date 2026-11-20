@@ -1,6 +1,7 @@
 // Texts of the interface (spec, sections 7, 9 and 12). Server errors bring their own Russian text;
 // here are only the texts of the screens and of the errors the browser detects itself.
 import { plural } from '../ui/format.ts';
+import { marksTexts } from './marks.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
 const PAGE_FAILURES: Record<string, string> = {
@@ -750,6 +751,7 @@ export const ru = {
     imageNotShown: (alt: string) => `Картинка не показывается${alt ? `: ${alt}` : ''}`,
     openFile: (name: string) => `Открыть ${name}`,
   },
+  marks: marksTexts,
   clientErrors: {
     APP_PREVIEW_PASSWORD: 'Документ защищён паролем — посмотреть его здесь нельзя. Скачайте его.',
     APP_PREVIEW_FAILED: 'Не получилось показать документ: файл повреждён. Скачайте его.',

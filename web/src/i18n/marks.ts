@@ -1,0 +1,40 @@
+// Texts of the marks in the viewer (spec, section 8.32), in `ru` as `ru.marks`: ru.ts is near the limit of a file.
+import type { MarkTool } from '../viewer/marks/types.ts';
+
+const TOOL: Record<MarkTool, string> = { rect: 'прямоугольник', ellipse: 'овал', pen: 'карандаш', arrow: 'стрелка' };
+const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
+export const marksTexts = {
+  toggle: 'Пометки',
+  tools: 'Инструменты пометок',
+  tool: (tool: MarkTool) => capital(TOOL[tool]),
+  start: 'Выберите инструмент и нарисуйте на странице',
+  commentLabel: 'Комментарий к пометке',
+  commentPlaceholder: 'Что здесь поправить?',
+  done: 'Готово',
+  remove: 'Удалить',
+  list: (count: number) => `Пометки · ${count}`,
+  expand: 'Развернуть список пометок',
+  collapse: 'Свернуть список пометок',
+  mark: (number: number) => `Пометка ${number}`,
+  page: (page: number) => `стр. ${page}`,
+  noComment: 'Без комментария',
+  send: 'Отправить агенту',
+  sending: 'Отправляю…',
+  busy: 'Агент отвечает — отправить можно после ответа',
+  changed: 'Документ изменился — прежние пометки к нему убраны',
+  noStorage: 'Браузер не даёт сохранить пометки: они пропадут, если закрыть просмотрщик',
+  pictureName: (documentName: string) => `${documentName} (пометки).jpg`,
+  pictureFailed: 'Не получилось подготовить картинку с пометками. Попробуйте ещё раз.',
+  // The message to the agent (spec, section 8.32, «Сообщение»).
+  message: {
+    document: (name: string, count: number) => `Пометки к документу «${name}» — ${count}:`,
+    picture: (name: string, count: number) => `Пометки к картинке «${name}» — ${count}:`,
+    page: (page: number) => `Стр. ${page}`,
+    tool: (tool: MarkTool) => TOOL[tool],
+    toolFirst: (tool: MarkTool) => capital(TOOL[tool]),
+    noComment: 'без комментария',
+    under: 'Под пометкой',
+    atArrow: 'У стрелки',
+  },
+};
