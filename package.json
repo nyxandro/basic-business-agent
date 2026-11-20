@@ -15,6 +15,7 @@
     "build:web": "pnpm -C web build",
     "check:public": "node tooling/no-customer-data/cli.ts",
     "customer:new": "node core/cli/customer-new.ts",
+    "files:split": "node --env-file=.env core/cli/files-split.ts",
     "db:migrate": "node --env-file=.env core/cli/migrate.ts",
     "dev": "pnpm dev:stack && pnpm run --parallel \"/^dev:(app|web)$/\"",
     "dev:app": "node --watch --env-file=.env core/server/main.ts",
