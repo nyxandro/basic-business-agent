@@ -17,6 +17,7 @@ export const marksTexts = {
   expand: 'Развернуть список пометок',
   collapse: 'Свернуть список пометок',
   mark: (number: number) => `Пометка ${number}`,
+  removeMark: (number: number) => `Удалить пометку ${number}`,
   page: (page: number) => `стр. ${page}`,
   noComment: 'Без комментария',
   send: 'Отправить агенту',

@@ -142,6 +142,41 @@
   list-style: none;
 }
 
+/* A row and its «×»: the cross shows on hovering and on the keyboard's focus, always on a touch screen (as the
+   rows of conversations of the side panel). */
+.rowItem {
+  position: relative;
+}
+
+.rowRemove {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.rowItem:hover .rowRemove,
+.rowItem:has(:focus-visible) .rowRemove {
+  opacity: 1;
+}
+
+.rowItem:hover .row,
+.rowItem:has(:focus-visible) .row {
+  padding-right: 40px;
+}
+
+@media (hover: none) {
+  .rowRemove {
+    opacity: 1;
+  }
+
+  .rowItem .row {
+    padding-right: 40px;
+  }
+}
+
 .row {
   display: flex;
   align-items: center;

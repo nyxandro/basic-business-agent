@@ -127,7 +127,7 @@ export function useMarksController(session: MarksSession | null, onSent: () => v
     setComment: (id, comment) => change(marks.map((m) => (m.id === id ? { ...m, comment } : m))),
     remove: (id) => {
       change(marks.filter((m) => m.id !== id));
-      setSelected(null);
+      setSelected((open) => (open === id ? null : open));
     },
     select: setSelected,
     open: (id) => {

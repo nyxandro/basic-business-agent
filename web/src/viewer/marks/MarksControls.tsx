@@ -57,19 +57,30 @@ export function MarksPanel() {
               {list.map((mark, i) => {
                 const first = mark.comment.trim().split('\n')[0];
                 return (
-                  <li key={mark.id}>
+                  <li key={mark.id} className={styles.rowItem} data-mark-row={mark.id}>
                     <button
                       type="button"
                       className={cx(styles.row, marks.selected === mark.id && styles.rowOn)}
                       aria-label={ru.marks.mark(i + 1)}
                       disabled={marks.sending}
-                      data-mark-row={mark.id}
                       onClick={() => marks.open(mark.id)}
                     >
                       <span className={styles.number}>{i + 1}</span>
                       {marks.paged ? <span className={styles.rowPage}>{ru.marks.page(mark.page)}</span> : null}
                       <span className={cx(styles.rowText, !first && styles.rowEmpty)}>{first || ru.marks.noComment}</span>
                     </button>
+                    {/* Removes at once, from the list and from the page, both turning to sand. */}
+                    <IconButton
+                      icon="x"
+                      size="sm"
+                      label={ru.marks.removeMark(i + 1)}
+                      className={styles.rowRemove}
+                      disabled={marks.sending}
+                      onClick={() => {
+                        markToSand(mark.id);
+                        marks.remove(mark.id);
+                      }}
+                    />
                   </li>
                 );
               })}

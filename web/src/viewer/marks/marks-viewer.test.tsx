@@ -161,6 +161,28 @@ describe('the marks of the viewer', () => {
     expect(localStorage.getItem(draftKey('t1', 'Договор.docx'))).toBeNull();
   });
 
+  it('the cross of a row removes its mark from the list and the page; the window of another mark stays open', async () => {
+    mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
+    localStorage.setItem(
+      draftKey('t1', 'Договор.docx'),
+      JSON.stringify({
+        version: '120-1',
+        marks: [
+          { id: 'm1', page: 1, tool: 'rect', points: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.2 }], comment: 'срок' },
+          { id: 'm2', page: 2, tool: 'ellipse', points: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.2 }], comment: 'шапка' },
+        ],
+      }),
+    );
+    const { user } = show(DOCX, { send: vi.fn(() => true), running: false });
+    const viewer = await openViewer(user);
+    await user.click(within(viewer).getByRole('button', { name: 'Пометка 1' }));
+    await user.click(within(viewer).getByRole('button', { name: 'Удалить пометку 2' }));
+    expect(within(viewer).queryByRole('button', { name: 'Пометка 2' })).not.toBeInTheDocument();
+    expect(viewer.querySelectorAll('[data-mark-id]')).toHaveLength(1);
+    expect(within(viewer).getByRole('dialog', { name: 'Пометка 1' })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(draftKey('t1', 'Договор.docx'))!)).toMatchObject({ marks: [{ id: 'm1' }] });
+  });
+
   it('marks of another version of the file are removed, and the person is told', async () => {
     mockServer({ 'GET /app/api/threads/t1/file/preview': { raw: '%PDF' } });
     localStorage.setItem(draftKey('t1', 'Договор.docx'), JSON.stringify({ version: 'старая', marks: [{ id: 'm1', page: 1, tool: 'pen', points: [{ x: 0.1, y: 0.1 }], comment: '' }] }));
