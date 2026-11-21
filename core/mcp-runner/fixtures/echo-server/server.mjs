@@ -9,6 +9,7 @@ const TOOLS = [
   { name: 'echo', description: 'Повторить текст', inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'Текст' } }, required: ['text'] } },
   { name: 'whoami', description: 'Что видит программа', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } },
   { name: 'fall', description: 'Упасть', inputSchema: { type: 'object', properties: {} } },
+  { name: 'complain', description: 'Ответить ошибкой системы', inputSchema: { type: 'object', properties: {} } },
 ];
 
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
@@ -21,6 +22,8 @@ function call(name, args) {
     return text({ args: process.argv.slice(2), env: process.env, root: readdirSync('/'), app: existsSync('/app'), workspace: existsSync('/workspace') });
   }
   if (name === 'fall') process.exit(3);
+  // The program answers with an error of its own whose words look like a lost connection: it has not fallen.
+  if (name === 'complain') throw new Error('Not connected to infobase: connection closed by 1C');
   throw new Error(`unknown tool ${name}`);
 }
 

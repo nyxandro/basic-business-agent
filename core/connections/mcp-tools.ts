@@ -21,7 +21,8 @@ import { safeCause } from './log-safe.ts';
 import { accessToken, mcpTarget } from './mcp-auth.ts';
 import { programSpecOf, programUrl, requireRunner, signedFetch, type RunnerAccess } from './programs.ts';
 import { accessOf, markProgramCrashed, markSharedKeyRefused, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
-import { CONNECT_TIMEOUT_MS, describeAction } from './snapshot.ts';
+import { CONNECT_TIMEOUT_MS, definitionForCalls, describeAction } from './snapshot.ts';
+import { assertPlainHttpAllowed } from './probe.ts';
 
 // Section 8: a call waits for the system 60 s at most.
 const CALL_TIMEOUT_MS = 60_000;
@@ -107,6 +108,8 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     if (server.auth === 'none') return clientFor(server, null, { url: new URL(url), ...base }, url);
     if (server.auth === 'shared_key') {
       const access = accessOf({ url, header_templates: server.headerTemplates, fields: server.fields }, (field) => server.shared![field.key]!);
+      // A host made of a value is checked only now (servers.ts, checkPlainHttp): no key over http to the internet.
+      await assertPlainHttpAllowed(access.url);
       return clientFor(server, null, { url: access.url, requestInit: { headers: access.headers }, ...base }, JSON.stringify([access.url, access.headers]));
     }
     const connectorId = mcpConnectorId(server.id);
@@ -130,6 +133,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
       if (!value) throw notConnected(server.title, connectorId);
       return value;
     });
+    await assertPlainHttpAllowed(access.url);
     return clientFor(server, userId, { url: access.url, requestInit: { headers: access.headers }, ...base }, JSON.stringify([access.url, access.headers]));
   }
 
@@ -207,7 +211,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
         try {
           const client = await clientOf(server, userId);
           for (const action of server.actions) {
-            const tool = await client.toolFromDefinition({ serverName: server.slug, definition: action.definition });
+            const tool = await client.toolFromDefinition({ serverName: server.slug, definition: definitionForCalls(action) });
             // The model calls it by the name the snapshot gave; the journal and «Да» know it by the same name.
             out[action.modelName] = applyApprovalPolicy(guarded(server, userId, tool as AnyTool, action.modelName), { readOnly: action.readOnly, db });
             seen.set(action.modelName, describeAction(action));

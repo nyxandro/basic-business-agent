@@ -12,6 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
   auth,
+  OAuthError,
   RegistrationRejectedError,
   type FetchLike,
   type OAuthClientMetadata,
@@ -211,6 +212,10 @@ export function pluginTarget(connector: { id: string; title: string; url: string
   };
 }
 
+// The system's own words for «not now» (RFC 6749): the tokens are not refused, the access stays.
+const NOT_NOW = new Set(['temporarily_unavailable', 'server_error']);
+const notNow = (error: unknown) => isNetworkFailure(error) || (error instanceof OAuthError && NOT_NOW.has(String(error.code)));
+
 // The library has no error class for «the system registers no apps on the fly», only this text.
 const NO_REGISTRATION = /does not support dynamic client registration/;
 
@@ -375,12 +380,15 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
     try {
       result = await auth(provider, { serverUrl: target.serverUrl, fetchFn: timed });
     } catch (error) {
-      if (isNetworkFailure(error)) throw unavailable(title, connectorId, safeCause(error));
+      if (notNow(error)) throw unavailable(title, connectorId, safeCause(error));
       await setCredentialStatus(deps.db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
       throw authFailed(title, connectorId, safeCause(error));
     }
-    // A refresh that did not work ends in a new sign-in page — and nobody is there to open it.
+    // A refresh that did not work ends in a new sign-in page — and nobody is there to open it. The library goes there
+    // also when the refresh did not reach the system (the network, a 5xx) without refusing the tokens: then the
+    // system is unavailable for now, the access itself may be fine and stays.
     if (result !== 'AUTHORIZED' || !fresh.token) {
+      if (credential.refreshToken && !captured.tokensGone) throw unavailable(title, connectorId);
       await setCredentialStatus(deps.db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
       throw authFailed(title, connectorId);
     }

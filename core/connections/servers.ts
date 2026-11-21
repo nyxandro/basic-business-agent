@@ -225,9 +225,12 @@ async function agentsOf(db: Queryable, id: string): Promise<string[]> {
 
 async function usageOf(db: Queryable, id: string, agents: readonly string[]): Promise<McpServerView['usage']> {
   const { rows } = await db.query<{ using: number; connected: number; auth_errors: number }>(
+    // Only those who turned the server on for themselves count: the admin's sign-in for a check is not using it.
     `SELECT (SELECT count(*) FROM app.mcp_server_users WHERE server_id = $1)::int AS using,
-            (SELECT count(*) FROM app.connector_credentials WHERE connector_id = $2 AND status = 'connected')::int AS connected,
-            (SELECT count(*) FROM app.connector_credentials WHERE connector_id = $2 AND status = 'auth_error')::int AS auth_errors`,
+            (SELECT count(*) FROM app.connector_credentials c JOIN app.mcp_server_users u ON u.user_id = c.user_id AND u.server_id = $1
+              WHERE c.connector_id = $2 AND c.status = 'connected')::int AS connected,
+            (SELECT count(*) FROM app.connector_credentials c JOIN app.mcp_server_users u ON u.user_id = c.user_id AND u.server_id = $1
+              WHERE c.connector_id = $2 AND c.status = 'auth_error')::int AS auth_errors`,
     [id, mcpConnectorId(id)],
   );
   return { using: rows[0]!.using, connected: rows[0]!.connected, authErrors: rows[0]!.auth_errors, possible: await countEmployeesWithAgents(db as Db, agents) };
@@ -408,8 +411,15 @@ export function accessOf(row: Pick<ServerRow, 'url' | 'header_templates' | 'fiel
     if (!field) throw appError('APP_INTERNAL', `template names field ${key} the server does not have`);
     return valueOf(field);
   };
+  let url: URL;
+  try {
+    url = new URL(fillTemplate(row.url!, (key) => encodeURIComponent(value(key))));
+  } catch {
+    // Without the parser's error: it holds the address with the value of the key.
+    throw invalid('the address filled with the values of fields does not parse', 'Адрес сервера со значением ключа получился неверным. Проверьте значение ключа или обратитесь к администратору.');
+  }
   return {
-    url: new URL(fillTemplate(row.url!, (key) => encodeURIComponent(value(key)))),
+    url,
     headers: Object.fromEntries(Object.entries(row.header_templates).map(([name, template]) => [name, fillTemplate(template, value)])),
   };
 }
@@ -447,7 +457,7 @@ export async function checkServer(db: Db, box: SecretBox, id: string, input: Mcp
     const { rows } = await client.query<ServerRow>(
       `UPDATE app.mcp_servers SET snapshot = $2, snapshot_at = now(), updated_at = now(),
          status = CASE WHEN status = 'program_crashed' THEN 'enabled' ELSE status END,
-         status_error_code = CASE WHEN status = 'program_crashed' THEN NULL ELSE status_error_code END
+         status_error_code = CASE WHEN status_error_code = 'APP_MCP_PROGRAM_CRASHED' THEN NULL ELSE status_error_code END
        WHERE id = $1 RETURNING *`,
       [id, JSON.stringify(snapshot)],
     );
@@ -464,7 +474,9 @@ function redefine(input: McpServerInput, row: ServerRow, stored: ServerSecrets):
 }
 
 function checkEnable(row: ServerRow, agents: readonly string[]): void {
-  if (row.status === 'shared_auth_error') throw invalid('enable with a refused shared key', 'Сначала обновите общий ключ: система его не принимает.');
+  // A server turned off while failing keeps the reason: turning it on again does not skip the cure.
+  if (row.status === 'shared_auth_error' || row.status_error_code === 'APP_CONNECTOR_AUTH_FAILED') throw invalid('enable with a refused shared key', 'Сначала обновите общий ключ: система его не принимает.');
+  if (row.status === 'program_crashed' || row.status_error_code === 'APP_MCP_PROGRAM_CRASHED') throw invalid('enable a falling program', 'Программа-сервер падала — сначала проверьте её своим доступом.');
   if (row.snapshot_at === null) throw invalid('enable before a check', 'Сначала проверьте сервер своим доступом — так появится список действий.');
   if (!row.snapshot.some((action) => action.enabled)) throw invalid('enable without actions', 'Включите хотя бы одно действие — иначе агентам нечем пользоваться.');
   if (agents.length === 0) throw invalid('enable without agents', 'Выберите хотя бы одного агента, которому доступен сервер.');
@@ -505,8 +517,9 @@ export async function updateServer(db: Db, box: SecretBox, id: string, patch: Mc
     if (patch.sharedValues) {
       if (row.auth !== 'shared_key') throw invalid('shared values for another auth', 'Общий ключ бывает только у «Общего ключа организации».');
       secrets = { ...secrets, shared: requireSharedValues(row.fields, patch.sharedValues) };
-      // A new key is the way back from «Общий ключ не принят» (section 17).
+      // A new key is the way back from «Общий ключ не принят» (section 17), also for a server turned off meanwhile.
       if (row.status === 'shared_auth_error') row = { ...row, status: 'enabled', status_error_code: null };
+      else if (row.status_error_code === 'APP_CONNECTOR_AUTH_FAILED') row = { ...row, status_error_code: null };
     }
     if (patch.actions) row = { ...row, snapshot: applyActionMarks(row.snapshot, patch.actions) };
     if (patch.agents) {

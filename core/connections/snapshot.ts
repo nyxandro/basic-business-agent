@@ -57,6 +57,14 @@ function fingerprintOf(definition: SerializableMCPToolDefinition): string {
 
 const serverTitleOf = (definition: SerializableMCPToolDefinition) => definition.title ?? definition.annotations?.title ?? definition.name;
 
+// Mastra repeats a call after a lost connection when the server's hints call the action safe to repeat. Only the
+// admin's mark «только чтение» decides that (section 15): an action that writes loses those hints, so a call cut
+// after it was sent is reported as «неизвестно, выполнилось ли», never sent twice.
+export function definitionForCalls(action: StoredAction): SerializableMCPToolDefinition {
+  if (action.readOnly) return action.definition;
+  return { ...action.definition, annotations: { ...action.definition.annotations, readOnlyHint: false, idempotentHint: false } };
+}
+
 // What the chat line and the card of «Да» say about an action: the admin's title, else the server's.
 export function describeAction(action: StoredAction): ActionDescription {
   return { title: action.title ?? serverTitleOf(action.definition), fields: fieldsOf(action.definition.inputSchema), readOnly: action.readOnly };

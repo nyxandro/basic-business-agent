@@ -20,6 +20,12 @@ export const CRASHES_TO_STOP = 3;
 const ROUTE = /^\/servers\/([0-9a-f-]{36})\/(mcp|prepare)$/;
 // What a lost program looks like to the client library: its process ended under a call.
 const LOST = /connection closed|not connected|terminated|MCP_CLIENT_TOOL_CALL_OUTCOME_UNKNOWN/i;
+// Mastra: the program answered the call with an error of its own — its words may sound like LOST, it has not fallen.
+const ANSWERED = 'MCP_CLIENT_TOOL_EXECUTION_FAILED';
+const answeredItself = (error: unknown) => {
+  for (let current = error; current instanceof Error; current = current.cause) if ((current as { id?: unknown }).id === ANSWERED) return true;
+  return false;
+};
 
 export interface RunnerDeps {
   secret: string;
@@ -64,6 +70,8 @@ export function createRunner(deps: RunnerDeps) {
   // Servers that fell three times in ten minutes: they wait for the admin's check (prepare).
   const fallen = new Set<string>();
   const starting = new Map<string, Promise<Program>>();
+  // A package shared by two servers is installed once: the second waits for the first.
+  const installing = new Map<string, Promise<Launch>>();
   const now = () => (deps.now ? deps.now() : Date.now());
 
   async function stop(program: Program): Promise<void> {
@@ -88,7 +96,7 @@ export function createRunner(deps: RunnerDeps) {
           return passOn(await execute(input, ctx));
         } catch (error) {
           const current = program();
-          if (current && LOST.test(errorText(error))) {
+          if (current && !answeredItself(error) && LOST.test(errorText(error))) {
             current.crashes = [...current.crashes.filter((at) => now() - at < CRASH_WINDOW_MS), now()];
             deps.log('mcp_program_fell', { serverId, falls: current.crashes.length });
             if (current.crashes.length >= CRASHES_TO_STOP) {
@@ -105,7 +113,10 @@ export function createRunner(deps: RunnerDeps) {
   async function start(serverId: string, spec: ProgramSpec, key: string): Promise<Program> {
     // One folder per package: the same package of two servers is installed once.
     const root = join(deps.packagesDir, createHash('sha256').update(`${spec.runner}\n${spec.package}`).digest('hex').slice(0, 24));
-    const launch = await deps.install(spec, root, join(deps.packagesDir, '.npm-cache'));
+    const pending = installing.get(root) ?? deps.install({ ...spec, args: [] }, root, join(deps.packagesDir, '.npm-cache')).finally(() => installing.delete(root));
+    installing.set(root, pending);
+    const installed = await pending;
+    const launch = { ...installed, args: [...installed.args, ...spec.args] };
     const command = sandboxed(launch, spec.env, deps.bwrap);
     const client = new MCPClient({
       id: `program-${key}`,

@@ -130,6 +130,28 @@ describe('the shared key the system no longer takes (401)', () => {
   });
 });
 
+describe('a server turned off while failing', () => {
+  it('is not turned on again before the cure: a new shared key', async () => {
+    // The test above leaves the system refusing «shared-key».
+    crm.acceptedTokens!.add('shared-key');
+    const server = await enabled(keyed('shared_key'));
+    await call('POST', `/app/api/me/connections/mcp/${server.id}/use`, olga.cookie, { on: true });
+    const tools = await toolsOf();
+    crm.acceptedTokens!.delete('shared-key');
+    try {
+      await expect(tools[`${server.slug}_deals_search`]!.execute!({}, ctx(olga.id))).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });
+    } finally {
+      crm.acceptedTokens!.add('shared-key');
+    }
+    await call('PATCH', `${BASE}/${server.id}`, admin, { status: 'disabled' });
+    const refused = await call<{ error: { message: string } }>('PATCH', `${BASE}/${server.id}`, admin, { status: 'enabled' });
+    expect(refused.status).toBe(400);
+    expect(refused.json.error.message).toContain('общий ключ');
+    await call('PATCH', `${BASE}/${server.id}`, admin, { sharedValues: { token: 'shared-key' } });
+    expect((await call<{ server: McpServerView }>('PATCH', `${BASE}/${server.id}`, admin, { status: 'enabled' })).json.server.status).toBe('enabled');
+  });
+});
+
 describe('a connection lost after the system got the call', () => {
   it('says the outcome is unknown and does not call again', async () => {
     const server = await enabled(keyed('personal_key'));

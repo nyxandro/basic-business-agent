@@ -93,8 +93,15 @@ describe('«Подключения» of the admin', () => {
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     await saveCredential(t.db, box, { userId: people.olga!.id, connectorId: mcpConnectorId(keyed.id), credential: { kind: 'static', fields: { token: 'o' } }, status: 'connected' });
     await saveCredential(t.db, box, { userId: people.anna!.id, connectorId: mcpConnectorId(keyed.id), credential: { kind: 'static', fields: { token: 'a' } }, status: 'auth_error' });
+    await t.db.query('INSERT INTO app.mcp_server_users (server_id, user_id) VALUES ($1, $2), ($1, $3)', [keyed.id, people.olga!.id, people.anna!.id]);
+    // Игорь's access of his check: kept, but he has not turned the server on for himself.
+    const igor = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
+    await saveCredential(t.db, box, { userId: igor, connectorId: mcpConnectorId(keyed.id), credential: { kind: 'static', fields: { token: 'i' } }, status: 'connected' });
     const view = (await call<{ server: McpServerView }>('GET', `${BASE}/${keyed.id}`, admin)).server;
     // Игорь (суперадминистратор), Ольга и Анна — у них есть агент «Продажи»; Пётр — нет.
-    expect(view.usage).toEqual({ using: 0, connected: 1, authErrors: 1, possible: 3 });
+    expect(view.usage).toEqual({ using: 2, connected: 1, authErrors: 1, possible: 3 });
+    // Игорь's settings say «Не подключено»: his agents do not get the server until he turns it on.
+    const mine = (await call<{ servers: MyMcpServer[] }>('GET', '/app/api/me/connections/mcp', admin)).servers.find((s) => s.id === keyed.id);
+    expect(mine?.status).toBe('not_connected');
   });
 });

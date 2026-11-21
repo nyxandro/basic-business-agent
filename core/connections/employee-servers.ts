@@ -58,8 +58,9 @@ export async function serversForEmployee(deps: EmployeeServerDeps, input: { user
     auth: row.auth,
     fields: row.fields,
     using: row.using,
-    status: row.credential_status ?? 'not_connected',
-    checkedAt: row.checked_at?.toISOString() ?? null,
+    // An access kept for the admin's check is not «Подключено» until the person turns the server on for themselves.
+    status: (row.using ? row.credential_status : null) ?? 'not_connected',
+    checkedAt: row.using ? (row.checked_at?.toISOString() ?? null) : null,
     agents: row.agents.map(input.agentName),
     trouble: row.status === 'enabled' ? null : (row.status as 'shared_auth_error' | 'program_crashed'),
   }));

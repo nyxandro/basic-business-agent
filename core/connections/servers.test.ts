@@ -8,7 +8,7 @@ import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
-import { createServer, loadServerSecrets } from './servers.ts';
+import { accessOf, createServer, loadServerSecrets } from './servers.ts';
 
 let database: TestDatabase;
 let db: Db;
@@ -104,6 +104,22 @@ describe('a server the admin adds', () => {
       createServer(db, box, httpServer({ url: 'https://crm.example.com/mcp', auth: 'shared_key', headers: { Authorization: 'Bearer {{token}}' }, sharedValues: {} }), 'igor', ['sales']),
     );
     expect(failure.code).toBe('APP_VALIDATION_FAILED');
+  });
+});
+
+describe('an address with the value of a field', () => {
+  it('that does not parse is refused without the value in anything that may reach the log', () => {
+    const field = { key: 'sub', label: 'Портал', hint: '', secret: false };
+    let caught: unknown;
+    try {
+      accessOf({ url: 'http://{{sub}}.example.com/mcp', header_templates: {}, fields: [field] }, () => 'secret value 5521');
+    } catch (error) {
+      caught = error;
+    }
+    expect(isAppError(caught) && caught.code).toBe('APP_VALIDATION_FAILED');
+    const logged: string[] = [];
+    for (let current: unknown = caught; current instanceof Error; current = current.cause) logged.push(current.message, JSON.stringify(current));
+    expect(logged.join('\n')).not.toMatch(/secret|5521/);
   });
 });
 

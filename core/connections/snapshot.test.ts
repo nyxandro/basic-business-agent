@@ -3,7 +3,7 @@
 import type { SerializableMCPToolDefinition } from '@mastra/mcp';
 import { describe, expect, it } from 'vitest';
 import { isAppError } from '../errors/app-error.ts';
-import { applyActionMarks, mergeSnapshot, toActionView } from './snapshot.ts';
+import { applyActionMarks, definitionForCalls, mergeSnapshot, toActionView } from './snapshot.ts';
 
 const SLUG = 'm1a2b3c';
 
@@ -51,6 +51,15 @@ describe('a new snapshot over the previous one', () => {
       ['crm.deal.list', true, true],
       ['crm.deal.add', false, true],
     ]);
+  });
+});
+
+describe('the definition a call is built from', () => {
+  it('keeps the server’s hints of a safe repeat only on an action the admin marked as reading', () => {
+    const [writes] = mergeSnapshot(SLUG, [], [definition('crm.invoice.add', { annotations: { idempotentHint: true, readOnlyHint: true } })], true);
+    expect(definitionForCalls(writes!).annotations).toMatchObject({ idempotentHint: false, readOnlyHint: false });
+    const [reads] = applyActionMarks([writes!], [{ name: 'crm.invoice.add', enabled: true, readOnly: true, title: null, check: false }]);
+    expect(definitionForCalls(reads!).annotations).toMatchObject({ idempotentHint: true, readOnlyHint: true });
   });
 });
 

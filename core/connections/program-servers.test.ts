@@ -87,7 +87,7 @@ describe('a program server', () => {
   it('is checked through mcp-runner, and the agent gets the shared key only in the program’s environment', async () => {
     const created = (await call<{ server: McpServerView }>('POST', BASE, admin, program())).json.server;
     const checked = await call<{ server: McpServerView }>('POST', `${BASE}/${created.id}/check`, admin, { values: {} });
-    expect(checked.json.server.actions.map((a) => a.name)).toEqual(['echo', 'whoami', 'fall']);
+    expect(checked.json.server.actions.map((a) => a.name)).toEqual(['echo', 'whoami', 'fall', 'complain']);
     const enabled = await call<{ server: McpServerView }>('PATCH', `${BASE}/${created.id}`, admin, {
       actions: [
         { name: 'echo', enabled: true, readOnly: true, title: null, check: false },

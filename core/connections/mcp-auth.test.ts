@@ -184,6 +184,20 @@ describe('the token of an employee', () => {
     expect(refreshes()).toBe(before + 1);
   });
 
+  it('is not lost when the system cannot refresh it right now: the system is unavailable, the access stays', async () => {
+    await expiresIn(1_000);
+    try {
+      for (const status of [503, 502]) {
+        idp.refreshDown = status;
+        await expect(olgaToken()).rejects.toMatchObject({ code: 'APP_CONNECTOR_UNAVAILABLE' });
+      }
+    } finally {
+      idp.refreshDown = null;
+    }
+    expect((await loadCredential(t.db, box, people.olga!.id, mcpConnectorId(serverId), 'x'))!.status).toBe('connected');
+    await expect(olgaToken()).resolves.toBeTruthy();
+  });
+
   it('that no longer refreshes asks to connect again, without starting a sign-in in the middle of a turn', async () => {
     await expiresIn(1_000, 'rt-revoked');
     const states = async () => Number((await t.db.query<{ n: number }>('SELECT count(*)::int AS n FROM app.oauth_states WHERE user_id = $1', [people.olga!.id])).rows[0]!.n);

@@ -80,7 +80,7 @@ describe('a program server', () => {
     const client = clientOf(spec());
     const { definitions, errorDetails } = await client.listToolDefinitionsWithErrors();
     expect(errorDetails).toEqual({});
-    expect(Object.keys(definitions.s ?? {})).toEqual(['echo', 'whoami', 'fall']);
+    expect(Object.keys(definitions.s ?? {})).toEqual(['echo', 'whoami', 'fall', 'complain']);
     expect(definitions.s!.whoami!.annotations).toEqual({ readOnlyHint: true });
 
     const tools = await client.listTools();
@@ -124,6 +124,35 @@ describe('a program server', () => {
     expect(await answer.json()).toMatchObject({ error: { code: 'APP_MCP_PROGRAM_CRASHED' } });
     expect((await prepare(spec())).status).toBe(200);
     expect(runner.running()).toBe(1);
+  });
+
+  it('does not count an error the program answered itself as a fall, whatever its words', async () => {
+    start(60_000);
+    const tools = await clientOf(spec()).listTools();
+    for (let time = 0; time < 3; time += 1) await expect(tools.s_complain!.execute!({}, {} as never)).rejects.toBeTruthy();
+    expect(textOf(await tools.s_echo!.execute!({ text: 'работает' }, {} as never))).toBe('работает');
+  });
+
+  it('installs a package once when two servers with it are checked at the same time', async () => {
+    let installs = 0;
+    runner = createRunner({
+      secret: SECRET,
+      packagesDir: packages,
+      bwrap: '/usr/bin/bwrap',
+      idleMs: 60_000,
+      install: async (program, root) => {
+        installs += 1;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await cp(FIXTURE, join(root, 'pkg'), { recursive: true });
+        return { command: process.execPath, args: [join(root, 'pkg', 'server.mjs'), ...program.args], root, extraPaths: [dirname(dirname(process.execPath))] };
+      },
+      log: () => undefined,
+    });
+    const other = '1b8f5d6e-1c2a-4f3b-9d4e-5a6b7c8d9e0f';
+    const prepareOf = (serverId: string) => fetch(`${base}${runnerPath(serverId, 'prepare')}`, { method: 'POST', headers: signedHeaders(SECRET, serverId, spec({ package: 'bba-echo-mcp@1.0.1' })) });
+    const answers = await Promise.all([prepareOf(SERVER_ID), prepareOf(other)]);
+    expect(answers.map((a) => a.status)).toEqual([200, 200]);
+    expect(installs).toBe(1);
   });
 
   it('tells a package that cannot be installed', async () => {

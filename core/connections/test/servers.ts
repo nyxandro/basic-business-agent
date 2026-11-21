@@ -106,6 +106,8 @@ export interface TestOAuthServer {
   accessTtlSeconds: number;
   // A wrong `iss` in the authorization answer: a mix-up the client must refuse.
   issInAnswer: string | null;
+  // The token address answers a refresh with this status (the system is down), not refusing the token.
+  refreshDown: number | null;
   close(): Promise<void>;
 }
 
@@ -134,6 +136,7 @@ export async function startTestOAuthServer(options: TestOAuthServerOptions = {})
     tokenRequests: [],
     accessTtlSeconds: 3600,
     issInAnswer: null,
+    refreshDown: null,
     close: () => Promise.resolve(),
   };
   clients.set(s.clientId, s.clientSecret);
@@ -203,6 +206,9 @@ export async function startTestOAuthServer(options: TestOAuthServerOptions = {})
         return reply(200, issue(clientId));
       }
       if (p.get('grant_type') === 'refresh_token') {
+        // 503 — the system says «not now» in OAuth words; 502 — a proxy before it answers with a page.
+        if (s.refreshDown === 502) return res.writeHead(502, { 'content-type': 'text/html' }).end('<h1>Bad Gateway</h1>');
+        if (s.refreshDown) return reply(s.refreshDown, { error: 'temporarily_unavailable' });
         const rt = p.get('refresh_token') ?? '';
         s.refreshUses.push(rt);
         // Single use, and only by the client it was issued to.
