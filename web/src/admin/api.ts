@@ -1,5 +1,10 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  McpProbeInput,
+  McpProbeResult,
+  McpServerInput,
+  McpServerPatch,
+  McpServerView,
   AgentAbilities,
   AgentIcon,
   AgentMarkAdminState,
@@ -97,6 +102,15 @@ export const adminApi = {
   usageDaily: (from: string, to: string) => api<{ days: DailySpend[] }>('GET', `${A}/usage/daily?from=${from}&to=${to}`),
 
   agents: () => api<AdminAgentsResponse>('GET', `${A}/agents`),
+  // MCP servers the admin adds (docs/specs/[20.11.2026]-mcp-connections.md).
+  mcpServers: () => api<{ servers: McpServerView[] }>('GET', `${A}/mcp-servers`),
+  mcpServer: (id: string) => api<{ server: McpServerView }>('GET', `${A}/mcp-servers/${enc(id)}`),
+  probeMcp: (input: McpProbeInput) => api<McpProbeResult>('POST', `${A}/mcp-servers/probe`, input),
+  createMcp: (input: McpServerInput) => api<{ server: McpServerView }>('POST', `${A}/mcp-servers`, input),
+  updateMcp: (id: string, patch: McpServerPatch) => api<{ server: McpServerView }>('PATCH', `${A}/mcp-servers/${enc(id)}`, patch),
+  checkMcp: (id: string, values: Record<string, string>) => api<{ server: McpServerView }>('POST', `${A}/mcp-servers/${enc(id)}/check`, { values }),
+  signInMcp: (id: string) => api<{ url: string }>('POST', `${A}/mcp-servers/${enc(id)}/sign-in`, {}),
+  deleteMcp: (id: string) => api<Ok>('DELETE', `${A}/mcp-servers/${enc(id)}`),
   prompt: (agentId: string) => api<PromptState>('GET', `${A}/agents/${enc(agentId)}/prompt`),
   saveDraft: (agentId: string, text: string, baseDraftVersionId: string | null) => api<{ draftVersionId: string }>('PUT', `${A}/agents/${enc(agentId)}/prompt/draft`, { text, baseDraftVersionId }),
   publish: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/publish`, {}),

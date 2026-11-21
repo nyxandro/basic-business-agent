@@ -28,6 +28,9 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
     // «Подключения» show the mailbox in every installation (spec, section 8.24).
     ['GET /app/api/me/mail', { body: { accounts: [], oauth: [] } }],
     ['GET /app/api/admin/mail', { body: { apps: [], redirectUri: 'http://localhost/app/api/mail/oauth/callback', connected: 0, authErrors: 0 } }],
+    // MCP servers the admin added (docs/specs/[20.11.2026]-mcp-connections.md): none unless a test adds them.
+    ['GET /app/api/admin/mcp-servers', { body: { servers: [] } }],
+    ['GET /app/api/me/connections/mcp', { body: { servers: [] } }],
     ...Object.entries(routes),
   ]);
   const calls: MockCall[] = [];

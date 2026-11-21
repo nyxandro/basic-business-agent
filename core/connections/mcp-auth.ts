@@ -22,6 +22,7 @@ import {
   type StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
 import type pg from 'pg';
+import { MCP_OAUTH_CALLBACK_PATH } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
@@ -35,7 +36,7 @@ import { signInChallenge } from './probe.ts';
 import { loadOAuthServer, mcpConnectorId, saveServerClient, type OAuthServer } from './servers.ts';
 
 // The one address the browser returns to from the sign-in of any MCP server (section 17).
-export const MCP_CALLBACK_PATH = '/app/api/connections/oauth/callback';
+export const MCP_CALLBACK_PATH = MCP_OAUTH_CALLBACK_PATH;
 // The client document of the installation (SEP-991): its address is the app's client_id.
 export const MCP_CLIENT_DOCUMENT_PATH = '/app/api/connections/oauth/client.json';
 const STATE_TTL_MS = 10 * 60 * 1000;

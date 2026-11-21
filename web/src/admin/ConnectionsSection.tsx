@@ -1,13 +1,20 @@
 // «Подключения» (spec, scenario 3; mockup): the systems of the installation — how they are
 // connected, their state and how many employees have connected them. Each employee connects a
 // system themselves, and the agent works there with their rights.
-import type { AdminConnection } from '@bba/contracts';
+import type { AdminConnection, McpServerView } from '@bba/contracts';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { ApiRequestError } from '../api/client.ts';
+import { ru } from '../i18n/ru.ts';
+import { Button } from '../ui/Button.tsx';
 import { Card, PageHead, Pill, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
 import { MailCard } from './MailCard.tsx';
+import { McpServerCard } from './McpServerCard.tsx';
+import { McpServerDialog } from './McpServerDialog.tsx';
 import section from './section.module.css';
 import styles from './systems.module.css';
 
@@ -63,18 +70,57 @@ function SystemCard({ c }: { c: AdminConnection }) {
   );
 }
 
+interface Opened {
+  server: McpServerView | null;
+  autoCheck: boolean;
+  error: ApiRequestError | null;
+}
+
+// Back from the system's site after the admin's sign-in: ?mcp=<id>&signedIn=1, or ?mcp=<id>&error=<code>.
+function useReturnFromSignIn(open: (opened: Opened) => void) {
+  const [params, setParams] = useSearchParams();
+  const id = params.get('mcp');
+  const signedIn = params.get('signedIn') === '1';
+  const code = params.get('error');
+  useEffect(() => {
+    if (!id) return;
+    setParams({}, { replace: true });
+    void adminApi.mcpServer(id).then(
+      ({ server }) => open({ server, autoCheck: signedIn, error: code ? new ApiRequestError({ code, message: ru.connections.connectFailed(server.title), status: 0 }) : null }),
+      // The server is gone (deleted meanwhile): nothing to open.
+      (error: unknown) => console.warn('mcp server of the sign-in is not available', error),
+    );
+  }, [id, signedIn, code, setParams, open]);
+}
+
 export function ConnectionsSection() {
   const { state: load, reload } = useLoad(adminApi.connections, ['admin', 'connections']);
+  const { state: servers, reload: reloadServers } = useLoad(adminApi.mcpServers, ['admin', 'mcp-servers']);
+  const [opened, setOpened] = useState<Opened | null>(null);
+  useReturnFromSignIn(setOpened);
   return (
     <div className={section.stack}>
-      <PageHead title="Подключения" lead="Каждый сотрудник подключает системы сам, и агент работает там с его правами." />
-      {load.status === 'loading' ? <DelayedBar /> : null}
+      <PageHead
+        title="Подключения"
+        lead="Каждый сотрудник подключает системы сам, и агент работает там с его правами."
+        actions={
+          <Button variant="primary" icon="plus" onClick={() => setOpened({ server: null, autoCheck: false, error: null })}>
+            {ru.mcp.admin.add}
+          </Button>
+        }
+      />
+      {load.status === 'loading' || servers.status === 'loading' ? <DelayedBar /> : null}
       {load.status === 'error' ? <ErrorBanner error={load.error} onRetry={reload} /> : null}
-      {/* The mail is in every installation (spec, section 8.24); systems of plugins follow. */}
+      {servers.status === 'error' ? <ErrorBanner error={servers.error} onRetry={reloadServers} /> : null}
+      {/* The mail is in every installation (spec, section 8.24); then MCP servers of the admin, then plugins. */}
       <div className={styles.grid}>
         <MailCard />
+        {servers.status === 'ready'
+          ? servers.data.servers.map((s) => <McpServerCard key={s.id} server={s} onOpen={() => setOpened({ server: s, autoCheck: false, error: null })} onRemoved={reloadServers} />)
+          : null}
         {load.status === 'ready' ? load.data.connections.map((c) => <SystemCard key={c.id} c={c} />) : null}
       </div>
+      {opened ? <McpServerDialog server={opened.server} autoCheck={opened.autoCheck} initialError={opened.error} onClose={() => setOpened(null)} onChanged={reloadServers} /> : null}
     </div>
   );
 }

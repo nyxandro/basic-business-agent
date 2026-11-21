@@ -2,6 +2,7 @@
 // here are only the texts of the screens and of the errors the browser detects itself.
 import { plural } from '../ui/format.ts';
 import { marksTexts } from './marks.ts';
+import { mcpAdminTexts, mcpEmployeeTexts } from './mcp.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
 const PAGE_FAILURES: Record<string, string> = {
@@ -761,6 +762,7 @@ export const ru = {
     openFile: (name: string) => `Открыть ${name}`,
   },
   marks: marksTexts,
+  mcp: { admin: mcpAdminTexts, employee: mcpEmployeeTexts },
   clientErrors: {
     APP_PREVIEW_PASSWORD: 'Документ защищён паролем — посмотреть его здесь нельзя. Скачайте его.',
     APP_PREVIEW_FAILED: 'Не получилось показать документ: файл повреждён. Скачайте его.',

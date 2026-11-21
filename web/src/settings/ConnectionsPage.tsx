@@ -15,6 +15,7 @@ import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { disconnect, fetchConnections, saveStaticConnection, startOAuth } from './api.ts';
 import { MailConnections } from './MailConnections.tsx';
+import { McpServers } from './McpServers.tsx';
 import styles from './settings.module.css';
 
 const AUTH_FAILED = 'APP_CONNECTOR_AUTH_FAILED';
@@ -108,9 +109,11 @@ function Connection({ c, onChanged }: { c: MyConnection; onChanged: () => void }
   );
 }
 
-// The system's sign-in page sends the person back with ?connected=<id> or ?error=<code>&connector=<id>.
+// The system's sign-in page sends the person back with ?connected=<id> or ?error=<code>&connector=<id>. MCP servers
+// of the admin (`mcp:<id>`) greet the person in their own block.
 function ReturnNotice({ list }: { list: MyConnection[] }) {
   const [params] = useSearchParams();
+  if ([params.get('connected'), params.get('connector')].some((id) => id?.startsWith('mcp:'))) return null;
   const titleOf = (id: string | null) => list.find((c) => c.id === id)?.title ?? id ?? '';
   const connected = params.get('connected');
   const code = params.get('error');
@@ -126,8 +129,9 @@ export function ConnectionsPage() {
   const [params] = useSearchParams();
   return (
     <PageFrame title={ru.settings.connections} lead={ru.connections.lead}>
-      {/* The mailbox is in every installation (spec, section 8.24); the systems of plugins follow. */}
+      {/* The mailbox is in every installation (spec, section 8.24); then the MCP servers the admin added, then plugins. */}
       <MailConnections params={params} />
+      <McpServers params={params} />
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? (

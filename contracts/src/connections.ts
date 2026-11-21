@@ -174,3 +174,6 @@ export type McpProbeInput = z.infer<typeof mcpProbeInputSchema>;
 export interface McpProbeResult {
   auth: McpProbeAuth;
 }
+
+// The one address the browser returns to from the sign-in on a system's site (the admin gives it to the system).
+export const MCP_OAUTH_CALLBACK_PATH = '/app/api/connections/oauth/callback';
