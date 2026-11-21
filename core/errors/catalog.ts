@@ -134,6 +134,11 @@ export const ERROR_CATALOG = {
   // MCP servers the admin adds (docs/specs/[20.11.2026]-mcp-connections.md, section 9).
   APP_MCP_UNREACHABLE: { status: 502, userMessage: 'Сервер не отвечает по этому адресу. Проверьте адрес и что сервер включён.' },
   APP_MCP_NOT_MCP: { status: 422, userMessage: 'По этому адресу нет сервера MCP. В инструкции системы адрес обычно заканчивается на /mcp.' },
+  APP_MCP_OAUTH_REGISTRATION: {
+    status: 422,
+    userMessage: 'Система не разрешает подключать сторонние программы автоматически. Заведите приложение в настройках системы и введите Client ID и Client Secret в «Дополнительно».',
+  },
+  APP_MCP_OAUTH_NEEDS_HTTPS: { status: 409, userMessage: 'Вход через сайт системы работает только когда установка открыта по https.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

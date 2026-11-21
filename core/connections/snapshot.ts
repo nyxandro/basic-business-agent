@@ -7,6 +7,7 @@ import { MCPClient, type MCPDiscoveryErrorDetails, type SerializableMCPToolDefin
 import type { McpAction, McpActionPatch, McpAuthKind } from '@bba/contracts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
+import { origin } from './log-safe.ts';
 import { modelNames } from './tool-names.ts';
 
 // Section 18: the client's own 3 s to connect is too short for a server far away.
@@ -110,8 +111,12 @@ export function applyActionMarks(actions: readonly StoredAction[], marks: readon
   });
 }
 
-// Only the scheme and the host of an address go into texts that may reach the log: the path may carry a key.
-const origin = (url: URL) => `${url.protocol}//${url.host}`;
+const REFUSED: Record<McpAuthKind, (title: string) => string> = {
+  none: (title) => `${title} не пускает без входа. Выберите другой способ входа.`,
+  oauth: (title) => `${title} не приняла ваш вход. Нажмите «Проверить своим доступом» и войдите заново.`,
+  personal_key: (title) => `${title} не приняла ключ. Проверьте его.`,
+  shared_key: (title) => `${title} не приняла ключ. Проверьте его.`,
+};
 
 function readFailure(server: { title: string; auth: McpAuthKind }, url: URL, detail: MCPDiscoveryErrorDetails): AppError {
   const facts = { httpStatus: detail.httpStatus ?? null, code: detail.code ?? null };
@@ -119,7 +124,7 @@ function readFailure(server: { title: string; auth: McpAuthKind }, url: URL, det
     return new AppError({
       code: 'APP_CONNECTOR_AUTH_FAILED',
       message: `mcp snapshot: ${origin(url)} refused the access (HTTP ${detail.httpStatus})`,
-      userMessage: server.auth === 'none' ? `${server.title} не пускает без входа. Выберите другой способ входа.` : `${server.title} не приняла ключ. Проверьте его.`,
+      userMessage: REFUSED[server.auth](server.title),
       status: 401,
       details: facts,
     });

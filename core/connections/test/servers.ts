@@ -1,7 +1,7 @@
 // Test servers for connections: an MCP server that records whose access reached it, and an OAuth
 // authorisation server with PKCE and single-use, rotating refresh tokens (like Bitrix24 or amoCRM).
 import { createHash, randomBytes } from 'node:crypto';
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createTool } from '@mastra/core/tools';
 import { MCPServer } from '@mastra/mcp';
@@ -68,71 +68,129 @@ export async function startTestMcpServer(options: TestMcpServerOptions = {}): Pr
 
 export interface TestOAuthServer {
   base: string;
+  // The issuer of its metadata (RFC 8414); the authorization answer names it in `iss` (RFC 9207).
+  issuer: string;
   authorizeUrl: string;
   tokenUrl: string;
   clientId: string;
   clientSecret: string;
   accessTokens: Set<string>;
   refreshUses: string[];
+  // Clients registered on the fly (RFC 7591), in order.
+  registrations: string[];
+  // Token requests by grant type, to count exchanges and refreshes.
+  tokenRequests: string[];
   accessTtlSeconds: number;
+  // A wrong `iss` in the authorization answer: a mix-up the client must refuse.
+  issInAnswer: string | null;
   close(): Promise<void>;
 }
 
-export async function startTestOAuthServer(): Promise<TestOAuthServer> {
-  const codes = new Map<string, { challenge: string; redirectUri: string }>();
-  const liveRefresh = new Set<string>();
+export interface TestOAuthServerOptions {
+  // Clients may register themselves (RFC 7591); without it only the client set up in advance works.
+  dynamicRegistration?: boolean;
+}
+
+// An authorization server with PKCE and single-use, rotating refresh tokens (like Bitrix24 or amoCRM), its metadata
+// at the well-known address and, when asked, registration on the fly — what an MCP server with a sign-in points to.
+export async function startTestOAuthServer(options: TestOAuthServerOptions = {}): Promise<TestOAuthServer> {
+  const codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
+  const liveRefresh = new Map<string, string>();
+  const clients = new Map<string, string | null>();
   const s: TestOAuthServer = {
     base: '',
+    issuer: '',
     authorizeUrl: '',
     tokenUrl: '',
     clientId: 'test-client',
     clientSecret: 'test-secret',
     accessTokens: new Set(),
     refreshUses: [],
+    registrations: [],
+    tokenRequests: [],
     accessTtlSeconds: 3600,
+    issInAnswer: null,
     close: () => Promise.resolve(),
   };
-  const issue = () => {
+  clients.set(s.clientId, s.clientSecret);
+  const issue = (clientId: string) => {
     const access = `at-${randomBytes(8).toString('hex')}`;
     const refresh = `rt-${randomBytes(8).toString('hex')}`;
     s.accessTokens.add(access);
-    liveRefresh.add(refresh);
+    liveRefresh.set(refresh, clientId);
     return { access_token: access, refresh_token: refresh, expires_in: s.accessTtlSeconds, token_type: 'Bearer' };
+  };
+  // client_secret_basic or client_secret_post; a client registered without a secret is public (PKCE only).
+  const clientOf = (req: IncomingMessage, p: URLSearchParams): string | null => {
+    const basic = /^Basic (.+)$/.exec(req.headers.authorization ?? '');
+    const [id, secret] = basic ? Buffer.from(basic[1]!, 'base64').toString().split(':').map(decodeURIComponent) : [p.get('client_id'), p.get('client_secret')];
+    if (!id || !clients.has(id)) return null;
+    const expected = clients.get(id);
+    return expected === null || expected === secret ? id : null;
   };
   const http = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    const reply = (status: number, json: object) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(json));
+    if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') {
+      return reply(200, {
+        issuer: s.issuer,
+        authorization_endpoint: s.authorizeUrl,
+        token_endpoint: s.tokenUrl,
+        ...(options.dynamicRegistration ? { registration_endpoint: `${s.base}/register` } : {}),
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
+        authorization_response_iss_parameter_supported: true,
+      });
+    }
     if (req.method === 'GET' && url.pathname === '/authorize') {
+      const clientId = url.searchParams.get('client_id') ?? '';
+      if (!clients.has(clientId)) return reply(400, { error: 'invalid_client' });
       const code = `code-${randomBytes(6).toString('hex')}`;
-      codes.set(code, { challenge: url.searchParams.get('code_challenge') ?? '', redirectUri: url.searchParams.get('redirect_uri') ?? '' });
+      codes.set(code, { challenge: url.searchParams.get('code_challenge') ?? '', redirectUri: url.searchParams.get('redirect_uri') ?? '', clientId });
       const back = new URL(url.searchParams.get('redirect_uri')!);
       back.searchParams.set('code', code);
       back.searchParams.set('state', url.searchParams.get('state') ?? '');
+      back.searchParams.set('iss', s.issInAnswer ?? s.issuer);
       res.writeHead(302, { location: back.toString() }).end();
       return;
     }
     let body = '';
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
+      if (url.pathname === '/register' && options.dynamicRegistration) {
+        const metadata = JSON.parse(body) as { token_endpoint_auth_method?: string };
+        const clientId = `dcr-${s.registrations.length + 1}`;
+        const secret = metadata.token_endpoint_auth_method === 'none' ? null : `dcr-secret-${randomBytes(6).toString('hex')}`;
+        clients.set(clientId, secret);
+        s.registrations.push(clientId);
+        return reply(201, { ...metadata, client_id: clientId, ...(secret ? { client_secret: secret } : {}), client_id_issued_at: Math.floor(Date.now() / 1000) });
+      }
       const p = new URLSearchParams(body);
-      const reply = (status: number, json: object) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(json));
-      if (p.get('client_id') !== s.clientId || p.get('client_secret') !== s.clientSecret) return reply(401, { error: 'invalid_client' });
+      s.tokenRequests.push(p.get('grant_type') ?? '');
+      const clientId = clientOf(req, p);
+      if (!clientId) return reply(401, { error: 'invalid_client' });
       if (p.get('grant_type') === 'authorization_code') {
         const entry = codes.get(p.get('code') ?? '');
         const challenge = createHash('sha256').update(p.get('code_verifier') ?? '').digest('base64url');
-        if (!entry || entry.challenge !== challenge || entry.redirectUri !== p.get('redirect_uri')) return reply(400, { error: 'invalid_grant' });
+        if (!entry || entry.challenge !== challenge || entry.redirectUri !== p.get('redirect_uri') || entry.clientId !== clientId) return reply(400, { error: 'invalid_grant' });
         codes.delete(p.get('code')!);
-        return reply(200, issue());
+        return reply(200, issue(clientId));
       }
       if (p.get('grant_type') === 'refresh_token') {
         const rt = p.get('refresh_token') ?? '';
         s.refreshUses.push(rt);
-        if (!liveRefresh.delete(rt)) return reply(400, { error: 'invalid_grant' }); // single use
-        return reply(200, issue());
+        // Single use, and only by the client it was issued to.
+        if (liveRefresh.get(rt) !== clientId) return reply(400, { error: 'invalid_grant' });
+        liveRefresh.delete(rt);
+        return reply(200, issue(clientId));
       }
       return reply(400, { error: 'unsupported_grant_type' });
     });
   });
   s.base = await listen(http);
+  s.issuer = s.base;
   s.authorizeUrl = `${s.base}/authorize`;
   s.tokenUrl = `${s.base}/token`;
   s.close = () => new Promise((resolve) => http.close(() => resolve()));

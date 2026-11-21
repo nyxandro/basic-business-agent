@@ -22,6 +22,18 @@ export function authFailed(title: string, connectorId: string, cause?: unknown):
   });
 }
 
+// The sign-in on the system's site did not end with tokens: the link is old, the person cancelled, the system refused.
+export function signInNotFinished(title: string, details: Record<string, unknown>, cause?: unknown): AppError {
+  return new AppError({
+    code: 'APP_CONNECTOR_AUTH_FAILED',
+    message: 'the sign-in on the system site did not finish',
+    userMessage: `Вход в ${title} не завершён: ссылка устарела или вход отменён. Нажмите «Подключить» ещё раз.`,
+    status: 401,
+    details,
+    ...(cause !== undefined ? { cause } : {}),
+  });
+}
+
 export function unavailable(title: string, connectorId: string, cause?: unknown): AppError {
   return new AppError({
     code: 'APP_CONNECTOR_UNAVAILABLE',

@@ -19,6 +19,7 @@ import { mcpProbeInputSchema, type McpProbeAuth, type McpProbeInput, type McpPro
 import type { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { isPublicAddress } from '../net/public-address.ts';
+import { isNetworkFailure, origin, safeCause } from './log-safe.ts';
 import { fillTemplate } from './templates.ts';
 
 // The client's own 3 s is too short for a server far away (section 18): the agents' calls wait 10 s too.
@@ -29,20 +30,6 @@ const HTTP_SERVER_ERROR = 500;
 type Verdict = 'needs_access' | 'unreachable' | 'not_mcp';
 
 const invalid = (message: string, userMessage: string) => appError('APP_VALIDATION_FAILED', message, { userMessage });
-
-// Only the scheme and the host go to the log: the path and the query may carry a key (section 13).
-const origin = (url: URL) => `${url.protocol}//${url.host}`;
-
-// The failure for the log: its kinds, codes and statuses down the chain of causes — never their texts, which
-// carry the address with its key («Authentication failed for https://…/<key>/mcp», a redirect's target).
-function safeCause(error: unknown): Error {
-  const links: string[] = [];
-  for (let current = error; current instanceof Error && links.length < 4; current = current.cause) {
-    const { code, data } = current as { code?: unknown; data?: { status?: unknown } };
-    links.push([current.name, typeof code === 'string' ? code : null, typeof data?.status === 'number' ? `status ${data.status}` : null].filter(Boolean).join(' '));
-  }
-  return new Error(links.length > 0 ? links.join(' <- ') : `non-error ${typeof error}`);
-}
 
 const unreachable = (url: URL, error: unknown): AppError => appError('APP_MCP_UNREACHABLE', `mcp probe: ${origin(url)} does not answer`, { cause: safeCause(error) });
 const notMcp = (url: URL, error: unknown): AppError => appError('APP_MCP_NOT_MCP', `mcp probe: ${origin(url)} is not an MCP server`, { cause: safeCause(error) });
@@ -102,8 +89,6 @@ function verdictOf(error: unknown): Verdict | null {
   return null;
 }
 
-const isNetworkFailure = (error: unknown) => error instanceof TypeError || (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'));
-
 // A server that refuses tells where to sign in in its 401 challenge or at its well-known address; without that
 // it takes a key in a header or in the address.
 async function signInOf(url: URL, challenge: URL | undefined, timeoutMs: number): Promise<McpProbeAuth> {
@@ -118,12 +103,9 @@ async function signInOf(url: URL, challenge: URL | undefined, timeoutMs: number)
   }
 }
 
-export async function probeServer(raw: McpProbeInput, timeoutMs = PROBE_TIMEOUT_MS): Promise<McpProbeResult> {
-  const parsed = mcpProbeInputSchema.safeParse(raw);
-  if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'mcp probe input does not match the schema', { cause: parsed.error });
-  const url = fillAddress(parsed.data);
-  await assertPlainHttpAllowed(url);
-
+// The MCP handshake without any access. A refusal brings the server's 401 challenge, which may name where its
+// sign-in metadata lies (RFC 9728) — the MCP client library reads it from the 401 of its transport.
+async function handshake(url: URL, timeoutMs: number): Promise<{ failure: unknown; challenge: URL | undefined } | null> {
   let challenge: URL | undefined;
   const transport = new StreamableHTTPClientTransport(url, {
     fetch: async (target, init) => {
@@ -135,14 +117,37 @@ export async function probeServer(raw: McpProbeInput, timeoutMs = PROBE_TIMEOUT_
   const client = new Client(CLIENT_INFO, { versionNegotiation: { mode: 'auto' } });
   try {
     await client.connect(transport, { timeout: timeoutMs });
-    return { auth: 'none' };
-  } catch (error) {
-    const verdict = verdictOf(error);
-    if (verdict === 'needs_access') return { auth: await signInOf(url, challenge, timeoutMs) };
-    if (verdict === 'unreachable') throw unreachable(url, error);
-    if (verdict === 'not_mcp') throw notMcp(url, error);
-    throw appError('APP_INTERNAL', `mcp probe of ${origin(url)} failed unexpectedly`, { cause: safeCause(error) });
+    return null;
+  } catch (failure) {
+    return { failure, challenge };
   } finally {
     await client.close();
   }
+}
+
+function handshakeFailure(url: URL, failure: unknown): AppError {
+  const verdict = verdictOf(failure);
+  if (verdict === 'unreachable') return unreachable(url, failure);
+  if (verdict === 'not_mcp') return notMcp(url, failure);
+  return appError('APP_INTERNAL', `mcp handshake with ${origin(url)} failed unexpectedly`, { cause: safeCause(failure) });
+}
+
+export async function probeServer(raw: McpProbeInput, timeoutMs = PROBE_TIMEOUT_MS): Promise<McpProbeResult> {
+  const parsed = mcpProbeInputSchema.safeParse(raw);
+  if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'mcp probe input does not match the schema', { cause: parsed.error });
+  const url = fillAddress(parsed.data);
+  await assertPlainHttpAllowed(url);
+  const refused = await handshake(url, timeoutMs);
+  if (!refused) return { auth: 'none' };
+  if (verdictOf(refused.failure) === 'needs_access') return { auth: await signInOf(url, refused.challenge, timeoutMs) };
+  throw handshakeFailure(url, refused.failure);
+}
+
+// Where the sign-in metadata of a server lies, by its 401 challenge — for a sign-in started outside a transport
+// (step 4). Undefined when the challenge names none: the well-known address is then looked up.
+export async function signInChallenge(url: URL, timeoutMs = PROBE_TIMEOUT_MS): Promise<URL | undefined> {
+  const refused = await handshake(url, timeoutMs);
+  if (!refused) return undefined;
+  if (verdictOf(refused.failure) === 'needs_access') return refused.challenge;
+  throw handshakeFailure(url, refused.failure);
 }

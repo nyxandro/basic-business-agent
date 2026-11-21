@@ -8,7 +8,8 @@ import { appError } from '../errors/catalog.ts';
 import type { AppEnv } from './http.ts';
 
 // The only addresses under /app/api that work without a session.
-const PUBLIC_PREFIXES = ['/app/api/auth/', '/app/api/health', '/app/api/invites/', '/app/api/password-resets/', '/app/api/internal/'];
+// The client document of the installation is read by the systems MCP servers sign in with (static, no data).
+const PUBLIC_PREFIXES = ['/app/api/auth/', '/app/api/health', '/app/api/invites/', '/app/api/password-resets/', '/app/api/internal/', '/app/api/connections/oauth/client.json'];
 
 export function isPublicPath(path: string): boolean {
   return PUBLIC_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));

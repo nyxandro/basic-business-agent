@@ -1,5 +1,6 @@
 // Personal credentials of employees for connected systems (spec, section 8.8):
 // encrypted JSON (AES-256-GCM) in app.connector_credentials, with the key version next to it.
+import type { OAuthDiscoveryState } from '@modelcontextprotocol/client';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
@@ -8,7 +9,9 @@ export type CredentialStatus = 'connected' | 'unverified' | 'auth_error';
 
 export type StoredCredential =
   | { kind: 'static'; fields: Record<string, string> }
-  | { kind: 'oauth'; accessToken: string; refreshToken: string | null; expiresAt: string | null };
+  // `issuer` and `discovery` — of the sign-in by the MCP standard (MCP servers): who issued the tokens and where
+  // its addresses are, so a refresh needs no new discovery and a token of another issuer is never sent.
+  | { kind: 'oauth'; accessToken: string; refreshToken: string | null; expiresAt: string | null; issuer?: string; discovery?: OAuthDiscoveryState };
 
 export interface CredentialRecord {
   credential: StoredCredential;

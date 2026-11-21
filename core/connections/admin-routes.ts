@@ -8,20 +8,32 @@ import { mcpCheckInputSchema, mcpProbeInputSchema, mcpServerInputSchema, mcpServ
 import { writeAudit } from '../audit/audit.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
-import { isAppError } from '../errors/app-error.ts';
+import { AppError, isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Registry } from '../loader/registry.ts';
 import { requirePermission } from '../server/guards.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { logEvent } from '../server/log.ts';
+import { mcpAccessToken, startMcpSignIn } from './mcp-auth.ts';
 import { probeServer } from './probe.ts';
 import { checkServer, createServer, deleteServer, getServer, listServers, updateServer } from './servers.ts';
 
 export interface McpAdminDeps {
   db: Db;
   box: SecretBox;
+  publicUrl: string;
   registry: Pick<Registry, 'ids'>;
 }
+
+// The admin checks a server with a sign-in by their own account: without it there is nothing to check with.
+const signInFirst = (cause: unknown) =>
+  new AppError({
+    code: 'APP_CONNECTOR_NOT_CONNECTED',
+    message: 'the admin has not signed in to the system yet',
+    userMessage: 'Войдите в систему своим аккаунтом: нажмите «Проверить своим доступом» — список действий берётся вашим доступом.',
+    status: 409,
+    cause,
+  });
 
 const BASE = '/app/api/admin/mcp-servers';
 
@@ -59,12 +71,24 @@ export function registerMcpAdminRoutes(app: Hono<AppEnv>, deps: McpAdminDeps): v
     return c.json({ server });
   });
 
+  // A server with a sign-in: the admin signs in on the system's site first, then checks.
+  app.post(`${BASE}/:id/sign-in`, guard, async (c) => c.json({ url: await startMcpSignIn(deps, { userId: access(c).userId, serverId: serverId(c), purpose: 'check' }) }));
+
   // «Проверить своим доступом» and «Обновить список действий» take the snapshot the same way.
   app.post(`${BASE}/:id/check`, guard, async (c) => {
     const id = serverId(c);
     const input = await parseJson(c, mcpCheckInputSchema);
+    const userId = access(c).userId;
+    const adminToken = async () => {
+      try {
+        return await mcpAccessToken(deps, { userId, serverId: id });
+      } catch (error) {
+        if (isAppError(error) && error.code === 'APP_CONNECTOR_NOT_CONNECTED') throw signInFirst(error);
+        throw error;
+      }
+    };
     try {
-      return c.json({ server: await checkServer(db, box, id, input) });
+      return c.json({ server: await checkServer(db, box, id, input, adminToken) });
     } catch (error) {
       // Only the code and the HTTP facts: the texts of the client library carry the address with its key.
       if (isAppError(error) && error.status < 500) logEvent('warn', 'mcp_snapshot_failed', { serverId: id, code: error.code, details: error.details ?? null });

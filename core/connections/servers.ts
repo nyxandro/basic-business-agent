@@ -2,6 +2,7 @@
 // and 17): what a server row may hold, how its secrets are sealed and what the admin panel sees of it.
 // A server starts as a draft; employees see it only after the admin checked it and turned it on.
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { StoredOAuthClientInformation } from '@modelcontextprotocol/client';
 import type pg from 'pg';
 import type { McpCheckInput, McpField, McpProgram, McpServerInput, McpServerPatch, McpServerStatus, McpServerView } from '@bba/contracts';
 import { mcpServerInputSchema } from '@bba/contracts';
@@ -27,8 +28,21 @@ const FIELD_MARK = 'bba-field';
 export const mcpConnectorId = (serverId: string) => `mcp:${serverId}`;
 
 export interface ServerSecrets {
+  // The app the admin registered in the system by hand («Дополнительно»).
   client: { clientId: string; clientSecret?: string } | null;
   shared: Record<string, string> | null;
+  // The app of the installation as the sign-in uses it: registered on the fly, a client document, or the admin's
+  // app bound to its issuer — one per server (step 4). Gone with a new definition of a draft.
+  registered?: StoredOAuthClientInformation | null;
+}
+
+// The server as the sign-in on the system's site sees it.
+export interface OAuthServer {
+  id: string;
+  title: string;
+  url: string;
+  status: McpServerStatus;
+  client: StoredOAuthClientInformation | undefined;
 }
 
 type Queryable = Db | pg.PoolClient;
@@ -153,7 +167,7 @@ export function validateServerInput(raw: McpServerInput): McpServerInput {
 }
 
 function sealSecrets(box: SecretBox, secrets: ServerSecrets): { ciphertext: Buffer; iv: Buffer; keyVersion: number } | null {
-  if (!secrets.client && !secrets.shared) return null;
+  if (!secrets.client && !secrets.shared && !secrets.registered) return null;
   return box.seal(JSON.stringify(secrets));
 }
 
@@ -269,6 +283,21 @@ export async function loadServerSecrets(db: Db, box: SecretBox, id: string): Pro
   return openSecrets(box, await loadRow(db, id, false));
 }
 
+export async function loadOAuthServer(db: Queryable, box: SecretBox, id: string): Promise<OAuthServer> {
+  const row = await loadRow(db, id, false);
+  if (row.auth !== 'oauth' || !row.url) throw invalid(`mcp server ${id} has no sign-in on the site`, 'У этого подключения нет входа через сайт системы.');
+  const secrets = openSecrets(box, row);
+  const admins = secrets.client ? { client_id: secrets.client.clientId, ...(secrets.client.clientSecret ? { client_secret: secrets.client.clientSecret } : {}) } : undefined;
+  return { id, title: row.title, url: row.url, status: row.status, client: secrets.registered ?? admins };
+}
+
+// Kept under the lock of the server's row: the sign-ins of two people register the app once.
+export async function saveServerClient(client: pg.PoolClient, box: SecretBox, id: string, info: StoredOAuthClientInformation): Promise<void> {
+  const row = await loadRow(client, id, true);
+  const sealed = sealSecrets(box, { ...openSecrets(box, row), registered: info })!;
+  await client.query('UPDATE app.mcp_servers SET secret_ciphertext = $2, secret_iv = $3, secret_key_version = $4 WHERE id = $1', [id, sealed.ciphertext, sealed.iv, sealed.keyVersion]);
+}
+
 export async function getServer(db: Db, box: SecretBox, id: string): Promise<McpServerView> {
   return viewOf(db, box, await loadRow(db, id, false));
 }
@@ -292,17 +321,22 @@ export function accessOf(row: Pick<ServerRow, 'url' | 'header_templates' | 'fiel
 }
 
 // «Проверить своим доступом» and «Обновить список действий»: the actions with the admin's access become the
-// snapshot; the admin's marks stay on the actions still there.
-export async function checkServer(db: Db, box: SecretBox, id: string, input: McpCheckInput): Promise<McpServerView> {
+// snapshot; the admin's marks stay on the actions still there. A server with a sign-in is checked with the admin's
+// own token (`adminToken`, the sign-in of step 4).
+export async function checkServer(db: Db, box: SecretBox, id: string, input: McpCheckInput, adminToken: () => Promise<string>): Promise<McpServerView> {
   const row = await loadRow(db, id, false);
   if (row.transport === 'program') throw invalid('program servers are checked through mcp-runner (step 9)', 'Проверка программ-серверов ещё не готова.');
-  if (row.auth === 'oauth') throw invalid('oauth servers are checked after the admin signs in (step 4)', 'Проверка входа через сайт системы ещё не готова.');
-  const shared = row.auth === 'shared_key' ? openSecrets(box, row).shared : null;
-  const access = accessOf(row, (field) => {
-    const value = row.auth === 'shared_key' ? shared?.[field.key] : input.values[field.key];
-    if (!value) throw invalid(`check without ${field.key}`, `Введите «${field.label}», чтобы проверить сервер.`);
-    return value;
-  });
+  let access: ServerAccess;
+  if (row.auth === 'oauth') {
+    access = { url: new URL(row.url!), headers: { Authorization: `Bearer ${await adminToken()}` } };
+  } else {
+    const shared = row.auth === 'shared_key' ? openSecrets(box, row).shared : null;
+    access = accessOf(row, (field) => {
+      const value = row.auth === 'shared_key' ? shared?.[field.key] : input.values[field.key];
+      if (!value) throw invalid(`check without ${field.key}`, `Введите «${field.label}», чтобы проверить сервер.`);
+      return value;
+    });
+  }
   await assertPlainHttpAllowed(access.url);
   const definitions = await readDefinitions(row, access);
   return inTransaction(db, async (client) => {
