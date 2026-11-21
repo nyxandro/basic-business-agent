@@ -35,6 +35,8 @@ import type { PreviewService } from '../preview/service.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { registerStorageRoutes } from '../storage/routes.ts';
 import { registerMailRoutes } from '../mail/routes.ts';
+import type { Notifications } from '../notifications/service.ts';
+import { registerNotificationRoutes } from '../notifications/routes.ts';
 import { registerMemoryRoutes } from '../memory/routes.ts';
 import { registerOrgDocsRoutes, type OrgDocsRouteDeps } from '../org-docs/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
@@ -65,6 +67,8 @@ export interface ServerDeps {
   preview: PreviewService;
   // The letterhead, the logo, the stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md).
   org: Omit<OrgDocsRouteDeps, 'db'>;
+  // Notifications in the browser (docs/specs/[20.11.2026]-notifications.md).
+  notifications: Notifications;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -88,7 +92,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
     deletion: { db: deps.db, memory: deps.chat.memory, gateway: deps.gateway, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage },
   });
   registerRoleRoutes(app, deps);
-  registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts });
+  registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts, timezone: deps.timezone });
   registerConnectionRoutes(app, { ...deps, registry: deps.chat.registry });
   registerMcpAdminRoutes(app, { db: deps.db, box: deps.box, publicUrl: deps.publicUrl, runner: deps.mcpRunner, registry: deps.chat.registry });
   registerChatRoutes(app, { ...deps.chat, preview: deps.preview });
@@ -99,6 +103,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerFileSearchRoutes(app, { ...projects, preview: deps.preview });
   registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
+  registerNotificationRoutes(app, { db: deps.db, ...deps.notifications });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerOrgDocsRoutes(app, { db: deps.db, ...deps.org });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });

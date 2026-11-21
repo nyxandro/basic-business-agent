@@ -56,7 +56,7 @@ async function claimNext(db: Db): Promise<QueuedRun | null> {
 }
 
 export async function finishRun(db: Db, runId: string, outcome: FinishedOutcome, reasonCode: string | null): Promise<void> {
-  await db.query('UPDATE app.background_task_runs SET outcome = $2, reason_code = $3, finished_at = now(), unread = $4 WHERE id = $1', [runId, outcome, reasonCode, outcome !== 'failed']);
+  await db.query('UPDATE app.background_task_runs SET outcome = $2, reason_code = $3, finished_at = now() WHERE id = $1', [runId, outcome, reasonCode]);
 }
 
 // Rows a stopped server left: running ones run again, ones a day late are skipped.

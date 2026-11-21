@@ -340,7 +340,7 @@ describe('stack of status lines', () => {
 
 describe('chat helpers', () => {
   it('reads tool results', () => {
-    expect(parseToolResult('{"declined":true,"superseded":true}')).toEqual({ kind: 'declined', superseded: true });
+    expect(parseToolResult('{"declined":true,"superseded":true}')).toEqual({ kind: 'declined', superseded: true, expiredHours: null });
     expect(parseToolResult('{"error":true,"message":"x APP_TOOL_FAILED"}')).toEqual({ kind: 'failed', code: 'APP_TOOL_FAILED', message: 'x APP_TOOL_FAILED' });
     expect(parseToolResult('{"deals":12}')).toEqual({ kind: 'ok', value: { deals: 12 } });
     expect(parseToolResult('просто текст')).toEqual({ kind: 'ok', value: 'просто текст' });

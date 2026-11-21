@@ -1,11 +1,13 @@
 // The cards of «Ждёт подтверждения» (mockup): a question of a background task — the task, the
 // agent, what the action will do with its fields, when it was asked and when it expires, «Нет» /
-// «Да, выполнить», then «Выполнено» / «Отклонено» in place; and «Не получилось» with
-// «Подключить заново» when the task lost access to a system. `compact` is the phone's sheet.
+// «Да, выполнить», then «Выполнено» / «Отклонено» in place; a question of a conversation leads to its
+// card «Да» there (docs/specs/[20.11.2026]-notifications.md, F4); and «Не получилось» with
+// «Подключить заново» when the task lost access to a system. `compact` is the bell's panel.
 import type { ApprovalsResponse, FailedRun, PendingApproval } from '@bba/contracts';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
+import { notificationTexts } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
 import { useNotifications } from '../layout/notifications.tsx';
 import { Button, cx } from '../ui/Button.tsx';
@@ -43,7 +45,41 @@ function Fields({ item }: { item: PendingApproval }) {
 
 type Decision = 'pending' | 'busy' | 'yes' | 'no';
 
-function Question({ item, compact }: { item: PendingApproval; compact: boolean }) {
+const threadPath = (c: NonNullable<PendingApproval['conversation']>) => `/agents/${encodeURIComponent(c.agentId)}?thread=${encodeURIComponent(c.threadId)}`;
+
+// A question of a conversation is answered on its card there: the agent's answer goes on in the chat.
+function ConversationQuestion({ item, compact, highlighted, onNavigate }: { item: PendingApproval & { conversation: NonNullable<PendingApproval['conversation']> }; compact: boolean; highlighted: boolean; onNavigate: () => void }) {
+  return (
+    <article className={cx(styles.card, compact && styles.compact, highlighted && styles.highlighted)}>
+      <div className={styles.cardRow}>
+        <span className={styles.tile}>
+          <Icon name="chat" size={compact ? 15 : 18} />
+        </span>
+        <div className={styles.main}>
+          <div className={styles.head}>
+            <span className={styles.title}>{notificationTexts.fromConversation(item.conversation.title)}</span>
+            <span>{ru.approvals.agent(item.agent)}</span>
+          </div>
+          <div className={styles.what}>{item.action.title}</div>
+          <Fields item={item} />
+          <div className={styles.meta}>
+            <span>{ru.approvals.asked(whenLabel(item.createdAt))}</span>
+            <span className={styles.left}>
+              <Icon name="clock" size={14} />
+              {ru.approvals.expiresIn(timeLeft(item.expiresAt))}
+            </span>
+          </div>
+          <p className={styles.hint}>{notificationTexts.conversationHint}</p>
+        </div>
+        <Link to={threadPath(item.conversation)} onClick={onNavigate} className={cx(styles.open, compact && styles.openBlock)}>
+          {notificationTexts.openConversation}
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function Question({ item, compact, highlighted }: { item: PendingApproval; compact: boolean; highlighted: boolean }) {
   const [decision, setDecision] = useState<Decision>('pending');
   const [error, setError] = useState<ApiRequestError | null>(null);
   const { refresh } = useNotifications();
@@ -63,7 +99,7 @@ function Question({ item, compact }: { item: PendingApproval; compact: boolean }
   const left = ru.approvals.expiresIn(timeLeft(item.expiresAt));
   const decided = decision === 'yes' || decision === 'no';
   return (
-    <article className={cx(styles.card, compact && styles.compact)}>
+    <article className={cx(styles.card, compact && styles.compact, highlighted && styles.highlighted)}>
       <div className={styles.cardRow}>
         <span className={styles.tile}>
           <Icon name={actionIcon(item.tool)} size={compact ? 15 : 18} />
@@ -138,14 +174,19 @@ function Failure({ f, onNavigate }: { f: FailedRun; onNavigate: () => void }) {
   );
 }
 
-export function ApprovalLists({ data, compact, onNavigate }: { data: ApprovalsResponse; compact: boolean; onNavigate: () => void }) {
+// `highlighted` — the question an old notification led to (`/approvals?question=…`).
+export function ApprovalLists({ data, compact, onNavigate, highlighted = null }: { data: ApprovalsResponse; compact: boolean; onNavigate: () => void; highlighted?: string | null }) {
   return (
     <>
       {data.pending.length === 0 ? <p className={styles.empty}>{ru.approvals.empty}</p> : null}
       <div className={styles.list}>
         {data.pending.map((item, i) => (
           <div key={item.id} className="rise" style={{ animationDelay: `${Math.min(i, 6) * 0.06}s` }}>
-            <Question item={item} compact={compact} />
+            {item.conversation ? (
+              <ConversationQuestion item={{ ...item, conversation: item.conversation }} compact={compact} highlighted={item.id === highlighted} onNavigate={onNavigate} />
+            ) : (
+              <Question item={item} compact={compact} highlighted={item.id === highlighted} />
+            )}
           </div>
         ))}
       </div>

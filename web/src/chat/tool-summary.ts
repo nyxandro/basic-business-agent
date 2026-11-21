@@ -5,7 +5,7 @@ import { fileBlockResultSchema, GENUI_TOOL, toolTableResultSchema, WIDGET_TOOL, 
 import { ru } from '../i18n/ru.ts';
 import { drawableOperations } from '../widgets/operations.ts';
 import { systemOf } from './systems.ts';
-import { parseToolResult } from './tool-result.ts';
+import { parseToolResult, type ToolOutcome } from './tool-result.ts';
 
 // CopilotKit's state of a call, or ours for a call without its result that is not under way (call-progress.ts).
 export type ToolStatus = 'inProgress' | 'executing' | 'complete' | 'waiting' | 'stopped';
@@ -16,6 +16,12 @@ export type ToolSummary =
   | { state: 'declined'; text: string }
   | { state: 'failed'; text: string; code: string | null }
   | { state: 'done'; text: string; readOnly: boolean; count: number | null; value: unknown };
+
+// Why an action did not run: the person said «Нет», wrote a new message instead, or the question burnt unanswered.
+function declinedText(outcome: Extract<ToolOutcome, { kind: 'declined' }>): string {
+  if (outcome.expiredHours !== null) return ru.chat.expiredAction(outcome.expiredHours);
+  return outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction;
+}
 
 const SUBAGENT_CALL = 'agent-';
 
@@ -61,7 +67,7 @@ interface MemoryResult {
 function memorySummary(where: 'project' | 'personal', status: ToolStatus, result: string | undefined): ToolSummary {
   if (status !== 'complete') return { state: 'running', text: ru.chat.memoryRunning };
   const outcome = parseToolResult(result);
-  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'declined') return { state: 'declined', text: declinedText(outcome) };
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.memoryFailed(where), code: outcome.code };
   const results = ((outcome.value as { results?: MemoryResult[] } | null)?.results ?? []).filter((r) => typeof r?.text === 'string');
   // A call that ended without our result (the answer broke off in it) remembered nothing the line could name.
@@ -98,7 +104,7 @@ function conversationsSummary(status: ToolStatus, result: string | undefined, pa
   const taking = asked.mode === 'take';
   if (status !== 'complete') return { state: 'running', text: taking ? ru.chat.conversationFileTaking : ru.chat.conversationsRunning };
   const outcome = parseToolResult(result);
-  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'declined') return { state: 'declined', text: declinedText(outcome) };
   const failedText = taking ? ru.chat.conversationFileFailed : ru.chat.conversationsFailed;
   if (outcome.kind === 'failed') return { state: 'failed', text: failedText, code: outcome.code };
   const value = (typeof outcome.value === 'object' && outcome.value !== null ? outcome.value : null) as ConversationsResult | null;
@@ -164,7 +170,7 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   // Under way: named by its action (owner, 20.11) — «Запись файла…», «Команда в рабочей папке…».
   if (status !== 'complete') return { state: 'running', text: system ? ru.chat.toolRunningIn(system) : action ? ru.chat.toolRunningAction(action.title) : ru.chat.toolRunning };
   const outcome = parseToolResult(result);
-  if (outcome.kind === 'declined') return { state: 'declined', text: outcome.superseded ? ru.chat.supersededAction : ru.chat.declinedAction };
+  if (outcome.kind === 'declined') return { state: 'declined', text: declinedText(outcome) };
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.toolFailed(system ?? action?.title ?? name), code: outcome.code ?? null };
   return {
     state: 'done',

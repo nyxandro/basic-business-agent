@@ -68,3 +68,11 @@ export interface TaskRunsResponse {
   fireAt: string | null;
   runs: TaskRunDto[];
 }
+
+// «Режимы работы» → «Подтверждения» (docs/specs/[20.11.2026]-notifications.md, F4): how long a question «Да» waits, in
+// hours — of a conversation and of a background task. A question keeps the term it was asked with.
+export const APPROVAL_TTL_HOURS_MIN = 1;
+export const APPROVAL_TTL_HOURS_MAX = 720;
+const ttlHours = z.number().int().min(APPROVAL_TTL_HOURS_MIN).max(APPROVAL_TTL_HOURS_MAX);
+export const approvalSettingsSchema = z.strictObject({ chatTtlHours: ttlHours, backgroundTtlHours: ttlHours });
+export type ApprovalSettingsDto = z.infer<typeof approvalSettingsSchema>;

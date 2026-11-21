@@ -4,6 +4,8 @@ import type { OAuthDiscoveryState } from '@modelcontextprotocol/client';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
+import { notices } from '../notifications/kinds.ts';
+import { notify } from '../notifications/notify.ts';
 
 export type CredentialStatus = 'connected' | 'unverified' | 'auth_error';
 
@@ -70,6 +72,21 @@ export async function setCredentialStatus(db: Db, userId: string, connectorId: s
     status,
     errorCode,
   ]);
+}
+
+// The system refused the employee's access: «Ошибка доступа», and the employee is told — once per breakage, when the
+// access turns from working to broken (docs/specs/[20.11.2026]-notifications.md).
+export async function markCredentialBroken(db: Db, input: { userId: string; connectorId: string; title: string; errorCode: string }): Promise<void> {
+  const { rows } = await db.query<{ was: CredentialStatus }>(
+    `UPDATE app.connector_credentials c SET status = 'auth_error', checked_at = now(), last_error_code = $3, updated_at = now()
+       FROM (SELECT user_id, connector_id, status AS was FROM app.connector_credentials WHERE user_id = $1 AND connector_id = $2 FOR UPDATE) o
+      WHERE c.user_id = o.user_id AND c.connector_id = o.connector_id RETURNING o.was`,
+    [input.userId, input.connectorId, input.errorCode],
+  );
+  const was = rows[0]?.was;
+  if (was && was !== 'auth_error') {
+    await notify(db, notices.connectionBroken({ userId: input.userId, connectionKey: `connector:${input.connectorId}`, title: input.title, brokenAt: new Date() }));
+  }
 }
 
 export async function deleteCredential(db: Db, userId: string, connectorId: string): Promise<void> {

@@ -166,6 +166,11 @@ export const ERROR_CATALOG = {
     userMessage: 'Документ изменился после вопроса «Да» — печать и подпись не поставлены. Попросите агента поставить их заново: вы подтвердите новый вариант.',
   },
   APP_SIGN_FAILED: { status: 500, userMessage: 'Не получилось поставить печать и подпись. Попробуйте ещё раз; если повторяется — сообщите код ошибки администратору.' },
+  // Notifications in the browser (docs/specs/[20.11.2026]-notifications.md).
+  APP_NOTIFICATION_FAILED: { status: 500, userMessage: 'Не удалось записать уведомление. Само действие выполнено.' },
+  APP_PUSH_SUBSCRIBE_FAILED: { status: 400, userMessage: 'Не удалось включить уведомления. Попробуйте ещё раз.' },
+  APP_PUSH_NOT_SUBSCRIBED: { status: 409, userMessage: 'Уведомления в этом браузере не включены. Включите их и попробуйте снова.' },
+  APP_PUSH_FAILED: { status: 502, userMessage: 'Сервис уведомлений браузера не принял уведомление. Список уведомлений в приложении работает.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

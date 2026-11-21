@@ -23,7 +23,7 @@ import styles from './projects.module.css';
 
 export function ArchivePage() {
   const { state, reload } = useLoad(fetchArchive, ['projects', 'archive']);
-  const { wide, openMenu, refreshProjects, projectsKey } = useShell();
+  const { openMenu, refreshProjects, projectsKey } = useShell();
   const [seenKey, setSeenKey] = useState(projectsKey);
   if (seenKey !== projectsKey) {
     setSeenKey(projectsKey);
@@ -57,7 +57,7 @@ export function ArchivePage() {
 
   return (
     <>
-      {wide ? null : <ChatHeaderBar title={ru.projects.archiveTitle} onOpenMenu={openMenu} />}
+      <ChatHeaderBar title={ru.projects.archiveTitle} onOpenMenu={openMenu} />
       <div className={`${page.scroll} scroll-thin`}>
         <div className={`${styles.page} rise`}>
           <div className={styles.titleRow}>

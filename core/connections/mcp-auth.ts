@@ -30,7 +30,7 @@ import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { isPublicAddress } from '../net/public-address.ts';
 import type { McpDefinition } from '../plugins/public/index.ts';
-import { loadCredential, saveCredential, setCredentialStatus, type StoredCredential } from './credentials.ts';
+import { loadCredential, markCredentialBroken, saveCredential, type StoredCredential } from './credentials.ts';
 import { authFailed, notConnected, signInNotFinished, unavailable } from './errors.ts';
 import { isNetworkFailure, safeCause } from './log-safe.ts';
 import { signInChallenge } from './probe.ts';
@@ -381,7 +381,7 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
       result = await auth(provider, { serverUrl: target.serverUrl, fetchFn: timed });
     } catch (error) {
       if (notNow(error)) throw unavailable(title, connectorId, safeCause(error));
-      await setCredentialStatus(deps.db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
+      await markCredentialBroken(deps.db, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
       throw authFailed(title, connectorId, safeCause(error));
     }
     // A refresh that did not work ends in a new sign-in page — and nobody is there to open it. The library goes there
@@ -389,7 +389,7 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
     // system is unavailable for now, the access itself may be fine and stays.
     if (result !== 'AUTHORIZED' || !fresh.token) {
       if (credential.refreshToken && !captured.tokensGone) throw unavailable(title, connectorId);
-      await setCredentialStatus(deps.db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
+      await markCredentialBroken(deps.db, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
       throw authFailed(title, connectorId);
     }
     return fresh.token;

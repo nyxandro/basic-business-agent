@@ -1,54 +1,103 @@
-// Counters in the menu (spec, scenario 4): questions of background tasks waiting for an answer.
-// Refreshed when the person moves between screens, every minute, and after a decision. On a phone
-// «Ждёт подтверждения» opens here as a sheet over any screen (mockup).
-import type { NotificationsResponse } from '@bba/contracts';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router';
-import { fetchNotifications } from '../approvals/api.ts';
-import { ApprovalsSheet } from '../approvals/ApprovalsSheet.tsx';
-
-const REFRESH_MS = 60_000;
+// The bell (docs/specs/[20.11.2026]-notifications.md, scenario 3, F3): its counters — questions waiting for the person
+// and unread notifications — and the panel under it. A visible tab tells the server «I am here» every 30 s and gets the
+// counters back; a hidden one says so at once, and the server pushes to the browser instead. A notification that comes
+// while the person is in the app is shown as a hint inside the page. On a phone the panel is a sheet from below.
+import { PRESENCE_PING_MS, type NotificationsResponse } from '@bba/contracts';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { notificationTexts as t } from '../i18n/notifications.ts';
+import { fetchCounts, markRead, sendPresence } from '../notifications/api.ts';
+import { NotificationsPanel, type PanelTab } from '../notifications/NotificationsPanel.tsx';
+import { refreshWorker } from '../notifications/push.ts';
+import { Sheet } from '../ui/Modal.tsx';
+import { useToast } from '../ui/Toast.tsx';
+import { useMedia, WIDE_QUERY } from './use-media.ts';
 
 interface NotificationsValue {
   counts: NotificationsResponse | null;
   refresh: () => void;
-  openApprovals: () => void;
+  panel: { open: boolean; tab: PanelTab };
+  openPanel: (tab?: PanelTab) => void;
+  closePanel: () => void;
 }
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
 
+// Names this tab for the server's presence (a person may have several tabs and devices).
+const newTabId = () => crypto.randomUUID().replaceAll('-', '');
+
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [counts, setCounts] = useState<NotificationsResponse | null>(null);
-  const [tick, setTick] = useState(0);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [panel, setPanel] = useState<{ open: boolean; tab: PanelTab }>({ open: false, tab: 'waiting' });
+  const [tab] = useState(newTabId);
+  const wide = useMedia(WIDE_QUERY);
   const location = useLocation();
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
+  const navigate = useNavigate();
+  const toast = useToast();
+  // The newest notification already shown or already there when the page opened: only a newer one is a hint.
+  const shown = useRef<string | null | undefined>(undefined);
+
+  const apply = useCallback(
+    (next: NotificationsResponse) => {
+      setCounts(next);
+      const latest = next.latest;
+      if (shown.current === undefined) {
+        shown.current = latest?.id ?? null;
+        return;
+      }
+      if (!latest || latest.id === shown.current) return;
+      shown.current = latest.id;
+      toast(`${latest.title} · ${latest.body}`, {
+        label: t.hintOpen,
+        run: () => {
+          markRead(latest.id).catch((error: unknown) => console.warn('notification not marked read', error));
+          void navigate(latest.link);
+        },
+      });
+    },
+    [toast, navigate],
+  );
+
+  // A failed refresh keeps the last counters: they are a hint, the screens load their own data.
+  const refresh = useCallback(() => {
+    fetchCounts().then(apply, (error: unknown) => console.warn('notification counters not refreshed', error));
+  }, [apply]);
 
   useEffect(() => {
-    let current = true;
-    // A failed refresh keeps the last counters: they are a hint, the screens load their own data.
-    fetchNotifications().then(
-      (next) => {
-        if (current) setCounts(next);
-      },
-      (error: unknown) => console.warn('notification counters not refreshed', error),
-    );
+    refresh();
+  }, [location.pathname, refresh]);
+
+  useEffect(() => {
+    const ping = (visible: boolean) => sendPresence({ tab, visible }).then(visible ? apply : () => undefined, (error: unknown) => console.warn('presence not sent', error));
+    const onVisibility = () => void ping(document.visibilityState === 'visible');
+    if (document.visibilityState === 'visible') void ping(true);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void ping(true);
+    }, PRESENCE_PING_MS);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      current = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [location.pathname, tick]);
+  }, [tab, apply]);
 
-  useEffect(() => {
-    const timer = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(timer);
+  useEffect(() => refreshWorker(), []);
+
+  const openPanel = useCallback((next?: PanelTab) => setPanel((p) => ({ open: true, tab: next ?? p.tab })), []);
+  const closePanel = useCallback(() => {
+    setPanel((p) => ({ ...p, open: false }));
+    refresh();
   }, [refresh]);
-
-  const openApprovals = useCallback(() => setSheetOpen(true), []);
-  const value = useMemo(() => ({ counts, refresh, openApprovals }), [counts, refresh, openApprovals]);
+  const value = useMemo(() => ({ counts, refresh, panel, openPanel, closePanel }), [counts, refresh, panel, openPanel, closePanel]);
   return (
     <NotificationsContext value={value}>
       {children}
-      <ApprovalsSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      {/* On a computer the panel opens under the bell (layout/ChatHeader.tsx). */}
+      {wide ? null : (
+        <Sheet open={panel.open} onClose={closePanel} label={t.bell}>
+          {panel.open ? <NotificationsPanel compact onClose={closePanel} /> : null}
+        </Sheet>
+      )}
     </NotificationsContext>
   );
 }

@@ -41,7 +41,8 @@ export type FakeTurn =
   // the connection open.
   | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut }
   // `text` comes before the calls in the same answer, as a model that writes its answer and calls a tool at once.
-  | { toolCalls: { name: string; args: Record<string, unknown> }[]; text?: string }
+  // `delayMs` — the model thinks this long before it answers (a test closes the tab meanwhile).
+  | { toolCalls: { name: string; args: Record<string, unknown> }[]; text?: string; delayMs?: number }
   | { status: number; error: string }
   // The connection closes before any answer, as a provider or a proxy that restarted.
   | { reset: true };

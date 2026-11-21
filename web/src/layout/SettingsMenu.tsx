@@ -1,10 +1,11 @@
-// The gear next to the person's name (mockup): «Моя память», «Мои расходы», «Подключения», the
+// The gear next to the person's name (mockup): «Моя память», «Мои расходы», «Подключения», «Уведомления», the
 // theme and «Выйти». The count of connected systems is asked when the menu opens. The menu opens
 // over the whole row of the person, so the parent puts both into one MenuAnchor.
 import type { MyConnection, MyUsage } from '@bba/contracts';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useSession } from '../auth/session.tsx';
+import { notificationTexts } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
 import { fetchConnections } from '../settings/api.ts';
 import { IconButton } from '../ui/Button.tsx';
@@ -48,6 +49,9 @@ export function SettingsMenu({ usage, onNavigate }: { usage: MyUsage | null; onN
         </MenuItem>
         <MenuItem icon="plug" meta={connections && connections.length > 0 ? ru.shell.connectionsOf(connected ?? 0, connections.length) : undefined} onSelect={go('/settings/connections')}>
           {ru.shell.connections}
+        </MenuItem>
+        <MenuItem icon="bell" onSelect={go('/settings/notifications')}>
+          {notificationTexts.settingsTitle}
         </MenuItem>
         <MenuSeparator />
         <div className={styles.themeBlock}>

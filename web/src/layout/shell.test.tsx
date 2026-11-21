@@ -101,7 +101,7 @@ describe('the frame of the application', () => {
 
   it('shows «Ждёт подтверждения» only while something waits, with how many', async () => {
     const s = server();
-    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 2, unreadResults: 0 } });
+    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 2, unread: 0, latest: null } });
     renderApp('/');
     const link = await screen.findByRole('link', { name: /^Ждёт подтверждения/ });
     expect(link).toHaveAttribute('href', '/approvals');

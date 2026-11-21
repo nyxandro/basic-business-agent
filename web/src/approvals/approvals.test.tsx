@@ -15,6 +15,7 @@ const QUESTION = {
   args: { to: 'client@example.com', text: 'Сводка готова' },
   createdAt: '2026-11-14T06:00:00.000Z',
   expiresAt: new Date(Date.now() + 3 * 3600_000 + 120_000).toISOString(),
+  conversation: null,
 };
 
 function server(approvals: object, pending = 1) {
@@ -24,14 +25,14 @@ function server(approvals: object, pending = 1) {
     'GET /app/api/threads': { body: { threads: [], next: null } },
     'GET /app/api/projects': { body: { projects: [] } },
     'GET /app/api/me/usage': { body: { month: { spentRub: 0, limitRub: 3000, resetsOn: '2026-12-01' }, daily: null } },
-    'GET /app/api/me/notifications': { body: { pendingApprovals: pending, unreadResults: 0 } },
+    'GET /app/api/me/notifications': { body: { pendingApprovals: pending, unread: 0, latest: null } },
     'GET /app/api/approvals': { body: approvals },
     // The chat under the phone's sheet.
     'GET /app/api/copilotkit/info': { body: { version: '2.0.0', agents: { sales: { name: 'sales', description: '', className: 'MastraAgent' } } } },
     'GET /app/api/threads/t1/project': { body: { projectId: null } },
   });
   s.set('POST /app/api/approvals/a1/decision', () => {
-    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unreadResults: 0 } });
+    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null } });
     return { body: { ok: true } };
   });
   return s;
@@ -102,18 +103,41 @@ describe('«Ждёт подтверждения»', () => {
     expect(screen.getByText(/APP_MODEL_UNAVAILABLE/)).toBeInTheDocument();
   });
 
+  // The bell's sheet on a phone opens on «Ждут решения» while a question waits (docs/specs/[20.11.2026]-notifications.md, F3).
   it('opens as a sheet from the bell on a phone', async () => {
     stubSystemTheme('light', PHONE_WIDTH);
     server({ pending: [QUESTION], failed: [] });
     renderApp('/agents/sales?thread=t1');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Ждёт подтверждения: 1' }));
-    const sheet = await screen.findByRole('dialog', { name: 'Ждёт подтверждения' });
-    expect(within(sheet).getByText('Вопросы от фоновых задач агентов')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Уведомления: 1 вопрос ждёт решения' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Уведомления' });
+    expect(within(sheet).getByRole('radio', { name: 'Ждут решения · 1' })).toHaveAttribute('aria-checked', 'true');
     await user.click(await within(sheet).findByRole('button', { name: 'Да, выполнить' }));
     expect(await within(sheet).findByText('Выполнено')).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: 'Закрыть' }));
-    expect(screen.queryByRole('dialog', { name: 'Ждёт подтверждения' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Уведомления' })).not.toBeInTheDocument();
+  });
+
+  // A question of a conversation is answered there (F4): the card leads to it.
+  it('shows a question of a conversation with «Открыть разговор»', async () => {
+    server({ pending: [{ ...QUESTION, id: 'a2', task: null, conversation: { threadId: 't9', agentId: 'sales', title: 'Счёт для Вектора' } }], failed: [] });
+    renderApp('/approvals');
+    const card = (await screen.findByText('Из разговора «Счёт для Вектора»')).closest('article')!;
+    expect(within(card).getByRole('link', { name: 'Открыть разговор' })).toHaveAttribute('href', '/agents/sales?thread=t9');
+    expect(within(card).queryByRole('button', { name: 'Да, выполнить' })).not.toBeInTheDocument();
+  });
+
+  // An old notification leads to its question: it is marked; a decided one says what became of it.
+  it('marks the question of a notification, and tells a decided one instead of an empty screen', async () => {
+    const s = server({ pending: [QUESTION], failed: [] });
+    s.set('GET /app/api/approvals/gone', { body: { id: 'gone', status: 'approved', action: 'Отправить письмо клиенту', decidedAt: '2026-11-14T06:14:00.000Z' } });
+    const first = renderApp('/approvals?question=a1');
+    const card = (await screen.findByText('Утренняя сводка')).closest('article')!;
+    expect(card.className).toMatch(/highlighted/);
+    first.unmount();
+    renderApp('/approvals?question=gone');
+    expect(await screen.findByText(/^Вопрос уже решён: выполнено/)).toBeInTheDocument();
+    expect(screen.getByText('Отправить письмо клиенту')).toBeInTheDocument();
   });
 });
 

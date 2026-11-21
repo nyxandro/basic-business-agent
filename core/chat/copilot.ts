@@ -7,11 +7,12 @@ import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime
 import type { AbstractAgent } from '@ag-ui/client';
 import { EventType, type BaseEvent } from '@ag-ui/core';
 import { CHAT_EVENTS } from '@bba/contracts';
-import { filter, finalize, Observable, Subject } from 'rxjs';
+import { filter, finalize, Observable, Subject, tap } from 'rxjs';
 import type { WebProgress } from '../web/trail.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
+import { newRunLife } from './after-leaving.ts';
 
 export const COPILOT_BASE_PATH = '/app/api/copilotkit';
 
@@ -65,6 +66,8 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
         .run({ ...input, state: {} })
         .pipe(
           filter((event) => event.type !== EventType.STATE_SNAPSHOT && event.type !== EventType.STATE_DELTA),
+          // A broken answer is told as «Ответ не получился» if the person left before it ended.
+          tap({ next: (event) => void (event.type === EventType.RUN_ERROR && (run.life.failed = true)), error: () => void (run.life.failed = true) }),
           finalize(live.onAgentEnd),
         );
       // The steps only while the agent's events go: they end, fail or are stopped together.
@@ -85,7 +88,7 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
       if (ctx.kind === 'run') return { [ctx.run.agentId]: await agentFor(ctx.run.agentId, ctx.run, { onMessageDiscarded: ctx.onMessageDiscarded, onAgentEnd: ctx.onAgentEnd }) };
       const entries = await Promise.all(
-        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, projectOwnerId: null, lostProject: null, snapshot: null, agentStarted: false, models: null, skillPaths: [], abilities: null, release: null })] as const),
+        ctx.agentIds.map(async (id) => [id, await agentFor(id, { agentId: id, userId: ctx.userId, resourceId: ctx.userId, threadId: `listing-${ctx.userId}`, mode: ctx.mode, projectId: null, projectOwnerId: null, lostProject: null, snapshot: null, agentStarted: false, models: null, skillPaths: [], abilities: null, release: null, life: newRunLife() })] as const),
       );
       return Object.fromEntries(entries);
     },

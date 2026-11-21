@@ -47,9 +47,11 @@ export function toLedgerDate(start: number | string): Date {
   return typeof start === 'number' ? new Date(start * 1000) : new Date(start);
 }
 
-export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
+// `charged` — the employees whose spend grew: their monthly limit is looked at (core/models/limit-notices.ts).
+export async function ingestUsage(db: Db, payload: unknown): Promise<{ inserted: number; charged: string[] }> {
   const records = Array.isArray(payload) ? payload : [payload];
   let inserted = 0;
+  const charged = new Set<string>();
   for (const raw of records) {
     const parsed = logSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`APP_USAGE_PAYLOAD_INVALID: ${parsed.error.issues.map((i) => i.path.join('.')).join(', ')}`);
@@ -84,6 +86,8 @@ export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
       ],
     );
     inserted += rowCount ?? 0;
+    const userId = r.metadata?.user_api_key_user_id;
+    if (rowCount && userId && (r.response_cost ?? 0) > 0) charged.add(userId);
     // A model on a key always costs something: zero means LiteLLM could not price the call (e.g.
     // recognition priced per token whose provider reports no tokens) and the ledger undercounts.
     if (rowCount && !r.response_cost) {
@@ -91,7 +95,7 @@ export async function ingestUsage(db: Db, payload: unknown): Promise<number> {
       if (paid.rowCount) logEvent('warn', 'usage_cost_missing', { model: r.model_group, deployment: r.model_id, litellmCallId: r.litellm_call_id });
     }
   }
-  return inserted;
+  return { inserted, charged: [...charged] };
 }
 
 export async function todaySubscriptionTokens(db: Db, userId: string, timezone: string): Promise<number> {

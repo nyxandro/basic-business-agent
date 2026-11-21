@@ -10,6 +10,7 @@ function sources(patch: Partial<InstallationSources> = {}): InstallationSources 
       timezone: 'Europe/Moscow',
       masking: { initialKinds: ['passport', 'snils', 'card', 'inn'] },
       limits: { initialOrgMonthlyRub: 50_000, initialUserMonthlyRub: 3_000, initialDailySubscriptionTokens: 500_000 },
+      approvals: { initialChatTtlHours: 24, initialBackgroundTtlHours: 72 },
     },
     pluginSettings: { mail: { host: 'imap.example.com' } },
     plugins: [
@@ -48,6 +49,16 @@ describe('validateInstallation', () => {
     const src = sources();
     (src.agents[0]!.passport as { model?: string }).model = 'main';
     expect(problemsOf(src)).toMatchObject([{ file: 'agents/sales/agent.ts', message: expect.stringContaining('"model"') }]);
+  });
+
+  // docs/specs/[20.11.2026]-notifications.md, F4: the terms of questions «Да» have no invented default.
+  it('refuses an installation without the terms of questions «Да», or with a term out of 1–720 hours', () => {
+    const without = sources();
+    delete (without.app as { approvals?: unknown }).approvals;
+    expect(problemsOf(without)).toMatchObject([{ file: 'config/app.ts', field: 'approvals' }]);
+    const tooLong = sources();
+    (tooLong.app as { approvals: { initialChatTtlHours: number } }).approvals.initialChatTtlHours = 721;
+    expect(problemsOf(tooLong)).toMatchObject([{ file: 'config/app.ts', field: 'approvals.initialChatTtlHours' }]);
   });
 
   it('reports a missing plugin secret as a field of .env', () => {

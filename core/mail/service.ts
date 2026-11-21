@@ -7,7 +7,7 @@ import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../server/log.ts';
-import { accountCounts, accountDto, deleteAccount, deleteApp, listAccounts, listApps, saveAccount, saveApp, setAccountStatus, type MailAccount } from './accounts.ts';
+import { accountCounts, accountDto, deleteAccount, deleteApp, listAccounts, listApps, markMailboxBroken, saveAccount, saveApp, type MailAccount } from './accounts.ts';
 import { checkMailbox, type MailLogin, type MailTransportOptions } from './client.ts';
 import { discoverMail, type DiscoverDeps } from './discover.ts';
 import { completeMailOAuth, freshMailSecret, startMailOAuth, type EndpointsOf, type OAuthDeps } from './oauth.ts';
@@ -111,7 +111,7 @@ export function createMailService(deps: MailDeps): MailService {
     },
 
     async refused(account) {
-      await setAccountStatus(deps.db, account.id, 'auth_error', 'APP_MAIL_AUTH_FAILED');
+      await markMailboxBroken(deps.db, account, 'APP_MAIL_AUTH_FAILED');
     },
 
     async adminState() {

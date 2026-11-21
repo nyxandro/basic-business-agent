@@ -31,6 +31,8 @@ import { createModelGateway } from '../models/gateway.ts';
 import { GATEWAY_OWNER, GATEWAY_TIMEOUTS } from '../models/gateway-sync.ts';
 import { createLiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
+import { ensureApprovalSettings } from '../approvals/settings.ts';
+import { createNotifications } from '../notifications/service.ts';
 import { ensureMaskingSettings } from '../masking/settings.ts';
 import { createCopilotHandler } from '../chat/copilot.ts';
 import { NAMING_MAX_MS, TITLE_WAIT_AT_END_MS } from '../chat/naming.ts';
@@ -70,11 +72,14 @@ async function main(): Promise<void> {
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = registry.ids();
   await ensureLimitSettings(db, installation.app.limits);
+  await ensureApprovalSettings(db, installation.app.approvals);
   await ensureMaskingSettings(db, installation.app.masking.initialKinds);
   await ensureOrgName(db, installation.app.name);
   // «Что агенту можно» (spec, section 8.30): every agent of the installation has its row from the start.
   await ensureAgentAbilities(db, agentIds);
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
+  // Notifications in the browser: the VAPID keys are made at the first start (docs/specs/[20.11.2026]-notifications.md).
+  const notifications = await createNotifications({ db, box, timezone: installation.app.timezone });
   const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
   await gateway.syncOrgBudget();
@@ -165,7 +170,7 @@ async function main(): Promise<void> {
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);
@@ -180,6 +185,7 @@ async function main(): Promise<void> {
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
   background.start();
+  notifications.delivery.start();
   // Runs a stopped server left go on first, then fires missed while it was down.
   await background.recover();
   void background.catchUp().catch((error: unknown) => logEvent('error', 'background_catch_up_failed', { error }));
@@ -192,6 +198,7 @@ async function main(): Promise<void> {
     logEvent('info', 'server_stopping', { signal });
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
+    await notifications.delivery.stop();
     stopTrashPurge();
     stopDraftsSweep();
     stopPreviewPurge();

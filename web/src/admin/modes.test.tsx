@@ -29,10 +29,33 @@ function server(tasks: object[] = [TASK]) {
     'GET /app/api/admin/agents': { body: { agents: AGENTS, missingAgents: [] } },
     'GET /app/api/admin/departments': { body: { departments: [{ id: SALES_DEP, name: 'Отдел продаж', userIds: [], agentIds: ['sales'] }] } },
     'GET /app/api/admin/people': { body: { people: [] } },
+    'GET /app/api/admin/approval-settings': { body: { chatTtlHours: 24, backgroundTtlHours: 72 } },
   });
 }
 
 describe('«Режимы работы»', () => {
+  // docs/specs/[20.11.2026]-notifications.md, F4: how long a question «Да» waits.
+  it('sets how long a question «Да» waits, from 1 to 720 hours', async () => {
+    const s = server();
+    s.set('PUT /app/api/admin/approval-settings', (call) => ({ body: call.body }));
+    renderApp('/admin/modes');
+    const chat = await screen.findByRole('textbox', { name: 'Вопрос из разговора, часов' });
+    const background = screen.getByRole('textbox', { name: 'Вопрос фоновой задачи, часов' });
+    expect(chat).toHaveValue('24');
+    expect(background).toHaveValue('72');
+    const user = userEvent.setup();
+    await user.clear(chat);
+    await user.type(chat, '0');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(await screen.findByText('Срок — от 1 до 720 часов')).toBeInTheDocument();
+    expect(s.calls.some((c) => c.method === 'PUT')).toBe(false);
+    await user.clear(chat);
+    await user.type(chat, '12');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ chatTtlHours: 12, backgroundTtlHours: 72 }));
+    expect(await screen.findByText('Сохранено')).toBeInTheDocument();
+  });
+
   it('shows a task with its schedule, area and «Выполнено у 7 из 8», and the breakdown by people', async () => {
     const s = server();
     s.set('GET /app/api/admin/tasks/t1/runs', {

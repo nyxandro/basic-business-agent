@@ -13,6 +13,8 @@ export function stubSystemTheme(initial: 'light' | 'dark', width = DESKTOP_WIDTH
   const matches = (query: string): boolean => {
     // jsdom has no Web Animations: screens run as with «уменьшить движение» and change at once.
     if (query.includes('prefers-reduced-motion')) return true;
+    // A tab of the browser, not the app opened from the home screen (notifications/push.ts).
+    if (query.includes('display-mode')) return false;
     const minWidth = /min-width:\s*(\d+)px/.exec(query);
     if (minWidth) return width >= Number(minWidth[1]);
     return query.includes('dark') ? dark : !dark;

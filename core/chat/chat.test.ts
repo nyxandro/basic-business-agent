@@ -179,7 +179,7 @@ describe('confirmation in the chat', () => {
     const result = declined.events.find((e) => e.type === 'TOOL_CALL_RESULT') as AguiEvent & { toolCallId?: string; content?: string };
     expect(declined.events[0]!.type).toBe('RUN_STARTED');
     expect(result.toolCallId).toBe(interrupt.id.split('::').at(-1));
-    expect(JSON.parse(result.content!)).toEqual({ declined: true, superseded: false });
+    expect(JSON.parse(result.content!)).toEqual({ declined: true, superseded: false, expiredHours: null });
 
     t.model.script({ toolCalls: [{ name: 'mail_send', args: { to: 'z@example.com', text: 'z2' } }] });
     const again = await run(olga, 'sales', threadId, 'Попробуй ещё раз');
@@ -187,7 +187,7 @@ describe('confirmation in the chat', () => {
     const next = await run(olga, 'sales', threadId, 'Нет, расскажи про сделки');
     const superseded = next.events.find((e) => e.type === 'TOOL_CALL_RESULT') as AguiEvent & { toolCallId?: string; content?: string };
     expect(superseded.toolCallId).toBe(interruptOf(again.events)!.id.split('::').at(-1));
-    expect(JSON.parse(superseded.content!)).toEqual({ declined: true, superseded: true });
+    expect(JSON.parse(superseded.content!)).toEqual({ declined: true, superseded: true, expiredHours: null });
   });
 
   it('does not run an approved action when the monthly limit ran out meanwhile', async () => {
@@ -254,7 +254,7 @@ describe('history of a conversation for the chat window', () => {
     await run(olga, 'sales', threadId, null, [{ interruptId: interruptOf(first.events)!.id, status: 'cancelled' }]);
     const { events } = await connect(olga, threadId);
     const messages = events[1]!.messages as { role: string; content?: string }[];
-    expect(JSON.parse(messages.find((m) => m.role === 'tool')!.content!)).toEqual({ declined: true, superseded: false });
+    expect(JSON.parse(messages.find((m) => m.role === 'tool')!.content!)).toEqual({ declined: true, superseded: false, expiredHours: null });
     expect(events[2]!.outcome).toBeUndefined();
   });
 

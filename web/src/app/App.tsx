@@ -14,6 +14,7 @@ import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { ChatPage } from '../chat/ChatPage.tsx';
 import { AppShell, Home } from '../layout/AppShell.tsx';
 import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
+import { NotificationsPage } from '../settings/NotificationsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
@@ -65,6 +66,7 @@ export function App() {
                     <Route path="memory" element={<MemoryPage />} />
                     <Route path="usage" element={<UsagePage />} />
                     <Route path="connections" element={<ConnectionsPage />} />
+                    <Route path="notifications" element={<NotificationsPage />} />
                   </Route>
                 </Route>
               </Route>

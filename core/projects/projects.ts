@@ -14,7 +14,7 @@ import { logEvent } from '../server/log.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';
-import { checkAccess, describeAccess, writeAccess } from './sharing.ts';
+import { checkAccess, describeAccess, notifyProjectShared, peopleOfList, writeAccess } from './sharing.ts';
 
 export const NAME_MAX = 80;
 export const INSTRUCTIONS_MAX = 8000;
@@ -175,16 +175,19 @@ export async function markSeen(db: Queryable, userId: string, projectId: string)
 export async function createProject(deps: ProjectsDeps, userId: string, input: { name: string; access: ProjectAccessInput }): Promise<ProjectDto> {
   const clean = cleanName(input.name);
   const id = randomUUID();
+  let opened: Set<string>;
   try {
-    await inTransaction(deps.db, async (c) => {
+    opened = await inTransaction(deps.db, async (c) => {
       const access = await checkAccess(c, userId, input.access);
       await c.query('INSERT INTO app.projects (id, user_id, name, access) VALUES ($1, $2, $3, $4)', [id, userId, clean, access.mode]);
       await writeAccess(c, id, access);
       await c.query('INSERT INTO app.project_places (user_id, project_id, position, pinned, seen_at) VALUES ($1, $2, $3, false, now())', [userId, id, UNPINNED_POSITION]);
+      return access.mode === 'list' ? peopleOfList(c, id, userId) : new Set<string>();
     });
   } catch (error) {
     throw (await nameTaken(deps.db, error, userId, clean)) ?? error;
   }
+  await notifyProjectShared(deps.db, { projectId: id, ownerId: userId, people: [...opened] });
   return projectDto(deps, userId, id);
 }
 
@@ -230,12 +233,17 @@ export async function setProjectAccess(deps: ProjectsDeps, userId: string, proje
   const found = await visibleProject(deps.db, userId, projectId, 'owner');
   requireOwner(found);
   requireActive(found);
-  const access = await inTransaction(deps.db, async (c) => {
+  const { access, opened } = await inTransaction(deps.db, async (c) => {
     const { rows } = await c.query<{ user_id: string }>('SELECT user_id FROM app.project_shares WHERE project_id = $1 AND user_id IS NOT NULL', [projectId]);
     const checked = await checkAccess(c, userId, input, rows.map((r) => r.user_id));
+    // Who saw it by the list before; a project open to the whole organisation was seen by everyone already.
+    const { rows: was } = await c.query<{ access: string }>('SELECT access FROM app.projects WHERE id = $1', [projectId]);
+    const before = was[0]?.access === 'list' ? await peopleOfList(c, projectId, userId) : null;
     await writeAccess(c, projectId, checked);
-    return checked;
+    const after = checked.mode === 'list' && was[0]?.access !== 'org' ? await peopleOfList(c, projectId, userId) : new Set<string>();
+    return { access: checked, opened: [...after].filter((id) => !before?.has(id)) };
   });
+  await notifyProjectShared(deps.db, { projectId, ownerId: userId, people: opened });
   logEvent('info', 'project_access_changed', { projectId, userId, mode: access.mode, departments: access.departmentIds.length, people: access.userIds.length });
   return projectDto(deps, userId, projectId);
 }

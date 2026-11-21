@@ -37,6 +37,9 @@ import { createGatewayWriter } from '../models/gateway-writer.ts';
 import { createModelGateway, type ModelGateway } from '../models/gateway.ts';
 import { createLiteLLMClient, type LiteLLMClient } from '../models/litellm-client.ts';
 import { ensureLimitSettings } from '../models/limits.ts';
+import { ensureApprovalSettings } from '../approvals/settings.ts';
+import { createNotifications, type Notifications } from '../notifications/service.ts';
+import type { PushTransport } from '../notifications/push.ts';
 import { GATEWAY_TIMEOUTS, reconcile, type GatewayTimeouts } from '../models/gateway-sync.ts';
 import { seedTestModels, TEST_CHATGPT_AUTH_DIR, TEST_MODEL_IDS } from '../models/test-catalog.ts';
 import { AGENT_HEADER } from '../models/usage.ts';
@@ -104,6 +107,8 @@ export interface TestApp {
   orgFilesDir: string;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
+  // Notifications of this installation: presence, the delivery (tests call `deliverDue` themselves).
+  notifications: Notifications;
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -206,6 +211,13 @@ export async function createTestApp(
     docTextRun?: RunCommand;
     // How an uploaded letterhead is prepared (blank.py and LibreOffice): without `sandbox`, no program runs.
     orgRun?: RunCommand;
+    // The terms of questions «Да» in hours (config/app.ts in an installation: 24 and 72).
+    approvals?: { initialChatTtlHours: number; initialBackgroundTtlHours: number };
+    // The push service of browsers: a fake (core/notifications/fake-push.ts); without it a push goes nowhere — the
+    // test app refuses every address as not a push service.
+    push?: { transport: PushTransport; testOrigin: string };
+    // The clock of presence and of the delivery of notifications.
+    now?: () => Date;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -215,10 +227,19 @@ export async function createTestApp(
   const auth = createAuth({ db, authPool, secret: 'test-secret-that-is-long-enough-1234567890', publicUrl: TEST_PUBLIC_URL });
   const known = new Set(opts.knownAgentIds ?? ['assistant', 'sales']);
   await ensureLimitSettings(db, opts.limits ?? { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null });
+  await ensureApprovalSettings(db, opts.approvals ?? { initialChatTtlHours: 24, initialBackgroundTtlHours: 72 });
   // Each test database gets its own LiteLLM team, so balances never leak between test files or runs.
   const teamId = `test-${database.url.split('/').pop()}`;
   const litellm = createLiteLLMClient(requireEnv('LITELLM_TEST_URL'), requireEnv('LITELLM_TEST_MASTER_KEY'), teamId);
   const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+  const noPush: PushTransport = () => Promise.reject(new Error('this test app has no push service (createTestApp({ push }))'));
+  const notifications = await createNotifications({
+    db,
+    box,
+    timezone: 'Europe/Moscow',
+    push: opts.push ?? { transport: noPush, testOrigin: 'http://push.invalid' },
+    ...(opts.now ? { now: opts.now, clock: () => opts.now!().getTime() } : {}),
+  });
   const gateway = createModelGateway({ db, client: litellm, box, timezone: 'Europe/Moscow' });
   await gateway.syncOrgBudget();
   if (!opts.noModels) await seedTestModels(db);
@@ -364,7 +385,7 @@ export async function createTestApp(
     filesDir: orgFilesDir,
     blank: { run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }) : (opts.orgRun ?? noProgram), limiter: officeLimiter, workRoot: previewRoot },
   };
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview, org });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview, org, notifications });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -406,6 +427,7 @@ export async function createTestApp(
     skillsDeps,
     orgFilesDir,
     sentMail,
+    notifications,
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {

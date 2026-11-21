@@ -1,4 +1,4 @@
-/* «Ждёт подтверждения» (mockup: the page on a computer, the sheet on a phone). */
+/* «Ждёт подтверждения» (mockup: the page on a computer; on a phone the bell's sheet, notifications/NotificationsPanel.tsx). */
 .list {
   display: flex;
   flex-direction: column;
@@ -223,23 +223,43 @@
 }
 
 
-.sheetHead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+
+
+
+
+/* The question an old notification led to (docs/specs/[20.11.2026]-notifications.md, section 7). */
+.highlighted {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
-.sheetTitle {
-  flex: 1;
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.sheetLead {
-  margin: 0 0 14px;
+.hint {
+  margin: 8px 0 0;
   font-size: 13px;
   color: var(--muted);
 }
 
+/* «Открыть разговор» of a question of a conversation. */
+.open {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--acc);
+  color: var(--on-acc);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.open:hover {
+  filter: brightness(1.05);
+}
+
+.openBlock {
+  width: 100%;
+  justify-content: center;
+  height: 44px;
+}

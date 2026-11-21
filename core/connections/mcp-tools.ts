@@ -15,7 +15,7 @@ import { AppError, isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { logEvent } from '../server/log.ts';
 import { classifyCall } from './call-errors.ts';
-import { loadCredential, setCredentialStatus } from './credentials.ts';
+import { loadCredential, markCredentialBroken } from './credentials.ts';
 import { accessLost, forbidden, keyRefused, notConnected, unavailable, unknownOutcome } from './errors.ts';
 import { safeCause } from './log-safe.ts';
 import { accessToken, mcpTarget } from './mcp-auth.ts';
@@ -153,7 +153,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
         return forbidden(server.title, connectorId);
       case 'refused':
         if (server.auth === 'personal_key' || server.auth === 'oauth') {
-          await setCredentialStatus(db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
+          await markCredentialBroken(db, { userId, connectorId, title: server.title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
           forget(server.id, userId);
           logEvent('warn', 'connector_auth_failed', { connectorId });
           return accessLost(server.title, connectorId);

@@ -1,5 +1,6 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  ApprovalSettingsDto,
   OrgAssetKind,
   OrgAssetsState,
   OrgDirector,
@@ -122,6 +123,8 @@ export const adminApi = {
   setStarters: (agentId: string, starters: string[] | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/starters`, { starters }),
   setAbilities: (agentId: string, patch: Partial<AgentAbilities>) => api<{ abilities: AgentAbilities }>('PUT', `${A}/agents/${enc(agentId)}/abilities`, patch),
   tasks: () => api<{ tasks: AdminTask[] }>('GET', `${A}/tasks`),
+  approvalSettings: () => api<ApprovalSettingsDto>('GET', `${A}/approval-settings`),
+  saveApprovalSettings: (body: ApprovalSettingsDto) => api<ApprovalSettingsDto>('PUT', `${A}/approval-settings`, body),
   createTask: (input: TaskCreate) => api<AdminTask>('POST', `${A}/tasks`, input),
   updateTask: (id: string, change: TaskUpdate) => api<AdminTask>('PUT', `${A}/tasks/${enc(id)}`, change),
   setTaskStatus: (id: string, status: 'active' | 'paused') => api<AdminTask>('PUT', `${A}/tasks/${enc(id)}/status`, { status }),

@@ -180,7 +180,7 @@ describe('conversations tool', () => {
     const callId = randomUUID();
     const sent = await conversation(olgaId, 'Письмо Ивану', [['user', [text('Отправь Ивану')]], ['assistant', [{ type: 'tool-invocation', toolInvocation: { state: 'output-error', toolCallId: callId, toolName: 'mail_send', args: {}, errorText: 'APP_MAIL_SEND_FAILED: отказ' } }, text('Не получилось.')]]]);
     await t.db.query(
-      `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at) VALUES ($1, 'sales', $2, 'r1', $3, 'mail_send', 'Отправить письмо клиенту', 'approved', now() + interval '1 day')`,
+      `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at, run_kind) VALUES ($1, 'sales', $2, 'r1', $3, 'mail_send', 'Отправить письмо клиенту', 'approved', now() + interval '1 day', 'chat')`,
       [olgaId, sent, callId],
     );
     const late = randomUUID();
@@ -190,7 +190,7 @@ describe('conversations tool', () => {
     ]);
     // A question in a chat nobody answered in time stays «pending» in the table: only a press finds it out of date.
     await t.db.query(
-      `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at) VALUES ($1, 'sales', $2, 'r2', $3, 'mail_send', 'Отправить письмо клиенту', 'pending', now() - interval '1 hour')`,
+      `INSERT INTO app.approval_requests (user_id, agent_id, thread_id, run_id, tool_call_id, tool, summary, status, expires_at, run_kind) VALUES ($1, 'sales', $2, 'r2', $3, 'mail_send', 'Отправить письмо клиенту', 'pending', now() - interval '1 hour', 'chat')`,
       [olgaId, sent, late],
     );
     const out = parsed(await ask(olga, { mode: 'read', conversation: ref(sent) }));

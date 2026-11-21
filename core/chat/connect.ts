@@ -6,7 +6,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Memory } from '@mastra/memory';
 import { CHAT_EVENTS, type DeclinedToolResult, type FailedTurns } from '@bba/contracts';
-import { pendingForThread, supersededCallsOfThread } from '../approvals/requests.ts';
+import { expiredCallsOfThread, pendingForThread, supersededCallsOfThread } from '../approvals/requests.ts';
+import { markThreadRead } from '../notifications/list.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { ERROR_CATALOG } from '../errors/catalog.ts';
@@ -16,8 +17,6 @@ import { lastBrokenTurn, verdictOf } from './retry.ts';
 import type { TranslatedError } from './stream.ts';
 
 const APPROVAL_PREFIX = 'mastra-approval::';
-// Conversations of background tasks are "bg:<taskId>" (core/background/service.ts).
-const BACKGROUND_THREAD_PREFIX = 'bg:';
 
 type AguiMessage =
   | { id: string; role: 'user'; content: string }
@@ -27,7 +26,9 @@ type AguiMessage =
 // Mastra keeps a declined call as "output-denied" without a result.
 const DENIED_STATE = 'output-denied';
 
-export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySet<string>): AguiMessage[] {
+// `expired` — calls whose question burnt unanswered, with its term: shown as «Вопрос истёк», even before the waiting
+// answer got its refusal (that comes with the next message, core/chat/run.ts).
+export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySet<string>, expired: ReadonlyMap<string, number> = new Map()): AguiMessage[] {
   const out: AguiMessage[] = [];
   for (const m of history) {
     if (m.role === 'user') {
@@ -36,13 +37,13 @@ export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySe
     }
     // A call still waiting for "Да" is shown by its card (the interrupt below), a call left without a result not at all.
     // A live turn shows such calls as lines too — «Ждёт вашего подтверждения», «Прервано» (web/src/chat/call-progress.ts).
-    const shown = m.toolCalls.filter((c) => c.state === 'result' || c.state === DENIED_STATE);
+    const shown = m.toolCalls.filter((c) => c.state === 'result' || c.state === DENIED_STATE || expired.has(c.id));
     const toolCalls = shown.map((c) => ({ id: c.id, type: 'function' as const, function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) } }));
     if (!m.text && toolCalls.length === 0) continue;
     out.push({ id: m.id, role: 'assistant', content: m.text, ...(toolCalls.length ? { toolCalls } : {}) });
     for (const c of shown) {
-      if (c.state === DENIED_STATE) {
-        const declined: DeclinedToolResult = { declined: true, superseded: superseded.has(c.id) };
+      if (c.state === DENIED_STATE || (c.state !== 'result' && expired.has(c.id))) {
+        const declined: DeclinedToolResult = { declined: true, superseded: superseded.has(c.id), expiredHours: expired.get(c.id) ?? null };
         out.push({ id: `${c.id}:result`, role: 'tool', toolCallId: c.id, content: JSON.stringify(declined) });
         continue;
       }
@@ -55,8 +56,8 @@ export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySe
 // When a call waiting for "Да" is declined, Mastra's adapter sends nothing about it. These events show it in the chat
 // as cancelled: a chat opened since has no such call and gets it; a live one has it already (core/chat/copilot.ts streams
 // every call) and the AG-UI client updates it.
-export function declinedCallEvents(call: { toolCallId: string; tool: string; args: unknown; superseded: boolean }): object[] {
-  const declined: DeclinedToolResult = { declined: true, superseded: call.superseded };
+export function declinedCallEvents(call: { toolCallId: string; tool: string; args: unknown; superseded: boolean; expiredHours: number | null }): object[] {
+  const declined: DeclinedToolResult = { declined: true, superseded: call.superseded, expiredHours: call.expiredHours };
   return [
     { type: 'TOOL_CALL_START', toolCallId: call.toolCallId, toolCallName: call.tool, parentMessageId: `${call.toolCallId}:call` },
     { type: 'TOOL_CALL_ARGS', toolCallId: call.toolCallId, delta: JSON.stringify(call.args ?? {}) },
@@ -114,15 +115,12 @@ export async function connectResponse(
   const { history, broken } = readHistory(recalled.messages);
   // Arguments of calls waiting for "Да", as the model sent them (the database keeps a summary).
   const waitingArgs = new Map(history.flatMap((m) => m.toolCalls.map((c) => [c.id, c.args] as const)));
-  const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId));
+  const messages = toAguiMessages(history, await supersededCallsOfThread(deps.db, input.userId, threadId), await expiredCallsOfThread(deps.db, input.userId, threadId));
   // Opening the conversation shows the result of a background task: it is no longer «новое».
   // Only the mark: Mastra merges it under a row lock and keeps the name (spec, 8.16).
   if (thread.metadata?.unread === true) await deps.memory.updateThread({ id: thread.id, metadata: { unread: false } });
-  // The menu counter of fresh task results reads the flags of the employee's runs of the task.
-  if (threadId.startsWith(BACKGROUND_THREAD_PREFIX)) {
-    const taskId = threadId.slice(BACKGROUND_THREAD_PREFIX.length).split(':')[0];
-    await deps.db.query('UPDATE app.background_task_runs SET unread = false WHERE task_id = $1 AND user_id = $2 AND unread', [taskId, input.userId]);
-  }
+  // …and what its notifications told («Готово», «Ответ готов») is read.
+  await markThreadRead(deps.db, input.userId, threadId);
   const pending = await pendingForThread(deps.db, input.userId, threadId);
   const interrupts = pending.map((p) => ({
     id: `${APPROVAL_PREFIX}${p.runId}::${p.toolCallId}`,

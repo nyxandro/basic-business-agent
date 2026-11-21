@@ -32,7 +32,7 @@ function installation(overrides: Record<string, string> = {}): string {
   mkdirSync(CACHE, { recursive: true });
   root = mkdtempSync(join(CACHE, 'bba-registry-'));
   const files: Record<string, string> = {
-    'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: [] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null } };`,
+    'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: [] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: null, initialDailySubscriptionTokens: null }, approvals: { initialChatTtlHours: 24, initialBackgroundTtlHours: 72 } };`,
     'config/plugins.ts': `export default {};`,
     'plugins/notes/plugin.ts': `import { createTool } from '@mastra/core/tools';\nimport { z } from 'zod';\nexport default { name: 'notes', title: 'Заметки', settings: z.object({}), secrets: [], readOnly: ['notes_list'], tools: () => ({ notes_list: ${TOOL('notes_list')}, notes_add: ${TOOL('notes_add')} }) };`,
     'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: [], starters: [] };`,

@@ -49,6 +49,7 @@ async function startDeletion(db: Db, actorUserId: string, userId: string): Promi
       [userId],
     );
     await c.query('DELETE FROM app."session" WHERE "userId" = $1', [userId]);
+    await c.query('DELETE FROM app.push_subscriptions WHERE user_id = $1', [userId]);
   });
   await writeAudit(db, { actorUserId, action: 'user.delete.start', target: userId });
 }

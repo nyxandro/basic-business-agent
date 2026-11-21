@@ -1,7 +1,7 @@
 // Background tasks with a scope (spec, scenario 4, section 8.6): a fire runs on behalf of every
 // employee in scope, at most 3 at once, each in their own conversation, with their questions on
 // their approvals screen.
-import type { AdminTask, TaskAccess, TaskRunsResponse } from '@bba/contracts';
+import type { AdminTask, NotificationList, NotificationsResponse, TaskAccess, TaskRunsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { taskThreadId } from './service.ts';
@@ -71,11 +71,13 @@ describe('background tasks', () => {
     expect(await journalOf(task.id)).toEqual(['background_started:started', 'background_finished:ok']);
     expect((await runsOf(task.id)).runs).toMatchObject([{ userId: olgaId, name: 'Ольга', outcome: 'done' }]);
 
-    const notes = await json<{ unreadResults: number }>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }));
-    expect(notes.unreadResults).toBe(1);
-    const body = { threadId: taskThreadId(task.id, olgaId), runId: 'r1', messages: [], tools: [], context: [], state: {}, forwardedProps: {} };
+    // «Готово: …» tells the result (docs/specs/[20.11.2026]-notifications.md); opening the conversation reads it.
+    const threadId = taskThreadId(task.id, olgaId);
+    const notes = await json<NotificationsResponse>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }));
+    expect(notes).toMatchObject({ unread: 1, latest: { kind: 'task_result', title: 'Готово: Утренняя сводка', link: `/agents/sales?thread=${encodeURIComponent(threadId)}` } });
+    const body = { threadId, runId: 'r1', messages: [], tools: [], context: [], state: {}, forwardedProps: {} };
     expect((await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie: olga, body })).status).toBe(200);
-    expect((await json<{ unreadResults: number }>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }))).unreadResults).toBe(0);
+    expect(await json<NotificationsResponse>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }))).toMatchObject({ unread: 0, latest: null });
   });
 
   it('puts an action on the approvals screen, skips the employee’s next run while it waits, and runs it after "Да"', async () => {
@@ -86,7 +88,14 @@ describe('background tasks', () => {
     expect((await runsOf(task.id)).runs[0]!.outcome).toBe('awaiting-approval');
 
     const screen = await json<{ pending: { id: string; tool: string; task: string }[] }>(await t.call('GET', '/app/api/approvals', { cookie: olga }));
-    expect(screen.pending).toMatchObject([{ tool: 'mail_send', task: 'Напоминания', args: { to: 'supplier@example.com', text: 'Напоминаем о КП' } }]);
+    expect(screen.pending).toMatchObject([{ tool: 'mail_send', task: 'Напоминания', conversation: null, args: { to: 'supplier@example.com', text: 'Напоминаем о КП' } }]);
+    // The question is told at once and leads to itself; a run waiting for «Да» tells no «Готово».
+    const questionId = screen.pending[0]!.id;
+    const list = await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: olga }));
+    expect(list.items.filter((n) => n.title.includes('Напоминания') || n.body.includes('Напоминания'))).toMatchObject([
+      { kind: 'approval_waiting', title: 'Ждёт вашего решения', body: 'Напоминания · Отправить письмо клиенту', link: `/approvals?question=${questionId}`, read: false },
+    ]);
+    expect(await json<NotificationsResponse>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }))).toMatchObject({ pendingApprovals: 1, latest: { kind: 'approval_waiting' } });
     expect(await fire(task.id)).toMatchObject({ queued: 0, skipped: 1 });
     expect((await runsOf(task.id)).runs).toMatchObject([{ outcome: 'skipped', reasonCode: 'awaiting_approval' }]);
     expect((await journalOf(task.id)).at(-1)).toBe('background_skipped:skipped:APP_BACKGROUND_RUN_SKIPPED');
@@ -98,6 +107,11 @@ describe('background tasks', () => {
     expect(first.rows[0]!.outcome).toBe('done');
     const again = await t.call('POST', `/app/api/approvals/${screen.pending[0]!.id}/decision`, { cookie: olga, body: { approved: true } });
     expect((await json<{ error: { code: string } }>(again)).error.code).toBe('APP_APPROVAL_DECIDED');
+    // An old notification of the decided question reads as read and leads to «Вопрос уже решён».
+    const after = await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: olga }));
+    expect(after.items.find((n) => n.link === `/approvals?question=${questionId}`)?.read).toBe(true);
+    expect(await json<unknown>(await t.call('GET', `/app/api/approvals/${questionId}`, { cookie: olga }))).toMatchObject({ status: 'approved', action: 'Отправить письмо клиенту', decidedAt: expect.any(String) });
+    expect((await t.call('GET', `/app/api/approvals/${questionId}`, { cookie: igor })).status).toBe(404);
   });
 
   it('keeps the approvals screen working after the task’s conversation was deleted', async () => {

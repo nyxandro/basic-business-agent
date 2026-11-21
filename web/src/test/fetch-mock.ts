@@ -15,15 +15,24 @@ export type Reply = { status?: number; body?: unknown; raw?: string };
 // A route may answer later (a Promise) to test answers that come out of order.
 export type Route = Reply | ((call: MockCall) => Reply | Promise<Reply>);
 
+const PRESENCE_PATH = '/app/api/me/presence';
+
+const answerOf = (route: Route | undefined, call: MockCall): Reply | Promise<Reply> => (route === undefined ? { status: 404 } : typeof route === 'function' ? route(call) : route);
+
 export function apiError(code: string, message: string, status: number): Reply {
   return { status, body: { error: { code, message } } };
 }
 
-export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; set: (key: string, route: Route) => void } {
+// `pings` — the presence of a visible tab (every screen sends it, docs/specs/[20.11.2026]-notifications.md): kept apart
+// from `calls`, so a test looking for «the POST» of its screen is not misled.
+export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; pings: MockCall[]; set: (key: string, route: Route) => void } {
   // The menu counters are asked on every screen; tests that care override them.
   // CopilotKit asks its runtime which agents exist when the provider mounts.
-  const table = new Map<string, Route>([
-    ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unreadResults: 0 } }],
+  const table: Map<string, Route> = new Map<string, Route>([
+    ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null } }],
+    // A visible tab tells the server it is here and gets the bell's counters (docs/specs/[20.11.2026]-notifications.md):
+    // the same answer as the counters themselves, whatever a test set for them.
+    ['POST /app/api/me/presence', (call: MockCall): Reply | Promise<Reply> => answerOf(table.get('GET /app/api/me/notifications'), call)],
     ['GET /app/api/copilotkit/info', { body: { agents: {} } }],
     // «Подключения» show the mailbox in every installation (spec, section 8.24).
     ['GET /app/api/me/mail', { body: { accounts: [], oauth: [] } }],
@@ -34,6 +43,7 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
     ...Object.entries(routes),
   ]);
   const calls: MockCall[] = [];
+  const pings: MockCall[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn((input: string | URL | Request, init?: RequestInit) => {
@@ -42,7 +52,7 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
       const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
       const form = init?.body instanceof FormData ? Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : v.name])) : undefined;
       const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, ...(form ? { form } : {}) };
-      calls.push(call);
+      (method === 'POST' && url.pathname === PRESENCE_PATH ? pings : calls).push(call);
       const route = table.get(`${method} ${url.pathname}`);
       if (!route) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'APP_NOT_FOUND', message: 'нет такого адреса в тесте' } }), { status: 404 }));
       return Promise.resolve(typeof route === 'function' ? route(call) : route).then((reply) => {
@@ -54,7 +64,7 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
   // Uploads that tell how far they are go by XMLHttpRequest (api/client.ts): the same table answers them,
   // and half of the body is told sent before the answer, all of it when it comes.
   vi.stubGlobal('XMLHttpRequest', TableXhr);
-  return { calls, set: (key, route) => table.set(key, route) };
+  return { calls, pings, set: (key, route) => table.set(key, route) };
 }
 
 const bodySize = (body: unknown) =>

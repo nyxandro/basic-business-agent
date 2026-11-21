@@ -1,37 +1,63 @@
 // The header of the chat (mockup): the agent's name opens the list of agents to switch to; on a
-// phone «Меню» opens the drawer and the bell opens «Ждёт подтверждения». The «…» holds the
-// actions with the conversation.
+// phone «Меню» opens the drawer. The «…» holds the actions with the conversation. The bell stands at
+// the right of every header, on a computer and on a phone (decision of the owner 21.11, F3).
 import type { AgentSummary } from '@bba/contracts';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
+import { notificationTexts } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
+import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useNotifications } from './notifications.tsx';
+import { useMedia, WIDE_QUERY } from './use-media.ts';
 import styles from './shell.module.css';
 
-// On a phone the bell opens «Ждёт подтверждения» as a sheet over the current screen; it is there
-// only while something waits for the person's decision.
+const PANEL_WIDTH_PX = 420;
+
+// Always there: the count is the questions waiting for the person plus unread notifications; it rings while a question
+// waits (mockup). On a computer the panel hangs under it; on a phone it opens as a sheet (layout/notifications.tsx).
 function Bell() {
-  const { counts, openApprovals } = useNotifications();
+  const { counts, panel, openPanel, closePanel } = useNotifications();
+  const wide = useMedia(WIDE_QUERY);
   const waiting = counts?.pendingApprovals ?? 0;
-  if (waiting === 0) return null;
-  const label = `${ru.shell.approvals}: ${waiting}`;
-  return (
-    <button type="button" aria-label={label} title={label} onClick={openApprovals} className={cx(styles.headerTitle, styles.bell, styles.bellRinging)}>
+  const unread = counts?.unread ?? 0;
+  const total = waiting + unread;
+  const label = `${notificationTexts.bell}: ${notificationTexts.bellCount(waiting, unread)}`;
+  const button = (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-haspopup="dialog"
+      aria-expanded={panel.open}
+      onClick={() => (panel.open ? closePanel() : openPanel(waiting > 0 ? 'waiting' : 'list'))}
+      className={cx(styles.headerTitle, styles.bell, waiting > 0 && styles.bellRinging)}
+    >
       <Icon name="bell" />
-      <span className={styles.bellCount}>{waiting}</span>
+      {total > 0 ? <span className={styles.bellCount}>{total}</span> : null}
     </button>
+  );
+  if (!wide) return button;
+  return (
+    <MenuAnchor>
+      {button}
+      <Menu open={panel.open} onClose={closePanel} label={notificationTexts.bell} role="dialog" placement="bottom-end" width={PANEL_WIDTH_PX}>
+        <NotificationsPanel compact={false} onClose={closePanel} />
+      </Menu>
+    </MenuAnchor>
   );
 }
 
-// The header of a screen other than the chat on a phone: «Меню», the title and the bell.
+// The header of a screen other than the chat: on a phone «Меню», the title and the bell; on a computer the title and
+// the bell (the mockup keeps a header over every screen).
 export function ChatHeaderBar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
+  const wide = useMedia(WIDE_QUERY);
   return (
-    <header className={cx(styles.header, styles.headerMobile)}>
-      <IconButton icon="menu" label={ru.shell.menu} onClick={onOpenMenu} />
-      <span className={styles.headerTitle}>{title}</span>
+    <header className={cx(styles.header, !wide && styles.headerMobile)}>
+      {wide ? null : <IconButton icon="menu" label={ru.shell.menu} onClick={onOpenMenu} />}
+      <span className={cx(styles.headerTitle, wide && styles.headerPageTitle)}>{title}</span>
       <span className={styles.headerFill} />
       <Bell />
     </header>
@@ -59,7 +85,7 @@ export function ChatHeader({ agent, agents, wide, onOpenMenu, actions }: { agent
       </MenuAnchor>
       <span className={styles.headerFill} />
       {actions}
-      {wide ? null : <Bell />}
+      <Bell />
     </header>
   );
 }

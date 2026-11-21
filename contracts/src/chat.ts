@@ -223,8 +223,11 @@ export interface SearchResponse {
 }
 
 // Result of a tool call the person declined (or cancelled by writing a new message instead of
-// answering): the server puts it into the chat stream and the history, the chat shows «отменено».
+// answering, or left unanswered until its question burnt): the server puts it into the chat stream and the history,
+// the chat shows «отменено» or «Вопрос истёк: вы не ответили за N ч».
 export interface DeclinedToolResult {
   declined: true;
   superseded: boolean;
+  // The term of a question that burnt unanswered (docs/specs/[20.11.2026]-notifications.md, F4); null otherwise.
+  expiredHours: number | null;
 }

@@ -15,7 +15,7 @@ import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool, McpDefinition } from '../plugins/public/index.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
-import { deleteCredential, loadCredential, saveCredential, setCredentialStatus, type CredentialStatus } from './credentials.ts';
+import { deleteCredential, loadCredential, markCredentialBroken, saveCredential, setCredentialStatus, type CredentialStatus } from './credentials.ts';
 import { authFailed, notConnected, unavailable } from './errors.ts';
 import { IDENTITY_HEADER, signIdentity, type Identity } from './identity.ts';
 import { classifyCall } from './call-errors.ts';
@@ -180,7 +180,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
         } catch (error) {
           // Only a 401 breaks the access (step 7): a 403 on one record, or a word in an error's text, does not.
           if (classifyCall(error).kind !== 'refused') throw error;
-          await setCredentialStatus(db, userId, c.id, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
+          await markCredentialBroken(db, { userId, connectorId: c.id, title: c.title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
           forget(userId, c.id);
           throw authFailed(c.title, c.id, error);
         }

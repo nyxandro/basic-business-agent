@@ -11,6 +11,7 @@ import type { AppEnv } from '../server/http.ts';
 import { ingestAccountEvents } from './account-events.ts';
 import type { ChatGptAccounts } from './chatgpt-accounts.ts';
 import { ingestUsage } from './usage.ts';
+import { noticeLimits } from './limit-notices.ts';
 
 function sameSecret(given: string, expected: string): boolean {
   const a = Buffer.from(given);
@@ -24,12 +25,16 @@ function requireSecret(c: Context<AppEnv>, secret: string, what: string): void {
   }
 }
 
-export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSecret: string; accounts: Pick<ChatGptAccounts, 'attemptFailed'> }): void {
+export function registerUsageRoutes(app: Hono<AppEnv>, deps: { db: Db; ledgerSecret: string; accounts: Pick<ChatGptAccounts, 'attemptFailed'>; timezone: string }): void {
   app.post('/app/api/internal/usage', async (c) => {
     requireSecret(c, deps.ledgerSecret, 'usage');
     const payload: unknown = await c.req.json();
     try {
-      const inserted = await ingestUsage(deps.db, payload);
+      const { inserted, charged } = await ingestUsage(deps.db, payload);
+      // The ledger is kept already; a failed look at the limit is logged and never makes the gateway send again.
+      for (const userId of charged) {
+        await noticeLimits(deps.db, userId, deps.timezone).catch((error: unknown) => logEvent('error', 'notification_failed', { code: 'APP_NOTIFICATION_FAILED', kind: 'limit', userId, error }));
+      }
       return c.json({ inserted });
     } catch (error) {
       logEvent('error', 'usage_ingest_failed', { code: 'APP_USAGE_PAYLOAD_INVALID', error });

@@ -7,6 +7,8 @@ import { MAIL_PRESETS } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
+import { notices } from '../notifications/kinds.ts';
+import { notify } from '../notifications/notify.ts';
 
 export type SealedMailSecret = { kind: 'password'; password: string } | { kind: 'oauth'; provider: MailOAuthProvider; accessToken: string; refreshToken: string | null; expiresAt: string | null };
 
@@ -118,8 +120,17 @@ export async function replaceSecret(db: Db, box: SecretBox, id: string, secret: 
   await db.query('UPDATE app.mail_accounts SET ciphertext = $2, iv = $3, key_version = $4, updated_at = now() WHERE id = $1', [id, sealed.ciphertext, sealed.iv, sealed.keyVersion]);
 }
 
-export async function setAccountStatus(db: Db, id: string, status: 'connected' | 'auth_error', code: string | null): Promise<void> {
-  await db.query('UPDATE app.mail_accounts SET status = $2, last_error_code = $3, checked_at = now(), updated_at = now() WHERE id = $1', [id, status, code]);
+// The mail service refused the mailbox: «Ошибка доступа», and the employee is told — once per breakage, when the
+// mailbox turns from working to broken (docs/specs/[20.11.2026]-notifications.md).
+export async function markMailboxBroken(db: Db, account: Pick<MailAccount, 'id' | 'userId' | 'email'>, code: string): Promise<void> {
+  const { rows } = await db.query<{ was: 'connected' | 'auth_error' }>(
+    `UPDATE app.mail_accounts a SET status = 'auth_error', last_error_code = $2, checked_at = now(), updated_at = now()
+       FROM (SELECT id, status AS was FROM app.mail_accounts WHERE id = $1 FOR UPDATE) o WHERE a.id = o.id RETURNING o.was`,
+    [account.id, code],
+  );
+  if (rows[0]?.was === 'connected') {
+    await notify(db, notices.connectionBroken({ userId: account.userId, connectionKey: `mail:${account.id}`, title: `почте ${account.email}`, brokenAt: new Date() }));
+  }
 }
 
 export async function deleteAccount(db: Db, userId: string, id: string): Promise<boolean> {

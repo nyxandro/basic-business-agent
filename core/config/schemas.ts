@@ -1,6 +1,7 @@
 // Declarative configuration of an installation (spec, sections 17.2–17.3):
 // config/app.ts, config/plugins.ts, agents/<id>/agent.ts, plugins/<name>/plugin.ts. Models are
 // not configured in files: the admin adds them in «Нейросеть» (core/models/catalog.ts).
+import { APPROVAL_TTL_HOURS_MAX, APPROVAL_TTL_HOURS_MIN } from '@bba/contracts';
 import { z } from 'zod';
 
 export const MASKING_KINDS = ['passport', 'snils', 'card', 'inn', 'phone', 'email'] as const;
@@ -18,6 +19,7 @@ function isTimeZone(value: string): boolean {
 const rub = z.number().min(0);
 const optionalRub = rub.nullable();
 const tokens = z.number().int().positive().nullable();
+const ttlHours = z.number().int().min(APPROVAL_TTL_HOURS_MIN).max(APPROVAL_TTL_HOURS_MAX);
 
 export const appConfigSchema = z.strictObject({
   name: z.string().min(1),
@@ -29,6 +31,12 @@ export const appConfigSchema = z.strictObject({
     initialOrgMonthlyRub: optionalRub,
     initialUserMonthlyRub: optionalRub,
     initialDailySubscriptionTokens: tokens,
+  }),
+  // How long a question «Да» waits before it burns, in hours (docs/specs/[20.11.2026]-notifications.md, F4): a
+  // question of a conversation and one of a background task. Admins change them in «Режимы работы».
+  approvals: z.strictObject({
+    initialChatTtlHours: ttlHours,
+    initialBackgroundTtlHours: ttlHours,
   }),
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;

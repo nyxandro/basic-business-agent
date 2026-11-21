@@ -8,7 +8,7 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { loadApp, loadSecret, replaceSecret, setAccountStatus, type MailAccount, type OAuthApp, type SealedMailSecret } from './accounts.ts';
+import { loadApp, loadSecret, markMailboxBroken, replaceSecret, type MailAccount, type OAuthApp, type SealedMailSecret } from './accounts.ts';
 import { mailAuthFailed } from './client.ts';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -162,7 +162,7 @@ export async function freshMailSecret(deps: OAuthDeps, account: MailAccount): Pr
     const latest = await loadSecret(deps.db, deps.box, account.id);
     if (latest.kind !== 'oauth' || !nearExpiry(latest)) return latest;
     const refused = async (cause: Error) => {
-      await setAccountStatus(deps.db, account.id, 'auth_error', 'APP_MAIL_AUTH_FAILED');
+      await markMailboxBroken(deps.db, account, 'APP_MAIL_AUTH_FAILED');
       return mailAuthFailed(account.email, cause);
     };
     if (!latest.refreshToken) throw await refused(new Error('no refresh token'));

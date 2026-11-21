@@ -221,6 +221,8 @@ export async function setUserBlocked(db: Db, actorUserId: string, userId: string
       [userId, blocked],
     );
     if (blocked) await c.query('DELETE FROM app."session" WHERE "userId" = $1', [userId]);
+    // A blocked person's browsers get no more notifications (docs/specs/[20.11.2026]-notifications.md, section 10).
+    if (blocked) await c.query('DELETE FROM app.push_subscriptions WHERE user_id = $1', [userId]);
     await writeAudit(c, { actorUserId, action: blocked ? 'user.block' : 'user.unblock', target: userId });
   });
 }

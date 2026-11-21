@@ -453,9 +453,27 @@
   position: relative;
 }
 
+.bellRinging {
+  color: var(--acc-text);
+}
+
 .bellRinging svg {
   transform-origin: 50% 15%;
   animation: global(bba-bell) 3.2s ease-in-out infinite;
+}
+
+/* The title of a screen in its header on a computer: a name, not a button. */
+.headerPageTitle {
+  cursor: default;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 36px;
+}
+
+.headerPageTitle:hover {
+  background: transparent;
 }
 
 .bellCount {

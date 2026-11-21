@@ -217,7 +217,7 @@ export function ProjectPage() {
   const [busy, setBusy] = useState(false);
   const [editAccess, setEditAccess] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const { agents, wide, openMenu, refreshProjects, projectsKey } = useShell();
+  const { agents, openMenu, refreshProjects, projectsKey } = useShell();
   const [seenKey, setSeenKey] = useState(projectsKey);
   if (seenKey !== projectsKey) {
     setSeenKey(projectsKey);
@@ -288,7 +288,7 @@ export function ProjectPage() {
 
   return (
     <>
-      {wide ? null : <ChatHeaderBar title={project.name} onOpenMenu={openMenu} />}
+      <ChatHeaderBar title={project.name} onOpenMenu={openMenu} />
       <div className={`${page.scroll} scroll-thin`}>
         <div className={`${styles.page} rise`}>
           <div className={styles.titleRow}>

@@ -4,7 +4,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { RequestContext } from '@mastra/core/request-context';
 import type { Memory } from '@mastra/memory';
-import { decide, findByCall, pendingForThread, type ApprovalRequest } from '../approvals/requests.ts';
+import { decide, expireChatQuestions, expiredOpenForThread, findByCall, markClosed, pendingForThread, termHoursOf, type ApprovalRequest } from '../approvals/requests.ts';
 import type { AccessContext } from '../auth/access.ts';
 import type { Db } from '../db/pool.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
@@ -28,6 +28,7 @@ import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 import type { AgentAbilities } from '@bba/contracts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import type { NamingDeps } from './naming.ts';
+import { newRunLife, tellAfterLeaving, type RunLife } from './after-leaving.ts';
 
 export interface ChatDeps {
   db: Db;
@@ -80,11 +81,14 @@ export interface PreparedRun {
   abilities: AgentAbilities | null;
   // The run's folder held on the disk (spec, section 8.23): let go when the agent ends, after its trash.
   release: Release | null;
+  // How the turn went — did the browser leave before the agent ended (docs/specs/[20.11.2026]-notifications.md).
+  life: RunLife;
 }
 
 // A turn ready to run, plus the calls its preparation cancelled: the chat must learn about them.
 export interface PreparedTurn extends PreparedRun {
-  declinedCalls: { toolCallId: string; tool: string; args: unknown; superseded: boolean }[];
+  // `expiredHours` — a question that burnt unanswered after so many hours (docs/specs/[20.11.2026]-notifications.md, F4).
+  declinedCalls: { toolCallId: string; tool: string; args: unknown; superseded: boolean; expiredHours: number | null }[];
 }
 
 export const SAFE_THREAD_ID = /^[A-Za-z0-9:_-]{1,128}$/;
@@ -103,6 +107,11 @@ function releaseThread(threadId: string): void {
 // agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the
 // server's to log, not the answer's; the snapshot is left for the start of the server then.
 export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+  if (run.agentStarted && !run.life.ended) {
+    run.life.ended = true;
+    // The person left before the end: they learn how it ended. A draft check of a prompt is the admin's own screen.
+    if (run.life.browserLeft && run.mode === 'published') void tellAfterLeaving(deps.db, run);
+  }
   const { snapshot, release } = run;
   run.snapshot = null;
   run.release = null;
@@ -116,6 +125,7 @@ export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: Pre
 // The browser's stream of the answer ended (done, closed tab, error). The thread is free; the trash
 // waits for the agent, unless the agent never began (the run was refused before it).
 export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+  if (run.agentStarted && !run.life.ended) run.life.browserLeft = true;
   releaseThread(run.threadId);
   if (!run.agentStarted) settleRun(deps, run);
 }
@@ -203,12 +213,26 @@ async function journalDecline(deps: ChatDeps, run: PreparedRun, tool: string, er
   await writeJournal(deps.db, { userId: run.userId, agentId: run.agentId, runKind: 'chat', event: 'tool_declined', tool, approvedBy: run.userId, result: 'declined', errorCode });
 }
 
-// A new message instead of "Да"/"Нет" cancels the waiting action (spec, scenario 2).
-async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Promise<ApprovalRequest[]> {
-  const cancelled: ApprovalRequest[] = [];
-  for (const pending of await pendingForThread(deps.db, run.userId, run.threadId)) {
-    if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
-    cancelled.push(pending);
+const expiredReason = (q: ApprovalRequest) => `Истекло: сотрудник не ответил за ${termHoursOf(q)} ч.`;
+
+// A question past its term: «Вопрос истёк», with its term.
+function questionExpired(q: ApprovalRequest): AppError {
+  return appError('APP_APPROVAL_EXPIRED', `approval ${q.id} expired`, { userMessage: `Вопрос истёк: вы не ответили за ${termHoursOf(q)} ч. Действие не выполнено.` });
+}
+
+// A new message instead of "Да"/"Нет" cancels the waiting action (spec, scenario 2); a question that burnt meanwhile
+// gets its refusal now — the sweep only marked it (docs/specs/[20.11.2026]-notifications.md, F4).
+async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Promise<PreparedTurn['declinedCalls']> {
+  const cancelled: PreparedTurn['declinedCalls'] = [];
+  await expireChatQuestions(deps.db);
+  const toClose = [
+    ...(await expiredOpenForThread(deps.db, run.userId, run.threadId)).map((q) => ({ q, expired: true })),
+    ...(await pendingForThread(deps.db, run.userId, run.threadId)).map((q) => ({ q, expired: false })),
+  ];
+  for (const { q: pending, expired } of toClose) {
+    if (expired) await markClosed(deps.db, pending.id);
+    else if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
+    cancelled.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: !expired, expiredHours: expired ? termHoursOf(pending) : null });
     // The waiting answer goes on in its own project: one other than the new message's gets its own
     // snapshot, so what the agent removes after «отменено» reaches that project's trash too.
     const waiting = await runProjectOfWaitingAnswer(deps.db, pending.projectId);
@@ -219,7 +243,7 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
       const stream = await agent.declineToolCall({
         runId: pending.runId,
         toolCallId: pending.toolCallId,
-        reason: SUPERSEDED,
+        reason: expired ? expiredReason(pending) : SUPERSEDED,
         memory: { thread: run.threadId, resource: run.resourceId },
         requestContext: requestContextFor({ ...run, ...waiting, ...(other ? { snapshot: other } : {}) }),
       });
@@ -228,7 +252,8 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
       if (other) await settleSnapshot(deps.db, deps.workspaceRoot, other).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: other.projectId, error }));
       if (releaseOther) await releaseOther();
     }
-    await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
+    // An expired question was journalled when it burnt.
+    if (!expired) await journalDecline(deps, run, pending.tool, 'APP_CHAT_SUPERSEDED');
   }
   return cancelled;
 }
@@ -240,7 +265,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
   const abilities = await readAbilities(deps.db, agentId);
   const skillPaths = await deps.skills.skillsFor(access.userId, { documents: abilities.commands });
-  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths, abilities, release: null };
+  const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths, abilities, release: null, life: newRunLife() };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
   // Working in a project shared to the person takes its «новое» off.
@@ -267,16 +292,20 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       if (pending.taskId) {
         throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} belongs to background task ${pending.taskId}`, { userMessage: 'На вопросы фоновых задач отвечают на экране «Ждёт подтверждения».' });
       }
+      if (pending.status === 'expired') throw questionExpired(pending);
       if (pending.status !== 'pending') throw appError('APP_VALIDATION_FAILED', `approval ${pending.id} is ${pending.status}`, { userMessage: 'По этому действию решение уже принято.' });
       // «Да» or «Нет» goes on with the answer that waited: it is finished in the project it began in.
       Object.assign(run, await runProjectOfWaitingAnswer(deps.db, pending.projectId));
       await remember();
-      if (pending.expiresAt.getTime() < Date.now()) throw appError('APP_NOT_FOUND', `approval ${pending.id} expired`, { userMessage: 'Этот вопрос уже не актуален. Обновите страницу.' });
+      if (pending.expiresAt.getTime() < Date.now()) {
+        await expireChatQuestions(deps.db);
+        throw questionExpired(pending);
+      }
       const approved = resume?.status === 'resolved' && (resume.payload === true || (resume.payload as { approved?: unknown } | undefined)?.approved === true);
       if (!approved) {
         if (!(await decide(deps.db, pending.id, 'declined'))) throw appError('APP_APPROVAL_DECIDED', `approval ${pending.id} was decided meanwhile`);
         await journalDecline(deps, run, pending.tool, null);
-        declinedCalls.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: false });
+        declinedCalls.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: false, expiredHours: null });
         // The agent goes on after "Нет": a refusal is recorded even when no model can answer now.
         run.models = await choose();
       } else {
@@ -294,7 +323,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
       await deps.gateway.assertWithinBudget(run.userId);
       run.models = await choose();
       await remember();
-      for (const p of await cancelPending(deps, run, agent)) declinedCalls.push({ toolCallId: p.toolCallId, tool: p.tool, args: p.args, superseded: true });
+      declinedCalls.push(...(await cancelPending(deps, run, agent)));
     }
   } catch (error) {
     endRun(deps, run);

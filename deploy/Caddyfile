@@ -27,6 +27,10 @@
 	handle /api* {
 		respond 404
 	}
+	# The browser's handler of notifications and the description of the app (docs/specs/[20.11.2026]-notifications.md):
+	# never kept by a cache, or a fix to the handler would not reach the browsers.
+	@fresh path /sw.js /manifest.webmanifest
+	header @fresh Cache-Control "no-cache"
 	handle {
 		root * /srv
 		try_files {path} /index.html

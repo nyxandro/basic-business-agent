@@ -16,9 +16,9 @@ import { SIGN_MARK } from './prompt.ts';
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
 
-// A question «Да» lives this long (core/approvals/requests.ts, APPROVAL_TTL_MS); a fingerprint of a card nobody answered
-// goes after it.
-const PENDING_KEEP = '4 days';
+// A question «Да» lives up to 720 hours — the longest term an admin may set (APPROVAL_TTL_HOURS_MAX); a fingerprint
+// of a card nobody answered goes a day after that.
+const PENDING_KEEP = '31 days';
 const TOO_BIG = 'Документ слишком большой для печати и подписи: больше 20 МБ или распаковывается в огромный архив. Сделай его заново, без лишних картинок.';
 
 export const fingerprintOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');

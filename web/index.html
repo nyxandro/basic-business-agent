@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Бизнес-агент</title>
+    <!-- Notifications on an iPhone come only to the app added to the home screen (docs/specs/[20.11.2026]-notifications.md). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Агент" />
     <script>
       // The theme before the first paint (same rule as web/src/ui/theme/theme.ts): the choice kept
       // in this browser, otherwise the system's; storage may be blocked.

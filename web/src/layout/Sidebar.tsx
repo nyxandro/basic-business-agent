@@ -51,10 +51,10 @@ export interface SidebarProps {
   approvalsAsSheet?: boolean;
 }
 
-// On a computer a link to the page; in the phone's drawer it opens the sheet (mockup). Shown only
-// while something waits for the person's decision.
+// On a computer a link to the page; in the phone's drawer it opens the bell's sheet on «Ждут решения» (mockup).
+// Shown only while something waits for the person's decision.
 function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asSheet: boolean }) {
-  const { counts, openApprovals } = useNotifications();
+  const { counts, openPanel } = useNotifications();
   const waiting = counts?.pendingApprovals ?? 0;
   if (waiting === 0) return null;
   const body = (
@@ -77,7 +77,7 @@ function ApprovalsLink({ onNavigate, asSheet }: { onNavigate: () => void; asShee
         className={className}
         onClick={() => {
           onNavigate();
-          openApprovals();
+          openPanel('waiting');
         }}
       >
         {body}

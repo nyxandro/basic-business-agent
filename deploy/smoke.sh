@@ -72,6 +72,10 @@ check "pictures come from the site itself only (Content-Security-Policy)" ok "$(
 for asset in pdfjs/standard_fonts/LiberationSans-Regular.ttf pdfjs/wasm/openjpeg.wasm pdfjs/cmaps/78-H.bcmap pdfjs/iccs/CGATS001Compat-v2-micro.icc; do
   check "PDF.js file ${asset} is served as a file" ok "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/${asset}" | grep -qE '^200 ' && ! curl --noproxy '*' -s "$BASE/${asset}" | head -c 200 | grep -qi '<!doctype html' && echo ok || echo missing)"
 done
+# The handler of notifications (docs/specs/[20.11.2026]-notifications.md): a script at /sw.js, not the page, never cached.
+check "the notification handler /sw.js is a script" ok "$(curl --noproxy '*' -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/sw.js" | grep -qE '^200 (text|application)/javascript' && echo ok || echo missing)"
+check "the notification handler /sw.js is not cached" ok "$(curl --noproxy '*' -s -D - -o /dev/null "$BASE/sw.js" | grep -qi '^cache-control: no-cache' && echo ok || echo missing)"
+check "the description of the app is served" ok "$(curl --noproxy '*' -s "$BASE/manifest.webmanifest" | grep -q '"display": "standalone"' && echo ok || echo missing)"
 check "/app/api without a session is 401" 401 "$(status "$BASE/app/api/me")"
 
 echo "== sandbox of skill scripts"

@@ -2,7 +2,10 @@
 // together — or «Всей организации». Only the creator sets it; the list is replaced as a whole.
 import { PROJECT_ACCESS_MAX_TARGETS, type ProjectAccessDto, type ProjectAccessInput, type ProjectAccessMode } from '@bba/contracts';
 import type pg from 'pg';
+import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import { notices } from '../notifications/kinds.ts';
+import { notifyAll } from '../notifications/notify.ts';
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
 
@@ -62,4 +65,30 @@ export async function describeAccess(db: Queryable, projectId: string, mode: Pro
   // A list whose departments and people are all gone opens the project to nobody.
   const shownMode = mode === 'list' && departments.length + people.length === 0 ? 'private' : mode;
   return { mode: shownMode, departments, people };
+}
+
+// The active people a list of «Выбранным» opens the project to — named, or in a named department — besides its creator.
+export async function peopleOfList(db: Queryable, projectId: string, ownerId: string): Promise<Set<string>> {
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT u."id" AS id FROM app.project_shares s JOIN app."user" u ON u."id" = s.user_id WHERE s.project_id = $1 AND ${ACTIVE_PERSON}
+     UNION
+     SELECT u."id" FROM app.project_shares s JOIN app.department_members m ON m.department_id = s.department_id JOIN app."user" u ON u."id" = m.user_id
+      WHERE s.project_id = $1 AND ${ACTIVE_PERSON}`,
+    [projectId],
+  );
+  return new Set(rows.map((r) => r.id).filter((id) => id !== ownerId));
+}
+
+// «Вам открыли проект» to the people a change of the list opened it to — at that moment, by name or by department;
+// opening to the whole organisation tells nobody (decision of the agent, docs/specs/[20.11.2026]-notifications.md).
+export async function notifyProjectShared(db: Db, input: { projectId: string; ownerId: string; people: readonly string[] }): Promise<void> {
+  if (input.people.length === 0) return;
+  const { rows } = await db.query<{ name: string; owner: string }>(
+    'SELECT p.name, u."name" AS owner FROM app.projects p JOIN app."user" u ON u."id" = p.user_id WHERE p.id = $1',
+    [input.projectId],
+  );
+  const project = rows[0];
+  if (!project) return;
+  const sharedAt = new Date();
+  await notifyAll(db, input.people.map((userId) => notices.projectShared({ userId, projectId: input.projectId, projectName: project.name, ownerName: project.owner, sharedAt })));
 }

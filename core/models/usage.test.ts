@@ -34,7 +34,7 @@ const record = (id: string, extra: Record<string, unknown>) => ({
 
 describe('usage ledger', () => {
   it('takes a batch with a search of the internet in it and keeps only the model call', async () => {
-    const inserted = await ingestUsage(db, [
+    const { inserted } = await ingestUsage(db, [
       record('model-1', { call_type: 'acompletion' }),
       // As the gateway sends a search (step 0, V29): no model group of its own, no tokens, zero cost.
       record('search-1', { call_type: 'asearch', model_group: null, model_id: null, prompt_tokens: null, completion_tokens: null, response_cost: 0, model: 'searxng/search' }),

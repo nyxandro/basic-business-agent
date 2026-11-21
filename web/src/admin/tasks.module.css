@@ -150,3 +150,17 @@
   align-items: flex-start;
   gap: 4px;
 }
+
+/* «Подтверждения»: the two terms side by side, one under the other on a phone. */
+.terms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 14px 0 6px;
+}
+
+.termsNote {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+}

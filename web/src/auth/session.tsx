@@ -7,6 +7,7 @@ import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { newScreenMemory } from '../ui/screen-memory.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
+import { dropPushOnSignOut } from '../notifications/push.ts';
 import { fetchMe, signOut as callSignOut } from './api.ts';
 
 const HTTP_UNAUTHORIZED = 401;
@@ -60,6 +61,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   const signOut = useCallback(async () => {
+    // A shared computer: the next person here gets none of this person's notifications (notifications spec, section 10).
+    await dropPushOnSignOut();
     await callSignOut();
     apply({ status: 'signed-out' });
   }, [apply]);

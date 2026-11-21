@@ -36,8 +36,41 @@ function pdfjsAssets(): Plugin {
   };
 }
 
+// The browser's handler of notifications (src/sw/sw.ts, docs/specs/[20.11.2026]-notifications.md): it must sit at
+// /sw.js — a handler controls only addresses under its own — and keep that name, so the build makes it a separate
+// entry without a hash; while developing it is served from its source. It has no imports, so either way it is one
+// plain script.
+const WORKER_ENTRY = fileURLToPath(new URL('./src/sw/sw.ts', import.meta.url));
+const WORKER_PATH = '/sw.js';
+
+function notificationWorker(): Plugin {
+  return {
+    name: 'bba-notification-worker',
+    configureServer(server) {
+      server.middlewares.use(WORKER_PATH, (req, res, next) => {
+        if ((req.url ?? '/').split('?')[0] !== '/') return next();
+        server
+          .transformRequest('/src/sw/sw.ts')
+          .then((result) => {
+            if (!result) return next();
+            res.setHeader('content-type', 'text/javascript; charset=utf-8');
+            res.setHeader('cache-control', 'no-cache');
+            res.end(result.code);
+          })
+          .catch(next);
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), pdfjsAssets()],
+  plugins: [react(), pdfjsAssets(), notificationWorker()],
+  build: {
+    rolldownOptions: {
+      input: { index: fileURLToPath(new URL('./index.html', import.meta.url)), sw: WORKER_ENTRY },
+      output: { entryFileNames: (chunk) => (chunk.name === 'sw' ? WORKER_PATH.slice(1) : 'assets/[name]-[hash].js') },
+    },
+  },
   server: {
     port: DEV_PORT,
     strictPort: true,

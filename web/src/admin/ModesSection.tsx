@@ -15,6 +15,7 @@ import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { accessText } from './AccessPicker.tsx';
+import { ApprovalTerms } from './ApprovalTerms.tsx';
 import { adminApi } from './api.ts';
 import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
@@ -25,7 +26,7 @@ import { lastFireText, pausedText, scheduleText } from './tasks-text.ts';
 
 const RULES = [
   { name: 'Каждое действие наружу через «Да»', sub: 'В чате и в фоновых задачах. Постоянных разрешений нет.' },
-  { name: 'Вопрос ждёт ответа 72 часа', sub: 'Потом действие не выполняется и попадает в «Не получилось».' },
+  { name: 'У вопроса «Да» есть срок', sub: 'Срок задан в «Подтверждениях» выше. Потом действие не выполняется и попадает в «Не получилось».' },
   { name: 'Песочница без сети', sub: 'Скрипты скиллов работают в своей папке сотрудника.' },
 ];
 
@@ -203,6 +204,7 @@ export function ModesSection() {
           </Table>
         )}
       </Card>
+      <ApprovalTerms />
       <div className={`${styles.rules} rise`}>
         {RULES.map((r) => (
           <div key={r.name} className={styles.rule}>

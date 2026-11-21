@@ -2,7 +2,8 @@
 // row of app.background_tasks with its scope, and a Mastra schedule of the one-step workflow
 // "background-run". A fire puts one run per employee of the scope into the queue (queue.ts);
 // each run works on behalf of that employee — their access, limits and skills — in the
-// conversation "bg:<taskId>:<userId>", and its questions wait on their approvals screen 72 hours.
+// conversation "bg:<taskId>:<userId>", and its questions wait on their approvals screen for the term the admin set
+// (core/approvals/settings.ts, 72 hours at first).
 import { randomUUID } from 'node:crypto';
 import type { Mastra } from '@mastra/core';
 import { RequestContext } from '@mastra/core/request-context';
@@ -10,7 +11,8 @@ import { createStep, createWorkflow } from '@mastra/core/workflows';
 import type { Memory } from '@mastra/memory';
 import { Cron } from 'croner';
 import { z } from 'zod';
-import { decide as decideRow, getApproval, type ApprovalRequest } from '../approvals/requests.ts';
+import { decide as decideRow, expireChatQuestions, getApproval, termHoursOf, type ApprovalRequest } from '../approvals/requests.ts';
+import { remindExpiring } from '../approvals/reminders.ts';
 import { loadAccess } from '../auth/access.ts';
 import type { Db } from '../db/pool.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
@@ -27,6 +29,8 @@ import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
+import { notices } from '../notifications/kinds.ts';
+import { notify } from '../notifications/notify.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
 import { fireTimeOf } from './schedule.ts';
@@ -37,7 +41,6 @@ export const BACKGROUND_WORKFLOW_ID = 'background-run';
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 60 * 1000;
 const EXPIRY_SWEEP_MS = 5 * 60 * 1000;
-const EXPIRED_REASON = 'Истекло: сотрудник не ответил за 72 часа.';
 const DELETED_REASON = 'Задачу удалил администратор.';
 
 export type RunOutcome = 'done' | 'awaiting-approval' | 'failed';
@@ -229,6 +232,10 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     await openTaskThread(row, run.userId, threadId);
     const result = await execute(row, run.userId, threadId);
     await finishRun(db, run.id, result.outcome, result.code);
+    // The result is told to the employee; a run that waits for «Да» is told by its question (core/approvals/requests.ts).
+    const told = { userId: run.userId, runId: run.id, taskId: row.id, taskTitle: row.title, agentId: row.agent_id };
+    if (result.outcome === 'done') await notify(db, notices.taskResult(told));
+    if (result.outcome === 'failed') await notify(db, notices.taskFailed(told));
   }
 
   const queue: RunQueue = createRunQueue(db, runQueued);
@@ -237,9 +244,9 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function closeRun(approval: ApprovalRequest, outcome: 'done' | 'failed', code: string | null): Promise<void> {
     if (!approval.taskId) return;
     await db.query(
-      `UPDATE app.background_task_runs SET outcome = $3, reason_code = $4, finished_at = now(), unread = $5
+      `UPDATE app.background_task_runs SET outcome = $3, reason_code = $4, finished_at = now()
         WHERE task_id = $1 AND user_id = $2 AND outcome = 'awaiting-approval'`,
-      [approval.taskId, approval.userId, outcome, code, outcome === 'done'],
+      [approval.taskId, approval.userId, outcome, code],
     );
   }
 
@@ -257,7 +264,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     await markUnread(approval.threadId);
   }
 
-  async function declinePending(where: string, params: unknown[], status: 'expired' | 'declined', reason: string, code: string): Promise<number> {
+  // `reason` — what the agent is told; an expired question names its own term.
+  async function declinePending(where: string, params: unknown[], status: 'expired' | 'declined', reason: string | ((q: ApprovalRequest) => string), code: string): Promise<number> {
     const { rows } = await db.query<{ id: string; user_id: string }>(
       `UPDATE app.approval_requests SET status = $1, decided_at = now(), error_code = $2 WHERE status = 'pending' AND task_id IS NOT NULL AND ${where} RETURNING id, user_id`,
       [status, code, ...params],
@@ -268,7 +276,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       await writeJournal(db, { userId: approval.userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: status === 'expired' ? 'approval_expired' : 'tool_declined', tool: approval.tool, result: status, errorCode: code });
       await closeRun(approval, 'failed', code);
       // Close the suspended run, so the conversation has no tool call left without a result.
-      await finishApproval(approval, false, reason).catch((error: unknown) => logEvent('warn', 'approval_close_failed', { approvalId: id, error }));
+      await finishApproval(approval, false, typeof reason === 'string' ? reason : reason(approval)).catch((error: unknown) => logEvent('warn', 'approval_close_failed', { approvalId: id, error }));
     }
     return rows.length;
   }
@@ -354,7 +362,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       }
     },
 
-    expireOverdue: () => declinePending('expires_at < now()', [], 'expired', EXPIRED_REASON, 'APP_APPROVAL_EXPIRED'),
+    expireOverdue: () => declinePending('expires_at < now()', [], 'expired', (q) => `Истекло: сотрудник не ответил за ${termHoursOf(q)} ч.`, 'APP_APPROVAL_EXPIRED'),
 
     async deleteTask(taskId) {
       await declinePending('task_id = $3', [taskId], 'declined', DELETED_REASON, 'APP_TASK_DELETED');
@@ -410,6 +418,10 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       };
       every(SYNC_INTERVAL_MS, () => service.syncSchedules(), 'background_sync_failed');
       every(EXPIRY_SWEEP_MS, () => service.expireOverdue(), 'approval_expiry_failed');
+      // Questions of conversations burn by their term too, and a question with a quarter of its term left is reminded
+      // of (docs/specs/[20.11.2026]-notifications.md, F4).
+      every(EXPIRY_SWEEP_MS, () => expireChatQuestions(db), 'approval_expiry_failed');
+      every(EXPIRY_SWEEP_MS, () => remindExpiring(db), 'approval_reminder_failed');
     },
 
     stop() {
