@@ -13,6 +13,7 @@ import {
 import type { AgentAbilities } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { writeAudit } from '../../audit/audit.ts';
+import { countEmployeesWithAgents } from '../../connections/audience.ts';
 import type { ConnectionManager } from '../../connections/manager.ts';
 import type { Db } from '../../db/pool.ts';
 import { getPromptState, publishDraft, revertToFile, saveDraft, setAgentModel, type EditorDeps } from '../../editor/prompts.ts';
@@ -162,17 +163,18 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     const { rows } = await db.query<{ connector_id: string; status: string; n: number }>(
       'SELECT connector_id, status, count(*)::int AS n FROM app.connector_credentials GROUP BY connector_id, status',
     );
-    const total = await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM app."user" u LEFT JOIN app.user_profiles p ON p.user_id = u."id" WHERE p.blocked_at IS NULL AND p.deletion_started_at IS NULL`,
+    // «Подключено у N из M»: M — the employees whose agents use the system (docs/specs/[20.11.2026]-mcp-connections.md).
+    const connections = await Promise.all(
+      [...deps.connections.connectors.values()].map(async (conn) => ({
+        id: conn.id,
+        title: conn.title,
+        mode: conn.mode,
+        auth: conn.auth,
+        employees: Object.fromEntries(rows.filter((r) => r.connector_id === conn.id).map((r) => [r.status, r.n])),
+        possible: await countEmployeesWithAgents(db, deps.registry.agents.filter((rt) => rt.connectorIds.includes(conn.id)).map((rt) => rt.passport.id)),
+      })),
     );
-    const connections = [...deps.connections.connectors.values()].map((conn) => ({
-      id: conn.id,
-      title: conn.title,
-      mode: conn.mode,
-      auth: conn.auth,
-      employees: Object.fromEntries(rows.filter((r) => r.connector_id === conn.id).map((r) => [r.status, r.n])),
-    }));
-    return c.json({ connections, employeesTotal: total.rows[0]!.n });
+    return c.json({ connections });
   });
 
   // The journal outlives the people: who answered «Да» and was removed since.

@@ -134,8 +134,28 @@ export interface McpServerView {
   actions: McpAction[];
   snapshotAt: string | null;
   agents: string[];
+  // «Подключили N из M»: who turned the server on (without a sign-in, the shared key), whose own access works or
+  // fails, out of the employees whose agents may use the server.
+  usage: { using: number; connected: number; authErrors: number; possible: number };
   createdAt: string;
   updatedAt: string;
+}
+
+// A server in «Настройки → Подключения» of an employee (scenario 2): one the admin turned on for their agents.
+export interface MyMcpServer {
+  id: string;
+  title: string;
+  auth: McpAuthKind;
+  fields: McpField[];
+  // Without a sign-in or with the shared key: the employee turned it on for themselves («Использовать»).
+  using: boolean;
+  // With a personal key or a sign-in: the state of the employee's own access.
+  status: 'not_connected' | 'connected' | 'unverified' | 'auth_error';
+  checkedAt: string | null;
+  // The names of the employee's agents that may use it: «Нужно агенту «Продажи»».
+  agents: string[];
+  // The server fails for everybody: the shared key is refused, the program falls.
+  trouble: 'shared_auth_error' | 'program_crashed' | null;
 }
 
 // What an address tells about itself before the admin fills the form (spec, scenario 1): a server without

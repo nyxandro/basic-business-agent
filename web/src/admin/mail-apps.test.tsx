@@ -22,7 +22,7 @@ describe('«Почта сотрудников»', () => {
   it('shows who connected and sets up the sign-in of Microsoft with its organisation', async () => {
     const s = mockServer({
       'GET /app/api/me': { body: { ...ME, permissions: ['connections'] } },
-      'GET /app/api/admin/connections': { body: { connections: [], employeesTotal: 12 } },
+      'GET /app/api/admin/connections': { body: { connections: [] } },
       'GET /app/api/admin/mail': { body: STATE },
       'PUT /app/api/admin/mail/oauth/microsoft': { body: { ...STATE, apps: STATE.apps.map((a) => (a.provider === 'microsoft' ? { ...a, clientId: 'ms-app', tenant: 'common', configured: true } : a)) } },
     });
@@ -46,7 +46,7 @@ describe('«Почта сотрудников»', () => {
   it('turns a sign-in off after asking', async () => {
     const s = mockServer({
       'GET /app/api/me': { body: { ...ME, permissions: ['connections'] } },
-      'GET /app/api/admin/connections': { body: { connections: [], employeesTotal: 12 } },
+      'GET /app/api/admin/connections': { body: { connections: [] } },
       'GET /app/api/admin/mail': { body: STATE },
       'DELETE /app/api/admin/mail/oauth/yandex': { body: { ...STATE, apps: STATE.apps.map((a) => (a.provider === 'yandex' ? { ...a, clientId: null, configured: false } : a)) } },
     });

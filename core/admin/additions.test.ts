@@ -117,8 +117,9 @@ describe('stage 2 additions', () => {
     await t.db.query("UPDATE app.models SET enabled = true WHERE id = 'test-paid'");
   });
 
-  it('tells «Подключения» how many employees there are in total', async () => {
-    const res = await json<{ employeesTotal: number }>(await t.call('GET', '/app/api/admin/connections', { cookie: admin }));
-    expect(res.employeesTotal).toBe(2);
+  // «Подключено у N из M» counts M by the agents of each system (core/connections/visibility.test.ts covers the count).
+  it('lists the systems of plugins in «Подключения» (none in the test installation)', async () => {
+    const res = await json<{ connections: unknown[] }>(await t.call('GET', '/app/api/admin/connections', { cookie: admin }));
+    expect(res.connections).toEqual([]);
   });
 });

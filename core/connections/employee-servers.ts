@@ -1,6 +1,7 @@
 // What an employee does with the MCP servers the admin allowed for their agents (docs/specs/[20.11.2026]-mcp-connections.md,
 // scenario 2; the owner's decision F2, 21.11): turns on one without a sign-in or with the shared key («Использовать»),
 // saves their own key, disconnects. A sign-in on the system's site is in mcp-auth.ts.
+import type { McpField, McpServerStatus, MyMcpServer } from '@bba/contracts';
 import type { CredentialStatus } from './credentials.ts';
 import { deleteCredential, saveCredential, setCredentialStatus } from './credentials.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
@@ -22,6 +23,46 @@ const invalid = (message: string, userMessage: string) => appError('APP_VALIDATI
 
 async function turnOn(db: Db, serverId: string, userId: string): Promise<void> {
   await db.query('INSERT INTO app.mcp_server_users (server_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [serverId, userId]);
+}
+
+interface ListedRow {
+  id: string;
+  title: string;
+  auth: MyMcpServer['auth'];
+  fields: McpField[];
+  status: McpServerStatus;
+  agents: string[];
+  using: boolean;
+  credential_status: MyMcpServer['status'] | null;
+  checked_at: Date | null;
+}
+
+// «Настройки → Подключения»: the servers the admin turned on for the employee's agents, with their own state.
+export async function serversForEmployee(deps: EmployeeServerDeps, input: { userId: string; agents: EmployeeAgents; agentName: (id: string) => string }): Promise<MyMcpServer[]> {
+  const agentIds = input.agents === 'all' ? null : [...input.agents];
+  const { rows } = await deps.db.query<ListedRow>(
+    `SELECT s.id, s.title, s.auth, s.fields, s.status,
+            array(SELECT a.agent_id FROM app.mcp_server_agents a WHERE a.server_id = s.id AND ($2::text[] IS NULL OR a.agent_id = ANY($2::text[])) ORDER BY a.agent_id) AS agents,
+            EXISTS (SELECT 1 FROM app.mcp_server_users u WHERE u.server_id = s.id AND u.user_id = $1) AS using,
+            c.status AS credential_status, c.checked_at
+       FROM app.mcp_servers s
+       LEFT JOIN app.connector_credentials c ON c.user_id = $1 AND c.connector_id = 'mcp:' || s.id::text
+      WHERE s.status IN ('enabled', 'shared_auth_error', 'program_crashed')
+        AND EXISTS (SELECT 1 FROM app.mcp_server_agents a WHERE a.server_id = s.id AND ($2::text[] IS NULL OR a.agent_id = ANY($2::text[])))
+      ORDER BY s.title, s.id`,
+    [input.userId, agentIds],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    auth: row.auth,
+    fields: row.fields,
+    using: row.using,
+    status: row.credential_status ?? 'not_connected',
+    checkedAt: row.checked_at?.toISOString() ?? null,
+    agents: row.agents.map(input.agentName),
+    trouble: row.status === 'enabled' ? null : (row.status as 'shared_auth_error' | 'program_crashed'),
+  }));
 }
 
 // «Использовать» for a server without a sign-in or with the shared key of the organization.

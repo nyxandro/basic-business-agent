@@ -180,8 +180,6 @@ export interface UsageReport {
 
 export interface AdminConnectionsResponse {
   connections: AdminConnection[];
-  // Active employees of the installation: «Подключено у N из M».
-  employeesTotal: number;
 }
 
 export interface AdminConnection {
@@ -191,6 +189,8 @@ export interface AdminConnection {
   auth: 'oauth' | 'static' | 'identity';
   // Employees by the state of their access: connected, unverified, auth_error.
   employees: Record<string, number>;
+  // «Подключено у N из M»: the active employees whose agents use this system.
+  possible: number;
 }
 
 export interface JournalEntry {

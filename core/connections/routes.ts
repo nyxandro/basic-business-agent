@@ -12,7 +12,8 @@ import { logEvent } from '../server/log.ts';
 import { signInNotFinished } from './errors.ts';
 import type { ConnectionManager } from './manager.ts';
 import { clientDocument, completeSignIn, MCP_CALLBACK_PATH, MCP_CLIENT_DOCUMENT_PATH, mcpTarget, startMcpSignIn, type SignInPurpose } from './mcp-auth.ts';
-import { disconnectServer, savePersonalKey, useServer, type EmployeeAgents } from './employee-servers.ts';
+import { disconnectServer, savePersonalKey, serversForEmployee, useServer, type EmployeeAgents } from './employee-servers.ts';
+import type { Registry } from '../loader/registry.ts';
 import { loadOAuthServer, mcpConnectorId, serverForEmployee } from './servers.ts';
 
 const staticBody = z.object({ fields: z.record(z.string(), z.string().min(1)) });
@@ -43,6 +44,7 @@ function afterSignIn(origin: string, connectorId: string | undefined, purpose: S
 
 export interface ConnectionRouteDeps {
   connections: ConnectionManager;
+  registry: Pick<Registry, 'agents' | 'get'>;
   db: Db;
   box: SecretBox;
   publicUrl: string;
@@ -51,7 +53,12 @@ export interface ConnectionRouteDeps {
 export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRouteDeps): void {
   const { connections } = deps;
 
-  app.get('/app/api/me/connections', async (c) => c.json({ connections: await connections.statusFor(access(c).userId) }));
+  // Only the systems the person's agents use (docs/specs/[20.11.2026]-mcp-connections.md: before, every one was shown).
+  app.get('/app/api/me/connections', async (c) => {
+    const a = access(c);
+    const used = new Set(deps.registry.agents.filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id)).flatMap((rt) => rt.connectorIds));
+    return c.json({ connections: await connections.statusFor(a.userId, used) });
+  });
 
   app.put('/app/api/me/connections/:id', async (c) => {
     const { fields } = await parseJson(c, staticBody);
@@ -73,6 +80,9 @@ export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRout
     if (!z.uuid().safeParse(id).success) throw appError('APP_NOT_FOUND', `mcp server id ${id} is not a uuid`, { userMessage: 'Это подключение сейчас недоступно. Обновите страницу.' });
     return id!;
   };
+
+  const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
+  app.get('/app/api/me/connections/mcp', async (c) => c.json({ servers: await serversForEmployee(employee, { userId: access(c).userId, agents: agentsOf(c), agentName }) }));
 
   // «Подключить» through the system's site.
   app.post('/app/api/me/connections/mcp/:id/sign-in', async (c) => {

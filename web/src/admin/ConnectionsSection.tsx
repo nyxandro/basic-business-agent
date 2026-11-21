@@ -32,8 +32,10 @@ function state(c: AdminConnection): { text: string; tone: 'ok' | 'bad' | 'neutra
   return { text: 'Не подключено', tone: 'neutral' };
 }
 
-function SystemCard({ c, total }: { c: AdminConnection; total: number }) {
+function SystemCard({ c }: { c: AdminConnection }) {
   const shown = state(c);
+  // Out of the employees whose agents use the system, not of everybody.
+  const total = c.possible;
   const connected = c.employees.connected ?? 0;
   const unverified = c.employees.unverified ?? 0;
   return (
@@ -71,7 +73,7 @@ export function ConnectionsSection() {
       {/* The mail is in every installation (spec, section 8.24); systems of plugins follow. */}
       <div className={styles.grid}>
         <MailCard />
-        {load.status === 'ready' ? load.data.connections.map((c) => <SystemCard key={c.id} c={c} total={load.data.employeesTotal} />) : null}
+        {load.status === 'ready' ? load.data.connections.map((c) => <SystemCard key={c.id} c={c} />) : null}
       </div>
     </div>
   );

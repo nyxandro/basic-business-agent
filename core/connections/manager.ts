@@ -48,7 +48,8 @@ export interface ConnectionManager {
   mcp: McpTools;
   // Names of the actions of connected systems listed so far (the same for every employee).
   actionsSeen(): Record<string, ActionDescription>;
-  statusFor(userId: string): Promise<ConnectionStatus[]>;
+  // The person's plugin connections — only of systems their agents use (`connectorIds`).
+  statusFor(userId: string, connectorIds: ReadonlySet<string>): Promise<ConnectionStatus[]>;
   saveStatic(userId: string, connectorId: string, fields: Record<string, string>): Promise<CredentialStatus>;
   disconnect(userId: string, connectorId: string): Promise<void>;
   oauthStart(userId: string, connectorId: string): Promise<string>;
@@ -232,10 +233,10 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
       return out;
     },
 
-    async statusFor(userId) {
+    async statusFor(userId, connectorIds) {
       const out: ConnectionStatus[] = [];
       for (const c of connectors.values()) {
-        if (c.mode !== 'personal') continue;
+        if (c.mode !== 'personal' || !connectorIds.has(c.id)) continue;
         const { rows } = await db.query<{ status: CredentialStatus; checked_at: Date | null }>(
           'SELECT status, checked_at FROM app.connector_credentials WHERE user_id = $1 AND connector_id = $2',
           [userId, c.id],

@@ -98,13 +98,13 @@ describe('personal access with a key', () => {
     } finally {
       crm.forbiddenTokens.delete('olga-key');
     }
-    expect((await t.connections.statusFor(olga)).find((c) => c.id === 'crm')?.status).toBe('connected');
+    expect((await t.connections.statusFor(olga, new Set(['crm', 'oauth-crm']))).find((c) => c.id === 'crm')?.status).toBe('connected');
   });
 
   it('refuses a wrong key at save time and marks the connection as failed', async () => {
     const anna = await t.createUser({ email: 'anna@example.com' });
     await expect(t.connections.saveStatic(anna, 'crm', { token: 'wrong' })).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });
-    expect((await t.connections.statusFor(anna)).find((c) => c.id === 'crm')?.status).toBe('auth_error');
+    expect((await t.connections.statusFor(anna, new Set(['crm', 'oauth-crm']))).find((c) => c.id === 'crm')?.status).toBe('auth_error');
   });
 
   it('cannot read a stored key after the encryption key is gone', async () => {
@@ -157,7 +157,7 @@ describe('personal access through OAuth (the plugin names its sign-in addresses;
     const [a, b] = await Promise.all([accessToken(authDeps(), plugin(), userId), accessToken(authDeps(), plugin(), userId)]);
     expect(a).toBe(b);
     expect(idp.refreshUses).toHaveLength(1);
-    expect((await t.connections.statusFor(userId)).find((c) => c.id === 'oauth-crm')?.status).toBe('connected');
+    expect((await t.connections.statusFor(userId, new Set(['crm', 'oauth-crm']))).find((c) => c.id === 'oauth-crm')?.status).toBe('connected');
   });
 
   it('marks the connection for reconnecting when the refresh token no longer works', async () => {
@@ -165,6 +165,6 @@ describe('personal access through OAuth (the plugin names its sign-in addresses;
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     await saveCredential(t.db, box, { userId, connectorId: 'oauth-crm', credential: { kind: 'oauth', accessToken: 'old', refreshToken: 'rt-revoked', expiresAt: new Date().toISOString() }, status: 'connected' });
     await expect(accessToken(authDeps(), plugin(), userId)).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });
-    expect((await t.connections.statusFor(userId)).find((c) => c.id === 'oauth-crm')?.status).toBe('auth_error');
+    expect((await t.connections.statusFor(userId, new Set(['crm', 'oauth-crm']))).find((c) => c.id === 'oauth-crm')?.status).toBe('auth_error');
   });
 });

@@ -10,6 +10,7 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
+import { countEmployeesWithAgents } from './audience.ts';
 import { decryptFailed } from './credentials.ts';
 import { assertPlainHttpAllowed } from './probe.ts';
 import { applyActionMarks, mergeSnapshot, readDefinitions, toActionView, type ServerAccess, type StoredAction } from './snapshot.ts';
@@ -182,7 +183,7 @@ function openSecrets(box: SecretBox, row: Pick<ServerRow, 'title' | 'secret_ciph
   }
 }
 
-function toView(row: ServerRow, agents: string[], secrets: ServerSecrets): McpServerView {
+function toView(row: ServerRow, agents: string[], secrets: ServerSecrets, usage: McpServerView['usage']): McpServerView {
   return {
     id: row.id,
     slug: row.slug,
@@ -202,6 +203,7 @@ function toView(row: ServerRow, agents: string[], secrets: ServerSecrets): McpSe
     actions: row.snapshot.map(toActionView),
     snapshotAt: row.snapshot_at?.toISOString() ?? null,
     agents,
+    usage,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -220,8 +222,19 @@ async function agentsOf(db: Queryable, id: string): Promise<string[]> {
   return rows.map((r) => r.agent_id);
 }
 
+async function usageOf(db: Queryable, id: string, agents: readonly string[]): Promise<McpServerView['usage']> {
+  const { rows } = await db.query<{ using: number; connected: number; auth_errors: number }>(
+    `SELECT (SELECT count(*) FROM app.mcp_server_users WHERE server_id = $1)::int AS using,
+            (SELECT count(*) FROM app.connector_credentials WHERE connector_id = $2 AND status = 'connected')::int AS connected,
+            (SELECT count(*) FROM app.connector_credentials WHERE connector_id = $2 AND status = 'auth_error')::int AS auth_errors`,
+    [id, mcpConnectorId(id)],
+  );
+  return { using: rows[0]!.using, connected: rows[0]!.connected, authErrors: rows[0]!.auth_errors, possible: await countEmployeesWithAgents(db as Db, agents) };
+}
+
 async function viewOf(db: Queryable, box: SecretBox, row: ServerRow): Promise<McpServerView> {
-  return toView(row, await agentsOf(db, row.id), openSecrets(box, row));
+  const agents = await agentsOf(db, row.id);
+  return toView(row, agents, openSecrets(box, row), await usageOf(db, row.id, agents));
 }
 
 async function setAgents(db: Queryable, id: string, agents: readonly string[]): Promise<void> {

@@ -74,7 +74,7 @@ describe('«Подключения» and «Журнал действий»', () 
   it('shows how many employees connected a system and its access errors', async () => {
     mockServer({
       'GET /app/api/me': { body: ADMIN },
-      'GET /app/api/admin/connections': { body: { connections: [{ id: 'crm', title: 'Тестовая CRM', mode: 'personal', auth: 'oauth', employees: { connected: 3, unverified: 1, auth_error: 1 } }], employeesTotal: 5 } },
+      'GET /app/api/admin/connections': { body: { connections: [{ id: 'crm', title: 'Тестовая CRM', mode: 'personal', auth: 'oauth', employees: { connected: 3, unverified: 1, auth_error: 1 }, possible: 5 }] } },
     });
     renderApp('/admin/connections');
     expect(await screen.findByText('3 из 5')).toBeInTheDocument();
