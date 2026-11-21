@@ -218,6 +218,8 @@ export async function createTestApp(
     push?: { transport: PushTransport; testOrigin: string };
     // The clock of presence and of the delivery of notifications.
     now?: () => Date;
+    // The browser stand runs at any hour: its pushes never wait for the morning.
+    quietHours?: false;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -238,6 +240,7 @@ export async function createTestApp(
     box,
     timezone: 'Europe/Moscow',
     push: opts.push ?? { transport: noPush, testOrigin: 'http://push.invalid' },
+    ...(opts.quietHours === false ? { quietHours: false as const } : {}),
     ...(opts.now ? { now: opts.now, clock: () => opts.now!().getTime() } : {}),
   });
   const gateway = createModelGateway({ db, client: litellm, box, timezone: 'Europe/Moscow' });

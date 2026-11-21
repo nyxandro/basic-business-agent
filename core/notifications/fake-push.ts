@@ -58,11 +58,17 @@ function decrypt(body: Buffer, browser: Browser): string {
   return padded.subarray(0, end).toString('utf8');
 }
 
-export async function startFakePushService(): Promise<FakePushService> {
+// `port` — a fixed one for the browser stand, whose scenarios read GET /received (what the «phones» got).
+export async function startFakePushService(opts: { port?: number } = {}): Promise<FakePushService> {
   const browsers = new Map<string, Browser>();
   const scripted = new Map<string, number[]>();
   const received: ReceivedPush[] = [];
   const server = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/received') {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(received));
+      return;
+    }
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
@@ -83,7 +89,7 @@ export async function startFakePushService(): Promise<FakePushService> {
       res.end();
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(opts.port ?? 0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
   const transport: PushTransport = (endpoint, headers, body) =>

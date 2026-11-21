@@ -20,6 +20,8 @@ export async function createNotifications(deps: {
   timezone: string;
   // Tests: the fake push service (core/notifications/fake-push.ts) and a clock.
   push?: { transport: PushTransport; testOrigin: string };
+  // The browser stand of e2e runs at any hour: no quiet night there.
+  quietHours?: false;
   now?: () => Date;
   clock?: () => number;
 }): Promise<Notifications> {
@@ -27,6 +29,6 @@ export async function createNotifications(deps: {
   const presence = createPresence(deps.clock);
   const testOrigin = deps.push?.testOrigin ?? null;
   const sender = createPushSender({ keys, subject: () => vapidSubject(deps.db), transport: deps.push?.transport ?? httpsTransport, testOrigin });
-  const delivery = createDelivery({ db: deps.db, presence, timezone: deps.timezone, sender, ...(deps.now ? { now: deps.now } : {}) });
+  const delivery = createDelivery({ db: deps.db, presence, timezone: deps.timezone, sender, quietHours: deps.quietHours !== false, ...(deps.now ? { now: deps.now } : {}) });
   return { presence, sender, delivery, publicKey: keys.publicKey, testOrigin };
 }

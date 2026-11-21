@@ -3,13 +3,13 @@
 // on a phone the bell opens the questions as a sheet.
 import { expect, openAgent, pageAs, test } from './helpers.ts';
 
-// First, while the stand's only question still waits: the bell is there only when there is
-// something to answer.
+// First, while the stand's only question still waits: the bell opens it on «Ждут решения»
+// (docs/specs/[20.11.2026]-notifications.md, F3).
 test('on a phone the bell opens the questions as a sheet', async ({ browser }) => {
   const page = await pageAs(browser, 'olga@example.com', { width: 390, height: 844 });
-  await page.getByRole('button', { name: /^Ждёт подтверждения/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Ждёт подтверждения' });
-  await expect(sheet.getByText('Вопросы от фоновых задач агентов')).toBeVisible();
+  await page.getByRole('button', { name: /^Уведомления: 1 вопрос ждёт решения/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Уведомления' });
+  await expect(sheet.getByRole('radio', { name: 'Ждут решения · 1' })).toHaveAttribute('aria-checked', 'true');
   await expect(sheet.getByRole('article').filter({ hasText: 'Утренняя сводка' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Закрыть' }).click();
   await expect(sheet).toHaveCount(0);

@@ -38,6 +38,8 @@ export interface DeliveryDeps {
   presence: Presence;
   timezone: string;
   sender: PushSender;
+  // The quiet night 21:00–8:00; off only on the browser stand of e2e, which runs at any hour.
+  quietHours: boolean;
   now?: () => Date;
 }
 
@@ -91,7 +93,7 @@ export function createDelivery(deps: DeliveryDeps): Delivery {
     if (due.decided) return settle(due.notification_id, 'skipped', 'decided');
     if (at.getTime() - due.created_at.getTime() > DELIVERY_MAX_AGE_MS) return settle(due.notification_id, 'skipped', 'stale');
     if (deps.presence.isHere(due.user_id)) return settle(due.notification_id, 'skipped', 'present');
-    const quiet = quietUntil(at, deps.timezone);
+    const quiet = deps.quietHours ? quietUntil(at, deps.timezone) : null;
     if (quiet) return postpone(due.notification_id, quiet, false);
 
     const { rows: subscriptions } = await db.query<{ id: string; endpoint: string; p256dh: string; auth: string }>(

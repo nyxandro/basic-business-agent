@@ -7,6 +7,7 @@
 // «Нейросеть» has a subscription model and a pool of three ChatGPT accounts in a fake OpenAI; a new
 // account is connected through its page «Открыть сайт OpenAI» (enter the code and any e-mail).
 // «в интернете» in a message sends the researcher to a made-up shop (stand-model.ts, standWeb).
+// Ольга's «phone» is subscribed to notifications on a fake push service (STAND_PUSH_PORT): GET /received tells what it got.
 import { serve } from '@hono/node-server';
 import { readFileSync } from 'node:fs';
 import { createTask } from '../../core/background/tasks.ts';
@@ -16,13 +17,26 @@ import { startFakeChatGpt } from '../../core/models/fake-chatgpt.ts';
 import { createTestApp, TEST_PASSWORD } from '../../core/server/test-app.ts';
 import { startStandMcp } from './stand-mcp.ts';
 import { createStandModel, standNaming, standWeb } from './stand-model.ts';
+import { startFakePushService } from '../../core/notifications/fake-push.ts';
+import { STAND_PUSH_PORT } from './stand-push.ts';
 
 const PORT = 3000;
 
 const openai = await startFakeChatGpt();
+const push = await startFakePushService({ port: STAND_PUSH_PORT });
 // Systems for «Подключения» → «Добавить сервер MCP» (stand-mcp.ts).
 const mcp = await startStandMcp();
-const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true, web: standWeb, mcpRunner: mcp.runner });
+const t = await createTestApp({
+  modelFallback: createStandModel(),
+  namingFallback: standNaming,
+  assistantSubagent: true,
+  chatgpt: { authBase: openai.url },
+  sandbox: true,
+  web: standWeb,
+  mcpRunner: mcp.runner,
+  push: { transport: push.transport, testOrigin: push.origin },
+  quietHours: false,
+});
 const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
 await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
 const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
@@ -33,6 +47,11 @@ const petr = await t.createUser({ email: 'petr@example.com', name: 'Пётр' })
 const accounting = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Бухгалтерия') RETURNING id`)).rows[0]!.id;
 await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [accounting, petr]);
 await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'assistant')`, [accounting]);
+
+// Ольга's phone gets notifications (docs/specs/[20.11.2026]-notifications.md): the question below reaches it at once.
+const phone = push.subscribe();
+await t.db.query('INSERT INTO app.push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES (gen_random_uuid(), $1, $2, $3, $4)', [olga, phone.endpoint, phone.keys.p256dh, phone.keys.auth]);
+t.notifications.delivery.start();
 
 // A background task for the department «Продажи» that has already asked Ольга a question
 // («Ждёт подтверждения»).
@@ -82,7 +101,9 @@ const server = serve({ fetch: t.app.fetch, port: PORT }, () => {
 
 async function shutdown(): Promise<void> {
   server.close();
+  await t.notifications.delivery.stop();
   await t.close();
+  await push.close();
   await openai.close();
   await mcp.close();
   process.exit(0);
