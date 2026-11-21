@@ -17,7 +17,7 @@ export const SYSTEM_SKILL_TITLES: Record<string, { title: string; description: s
   // Our own, not Anthropic's (docs/specs/[20.11.2026]-org-letterhead.md): documents on the letterhead, the mark of the signature.
   letterhead: {
     title: 'Бланк организации',
-    description: 'Делает письма, КП, протоколы и справки на фирменном бланке организации, пишет строку подписи с руководителем из профиля, ставит печать и подпись — только у ответственных лиц и после «Да».',
+    description: 'Делает письма, КП, протоколы и справки на фирменном бланке организации и пишет строку подписи с руководителем из профиля. Печать и подпись ставят только агенты ответственных лиц — после «Да».',
   },
   pdf: {
     title: 'PDF',

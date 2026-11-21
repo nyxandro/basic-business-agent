@@ -2,12 +2,13 @@
 // only a responsible person's agent has the tool, only after «Да», a document of a forbidden kind is refused before the
 // card, the right is asked again after «Да», and the mark is found in a cell of a table and cut by Word into pieces.
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentListResponse } from '@bba/contracts';
-import { unzipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FakeRequest } from '../models/fake-openai.ts';
+import { createTask } from '../background/tasks.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { conversationRoot } from '../workspace/layout.ts';
 import { NOT_A_SIGNER, SIGN_TOOL } from './prompt.ts';
@@ -140,9 +141,11 @@ describe('the signing tool', () => {
   it('refuses an invoice, an act of transfer and a power of attorney before the card, and a document without the mark', async () => {
     const threadId = randomUUID();
     const dir = putDocument(olgaId, threadId, 'Счёт-фактура.docx', 'to-sign.docx');
-    t.model.script(sign('Счёт-фактура.docx', 'invoice_factura'), { text: 'Нельзя.' });
-    expect(interruptOf(await run(olga, threadId, 'Поставь подпись на счёт-фактуру'))).toBeUndefined();
-    expect(lastToolResult()).toContain('APP_SIGN_FORBIDDEN_KIND');
+    for (const kind of ['invoice_factura', 'upd', 'power_of_attorney']) {
+      t.model.script(sign('Счёт-фактура.docx', kind), { text: 'Нельзя.' });
+      expect(interruptOf(await run(olga, threadId, 'Поставь подпись на документ'))).toBeUndefined();
+      expect(lastToolResult()).toContain('APP_SIGN_FORBIDDEN_KIND');
+    }
     expect(signed(join(dir, 'Счёт-фактура.docx')).text).toContain('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]');
     putDocument(olgaId, threadId, 'Письмо.docx', 'header-footer.docx');
     t.model.script(sign('Письмо.docx', 'letter'), { text: 'Метки нет.' });
@@ -151,6 +154,103 @@ describe('the signing tool', () => {
     const { rows } = await t.db.query('SELECT 1 FROM app.approval_requests WHERE thread_id = $1', [threadId]);
     expect(rows).toEqual([]);
   }, 60_000);
+
+  // Independent review 21.11: a document the agent made can be built to hold the server; nothing of it is opened then.
+  it('refuses before the card a document that unpacks into gigabytes, a huge file and a path out of the folder', async () => {
+    const threadId = randomUUID();
+    const dir = folderOf(olgaId, threadId);
+    writeFileSync(join(dir, 'Бомба.docx'), zipSync({ 'word/document.xml': new Uint8Array(110 * 1024 * 1024) }, { level: 9 }));
+    t.model.script(sign('Бомба.docx', 'letter'), { text: 'Не вышло.' });
+    expect(interruptOf(await run(olga, threadId, 'Поставь подпись'))).toBeUndefined();
+    expect(lastToolResult()).toContain('APP_SIGN_TOO_BIG');
+    writeFileSync(join(dir, 'Огромный.docx'), '');
+    truncateSync(join(dir, 'Огромный.docx'), 30 * 1024 * 1024);
+    t.model.script(sign('Огромный.docx', 'letter'), { text: 'Не вышло.' });
+    expect(interruptOf(await run(olga, threadId, 'Поставь подпись'))).toBeUndefined();
+    expect(lastToolResult()).toContain('APP_SIGN_TOO_BIG');
+    t.model.script(sign('../../../чужой.docx', 'letter'), { text: 'Не вышло.' });
+    expect(interruptOf(await run(olga, threadId, 'Поставь подпись'))).toBeUndefined();
+    expect(lastToolResult()).toContain('APP_VALIDATION_FAILED');
+    const { rows } = await t.db.query('SELECT 1 FROM app.approval_requests WHERE thread_id = $1', [threadId]);
+    expect(rows).toEqual([]);
+  }, 60_000);
+
+  it('signs only what the card asked about: a document changed before «Да» is left as it is', async () => {
+    const threadId = randomUUID();
+    const dir = putDocument(olgaId, threadId, 'КП.docx', 'to-sign.docx');
+    t.model.script(sign('КП.docx', 'commercial_offer'), { text: 'Документ изменился.' });
+    const interrupt = interruptOf(await run(olga, threadId, 'Поставь подпись на КП'));
+    expect(interrupt).toBeTruthy();
+    // Another answer in the same folder writes other words under the same name.
+    putDocument(olgaId, threadId, 'КП.docx', 'to-sign-table.docx');
+    await run(olga, threadId, null, [{ interruptId: interrupt!.id, status: 'resolved', payload: { approved: true } }]);
+    expect(lastToolResult()).toContain('APP_SIGN_CHANGED');
+    expect(signed(join(dir, 'КП.docx')).text).toContain('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]');
+    expect(signed(join(dir, 'КП.docx')).media).toEqual([]);
+  }, 60_000);
+
+  it('puts the line of the signature in a footer', async () => {
+    const threadId = randomUUID();
+    const dir = putDocument(olgaId, threadId, 'Письмо.docx', 'to-sign-footer.docx');
+    t.model.script(sign('Письмо.docx', 'letter'), { text: 'Готово.' });
+    const interrupt = interruptOf(await run(olga, threadId, 'Поставь подпись'));
+    await run(olga, threadId, null, [{ interruptId: interrupt!.id, status: 'resolved', payload: { approved: true } }]);
+    const files = unzipSync(readFileSync(join(dir, 'Письмо.docx')));
+    const footer = Object.entries(files).find(([name]) => /^word\/footer\d*\.xml$/.test(name))![1];
+    expect(new TextDecoder().decode(footer)).toContain('И. П. Иванов');
+    expect(new TextDecoder().decode(footer)).not.toContain('[[');
+    expect(Object.keys(files).filter((n) => n.startsWith('word/media/'))).toHaveLength(2);
+  }, 60_000);
+
+  it('takes a signature of the former director for none: no tool, and the agent says why', async () => {
+    await t.db.query("UPDATE app.org_assets SET director_name = 'Петров Пётр Петрович' WHERE kind = 'signature'");
+    t.model.script({ text: 'Подпись нового руководителя не загружена.' });
+    await run(olga, randomUUID(), 'Поставь подпись директора на КП');
+    expect(toolNames()).not.toContain(SIGN_TOOL);
+    expect(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content)).join('\n')).toContain('подписи нынешнего руководителя');
+    await t.db.query("UPDATE app.org_assets SET director_name = 'Иванов Иван Петрович' WHERE kind = 'signature'");
+  });
+
+  it('leaves no stamp when it was removed while the card waited: a line to sign by hand instead', async () => {
+    const threadId = randomUUID();
+    const dir = putDocument(olgaId, threadId, 'Письмо.docx', 'to-sign.docx');
+    t.model.script(sign('Письмо.docx', 'letter'), { text: 'Печати нет.' });
+    const interrupt = interruptOf(await run(olga, threadId, 'Поставь подпись на письмо'));
+    const { rows: [stamp] } = await t.db.query<{ content: Buffer }>("DELETE FROM app.org_assets WHERE kind = 'stamp' RETURNING content");
+    await run(olga, threadId, null, [{ interruptId: interrupt!.id, status: 'resolved', payload: { approved: true } }]);
+    expect(lastToolResult()).toContain('APP_SIGN_NOT_UPLOADED');
+    const doc = signed(join(dir, 'Письмо.docx'));
+    expect(doc.text).not.toContain('[[');
+    expect(doc.text).toContain('И. П. Иванов');
+    expect(doc.media.length).toBe(1);
+    await t.db.query("INSERT INTO app.org_assets (kind, content, sha256, width, height) VALUES ('stamp', $1, $2, 400, 400)", [stamp!.content, 'c'.repeat(64)]);
+  }, 60_000);
+
+  it('signs in a background run after «Да» on «Ждёт подтверждения», with the kind of the document in words', async () => {
+    const make = (req: FakeRequest) => ({
+      toolCalls: [{ name: (req.tools ?? []).map((x) => x.function.name).find((n) => n.endsWith('execute_command'))!, args: { command: `python3 -c "from docx import Document; d = Document(); d.add_paragraph('Сводка'); d.add_paragraph('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'); d.save('Сводка.docx')"` } }],
+    });
+    t.model.script(make, sign('Сводка.docx', 'certificate'), { text: 'Подписал.' });
+    // A task of the department «Продажи»: its run asks Ольга on «Ждёт подтверждения».
+    const igorId = await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
+    const { rows: [sales] } = await t.db.query<{ id: string }>("SELECT id FROM app.departments WHERE name = 'Продажи'");
+    const task = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, igorId, {
+      title: 'Сводка',
+      agentId: 'sales',
+      access: { scope: 'departments', departmentIds: [sales!.id], userIds: [] },
+      schedule: { kind: 'weekdays', time: '09:00' },
+      prompt: 'Сделай сводку с подписью директора',
+    });
+    await t.background.fire(task.id);
+    await t.background.idle();
+    const { pending } = (await (await t.call('GET', '/app/api/approvals', { cookie: olga })).json()) as { pending: { id: string; tool: string; action: { choices?: Record<string, Record<string, string>> } }[] };
+    const question = pending.find((p) => p.tool === SIGN_TOOL)!;
+    expect(question.action.choices?.kind?.certificate).toBe('справка');
+    expect((await t.call('POST', `/app/api/approvals/${question.id}/decision`, { cookie: olga, body: { approved: true } })).status).toBe(200);
+    await t.background.idle();
+    const { rows } = await t.db.query<{ result: string; run_kind: string }>("SELECT result, run_kind FROM app.action_journal WHERE tool = $1 AND run_kind = 'background'", [SIGN_TOOL]);
+    expect(rows).toEqual([{ result: 'ok', run_kind: 'background' }]);
+  }, 90_000);
 
   it('gives the agent of whoever is not responsible no tool and one line about the stamp', async () => {
     t.model.script({ text: 'Подпись ставят ответственные лица.' });
@@ -173,8 +273,8 @@ describe('the signing tool', () => {
     expect(doc.text).toContain('И. П. Иванов');
     // Only the logo of the letterhead: no stamp and no signature.
     expect(doc.media.length).toBe(1);
-    const { rows } = await t.db.query<{ result: string; error_code: string }>("SELECT result, error_code FROM app.action_journal WHERE tool = $1 AND result = 'error'", [SIGN_TOOL]);
-    expect(rows).toEqual([{ result: 'error', error_code: 'APP_SIGN_NOT_ALLOWED' }]);
+    const { rows } = await t.db.query<{ result: string; approved_by: string }>("SELECT result, approved_by FROM app.action_journal WHERE tool = $1 AND error_code = 'APP_SIGN_NOT_ALLOWED'", [SIGN_TOOL]);
+    expect(rows).toEqual([{ result: 'error', approved_by: olgaId }]);
     await t.db.query('INSERT INTO app.org_signers (user_id) VALUES ($1)', [olgaId]);
     expect(existsSync(join(dir, 'Письмо.docx'))).toBe(true);
   }, 60_000);

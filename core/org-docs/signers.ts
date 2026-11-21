@@ -32,7 +32,8 @@ export async function setSigners(db: Db, actorUserId: string, userIds: readonly 
     const removed = before.map((r) => r.user_id).filter((id) => !wanted.includes(id));
     const added = wanted.filter((id) => !before.some((r) => r.user_id === id));
     if (removed.length > 0) await c.query('DELETE FROM app.org_signers WHERE user_id = ANY($1)', [removed]);
-    for (const id of added) await c.query('INSERT INTO app.org_signers (user_id, added_by) VALUES ($1, $2)', [id, actorUserId]);
+    // Two superadmins saving at once: the second finds the person already there.
+    for (const id of added) await c.query('INSERT INTO app.org_signers (user_id, added_by) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING', [id, actorUserId]);
     if (added.length > 0 || removed.length > 0) await writeAudit(c, { actorUserId, action: 'org_signers.update', target: null, details: { added, removed } });
   });
 }

@@ -15,16 +15,30 @@ export const SIGN_TOOL = 'org_sign_document';
 export const SIGN_MARK = '[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]';
 export const LETTERHEAD_SKILL = 'letterhead';
 export const NOT_A_SIGNER = 'Печать и подпись руководителя ты не ставишь; если просят — скажи, что это делают ответственные лица, и оставь строку для подписи.';
-const SIGNER_RULE = `Печать и подпись руководителя ставишь только по прямой просьбе сотрудника: в документ Word — метка ${SIGN_MARK} отдельной строкой на месте подписи, затем ${SIGN_TOOL} (скилл ${LETTERHEAD_SKILL}).`;
+// Only a responsible person's agent hears how the stamp is put (decision of the owner 21.11, F1): the shared skill of the
+// letterhead says nothing of the mark or the tool.
+const SIGNER_RULE = [
+  `Печать и подпись руководителя ставишь только по прямой просьбе сотрудника, в документ Word:`,
+  `- на месте строки подписи — отдельным абзацем ровно ${SIGN_MARK}, без должности и ФИО рядом: их напишет инструмент;`,
+  `- сохрани документ и вызови ${SIGN_TOOL} с путём файла и видом документа (kind): letter — письмо, commercial_offer — КП, minutes — протокол, certificate — справка, contract — договор, act — акт, waybill — накладная, other — другое; называй вид честно;`,
+  `- счёт-фактура, УПД, доверенность — факсимиле на них не допускается: метку не ставь, скажи, что их подписывают от руки или электронной подписью;`,
+  `- инструмент ответил «нет метки» — поставь метку и вызови снова; сотрудник сказал «Нет» — замени метку обычной строкой подписи, чтобы в документе не осталось [[…]];`,
+  `- после подписи покажи документ блоком файла.`,
+].join('\n');
 
-// What a responsible person cannot sign without: the agent says it instead of asking «Да» for nothing.
-export type SealGap = 'stamp' | 'signature' | 'director';
-const GAP_TEXT: Record<SealGap, string> = { stamp: 'печати организации', signature: 'подписи руководителя', director: 'ФИО руководителя' };
+// What a responsible person cannot sign without: the agent says it instead of asking «Да» for nothing. `outdated` — the
+// signature in the profile is of the former director (uploaded before the full name changed).
+export type SealGap = 'stamp' | 'signature' | 'outdated' | 'director';
+const GAP_TEXT: Record<SealGap, string> = { stamp: 'печати организации', signature: 'подписи руководителя', outdated: 'подписи нынешнего руководителя', director: 'ФИО руководителя' };
+
+// «печати организации и подписи руководителя».
+export function sealMissingWords(gaps: readonly SealGap[]): string {
+  const what = gaps.map((g) => GAP_TEXT[g]);
+  return what.length > 1 ? `${what.slice(0, -1).join(', ')} и ${what.at(-1)}` : what[0]!;
+}
 
 export function sealMissingText(gaps: readonly SealGap[]): string {
-  const what = gaps.map((g) => GAP_TEXT[g]);
-  const listed = what.length > 1 ? `${what.slice(0, -1).join(', ')} и ${what.at(-1)}` : what[0];
-  return `Печать и подпись руководителя ты ставишь, но сейчас нельзя: ${listed} в профиле нет. Если просят — скажи, что суперадминистратор может добавить это в «Профиле организации», и оставь строку для подписи.`;
+  return `Печать и подпись руководителя ты ставишь, но сейчас нельзя: ${sealMissingWords(gaps)} в профиле нет. Если просят — скажи, что суперадминистратор может добавить это в «Профиле организации», и оставь строку для подписи.`;
 }
 
 export interface OrgDocsFacts {
@@ -52,20 +66,27 @@ export function orgDocsText(facts: OrgDocsFacts): string | null {
       );
     }
     if (paths.logo) lines.push(`Логотип: ${paths.logo} — для презентаций, таблиц и документов без бланка.`);
-    const signer = facts.level === 'top' ? facts.sealGaps : null;
-    lines.push(signer === null ? NOT_A_SIGNER : signer.length === 0 ? SIGNER_RULE : sealMissingText(signer));
+    // A sub-agent answers the agent that called it and never puts the stamp: it hears nothing of it.
+    if (facts.level === 'top') lines.push(facts.sealGaps === null ? NOT_A_SIGNER : facts.sealGaps.length === 0 ? SIGNER_RULE : sealMissingText(facts.sealGaps));
   }
   return lines.length > 0 ? `# Бланк, печать и подпись\n${lines.join('\n')}` : null;
 }
 
+// The signature was uploaded for another full name than the director's now (a signature uploaded before any name — for
+// whoever is named later).
+export const signatureOutdated = (uploadedFor: string | null, fullName: string): boolean => Boolean(uploadedFor && fullName && uploadedFor !== fullName);
+
 // What a responsible person lacks to sign now; null — not a responsible person.
 export async function sealGapsOf(db: Db, userId: string): Promise<SealGap[] | null> {
   if (!(await isSigner(db, userId))) return null;
-  const { rows } = await db.query<{ kind: string }>("SELECT kind FROM app.org_assets WHERE kind IN ('stamp', 'signature')");
+  const { rows } = await db.query<{ kind: string; director_name: string | null }>("SELECT kind, director_name FROM app.org_assets WHERE kind IN ('stamp', 'signature')");
   const director = await readDirector(db);
+  const signature = rows.find((r) => r.kind === 'signature');
   const gaps: SealGap[] = [];
   if (!rows.some((r) => r.kind === 'stamp')) gaps.push('stamp');
-  if (!rows.some((r) => r.kind === 'signature')) gaps.push('signature');
+  if (!signature) gaps.push('signature');
+  // A signature of the former director next to the name of the new one would be a forgery of the paper.
+  else if (signatureOutdated(signature.director_name, director.fullName)) gaps.push('outdated');
   if (!director.signatureName) gaps.push('director');
   return gaps;
 }

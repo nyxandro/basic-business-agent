@@ -28,7 +28,7 @@ function pickError(error: unknown): ApiRequestError {
   if (!(error instanceof OrgImageError)) return asApiError(error);
   // Not the file but the browser: the details are kept for diagnosis.
   if (error.reason === 'not-prepared') console.error('org image preparation failed', error);
-  const message = { 'too-big': t.tooBig, unreadable: t.unreadable, empty: t.emptyPicture, 'not-prepared': t.notPrepared }[error.reason];
+  const message = { 'too-big': t.tooBig, unreadable: t.unreadable, empty: t.emptyPicture, opaque: t.opaqueStamp, 'not-prepared': t.notPrepared }[error.reason];
   return new ApiRequestError({ code: 'APP_ORG_IMAGE_PREPARE_FAILED', message, status: 0, cause: error });
 }
 
@@ -202,7 +202,7 @@ function PictureRow({ kind, picture, warning, onChange }: { kind: OrgPictureKind
   );
 }
 
-function DirectorCard({ initial, onChange }: { initial: OrgDirector; onChange: Update }) {
+function DirectorCard({ initial, outdated, onChange }: { initial: OrgDirector; outdated: boolean; onChange: Update }) {
   const [form, setForm] = useState(initial);
   const { busy, error, run } = useAction();
   // The signature name follows the full name until the admin writes their own.
@@ -212,6 +212,7 @@ function DirectorCard({ initial, onChange }: { initial: OrgDirector; onChange: U
     <Card as="section" label={t.director} className="rise">
       <CardHead title={t.director} sub={t.directorSub} />
       <div className={styles.body}>
+        {outdated ? <div className={styles.attention} role="note">{t.outdatedSignature}</div> : null}
         <Field label={t.position}>
           <Input value={form.position} maxLength={200} onChange={(e) => setForm({ ...form, position: e.target.value })} />
         </Field>
@@ -291,7 +292,7 @@ function Loaded({ initial }: { initial: OrgAssetsState }) {
           )}
         </div>
       </Card>
-      <DirectorCard initial={state.director} onChange={setState} />
+      <DirectorCard initial={state.director} outdated={state.signatureOutdated} onChange={setState} />
       {seal ? <SignersCard state={seal} onChange={setState} /> : null}
     </>
   );

@@ -153,6 +153,14 @@ def to_sign_table(out: Path) -> None:
     doc.save(out / 'to-sign-table.docx')
 
 
+def to_sign_footer(out: Path) -> None:
+    """The mark in the footer: a letterhead whose signature line is printed at the bottom of every page."""
+    doc = Document()
+    letter(doc)
+    doc.sections[0].footer.paragraphs[0].text = '[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'
+    doc.save(out / 'to-sign-footer.docx')
+
+
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     header_footer(target)
@@ -162,3 +170,4 @@ if __name__ == '__main__':
     split_mark(target)
     to_sign(target)
     to_sign_table(target)
+    to_sign_footer(target)

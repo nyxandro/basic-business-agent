@@ -109,8 +109,9 @@ export function registerOrgDocsRoutes(app: Hono<AppEnv>, deps: OrgDocsRouteDeps)
   app.put('/app/api/admin/org-director', right, async (c) => {
     const parsed = orgDirectorSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
-      const fullName = parsed.error.issues.some((i) => i.path[0] === 'fullName');
-      throw appError('APP_VALIDATION_FAILED', `bad director: ${parsed.error.message}`, fullName ? { userMessage: 'Укажите ФИО полностью: фамилия, имя, отчество (если есть).' } : {});
+      const field = parsed.error.issues[0]?.path[0];
+      const userMessage = field === 'fullName' ? 'Укажите ФИО полностью: фамилия, имя, отчество (если есть).' : field === 'marks' ? 'Уберите из должности и ФИО квадратные скобки [[ ]].' : null;
+      throw appError('APP_VALIDATION_FAILED', `bad director: ${parsed.error.message}`, userMessage ? { userMessage } : {});
     }
     await saveDirector(deps.db, access(c).userId, parsed.data);
     return c.json(await state(c));

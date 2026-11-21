@@ -11,7 +11,7 @@ import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createLimiter } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable, createAgentWorkspace } from '../sandbox/workspace.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { NOT_A_SIGNER } from './prompt.ts';
+import { NOT_A_SIGNER, orgDocsText, SIGN_MARK } from './prompt.ts';
 import { testPng } from './test-pictures.ts';
 
 const VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
@@ -98,6 +98,20 @@ describe('the prompt', () => {
     expect(systemOf()).not.toContain('Бланк организации');
     expect(systemOf()).not.toContain('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]');
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie, body: { commands: true } });
+  });
+});
+
+describe('the text of the prompt', () => {
+  // A sub-agent answers the agent that called it and never puts the stamp: it hears nothing of the stamp, so it does not
+  // tell a responsible person's agent «это делают ответственные лица».
+  it('tells a sub-agent of the letterhead and the director, nothing of the stamp', () => {
+    const facts = { director: { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' }, paths: { blank: '/b/blank.docx', logo: null }, commands: true };
+    const sub = orgDocsText({ ...facts, sealGaps: [], level: 'sub' })!;
+    expect(sub).toContain('Бланк организации: /b/blank.docx');
+    expect(sub).not.toContain(NOT_A_SIGNER);
+    expect(sub).not.toContain(SIGN_MARK);
+    expect(orgDocsText({ ...facts, sealGaps: [], level: 'top' })).toContain(SIGN_MARK);
+    expect(orgDocsText({ ...facts, sealGaps: null, level: 'top' })).toContain(NOT_A_SIGNER);
   });
 });
 

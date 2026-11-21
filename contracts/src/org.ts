@@ -56,6 +56,9 @@ export interface OrgAssetsState {
   blank: OrgBlankState | null;
   logo: OrgPictureState | null;
   director: OrgDirector;
+  // The signature in the profile was uploaded for the former director: the stamp is not put until a new one is uploaded.
+  // Told to whoever changes the director, not only to a superadmin.
+  signatureOutdated: boolean;
   // Only for a superadmin: the stamp, the signature and the responsible people.
   seal: {
     stamp: OrgPictureState | null;
@@ -72,13 +75,16 @@ export function signatureNameOf(fullName: string): string {
   return `${initials} ${surname}`;
 }
 
-// The full name is a surname and a name at least (a patronymic, if there is one); empty — no director yet.
+// The full name is a surname and a name at least (a patronymic, if there is one); empty — no director yet. No brackets of
+// a mark: the signing would find it again in the line it writes.
+const noMark = (s: string) => !s.includes('[[') && !s.includes(']]');
 export const orgDirectorSchema = z
   .object({
     position: z.string().trim().max(200),
     fullName: z.string().trim().max(200),
     signatureName: z.string().trim().max(200),
   })
-  .refine((d) => d.fullName === '' || d.fullName.split(/\s+/).length >= 2, { path: ['fullName'], message: 'surname and name' });
+  .refine((d) => d.fullName === '' || d.fullName.split(/\s+/).length >= 2, { path: ['fullName'], message: 'surname and name' })
+  .refine((d) => noMark(d.position) && noMark(d.fullName) && noMark(d.signatureName), { path: ['marks'], message: 'brackets of a mark' });
 
 export const orgSignersSchema = z.object({ userIds: z.array(z.string().min(1)).max(500) });

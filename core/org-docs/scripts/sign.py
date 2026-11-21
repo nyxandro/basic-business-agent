@@ -10,7 +10,7 @@ headers and the footers, its pieces joined when Word cut it into several runs. I
 spread over the line by tabs. `--plain` puts a line to sign by hand instead (the person may not sign, or nothing is
 uploaded). Words around the mark stay.
 
-Prints one line of JSON {"marks": N}. Exit code 2 — not a Word document; 3 — no mark in it.
+Prints one line of JSON {"marks": N}. Exit code 4 — not a Word document; 3 — no mark in it (2 is argparse's own).
 """
 import argparse
 import copy
@@ -37,6 +37,8 @@ R_PARTS = ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/
 MARK = '[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'
 XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 HAND_LINE = '____________'
+NO_MARKS = 3
+NOT_A_DOCUMENT = 4
 
 EMU_PER_CM = 360000
 TWIPS_PER_CM = 567
@@ -89,14 +91,16 @@ class Package:
         try:
             self.zip = zipfile.ZipFile(path)
         except (zipfile.BadZipFile, OSError):
-            fail(2, 'not a zip archive')
+            fail(NOT_A_DOCUMENT, 'not a zip archive')
         self.changed = {}
         rels = self.xml('_rels/.rels')
         main = next((r.get('Target') for r in rels.iter(q(PKG_RELS, 'Relationship')) if r.get('Type') == R_DOC), None)
         if main is None:
-            fail(2, 'no main document part')
+            fail(NOT_A_DOCUMENT, 'no main document part')
         self.main = main.lstrip('/')
-        self.ids = max([int(d.get('id')) for name in self.parts() for d in self.xml(name).iter(q(WP, 'docPr')) if (d.get('id') or '').isdigit()] + [0])
+        # Ids of pictures are unique over the whole document: footnotes, comments and the rest included.
+        xml_parts = [n for n in self.zip.namelist() if n.startswith('word/') and n.endswith('.xml')]
+        self.ids = max([int(d.get('id')) for name in xml_parts for d in self.xml(name).iter(q(WP, 'docPr')) if (d.get('id') or '').isdigit()] + [0])
 
     def xml(self, name):
         if name in self.changed:
@@ -104,9 +108,9 @@ class Package:
         try:
             return etree.fromstring(self.zip.read(name))
         except KeyError:
-            fail(2, f'no part {name}')
+            fail(NOT_A_DOCUMENT, f'no part {name}')
         except etree.XMLSyntaxError:
-            fail(2, f'the part {name} is broken')
+            fail(NOT_A_DOCUMENT, f'the part {name} is broken')
 
     def rels_name(self, part):
         return posixpath.join(posixpath.dirname(part), '_rels', posixpath.basename(part) + '.rels')
@@ -118,7 +122,9 @@ class Package:
         if rels_name in self.zip.namelist():
             for rel in etree.fromstring(self.zip.read(rels_name)).iter(q(PKG_RELS, 'Relationship')):
                 if rel.get('Type') in R_PARTS and rel.get('TargetMode') != 'External':
-                    found.append(posixpath.normpath(posixpath.join(posixpath.dirname(self.main), rel.get('Target'))))
+                    target = rel.get('Target')
+                    # A target is relative to the folder of the part, or absolute from the root of the package.
+                    found.append(target.lstrip('/') if target.startswith('/') else posixpath.normpath(posixpath.join(posixpath.dirname(self.main), target)))
         return found
 
     def next_id(self):
@@ -310,8 +316,10 @@ def sign_paragraph(pkg, part, p, document, args, images):
     for el in new:
         at.addnext(el)
         at = el
-    # A run the cut emptied leaves the line (its formatting went into the new runs).
-    if not any((t.text or '') for t in run.iter(q(W, 't'))) and run.find(q(W, 'drawing')) is None and run.find(q(W, 'tab')) is None:
+    # A run the cut emptied leaves the line (its formatting went into the new runs) — only when it held nothing but text:
+    # a break of a page, a field or a footnote beside the mark stays where it was.
+    plain = all(child.tag in (q(W, 'rPr'), q(W, 't')) for child in run)
+    if plain and not any((t.text or '') for t in run.iter(q(W, 't'))):
         run.getparent().remove(run)
 
 
@@ -327,6 +335,8 @@ def main():
     args = ap.parse_args()
     if not args.plain and not (args.stamp and args.signature):
         fail(1, 'the stamp and the signature are needed without --plain')
+    if any(s in (args.position + args.name) for s in ('[[', ']]')):
+        fail(1, 'the position or the name holds brackets of a mark')
     images = None
     if not args.plain:
         with open(args.signature, 'rb') as s, open(args.stamp, 'rb') as t:
@@ -345,7 +355,7 @@ def main():
         if touched:
             pkg.changed[part] = root
     if marks == 0:
-        fail(3, 'no mark in the document')
+        fail(NO_MARKS, 'no mark in the document')
     # Nothing of the mark may stay in what the person sends out.
     for part in pkg.parts():
         root = pkg.changed.get(part)

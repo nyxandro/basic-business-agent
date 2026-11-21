@@ -2,7 +2,7 @@
 // phone becomes at most 600 points wide, the paper transparent, the margins cut. The drawing itself needs a real canvas;
 // what it does to the points is checked here.
 import { describe, expect, it } from 'vitest';
-import { paperToTransparent, targetSize, visibleBox } from './stamp-image.ts';
+import { hasTransparentPoint, paperToTransparent, targetSize, visibleBox } from './stamp-image.ts';
 
 // A scan: white paper with a blue round stamp in the middle and grey noise of the paper.
 function scan(width: number, height: number): Uint8ClampedArray {
@@ -51,5 +51,13 @@ describe('the picture of the stamp', () => {
     const white = new Uint8ClampedArray(10 * 10 * 4).fill(255);
     paperToTransparent(white);
     expect(visibleBox(white, 10, 10)).toBeNull();
+  });
+
+  it('tells a stamp kept on its white paper from one with a transparent field around the ink', () => {
+    const { width, height } = targetSize('stamp', 800, 800);
+    const data = scan(width, height);
+    expect(hasTransparentPoint(data)).toBe(false);
+    paperToTransparent(data);
+    expect(hasTransparentPoint(data)).toBe(true);
   });
 });

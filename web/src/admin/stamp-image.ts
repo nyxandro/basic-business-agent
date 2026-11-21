@@ -13,6 +13,8 @@ const INK = 185;
 const VISIBLE_ALPHA = 16;
 // Around the cut picture, so the strokes do not touch its edge.
 const PAD = 8;
+// A point this opaque or more counts as covering what lies under it.
+const OPAQUE = 250;
 
 // The size to draw at: the stamp and the signature at most ORG_STAMP_WIDTH_PX wide and high, the logo at most
 // ORG_LOGO_MAX_SIDE_PX on its longer side.
@@ -29,6 +31,13 @@ export function paperToTransparent(data: Uint8ClampedArray): void {
     const keep = light >= PAPER ? 0 : light <= INK ? 1 : (PAPER - light) / (PAPER - INK);
     data[i + 3] = Math.round(data[i + 3]! * keep);
   }
+}
+
+// A stamp lies over the signature line: a picture without a single transparent point would cover it with a white
+// square — the server only sees whether the PNG may carry transparency, not whether it does.
+export function hasTransparentPoint(data: Uint8ClampedArray): boolean {
+  for (let i = 3; i < data.length; i += 4) if (data[i]! < OPAQUE) return true;
+  return false;
 }
 
 // The box of the visible points with a small margin; null — nothing is visible (an empty or white picture).
@@ -53,8 +62,8 @@ export function visibleBox(data: Uint8ClampedArray, width: number, height: numbe
 }
 
 // Why a chosen file did not become a picture: too big to open, not a picture the browser reads, nothing left of it
-// after the white went, or the browser could not draw it.
-export type OrgImageFailure = 'too-big' | 'unreadable' | 'empty' | 'not-prepared';
+// after the white went, a stamp with no transparent point, or the browser could not draw it.
+export type OrgImageFailure = 'too-big' | 'unreadable' | 'empty' | 'opaque' | 'not-prepared';
 
 export class OrgImageError extends Error {
   readonly reason: OrgImageFailure;
@@ -95,8 +104,11 @@ export async function prepareOrgImage(file: File, kind: OrgPictureKind, removeWh
     const drawn = canvasOf(size.width, size.height);
     drawn.context.imageSmoothingQuality = 'high';
     drawn.context.drawImage(bitmap, 0, 0, size.width, size.height);
-    if (!removeWhite) return await pngOf(drawn.canvas);
     const pixels = drawn.context.getImageData(0, 0, size.width, size.height);
+    if (!removeWhite) {
+      if (kind === 'stamp' && !hasTransparentPoint(pixels.data)) throw new OrgImageError('opaque');
+      return await pngOf(drawn.canvas);
+    }
     paperToTransparent(pixels.data);
     const box = visibleBox(pixels.data, size.width, size.height);
     if (!box) throw new OrgImageError('empty');

@@ -22,6 +22,7 @@ import { imageSizeOf } from '../interface-settings/image-size.ts';
 import { imageTypeOf } from '../interface-settings/image.ts';
 import type { PreparedBlank } from './blank.ts';
 import { listSigners } from './signers.ts';
+import { signatureOutdated } from './prompt.ts';
 
 export type OrgPictureKind = Exclude<OrgAssetKind, 'blank'>;
 
@@ -108,10 +109,12 @@ export async function orgAssetsState(db: Db, viewer: { isSuperadmin: boolean }):
   const logo = of('logo');
   const stamp = of('stamp');
   const signature = of('signature');
+  const director = await readDirector(db);
   return {
     blank: blank ? { fileName: blank.file_name!, updatedAt: blank.updated_at.toISOString(), info: blank.blank_info! } : null,
     logo: logo ? picture(logo) : null,
-    director: await readDirector(db),
+    director,
+    signatureOutdated: signature !== null && signatureOutdated(signature.director_name, director.fullName),
     seal: viewer.isSuperadmin
       ? {
           stamp: stamp ? picture(stamp) : null,

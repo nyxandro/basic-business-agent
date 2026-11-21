@@ -4,11 +4,10 @@
 // kind of document or a document without the mark is refused before the card: nothing to say «Да» to. The signing runs
 // in a one-off sandbox in a temporary folder — the pictures never reach the sandbox of the answer — and the result is
 // written back in place through the held folder, the document as it was kept in the drafts of the conversation.
-import { closeSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, relative } from 'node:path';
 import type { ActionDescription } from '@bba/contracts';
 import { createTool } from '@mastra/core/tools';
-import { unzipSync } from 'fflate';
 import { z } from 'zod';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import { describeTool } from '../approvals/describe.ts';
@@ -21,11 +20,13 @@ import { keepBeforeWrite } from '../projects/trash.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import type { Limiter } from '../sandbox/limiter.ts';
 import { runRoot } from '../sandbox/workspace.ts';
+import { logEvent } from '../server/log.ts';
 import { inFolderOf } from '../workspace/held-folder.ts';
-import { draftsPath, existingInside, openFileInside, saveInFolder } from '../workspace/layout.ts';
+import { draftsPath, existingInside, saveInFolder } from '../workspace/layout.ts';
 import { assetContent, readDirector } from './assets.ts';
 import { ORG_SCRIPTS_DIR, ORG_WORK_PREFIX } from './blank.ts';
-import { sealGapsOf, SIGN_MARK, SIGN_TOOL, type SealGap } from './prompt.ts';
+import { sealGapsOf, sealMissingWords, SIGN_MARK, SIGN_TOOL, type SealGap } from './prompt.ts';
+import { assertUnpackable, fingerprintOf, hasMark, readSignable, rememberAsked, takeAsked } from './sign-document.ts';
 import { isSigner } from './signers.ts';
 
 export const DOCUMENT_KINDS = ['letter', 'commercial_offer', 'minutes', 'certificate', 'contract', 'act', 'waybill', 'invoice_factura', 'upd', 'power_of_attorney', 'other'] as const;
@@ -50,11 +51,11 @@ export const KIND_CHOICES: Record<DocumentKind, string> = {
 };
 
 const SIGN_TIMEOUT_MS = 60_000;
-// sign.py: not a Word document; no mark in it.
-const NOT_A_DOCUMENT = 2;
+// sign.py: no mark in it; not a Word document (2 is argparse's own).
 const NO_MARKS = 3;
+const NOT_A_DOCUMENT = 4;
 const NOTE = 'Печать и подпись поставлены. Покажи документ сотруднику блоком файла.';
-const GAP_NAMES: Record<SealGap, string> = { stamp: 'stamp', signature: 'signature', director: 'director signature name' };
+const GAP_NAMES: Record<SealGap, string> = { stamp: 'stamp', signature: 'signature', outdated: 'signature of the current director', director: 'director signature name' };
 
 export interface SignDeps {
   db: Db;
@@ -66,7 +67,7 @@ export interface SignDeps {
 }
 
 type Ctx = { get(key: string): unknown } | undefined;
-type ApprovalCtx = { requestContext?: Record<string, unknown> | Ctx };
+type ApprovalCtx = { requestContext?: Record<string, unknown> | Ctx; toolCallId: string };
 
 const contextOf = (ctx: ApprovalCtx['requestContext']): Ctx => {
   if (!ctx) return undefined;
@@ -76,30 +77,6 @@ const contextOf = (ctx: ApprovalCtx['requestContext']): Ctx => {
 };
 
 const refusal = (code: string, message: string) => ({ proceed: false as const, output: { error: true, code, message } });
-
-// The mark is in the text of the document, its pieces joined (Word cuts it into runs): read without unpacking all.
-function hasMark(docx: Uint8Array): boolean {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(docx, { filter: (f) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(f.name) });
-  } catch {
-    return false;
-  }
-  const text = Object.values(files)
-    .map((bytes) => [...new TextDecoder().decode(bytes).matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join(''))
-    .join('');
-  return text.includes(SIGN_MARK);
-}
-
-function readDocument(root: string, path: string): Buffer | null {
-  const file = openFileInside(root, path);
-  if (!file) return null;
-  try {
-    return readFileSync(file.fd);
-  } finally {
-    closeSync(file.fd);
-  }
-}
 
 // The document after «Да»: the paper's line with the pictures, or with a line to sign by hand.
 async function signed(deps: SignDeps, source: Buffer, director: { position: string; signatureName: string }, seal: { stamp: Buffer; signature: Buffer } | null): Promise<Buffer> {
@@ -149,6 +126,25 @@ function replace(deps: SignDeps, ctx: Ctx, root: string, rel: string, before: Bu
   if (!placed) throw appError('APP_SIGN_FAILED', `the folder of ${rel} changed while it was signed`);
 }
 
+const NOT_ALLOWED_UNCHANGED = 'Печать и подпись руководителя ставят только ответственные лица. Документ не изменился.';
+
+function notUploadedText(gaps: SealGap[], lined: boolean): string {
+  return `Печать и подпись не поставлены: ${sealMissingWords(gaps)} в «Профиле организации» нет — добавить может суперадминистратор. ${lined ? 'В документе — строка для подписи от руки.' : 'Документ не изменился.'}`;
+}
+
+// No stamp after «Да»: the mark becomes the line to sign by hand, when there is a name to write. Whether it did.
+async function plainLine(deps: SignDeps, ctx: Ctx, root: string, rel: string, before: Buffer, director: { position: string; signatureName: string }): Promise<boolean> {
+  if (!director.signatureName) return false;
+  try {
+    replace(deps, ctx, root, rel, before, await signed(deps, before, director, null));
+    return true;
+  } catch (error) {
+    // The refusal is the answer; a line not put is said in it, the failure is in the log.
+    logEvent('warn', 'sign_plain_line_failed', { code: isAppError(error) ? error.code : 'APP_SIGN_FAILED', error: isAppError(error) ? error.code : (error as Error).name });
+    return false;
+  }
+}
+
 const SIGN_DESCRIPTION = `Поставить печать организации и подпись руководителя в документ Word. Только по прямой просьбе сотрудника. В документе на месте подписи — метка ${SIGN_MARK} отдельной строкой; должность и ФИО руководителя инструмент пишет сам из профиля организации.`;
 const SIGN_INPUT = z.object({
   path: z.string().min(1).describe('Документ'),
@@ -165,26 +161,43 @@ function signTool(deps: SignDeps): AnyTool {
     id: SIGN_TOOL,
     description: SIGN_DESCRIPTION,
     inputSchema: SIGN_INPUT,
-    // Before the card: nothing to say «Да» to.
-    beforeApproval: (input: { path: string; kind: DocumentKind }, ctx: ApprovalCtx) => {
-      if (FORBIDDEN.has(input.kind)) {
-        return refusal('APP_SIGN_FORBIDDEN_KIND', 'На счёте-фактуре, УПД и доверенности факсимиле подписи не допускается. Скажи сотруднику, что такой документ подписывают от руки или электронной подписью; печать и подпись не ставь.');
+    // Before the card: nothing to say «Да» to. A failure here must refuse too — Mastra shows the card after a hook that
+    // threw (independent review 21.11).
+    beforeApproval: async (input: { path: string; kind: DocumentKind }, ctx: ApprovalCtx) => {
+      try {
+        if (FORBIDDEN.has(input.kind)) {
+          return refusal('APP_SIGN_FORBIDDEN_KIND', 'На счёте-фактуре, УПД и доверенности факсимиле подписи не допускается. Скажи сотруднику, что такой документ подписывают от руки или электронной подписью; печать и подпись не ставь.');
+        }
+        if (extname(input.path).toLowerCase() !== '.docx') return refusal('APP_SIGN_FORMAT', 'Печать и подпись ставятся только в документ Word (.docx). Сделай документ в .docx, затем вызови инструмент снова.');
+        const requestContext = contextOf(ctx.requestContext);
+        const bytes = readSignable(runRoot(deps.workspaceRoot, requestContext), input.path);
+        if (!bytes) return refusal('APP_NOT_FOUND', `Файла ${input.path} в рабочей папке нет. Проверь путь.`);
+        assertUnpackable(bytes);
+        if (!hasMark(bytes)) return refusal('APP_SIGN_NO_MARKS', `В документе нет метки ${SIGN_MARK}. Поставь её отдельным абзацем на место строки подписи и вызови инструмент снова.`);
+        await rememberAsked(deps.db, ctx.toolCallId, requireContextValue(requestContext, REQUEST_KEYS.userId), fingerprintOf(bytes));
+        return undefined;
+      } catch (error) {
+        if (!isAppError(error)) {
+          logEvent('error', 'sign_check_failed', { error });
+          return refusal('APP_SIGN_FAILED', 'Не получилось проверить документ перед подписью. Скажи сотруднику и попробуй ещё раз позже.');
+        }
+        return refusal(error.code, error.code === 'APP_VALIDATION_FAILED' ? `Путь ${input.path} ведёт за пределы рабочей папки.` : error.userMessage);
       }
-      if (extname(input.path).toLowerCase() !== '.docx') return refusal('APP_SIGN_FORMAT', 'Печать и подпись ставятся только в документ Word (.docx). Сделай документ в .docx, затем вызови инструмент снова.');
-      const root = runRoot(deps.workspaceRoot, contextOf(ctx.requestContext));
-      const bytes = readDocument(root, input.path);
-      if (!bytes) return refusal('APP_NOT_FOUND', `Файла ${input.path} в рабочей папке нет. Проверь путь.`);
-      if (!hasMark(bytes)) return refusal('APP_SIGN_NO_MARKS', `В документе нет метки ${SIGN_MARK}. Поставь её отдельной строкой на место строки подписи и вызови инструмент снова.`);
-      return undefined;
     },
     execute: async ({ path, kind }, context) => {
       const ctx = context?.requestContext as Ctx;
       if (FORBIDDEN.has(kind)) throw appError('APP_SIGN_FORBIDDEN_KIND', `kind ${kind} cannot carry a facsimile`);
       const userId = requireContextValue(ctx, REQUEST_KEYS.userId);
+      const toolCallId = (context as { agent?: { toolCallId?: string } } | undefined)?.agent?.toolCallId;
+      if (!toolCallId) throw appError('APP_SIGN_FAILED', 'the signing ran without the id of its call');
+      const asked = await takeAsked(deps.db, toolCallId, userId);
       const root = runRoot(deps.workspaceRoot, ctx);
       const real = existingInside(root, path);
-      const before = real ? readDocument(root, path) : null;
+      const before = real ? readSignable(root, path) : null;
       if (!real || !before) throw appError('APP_NOT_FOUND', `no document ${path} to sign`, { userMessage: `Файла ${path} в рабочей папке нет.` });
+      // Only the bytes the card was shown with: a document replaced at the same path meanwhile is not signed.
+      if (!asked || asked !== fingerprintOf(before)) throw appError('APP_SIGN_CHANGED', 'the document changed after the card «Да» was shown');
+      assertUnpackable(before);
       // From the real folder, as existingInside found the file: a link on the way to the workspace must not shift it.
       const rel = relative(realpathSync(root), real);
       const director = await readDirector(deps.db);
@@ -192,9 +205,10 @@ function signTool(deps: SignDeps): AnyTool {
       const allowed = await isSigner(deps.db, userId);
       const gaps = allowed ? await sealGapsOf(deps.db, userId) : null;
       if (!allowed || (gaps && gaps.length > 0)) {
-        if (director.signatureName) replace(deps, ctx, root, rel, before, await signed(deps, before, director, null));
-        if (!allowed) throw appError('APP_SIGN_NOT_ALLOWED', 'the person is no longer a responsible signer: the mark became a line to sign by hand');
-        throw appError('APP_SIGN_NOT_UPLOADED', `missing ${gaps!.map((g) => GAP_NAMES[g]).join(', ')}: the mark became a line to sign by hand`);
+        const lined = await plainLine(deps, ctx, root, rel, before, director);
+        const result = lined ? 'the mark became a line to sign by hand' : 'the document was left as it was';
+        if (!allowed) throw appError('APP_SIGN_NOT_ALLOWED', `the person is no longer a responsible signer: ${result}`, lined ? {} : { userMessage: NOT_ALLOWED_UNCHANGED });
+        throw appError('APP_SIGN_NOT_UPLOADED', `missing ${gaps!.map((g) => GAP_NAMES[g]).join(', ')}: ${result}`, { userMessage: notUploadedText(gaps!, lined) });
       }
       const [stamp, signature] = await Promise.all([assetContent(deps.db, 'stamp'), assetContent(deps.db, 'signature')]);
       if (!stamp || !signature) throw appError('APP_SIGN_NOT_UPLOADED', 'the stamp or the signature went away while signing');

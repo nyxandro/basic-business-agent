@@ -16,7 +16,7 @@ const SUPERADMIN = { ...ME, isSuperadmin: true, permissions: ['org_profile', 'us
 const PROFILER = { ...ME, isSuperadmin: false, permissions: ['org_profile'] };
 const PICTURE = { width: 400, height: 400, updatedAt: '2026-11-21T10:00:00.000Z', version: '0123456789ab' };
 const DIRECTOR = { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' };
-const EMPTY: OrgAssetsState = { blank: null, logo: null, director: { position: '', fullName: '', signatureName: '' }, seal: { stamp: null, signature: null, signers: [] } };
+const EMPTY: OrgAssetsState = { blank: null, logo: null, director: { position: '', fullName: '', signatureName: '' }, signatureOutdated: false, seal: { stamp: null, signature: null, signers: [] } };
 
 function server(me: object, state: OrgAssetsState) {
   let current = state;
@@ -102,7 +102,7 @@ describe('«Бланк, печать и подпись»', () => {
 
   it('makes the signature line from the full name, lets it be corrected, and asks for a new signature after a new director', async () => {
     const { s, reply } = server(SUPERADMIN, { ...EMPTY, director: DIRECTOR, seal: { stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } });
-    s.set('PUT /app/api/admin/org-director', (call) => reply({ ...EMPTY, director: call.body as typeof DIRECTOR, seal: { stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } }));
+    s.set('PUT /app/api/admin/org-director', (call) => reply({ ...EMPTY, director: call.body as typeof DIRECTOR, signatureOutdated: true, seal: { stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } }));
     renderApp('/admin/org-profile');
     const user = userEvent.setup();
     const fullName = await screen.findByLabelText('ФИО руководителя');
@@ -112,6 +112,14 @@ describe('«Бланк, печать и подпись»', () => {
     await user.click(within(screen.getByRole('region', { name: 'Руководитель' })).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/admin/org-director')?.body).toEqual({ position: 'Генеральный директор', fullName: 'Римский-Корсаков Николай Андреевич', signatureName: 'Н. А. Римский-Корсаков' }));
     expect(await screen.findByText(/Загрузите подпись нового руководителя/)).toBeInTheDocument();
+    // Whoever changed the director hears that the stamp stops until a new signature comes.
+    expect(within(screen.getByRole('region', { name: 'Руководитель' })).getByText(/печать и подпись через агентов не ставятся/)).toBeInTheDocument();
+  });
+
+  it('tells an admin who is not a superadmin that the signature in the profile is of the former director', async () => {
+    server(PROFILER, { ...EMPTY, director: DIRECTOR, signatureOutdated: true, seal: null });
+    renderApp('/admin/org-profile');
+    expect(await screen.findByText(/печать и подпись через агентов не ставятся/)).toBeInTheDocument();
   });
 
   it('names the responsible people from the list of employees', async () => {

@@ -119,6 +119,9 @@ describe('the director and the responsible people', () => {
     const short = await t.call('PUT', '/app/api/admin/org-director', { cookie: profiler, body: { position: 'Генеральный директор', fullName: 'Иванов', signatureName: 'Иванов' } });
     expect(short.status).toBe(400);
     expect(await json(short)).toMatchObject({ error: { message: 'Укажите ФИО полностью: фамилия, имя, отчество (если есть).' } });
+    // Brackets of a mark in the name would be found again by the signing in the line it writes.
+    const bracket = await t.call('PUT', '/app/api/admin/org-director', { cookie: profiler, body: { position: '[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]', fullName: 'Иванов Иван', signatureName: 'И. Иванов' } });
+    expect(bracket.status).toBe(400);
     const director = { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' };
     expect((await t.call('PUT', '/app/api/admin/org-director', { cookie: profiler, body: director })).status).toBe(200);
     expect((await upload(admin, 'signature', 'sign.png', testPng(500, 150, { alpha: true }))).status).toBe(200);
