@@ -5,6 +5,7 @@
 import { useCallback, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useMe } from '../auth/session.tsx';
+import { usePresence } from '../notifications/presence.ts';
 import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Avatar } from '../ui/Display.tsx';
@@ -112,6 +113,8 @@ export function AdminLayout() {
   const wide = useMedia(WIDE_QUERY);
   const sections = availableSections(me);
   const { pathname } = useLocation();
+  // A person in the admin panel is in the app: news is not pushed to their browser meanwhile (notifications spec, 8).
+  usePresence();
   if (sections.length === 0) return <Navigate to="/" replace state={FORBIDDEN_STATE} />;
   return (
     <div className={styles.shell}>

@@ -4,6 +4,17 @@ import { api } from '../api/client.ts';
 
 export const fetchCounts = () => api<NotificationsResponse>('GET', '/app/api/me/notifications');
 export const sendPresence = (input: PresenceInput) => api<NotificationsResponse>('POST', '/app/api/me/presence', input);
+// «Hidden» as the tab goes away — closed, the phone locked: `keepalive` lets the browser finish it after the page is gone,
+// so the server pushes at once instead of believing the person is here for another minute.
+export function sendHidden(tab: string): void {
+  fetch('/app/api/me/presence', {
+    method: 'POST',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tab, visible: false } satisfies PresenceInput),
+  }).catch((error: unknown) => console.warn('presence not sent', error));
+}
 export const fetchList = () => api<NotificationList>('GET', '/app/api/me/notifications/list');
 export const markRead = (id: string) => api<{ ok: true }>('POST', '/app/api/me/notifications/read', { id });
 export const markAllRead = () => api<{ ok: true }>('POST', '/app/api/me/notifications/read', { all: true });

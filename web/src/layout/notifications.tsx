@@ -2,11 +2,12 @@
 // and unread notifications — and the panel under it. A visible tab tells the server «I am here» every 30 s and gets the
 // counters back; a hidden one says so at once, and the server pushes to the browser instead. A notification that comes
 // while the person is in the app is shown as a hint inside the page. On a phone the panel is a sheet from below.
-import { PRESENCE_PING_MS, type NotificationsResponse } from '@bba/contracts';
+import type { NotificationsResponse } from '@bba/contracts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { notificationTexts as t } from '../i18n/notifications.ts';
-import { fetchCounts, markRead, sendPresence } from '../notifications/api.ts';
+import { fetchCounts, markRead } from '../notifications/api.ts';
+import { usePresence } from '../notifications/presence.ts';
 import { NotificationsPanel, type PanelTab } from '../notifications/NotificationsPanel.tsx';
 import { refreshWorker } from '../notifications/push.ts';
 import { Sheet } from '../ui/Modal.tsx';
@@ -23,13 +24,9 @@ interface NotificationsValue {
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
 
-// Names this tab for the server's presence (a person may have several tabs and devices).
-const newTabId = () => crypto.randomUUID().replaceAll('-', '');
-
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [counts, setCounts] = useState<NotificationsResponse | null>(null);
   const [panel, setPanel] = useState<{ open: boolean; tab: PanelTab }>({ open: false, tab: 'waiting' });
-  const [tab] = useState(newTabId);
   const wide = useMedia(WIDE_QUERY);
   const location = useLocation();
   const navigate = useNavigate();
@@ -67,19 +64,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [location.pathname, refresh]);
 
-  useEffect(() => {
-    const ping = (visible: boolean) => sendPresence({ tab, visible }).then(visible ? apply : () => undefined, (error: unknown) => console.warn('presence not sent', error));
-    const onVisibility = () => void ping(document.visibilityState === 'visible');
-    if (document.visibilityState === 'visible') void ping(true);
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void ping(true);
-    }, PRESENCE_PING_MS);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [tab, apply]);
+  usePresence(apply);
 
   useEffect(() => refreshWorker(), []);
 
