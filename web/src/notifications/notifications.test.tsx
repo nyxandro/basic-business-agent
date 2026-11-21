@@ -60,7 +60,8 @@ describe('the bell', () => {
     const user = userEvent.setup();
     await user.click(bell);
     const panel = await screen.findByRole('dialog', { name: 'Уведомления' });
-    expect(within(panel).getByRole('radio', { name: 'Уведомления · 1' })).toHaveAttribute('aria-checked', 'true');
+    // Nothing waits for a decision: no tab «Ждут решения», the list at once (owner, 22.11).
+    expect(within(panel).queryByRole('radiogroup')).not.toBeInTheDocument();
     expect(await within(panel).findByText('Готово: Утренняя сводка')).toBeInTheDocument();
     expect(within(panel).getByText('Вам открыли проект «Тендер»')).toBeInTheDocument();
     expect(within(panel).getByLabelText('Новое')).toBeInTheDocument();

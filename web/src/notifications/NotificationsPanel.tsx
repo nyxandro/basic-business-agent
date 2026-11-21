@@ -1,5 +1,6 @@
 // The panel under the bell (docs/specs/[20.11.2026]-notifications.md, F3): «Ждут решения» — questions of background
-// tasks with «Да» / «Нет», questions of conversations leading to their card — and «Уведомления» of 30 days with
+// tasks with «Да» / «Нет», questions of conversations leading to their card, only while something waits — and
+// «Уведомления» of 30 days with
 // «Отметить все прочитанными» and, while this browser is not on, the block «Включите уведомления…». On a computer it
 // hangs under the bell; on a phone it is a sheet (`compact`).
 import type { NotificationItem, NotificationKind } from '@bba/contracts';
@@ -114,10 +115,14 @@ export function NotificationsPanel({ compact, onClose }: { compact: boolean; onC
   const { counts, panel, openPanel } = useNotifications();
   const waiting = counts?.pendingApprovals ?? 0;
   const unread = counts?.unread ?? 0;
-  // The panel opens on «Ждут решения» while something waits, otherwise on the notifications.
-  const [tab, setTab] = useState<PanelTab>(() => (panel.tab === 'waiting' && waiting === 0 && unread > 0 ? 'list' : panel.tab));
+  // «Ждут решения» is there only while something waits (owner, 22.11: an empty tab is extra layout). Once shown, it stays
+  // while the panel is open: answering the last question there keeps its «Выполнено» in sight.
+  const [withWaiting, setWithWaiting] = useState(waiting > 0);
+  if (waiting > 0 && !withWaiting) setWithWaiting(true);
+  const [chosen, setChosen] = useState<PanelTab>(panel.tab);
+  const tab: PanelTab = withWaiting ? chosen : 'list';
   const choose = (next: PanelTab) => {
-    setTab(next);
+    setChosen(next);
     openPanel(next);
   };
   return (
@@ -126,15 +131,17 @@ export function NotificationsPanel({ compact, onClose }: { compact: boolean; onC
         <h2 className={styles.title}>{t.bell}</h2>
         {compact ? <IconButton icon="x" label={ru.approvals.close} onClick={onClose} /> : null}
       </div>
-      <Segmented
-        label={t.bell}
-        value={tab}
-        onChange={choose}
-        options={[
-          { value: 'waiting', label: waiting > 0 ? `${t.tabWaiting} · ${waiting}` : t.tabWaiting },
-          { value: 'list', label: unread > 0 ? `${t.tabNotifications} · ${unread}` : t.tabNotifications },
-        ]}
-      />
+      {withWaiting ? (
+        <Segmented
+          label={t.bell}
+          value={tab}
+          onChange={choose}
+          options={[
+            { value: 'waiting', label: waiting > 0 ? `${t.tabWaiting} · ${waiting}` : t.tabWaiting },
+            { value: 'list', label: unread > 0 ? `${t.tabNotifications} · ${unread}` : t.tabNotifications },
+          ]}
+        />
+      ) : null}
       <div className={cx(styles.body, !compact && 'scroll-thin')}>{tab === 'waiting' ? <Waiting compact={compact} onClose={onClose} /> : <List onClose={onClose} />}</div>
     </div>
   );
