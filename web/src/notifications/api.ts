@@ -12,7 +12,7 @@ export function sendHidden(tab: string): void {
     credentials: 'same-origin',
     keepalive: true,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ tab, visible: false } satisfies PresenceInput),
+    body: JSON.stringify({ tab, visible: false, threadId: null } satisfies PresenceInput),
   }).catch((error: unknown) => console.warn('presence not sent', error));
 }
 export const fetchList = () => api<NotificationList>('GET', '/app/api/me/notifications/list');

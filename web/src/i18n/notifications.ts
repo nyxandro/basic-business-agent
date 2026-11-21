@@ -10,7 +10,7 @@ export const notificationTexts = {
   tabWaiting: 'Ждут решения',
   tabNotifications: 'Уведомления',
   waitingEmpty: 'Ничего не ждёт вашего решения',
-  listEmpty: 'Уведомлений пока нет',
+  listEmpty: 'Новых уведомлений нет',
   listFailed: 'Не удалось загрузить уведомления',
   readAll: 'Отметить все прочитанными',
   openAll: 'Открыть «Ждёт подтверждения»',

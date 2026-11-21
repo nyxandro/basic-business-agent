@@ -107,9 +107,9 @@ describe('background tasks', () => {
     expect(first.rows[0]!.outcome).toBe('done');
     const again = await t.call('POST', `/app/api/approvals/${screen.pending[0]!.id}/decision`, { cookie: olga, body: { approved: true } });
     expect((await json<{ error: { code: string } }>(again)).error.code).toBe('APP_APPROVAL_DECIDED');
-    // An old notification of the decided question reads as read and leads to «Вопрос уже решён».
+    // The decided question leaves the list of what is not dealt with; its old link leads to «Вопрос уже решён».
     const after = await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: olga }));
-    expect(after.items.find((n) => n.link === `/approvals?question=${questionId}`)?.read).toBe(true);
+    expect(after.items.some((n) => n.link === `/approvals?question=${questionId}`)).toBe(false);
     expect(await json<unknown>(await t.call('GET', `/app/api/approvals/${questionId}`, { cookie: olga }))).toMatchObject({ status: 'approved', action: 'Отправить письмо клиенту', decidedAt: expect.any(String) });
     expect((await t.call('GET', `/app/api/approvals/${questionId}`, { cookie: igor })).status).toBe(404);
   });

@@ -48,6 +48,9 @@ export const presenceInputSchema = z.strictObject({
   // A random id of the tab, made when the page loads.
   tab: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
   visible: z.boolean(),
+  // The conversation on the screen of this tab; null — another screen. An answer that ends with its conversation on no
+  // visible screen is told «Ответ готов» (owner, 22.11: left for another chat while the agent answered).
+  threadId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/).nullable(),
 });
 export type PresenceInput = z.infer<typeof presenceInputSchema>;
 

@@ -83,8 +83,10 @@ describe('the bell', () => {
   });
 
   it('is in the header of every screen on a computer and stays there with nothing new', async () => {
-    server({ pendingApprovals: 0, unread: 0, latest: null });
+    const s = server({ pendingApprovals: 0, unread: 0, latest: null });
     renderApp('/settings/memory');
+    // Not a conversation on this screen.
+    await waitFor(() => expect(s.pings[0]?.body).toMatchObject({ visible: true, threadId: null }));
     const header = (await screen.findByRole('button', { name: 'Уведомления: Нет новых уведомлений' })).closest('header')!;
     expect(within(header).getByText('Моя память')).toBeInTheDocument();
   });
@@ -125,7 +127,8 @@ describe('the bell', () => {
       await act(() => vi.advanceTimersByTimeAsync(30_000));
       expect(await screen.findByText('Готово: Утренняя сводка · Результат — в разговоре задачи.')).toBeInTheDocument();
       expect(s.pings.length).toBeGreaterThanOrEqual(2);
-      expect(s.pings[0]!.body).toMatchObject({ visible: true });
+      // The tab names the conversation on its screen (an answer ending elsewhere is told «Ответ готов»).
+      expect(s.pings[0]!.body).toMatchObject({ visible: true, threadId: 't1' });
     } finally {
       vi.useRealTimers();
     }

@@ -361,7 +361,7 @@ export async function createTestApp(
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });

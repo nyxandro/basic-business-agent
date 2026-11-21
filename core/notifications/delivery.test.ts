@@ -52,7 +52,7 @@ beforeEach(async () => {
   push.received.length = 0;
   await t.db.query('DELETE FROM app.push_subscriptions');
   // Presence of an earlier test ends: its tabs say «hidden».
-  for (const cookie of [olga, petr]) await t.call('POST', '/app/api/me/presence', { cookie, body: { tab: 'tab-of-the-test', visible: false } });
+  for (const cookie of [olga, petr]) await t.call('POST', '/app/api/me/presence', { cookie, body: { tab: 'tab-of-the-test', visible: false, threadId: null } });
 });
 
 describe('delivery to the browser', () => {
@@ -83,7 +83,7 @@ describe('delivery to the browser', () => {
 
   it('sends no push to a person whose tab was visible 30 s ago, and does when it was 70 s ago', async () => {
     await subscribe(olga, push.subscribe());
-    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true } });
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true, threadId: null } });
     advance(30_000);
     const here = told(olgaId);
     await tell(here);
@@ -100,8 +100,8 @@ describe('delivery to the browser', () => {
 
   it('pushes at once when the tab says it was hidden', async () => {
     await subscribe(olga, push.subscribe());
-    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true } });
-    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: false } });
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true, threadId: null } });
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: false, threadId: null } });
     await tell(told(olgaId));
     await t.notifications.delivery.deliverDue();
     expect(push.received).toHaveLength(1);
@@ -220,7 +220,7 @@ describe('delivery to the browser', () => {
     const none = await t.call('POST', '/app/api/me/push-test', { cookie: olga });
     expect((await json<{ error: { code: string } }>(none)).error.code).toBe('APP_PUSH_NOT_SUBSCRIBED');
     await subscribe(olga, push.subscribe());
-    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true } });
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'computer-tab', visible: true, threadId: null } });
     expect(await json<{ sent: number }>(await t.call('POST', '/app/api/me/push-test', { cookie: olga }))).toEqual({ sent: 1 });
     expect(push.received.map((r) => r.payload.title)).toEqual(['Уведомления работают']);
     const list = await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: olga }));
@@ -237,7 +237,7 @@ describe('the list under the bell', () => {
     const item = mine.items.find((n) => n.title === 'Готово: Утренняя сводка')!;
     expect(theirs.items.some((n) => n.id === item.id)).toBe(false);
     await t.call('POST', '/app/api/me/notifications/read', { cookie: olga, body: { id: item.id } });
-    expect((await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: petr }))).items.find((n) => n.id === item.id)?.read).toBe(false);
+    expect((await json<NotificationList>(await t.call('GET', '/app/api/me/notifications/list', { cookie: petr }))).items.some((n) => n.id === item.id)).toBe(true);
   });
 
   it('counts unread notifications for the bell, gives the newest as a hint, and reads them one by one or all', async () => {
@@ -245,7 +245,7 @@ describe('the list under the bell', () => {
     await tell(told(petrId));
     advance(1_000);
     await tell(notices.projectShared({ userId: petrId, projectId: '00000000-0000-4000-8000-000000000001', projectName: 'Тендер', ownerName: 'Ольга', sharedAt: new Date() }));
-    const counts = await json<NotificationsResponse>(await t.call('POST', '/app/api/me/presence', { cookie: petr, body: { tab: 'phone-tab-1', visible: true } }));
+    const counts = await json<NotificationsResponse>(await t.call('POST', '/app/api/me/presence', { cookie: petr, body: { tab: 'phone-tab-1', visible: true, threadId: null } }));
     expect(counts).toMatchObject({ pendingApprovals: 0, unread: 2, latest: { kind: 'project_shared', title: 'Вам открыли проект «Тендер»' } });
     await t.call('POST', '/app/api/me/notifications/read', { cookie: petr, body: { id: counts.latest!.id } });
     expect(await json<NotificationsResponse>(await t.call('GET', '/app/api/me/notifications', { cookie: petr }))).toMatchObject({ unread: 1, latest: { kind: 'task_result' } });
@@ -255,6 +255,6 @@ describe('the list under the bell', () => {
 
   it('refuses a malformed «прочитано»', async () => {
     expect((await t.call('POST', '/app/api/me/notifications/read', { cookie: petr, body: { id: 'not-an-id' } })).status).toBe(400);
-    expect((await t.call('POST', '/app/api/me/presence', { cookie: petr, body: { tab: 'x', visible: true } })).status).toBe(400);
+    expect((await t.call('POST', '/app/api/me/presence', { cookie: petr, body: { tab: 'x', visible: true, threadId: null } })).status).toBe(400);
   });
 });

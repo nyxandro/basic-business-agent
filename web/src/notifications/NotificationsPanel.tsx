@@ -87,7 +87,8 @@ function List({ onClose }: { onClose: () => void }) {
   );
   if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner title={t.listFailed} error={state.error} onRetry={reload} />;
-  const items = allRead ? state.data.items.map((i) => ({ ...i, read: true })) : state.data.items;
+  // The list holds only what is not dealt with (owner, 22.11): all read — nothing left.
+  const items = allRead ? [] : state.data.items;
   return (
     <>
       {items.some((i) => !i.read) ? (

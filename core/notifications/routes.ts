@@ -46,9 +46,9 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, deps: Notification
 
   // A visible tab every 30 s, a hidden one at once; the answer is the bell's counters, so one request does both.
   app.post('/app/api/me/presence', async (c) => {
-    const { tab, visible } = await parseJson(c, presenceInputSchema);
+    const { tab, visible, threadId } = await parseJson(c, presenceInputSchema);
     const userId = access(c).userId;
-    deps.presence.seen(userId, tab, visible);
+    deps.presence.seen(userId, tab, visible, threadId);
     return c.json(await notificationCounts(db, userId));
   });
 

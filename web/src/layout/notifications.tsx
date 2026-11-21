@@ -4,7 +4,7 @@
 // while the person is in the app is shown as a hint inside the page. On a phone the panel is a sheet from below.
 import type { NotificationsResponse } from '@bba/contracts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { fetchCounts, markRead } from '../notifications/api.ts';
 import { usePresence } from '../notifications/presence.ts';
@@ -66,7 +66,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [location.pathname, refresh]);
 
-  usePresence(apply);
+  // The conversation on the screen: /agents/:agentId?thread=… (chat/ChatPage.tsx).
+  const onChat = useMatch('/agents/:agentId') !== null;
+  const [params] = useSearchParams();
+  usePresence(onChat ? params.get('thread') : null, apply);
 
   // The browser's handler is kept fresh, and a subscription of this browser left by another person is dropped.
   useEffect(() => keepOwnSubscription(), []);

@@ -75,8 +75,11 @@ beforeEach(() => {
 describe('an answer the person left before it ended', () => {
   it('tells «Ответ готов» with the conversation; an answer watched to its end tells nothing', async () => {
     const watched = randomUUID();
+    // A visible tab shows this very conversation while its answer ends.
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'tab-on-the-chat', visible: true, threadId: watched } });
     t.model.script({ text: 'Готово, вот сводка.' });
     expect((await run(olga, watched, 'Сводка по сделкам')).status).toBe(200);
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'tab-on-the-chat', visible: false, threadId: null } });
     const left = randomUUID();
     t.model.script({ text: 'Коммерческое предложение готово, вот оно целиком.', delayMs: 400 });
     await runAndLeave(olga, left, 'Сделай КП для Вектора');
@@ -85,9 +88,28 @@ describe('an answer the person left before it ended', () => {
     expect(ready).toHaveLength(1);
     expect(ready[0]).toMatchObject({ title: 'Ответ готов', link: `/agents/sales?thread=${left}`, read: false });
     expect(ready[0]!.body).toMatch(/^Разговор «.+»$/);
-    // Opening the conversation reads it.
+    expect(items.some((n) => n.link.includes(watched))).toBe(false);
+    // Opening the conversation deals with it: it leaves the list (owner, 22.11).
     await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie: olga, body: body(left, null) });
-    expect((await listOf(olga)).find((n) => n.id === ready[0]!.id)?.read).toBe(true);
+    expect((await listOf(olga)).some((n) => n.id === ready[0]!.id)).toBe(false);
+  });
+
+  // Owner, 22.11: wrote in one chat and went to another while the agent answered — the tab stayed open and visible.
+  it('tells «Ответ готов» when the person went to another conversation while the agent answered', async () => {
+    const asked = randomUUID();
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'tab-of-olga', visible: true, threadId: asked } });
+    const before = t.model.requests.length;
+    t.model.script({ text: 'Сводка готова.', delayMs: 400 });
+    const answer = run(olga, asked, 'Сводка по сделкам за неделю');
+    await eventually(() => Promise.resolve(t.model.requests.length), (n) => n > before);
+    // The same tab now shows another conversation.
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'tab-of-olga', visible: true, threadId: randomUUID() } });
+    await answer;
+    const items = await eventually(() => listOf(olga), (list) => list.some((n) => n.kind === 'answer_ready' && n.link.includes(asked)));
+    expect(items.some((n) => n.kind === 'answer_ready' && n.link.includes(asked))).toBe(true);
+    // The person is in the app: the hint inside the page, not a push (presence decides at delivery).
+    expect((await json<NotificationsResponse>(await t.call('GET', '/app/api/me/notifications', { cookie: olga }))).latest).toMatchObject({ kind: 'answer_ready' });
+    await t.call('POST', '/app/api/me/presence', { cookie: olga, body: { tab: 'tab-of-olga', visible: false, threadId: null } });
   });
 
   // CopilotKit's «Стоп» closes the stream first and asks to stop after: the person is at the screen.

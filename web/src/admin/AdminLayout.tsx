@@ -114,7 +114,7 @@ export function AdminLayout() {
   const sections = availableSections(me);
   const { pathname } = useLocation();
   // A person in the admin panel is in the app: news is not pushed to their browser meanwhile (notifications spec, 8).
-  usePresence();
+  usePresence(null);
   if (sections.length === 0) return <Navigate to="/" replace state={FORBIDDEN_STATE} />;
   return (
     <div className={styles.shell}>

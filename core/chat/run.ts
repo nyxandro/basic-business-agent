@@ -28,6 +28,7 @@ import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 import type { AgentAbilities } from '@bba/contracts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import type { NamingDeps } from './naming.ts';
+import type { Presence } from '../notifications/presence.ts';
 import { newRunLife, tellAfterLeaving, type RunLife } from './after-leaving.ts';
 
 export interface ChatDeps {
@@ -48,6 +49,8 @@ export interface ChatDeps {
   storage: FileStorage;
   // The mailboxes of employees: the chat names their actions (spec, section 8.24).
   mail: MailService;
+  // Which conversation is on the screen of the person's visible tabs (docs/specs/[20.11.2026]-notifications.md).
+  presence: Pick<Presence, 'isWatching'>;
 }
 
 export interface RunInput {
@@ -108,12 +111,14 @@ function releaseThread(threadId: string): void {
 // What the answer removed from its project goes into the trash (spec, section 8.20) — once, when the
 // agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the
 // server's to log, not the answer's; the snapshot is left for the start of the server then.
-export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot' | 'presence'>, run: PreparedRun): void {
   if (liveRuns.get(run.threadId) === run) liveRuns.delete(run.threadId);
   if (run.agentStarted && !run.life.ended) {
     run.life.ended = true;
-    // The person left before the end: they learn how it ended. A draft check of a prompt is the admin's own screen.
-    if (run.life.browserLeft && !run.life.stopped && run.mode === 'published') void tellAfterLeaving(deps.db, run);
+    // Nobody watched the end — the tab closed or hid, or the person went to another conversation or screen (owner,
+    // 22.11): they learn how it ended. «Стоп» is pressed at the screen; a draft check of a prompt is the admin's own.
+    const away = run.life.browserLeft || !deps.presence.isWatching(run.userId, run.threadId);
+    if (away && !run.life.stopped && run.mode === 'published') void tellAfterLeaving(deps.db, run);
   }
   const { snapshot, release } = run;
   run.snapshot = null;
@@ -133,7 +138,7 @@ export function noteStopped(threadId: string): void {
   if (run) run.life.stopped = true;
 }
 
-export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot' | 'presence'>, run: PreparedRun): void {
   if (run.agentStarted && !run.life.ended) run.life.browserLeft = true;
   releaseThread(run.threadId);
   if (!run.agentStarted) settleRun(deps, run);

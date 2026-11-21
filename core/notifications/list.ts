@@ -1,6 +1,8 @@
-// The list under the bell and its counters (docs/specs/[20.11.2026]-notifications.md, scenario 3): only the person's
-// own notifications of 30 days. A notification about a question «Да» reads as read once the question no longer waits —
-// the question itself is counted in «Ждут решения», so it never adds to the bell twice.
+// The list under the bell and its counters (docs/specs/[20.11.2026]-notifications.md, scenario 3): only the person's own
+// notifications, and only what they have not dealt with yet (owner, 22.11: «туда сыпется только то, на что я не
+// отреагировал») — opened, read or decided, it leaves the list. A notification about a question «Да» counts as dealt
+// with once the question no longer waits; while it waits, the question itself is counted in «Ждут решения», so it
+// never adds to the bell twice.
 import { APPROVAL_NOTIFICATION_KINDS, type NotificationItem, type NotificationKind, type NotificationsResponse } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 import { decidedSql, NOTIFICATION_KEEP_DAYS } from './delivery.ts';
@@ -39,7 +41,8 @@ export async function notificationCounts(db: Db, userId: string): Promise<Notifi
 
 export async function listNotifications(db: Db, userId: string): Promise<NotificationItem[]> {
   const { rows } = await db.query<Row>(
-    `SELECT n.id, n.kind, n.title, n.body, n.link, n.created_at, ${READ} AS read FROM app.notifications n WHERE n.user_id = $1 AND ${KEPT} ORDER BY n.created_at DESC LIMIT ${LIST_MAX}`,
+    `SELECT n.id, n.kind, n.title, n.body, n.link, n.created_at, false AS read FROM app.notifications n
+      WHERE n.user_id = $1 AND NOT ${READ} AND ${KEPT} ORDER BY n.created_at DESC LIMIT ${LIST_MAX}`,
     [userId],
   );
   return rows.map(toItem);
