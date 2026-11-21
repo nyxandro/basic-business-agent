@@ -1,7 +1,8 @@
-// The live block of a search of the internet (spec, section 8.30; decision of the owner 20.11): while the researcher
-// works, the line says what it does now — the query it searches, the site it reads — with a clock, and under it the
-// queries and the sites so far, each with its state. Done, it folds into «Поиск в интернете · 2 запроса · 3 источника
-// · 1 мин 12 с» that unfolds the same list; after a reload the list comes from the result of the call.
+// The block of a search of the internet (spec, section 8.30; decision of the owner 20.11): while the researcher works,
+// the live line of the answer (LiveLine.tsx; decision of the owner 21.11) says what it does now — the query it searches,
+// the site it reads — with a clock, and unfolds the queries and the sites so far, each with its state. Done, the search
+// comes into the answer as «Поиск в интернете · 2 запроса · 3 источника · 1 мин 12 с» that unfolds the same list; after
+// a reload the list comes from the result of the call.
 import { WEB_RESEARCH_TOOL, webResearchResultSchema, webStepSchema, type WebStep } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
@@ -88,7 +89,7 @@ function StepIcon({ step }: { step: WebStep }) {
   return <Icon name="check" size={13} className={styles.ok} />;
 }
 
-function Steps({ steps }: { steps: readonly WebStep[] }) {
+export function SearchSteps({ steps }: { steps: readonly WebStep[] }) {
   const queries = steps.filter((s) => s.kind === 'search');
   const pages = steps.filter((s) => s.kind === 'page');
   return (
@@ -135,46 +136,36 @@ function Steps({ steps }: { steps: readonly WebStep[] }) {
   );
 }
 
-export function WebSearch({ call }: { call: Call }) {
-  const { steps: live, startedAt } = useWebCall(call.toolCallId);
-  const unfinished = useUnfinished();
-  const outcome = outcomeOf(call, unfinished({ name: WEB_RESEARCH_TOOL }) === 'running');
-  const running = outcome.kind === 'running';
-  // Folded: the line says what the search does now; the list opens only on a click (decision of the owner 20.11).
-  const [open, setOpen] = useState(false);
+const NO_STEPS: WebStep[] = [];
+
+// What the search under way does now and how long it has gone, for the live line of the answer; null — no search.
+export function useSearchNow(toolCallId: string | null): { text: string; steps: WebStep[]; clock: string } | null {
+  const { steps, startedAt } = useWebCall(toolCallId ?? '');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!running) return;
+    if (toolCallId === null) return;
     const timer = window.setInterval(() => setNow(Date.now()), TICK_MS);
     return () => window.clearInterval(timer);
-  }, [running]);
+  }, [toolCallId]);
+  if (toolCallId === null) return null;
+  const seen = steps ?? NO_STEPS;
+  return { text: nowText(seen), steps: seen, clock: clock(now - startedAt) };
+}
 
-  // The result keeps the steps for good; until it comes, and for a call left unfinished, the live ones. A step
-  // under way is so only while the search is.
+export function WebSearch({ call }: { call: Call }) {
+  const { steps: live } = useWebCall(call.toolCallId);
+  const unfinished = useUnfinished();
+  const outcome = outcomeOf(call, unfinished({ name: WEB_RESEARCH_TOOL }) === 'running');
+  // Folded: the list opens only on a click (decision of the owner 20.11).
+  const [open, setOpen] = useState(false);
+  // Under way, the search is in the live line of the answer, not here (decision of the owner 21.11).
+  if (outcome.kind === 'running') return null;
+
+  // The result keeps the steps for good; for a call left unfinished, the live ones — none of them under way any more.
   const kept = outcome.kind === 'done' || outcome.kind === 'failed' ? outcome.steps : [];
-  const seen = kept.length > 0 ? kept : (live ?? []);
-  const steps = running ? seen : seen.map(settled);
+  const steps = (kept.length > 0 ? kept : (live ?? [])).map(settled);
   const unfolds = steps.length > 0;
   const toggle = () => setOpen(!open);
-
-  if (running) {
-    return (
-      <div className={styles.block}>
-        <button type="button" className={cx(chat.toolLine, styles.head)} aria-expanded={unfolds ? open : undefined} onClick={unfolds ? toggle : undefined}>
-          {/* A still magnifier, not a spinner: the light over the words and the clock say it works. */}
-          <Icon name="search" size={15} />
-          <span className={cx(chat.toolText, chat.shimmer)} role="status">
-            {nowText(steps)}
-          </span>
-          <span className={styles.clock}>{clock(now - startedAt)}</span>
-          {unfolds ? <Icon name="down" size={15} className={cx(chat.toolChevron, open && chat.toolChevronOpen)} /> : null}
-        </button>
-        <Collapse open={open && unfolds} className={chat.toolUnfold}>
-          <Steps steps={steps} />
-        </Collapse>
-      </div>
-    );
-  }
 
   let summary: string;
   if (outcome.kind === 'done') summary = t.done(outcome.queries, outcome.sources, outcome.ms);
@@ -190,7 +181,7 @@ export function WebSearch({ call }: { call: Call }) {
         {unfolds ? <Icon name="down" size={15} className={cx(chat.toolChevron, open && chat.toolChevronOpen)} /> : null}
       </button>
       <Collapse open={open && unfolds} className={chat.toolUnfold}>
-        <Steps steps={steps} />
+        <SearchSteps steps={steps} />
       </Collapse>
     </div>
   );

@@ -8,6 +8,7 @@
 // - While a call is still written, its last component may be cut: it waits for the next one or for the end; a screen
 //   whose data may still be written waits for it.
 import { operationsOf, WIDGET_TOOL } from '@bba/contracts';
+import { ɵparseToolCallArguments as parseToolCallArguments } from '@copilotkit/react-core';
 
 type Op = Record<string, unknown>;
 type Body = Record<string, unknown>;
@@ -82,13 +83,6 @@ function explode(raw: readonly Op[], written: string, surfaceId: string, complet
   return ops;
 }
 
-// The call begins with a change of a screen (it draws nothing of its own), as far as it is written.
-export function changesAScreen(parameters: unknown): boolean {
-  const first = operationsOf(parameters)[0];
-  const kind = first ? kindOf(first) : null;
-  return kind === 'updateComponents' || kind === 'updateDataModel';
-}
-
 export function drawableOperations(parameters: unknown, callId: string, complete: boolean): Drawable {
   const raw = operationsOf(parameters);
   const first = raw[0];
@@ -97,6 +91,14 @@ export function drawableOperations(parameters: unknown, callId: string, complete
   const written = body.surfaceId;
   const surfaceId = `${written}@${callId}`;
   return { written, surfaceId, ops: explode(raw, written, surfaceId, complete) };
+}
+
+// A screen still being written is in sight from its first whole component: the engine draws it as it comes (spec,
+// section 8.31; decision of the owner 21.11 — until then the live line under the answer says it is being written).
+// The arguments are read the way CopilotKit reads them for the block of the call.
+export function drawsWhileWritten(call: { id: string; function: { arguments: string } }): boolean {
+  const drawn = drawableOperations(parseToolCallArguments(call.function.arguments, { partial: true }), call.id, false);
+  return drawn.written !== null && drawn.ops.length > 0;
 }
 
 // The messages of the agent as CopilotKit holds them: assistant messages with tool calls, and their results.

@@ -1,9 +1,11 @@
 // A stack of status lines between two things the agent shows (decision of the owner 15.11): one line
-// that says what the last call does or did, turning while it runs. Each new status turns in like the
-// wheel of the iPhone date picker (ui/Ticker.tsx): the old one goes up past the top edge of the line,
+// that says what the last call did. A call under way is not here but in the live line under the answer
+// (LiveLine.tsx; decision of the owner 21.11); done, it comes up into the stack and turns in like the
+// wheel of the iPhone date picker (ui/Ticker.tsx): the old status goes up past the top edge of the line,
 // the new one comes from under its bottom edge; so does the number of calls. A stack of one is the
 // line of its call — «только чтение», «N найдено», unfolds what was asked and found; a stack of more
-// shows how many there are and unfolds into every line, each of which unfolds on its own.
+// shows how many there are and unfolds into every line, each of which unfolds on its own. A call of an
+// ended answer left without its result says why: it waits for «Да» or was stopped.
 import type { AgentSummary } from '@bba/contracts';
 import type { Message as AguiMessage } from '@copilotkit/react-core';
 import { useState, type ReactNode } from 'react';
@@ -18,16 +20,7 @@ import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolDetails } from './ToolRow.tsx';
 import { toolSummary, type ToolSummary } from './tool-summary.ts';
-import type { ToolCall } from './turn-items.ts';
-
-// The arguments of a call come as JSON text, still unfinished while the model writes them.
-function argumentsOf(call: ToolCall): unknown {
-  try {
-    return JSON.parse(call.function.arguments);
-  } catch {
-    return null;
-  }
-}
+import { argumentsOf, type ToolCall } from './turn-items.ts';
 
 function StatusIcon({ summary }: { summary: ToolSummary }) {
   if (summary.state === 'running') return <span className={styles.spin} />;
@@ -56,9 +49,6 @@ export function ToolStack({
   const state = unfinished({ name: last.function.name });
   const status = typeof result === 'string' ? 'complete' : state === 'running' ? 'executing' : state;
   const summary = toolSummary(last.function.name, status, typeof result === 'string' ? result : undefined, agent, args);
-  // While the model still writes what the action is to do (its arguments come in pieces and are not whole JSON yet):
-  // how much has come — real progress; written whole, the action runs, and only the circle turns (owner, 20.11).
-  const written = summary.state === 'running' && args === null ? last.function.arguments.length : 0;
   const single = calls.length === 1;
   // One call unfolds once it is done; several unfold any time.
   const unfolds = !single || summary.state === 'done';
@@ -78,14 +68,6 @@ export function ToolStack({
           {single && summary.state === 'done' && summary.readOnly ? <span className={styles.toolTag}>{ru.chat.readOnly}</span> : null}
           {single && summary.state === 'done' && summary.count !== null ? <span className={styles.toolCount}>{ru.chat.found(summary.count)}</span> : null}
         </Ticker>
-        {/* Outside the wheel of the line: the count changes with every piece and must not roll it. */}
-        {/* The space keeps the words apart for a screen reader; in the line the gap of the flex does it. */}
-        {written > 0 ? (
-          <>
-            {' '}
-            <span className={cx(styles.toolCount, styles.toolWritten)}>{ru.chat.written(written)}</span>
-          </>
-        ) : null}
         {single ? null : (
           <Ticker value={String(calls.length)}>
             <span className={styles.toolCount}>{ru.chat.toolActions(calls.length)}</span>

@@ -3,6 +3,7 @@
 import { GENUI_TOOL, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { describe, expect, it } from 'vitest';
+import { callsUnderWay } from './call-progress.ts';
 import { turnItems } from './turn-items.ts';
 
 const call = (id: string, name = 'mastra_workspace_execute_command') => ({ id, type: 'function' as const, function: { name, arguments: '{}' } });
@@ -47,5 +48,59 @@ describe('the layout of a turn', () => {
 
   it('puts nothing for a message with neither words nor calls', () => {
     expect(shape([said('a1', ''), said('a2', 'Привет!')])).toEqual(['Привет!']);
+  });
+});
+
+// Decision of the owner 21.11: what the agent does now is said in one place — the live line under the answer, where
+// «Работаю» stands; a call goes into the turn once it is done. An ended answer keeps every call («Ждёт», «Прервано»).
+describe('the layout of the turn being answered now', () => {
+  const live = (turn: AssistantMessage[], results: Message[] = []) => {
+    const messages = [...turn, ...results];
+    const underWay = new Set(callsUnderWay(messages).map((c) => c.id));
+    return turnItems(turn, messages, underWay).map((item) => (item.kind === 'text' ? item.text : item.kind === 'call' ? item.call.id : `[${item.calls.map((c) => c.id).join(' ')}]`));
+  };
+  const written = (id: string, args: string) => ({ id, type: 'function' as const, function: { name: WIDGET_TOOL.render, arguments: args } });
+  const SCREEN = '{"operations":[{"version":"1.0","createSurface":{"surfaceId":"kp","dataModel":{},"components":[{"id":"root","component":"Column","children":["a"]},{"id":"a","component":"Text","text":"Первый"},';
+
+  it('keeps a call under way out of its stack, and puts it in once it is done', () => {
+    const turn = [said('a1', 'Смотрю папку.', [call('c1'), call('c2')])];
+    expect(live(turn)).toEqual(['Смотрю папку.']);
+    expect(live(turn, [result('c1', '{}')])).toEqual(['Смотрю папку.', '[c1]']);
+    expect(live(turn, [result('c1', '{}'), result('c2', '{}')])).toEqual(['Смотрю папку.', '[c1 c2]']);
+  });
+
+  it('keeps the search and the file out while they are under way', () => {
+    const turn = [said('a1', '', [call('w1', WEB_RESEARCH_TOOL), call('f1', GENUI_TOOL.file)])];
+    expect(live(turn)).toEqual([]);
+    expect(live(turn, [result('w1', '{"sources":[]}'), result('f1', '{"name":"КП.docx"}')])).toEqual(['w1', 'f1']);
+  });
+
+  // The engine draws a screen as the model writes it (spec, section 8.31): it is in sight from its first component.
+  it('lets a widget in once it has something to draw', () => {
+    expect(live([said('a1', '', [written('u1', '{"operations":[{"version":"1.0","createSurface":{"surfaceId":"kp",')])])).toEqual([]);
+    expect(live([said('a1', '', [written('u1', SCREEN)])])).toEqual(['u1']);
+  });
+
+  // The adapter of Mastra puts a call of the next step on the message of the words before it, above the result of the
+  // call before (core/chat/copilot.ts): the place of a call in the list says nothing of whether it is done.
+  it('keeps the next call out though it stands above the result of the one before', () => {
+    const turn = [said('a1', 'Соберу экран.', [call('d1', WIDGET_TOOL.components), written('u1', '{"operations":')])];
+    expect(live(turn, [result('d1', '{"guide":"…"}')])).toEqual(['Соберу экран.', '[d1]']);
+  });
+
+  // Two calls of one step run side by side, and the later is done first: the stack it opens is the stack of both.
+  it('keeps the stack the same one when an earlier call of it is done after a later one', () => {
+    const turn = [said('a1', 'Смотрю.', [call('c1'), call('c2')])];
+    const keyOf = (results: Message[]) => {
+      const messages = [...turn, ...results];
+      const stack = turnItems(turn, messages, new Set(callsUnderWay(messages).map((c) => c.id))).find((item) => item.kind === 'stack');
+      return stack?.kind === 'stack' ? stack.key : null;
+    };
+    expect(keyOf([result('c2', '{}')])).toBe('c1');
+    expect(keyOf([result('c2', '{}'), result('c1', '{}')])).toBe('c1');
+  });
+
+  it('keeps every call of an answer that ended', () => {
+    expect(shape([said('a1', '', [call('c1'), call('w1', WEB_RESEARCH_TOOL)])])).toEqual(['[c1]', 'w1']);
   });
 });

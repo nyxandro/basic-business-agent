@@ -1,0 +1,93 @@
+/* The live line of the answer (LiveLine.tsx; decisions of the owner 18.11 and 21.11): a ring turns and a light runs
+   over «Работаю» or over the name of what the agent does now. No mark: the row stands under the words of the answer —
+   the mark's 30 px and the gap of 14 px. It brings the space above it itself, so that it grows in and folds away with
+   its height instead of the gap of the feed jumping: 22 px under a message of the person, 12 px — the gap of the lines
+   of an answer — under the answer it belongs to. */
+.liveWrap {
+  margin-top: -22px;
+}
+
+.live {
+  padding-top: 22px;
+  padding-left: 44px;
+  transition: padding-top 0.36s var(--ease-out);
+}
+
+/* Right under the answer it belongs to (AssistantMessage.tsx marks its row). */
+[data-answer-row] + .liveWrap .live {
+  padding-top: 12px;
+}
+
+/* The wheel of the line turns inside it (ui/Ticker.tsx). */
+.liveHead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 500;
+}
+
+.liveNow {
+  display: flex;
+  min-width: 0;
+}
+
+.liveTicker {
+  min-width: 0;
+}
+
+.liveIcon,
+.liveChevron {
+  flex: none;
+  color: var(--muted);
+}
+
+/* The search opens its list by a click anywhere on the line. */
+.liveCover {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.liveCover:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: -2px;
+}
+
+.liveUnfold::before {
+  content: '';
+  display: block;
+  height: 8px;
+}
+
+/* global(): CSS modules rename an animation to one of the module, and the keyframes are in base.css. */
+.workingRing {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(from 90deg, transparent 15%, var(--acc));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: global(bba-spin) 0.9s linear infinite;
+}
+
+.workingWord {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--text) 50%, var(--muted) 65%, var(--muted) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: global(bba-text-shimmer) 1.8s linear infinite;
+}

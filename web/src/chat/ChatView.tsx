@@ -1,26 +1,31 @@
 // The conversation window, put into CopilotChat's chat view slot: CopilotChat keeps the agent, the
 // thread, sending and stopping; this draws everything the person sees (mockup «Чат с агентом»):
-// the welcome, the feed, «Работаю», the confirmation card, the error and the input. Files dragged
+// the welcome, the feed, the live line of the answer (LiveLine.tsx), the confirmation card, the error and the input. Files dragged
 // onto the window are attached as from the paperclip (FileDrop.tsx).
 // It also keeps the draft in the browser, tells the page when a turn ends and handles answers that
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
+import { EASING, MOVE_S } from '../ui/motion.ts';
 import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answer-failures.ts';
 import { useAttachQueue } from './attach.ts';
 import { AgentMark } from './AgentMark.tsx';
 import { AssistantTurn } from './AssistantMessage.tsx';
+import { answersInBrowser, callsUnderWay } from './call-progress.ts';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
+import live from './live-line.module.css';
 import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
 import { useFileDrop } from './FileDrop.tsx';
-import { withAttachments } from '@bba/contracts';
+import { LiveLine } from './LiveLine.tsx';
+import { withAttachments, type AgentSummary } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
@@ -37,16 +42,11 @@ function releaseWaitingQuestions(agent: { pendingInterrupts: unknown[] }): void 
   if (agent.pendingInterrupts.length > 0) agent.pendingInterrupts = [];
 }
 
-// While the agent works and nothing new is on the screen: a turning ring and «Работаю», without the
-// agent's mark (decision of the owner 18.11) — the mark of the turn is already beside its words.
-function Working() {
-  return (
-    <div className={styles.working} role="status" aria-label={ru.chat.working}>
-      <span className={styles.workingRing} aria-hidden="true" />
-      <span className={styles.workingWord}>{ru.chat.working}</span>
-    </div>
-  );
-}
+// The live line grows in from no height, faded and a little blurred, and folds away the same way (decision of the owner
+// 21.11: no blinking); what is above it does not jump. It brings the space above it itself (live-line.module.css).
+// Clipped only while it moves: going, it does not lie over the card «Да» that comes under it.
+const LIVE_HIDDEN = { height: 0, opacity: 0, filter: 'blur(4px)', overflow: 'hidden' };
+const LIVE_SHOWN = { height: 'auto', opacity: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none', overflow: 'visible' } };
 
 // A turn of the agent is every assistant message between two messages of the person.
 type Row = { kind: 'user'; message: Message } | { kind: 'agent'; key: string; turn: AgentMessage[] };
@@ -77,12 +77,17 @@ interface FeedFailures {
 const FEED_ROLES: ReadonlySet<Message['role']> = new Set(['user', 'assistant', 'tool']);
 
 // `asking` — the question «Да» is open under the last answer.
-function Feed({ messages, running, asking, failures }: { messages: Message[]; running: boolean; asking: boolean; failures: FeedFailures }) {
-  // Until the next thing to see the agent shows it is working — also while the model reasons, whose
-  // reasoning would otherwise be the last message and take «Работаю» away (decision of the owner 15.11).
+function Feed({ messages, running, asking, failures, agent }: { messages: Message[]; running: boolean; asking: boolean; failures: FeedFailures; agent: Pick<AgentSummary, 'systems' | 'actions'> }) {
+  // What the agent does now is said in one place, the live line (decision of the owner 21.11): the call under way, else
+  // «Работаю» until the next thing to see — also while the model reasons, whose reasoning would otherwise be the last
+  // message and take «Работаю» away (decision of the owner 15.11). Its words being written say it themselves.
+  const underWay = callsUnderWay(messages).filter((call) => running || answersInBrowser(call.function.name));
   const last = messages.findLast((m) => FEED_ROLES.has(m.role));
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
+  const liveCall = underWay.at(-1) ?? null;
   const rows = rowsOf(messages);
+  // Only the last answer has calls under way: they come after the person's last message.
+  const underWayIds = new Set(underWay.map((c) => c.id));
   const lastBroken = failures.lastBroken && !running;
   return (
     <>
@@ -96,6 +101,7 @@ function Feed({ messages, running, asking, failures }: { messages: Message[]; ru
             turn={row.turn}
             messages={messages}
             streaming={running && isLast}
+            underWay={underWayIds}
             asking={!running && isLast && asking}
             interrupted={broken}
             {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
@@ -106,7 +112,13 @@ function Feed({ messages, running, asking, failures }: { messages: Message[]; ru
       {lastBroken && rows.at(-1)?.kind !== 'agent' ? (
         <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted {...(failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})} />
       ) : null}
-      {waiting ? <Working /> : null}
+      <AnimatePresence initial={false}>
+        {liveCall || waiting ? (
+          <motion.div key="live" className={live.liveWrap} initial={LIVE_HIDDEN} animate={LIVE_SHOWN} exit={LIVE_HIDDEN}>
+            <LiveLine call={liveCall} agent={agent} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }
@@ -119,7 +131,13 @@ export function ChatView(props: CopilotChatViewProps) {
   const restored = useRef(false);
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
+  const feed = useRef<HTMLDivElement>(null);
+  // «Уменьшить движение» in the system: the lines of the answer come and go at once (Motion alone keeps their height
+  // and fading moving).
+  const still = useReducedMotion() === true;
   const stick = useRef(true);
+  // The feed glides to its bottom now (the person's own message): what grows meanwhile does not cut the glide short.
+  const gliding = useRef(false);
   const uploads = useAttachQueue();
   const drop = useFileDrop(uploads.attach);
 
@@ -163,8 +181,23 @@ export function ChatView(props: CopilotChatViewProps) {
     if (!el || !stick.current) return;
     // The person's own message glides into view; the words of an answer keep the bottom at once.
     const glide = lastRole === 'user' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    gliding.current = glide;
     el.scrollTo({ top: el.scrollHeight, behavior: glide ? 'smooth' : 'auto' });
   }, [messages.length, lastContent, lastRole, isRunning, extras.interrupt]);
+
+  // The feed also grows between messages — the live line and the lines of the answer grow into their places (decision
+  // of the owner 21.11), a widget draws itself: the bottom stays in sight as they grow, gliding if the feed glides.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const content = feed.current;
+    if (!el || !content) return;
+    const keep = new ResizeObserver(() => {
+      if (!stick.current || el.scrollHeight - el.scrollTop - el.clientHeight < 1) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: gliding.current ? 'smooth' : 'auto' });
+    });
+    keep.observe(content);
+    return () => keep.disconnect();
+  }, []);
 
   const change = (value: string) => {
     writeDraft(extras.agentId, extras.threadId, value);
@@ -235,11 +268,13 @@ export function ChatView(props: CopilotChatViewProps) {
               stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
             }}
           >
-            <div className={styles.feed}>
+            <div ref={feed} className={styles.feed}>
               {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
               {empty && isConnecting ? <DelayedBar /> : null}
               {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
-              <Feed messages={messages} running={isRunning} asking={extras.interrupt !== null} failures={failures} />
+              <MotionConfig reducedMotion="user" transition={{ duration: still ? 0 : MOVE_S, ease: EASING }}>
+                <Feed messages={messages} running={isRunning} asking={extras.interrupt !== null} failures={failures} agent={extras.agent} />
+              </MotionConfig>
               {extras.interrupt ? (
                 <div className={styles.assistant}>
                   <AgentMark />

@@ -175,6 +175,11 @@
   animation: global(bba-rise) 0.45s var(--ease-rise) both;
 }
 
+/* An answer whose first thing is a done action grows into its place instead (AssistantMessage.tsx). */
+.assistantGrows {
+  animation: none;
+}
+
 .body {
   flex: 1;
   min-width: 0;
@@ -264,38 +269,9 @@
   color: var(--muted);
 }
 
-/* The agent works and nothing new is on the screen yet (variant 1 of the owner's choice 18.11): a ring
-   turns and a light runs over the word. No mark: the row stands under the words of the answer — the
-   mark's 30 px and the gap of 14 px. */
-.working {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 26px;
-  padding-left: 44px;
-  font-weight: 500;
-  animation: global(bba-rise) 0.45s var(--ease-rise) both;
-}
-
-/* global(): CSS modules rename an animation to one of the module, and the keyframes are in base.css. */
-.workingRing {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: conic-gradient(from 90deg, transparent 15%, var(--acc));
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  animation: global(bba-spin) 0.9s linear infinite;
-}
-
-.workingWord {
-  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 35%, var(--text) 50%, var(--muted) 65%, var(--muted) 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: global(bba-text-shimmer) 1.8s linear infinite;
+/* A line or a block of the answer (AssistantMessage.tsx); a call that draws nothing takes no gap. */
+.arrives:empty {
+  display: none;
 }
 
 /* The line of a tool call. */

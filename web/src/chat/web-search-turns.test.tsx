@@ -83,9 +83,11 @@ describe('the block of a search in a conversation', () => {
     ];
     render(showChat(messages, true));
     await screen.findByText('Попробуй ещё раз');
-    // The earlier one is over; the search of the answer being written now is under way — only one clock goes.
+    // The earlier one is over; the search of the answer being written now is under way — in the live line, the only
+    // clock that goes.
     expect(screen.getByRole('button', { name: 'Поиск в интернете прерван' })).toBeInTheDocument();
-    expect(screen.getAllByRole('status').filter((s) => s.textContent === 'Начинаю поиск в интернете…')).toHaveLength(1);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByRole('status', { name: 'Начинаю поиск в интернете…' })).toBeInTheDocument();
   });
 
   // A sub-agent's call shows the call of the sub-agent, while the question names its inner action: the whole unfinished

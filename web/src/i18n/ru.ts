@@ -309,6 +309,10 @@ export const ru = {
     // spec, section 8.31: the agent loads the descriptions of the components of a widget.
     widgetComponentsLoading: 'Подбираю элементы виджета…',
     widgetComponents: (count: number) => `Подобраны элементы виджета: ${count}`,
+    // The model writes the screen of a widget (spec, section 8.31); the screen itself comes into the answer.
+    widgetDrawing: 'Собираю виджет…',
+    // The agent shows a file it made (show_file, spec, section 8.18); the block of the file comes into the answer.
+    fileShowing: 'Показываю файл…',
     skillActivated: (title: string | null) => (title ? `Активирован навык «${title}»` : 'Активирован навык'),
     skillNotFound: (name: string) => `Навык «${name}» не найден`,
     // What the agent remembered (spec, section 8.26).

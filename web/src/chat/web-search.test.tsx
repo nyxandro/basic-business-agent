@@ -1,11 +1,13 @@
-// The live block of a search of the internet (spec, section 8.30; decision of the owner 20.11): the person sees what
-// the researcher does now — the query, the site — with a clock and the list so far; done, the block folds into one
-// line with the counts and the time, and after a reload shows the same list from the result of the call.
-import { CHAT_EVENTS, type WebStep } from '@bba/contracts';
+// A search of the internet in the chat (spec, section 8.30; decisions of the owner 20.11 and 21.11): while it goes, the
+// live line of the answer says what the researcher does now — the query, the site — with a clock, and unfolds the list
+// so far; done, the search comes into the answer as one line with the counts and the time, and after a reload shows the
+// same list from the result of the call.
+import { CHAT_EVENTS, WEB_RESEARCH_TOOL, type WebStep } from '@bba/contracts';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TurnStateContext } from './call-progress.ts';
+import { LiveLine } from './LiveLine.tsx';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber, type WebProgressStore } from './web-progress.ts';
 import { WebSearch } from './WebSearch.tsx';
 
@@ -33,14 +35,29 @@ const inChat = (call: CallOf, store: WebProgressStore | null, answering: boolean
 
 const show = (call: CallOf, store: WebProgressStore | null, answering: boolean) => render(inChat(call, store, answering));
 
+// The live line of the answer while the search goes.
+const AGENT = { systems: { tools: {}, prefixes: {} }, actions: {} };
+const SEARCH_CALL = { id: CALL_ID, type: 'function' as const, function: { name: WEB_RESEARCH_TOOL, arguments: '{"task":"Найди цены"}' } };
+const showLive = (store: WebProgressStore) =>
+  render(
+    <WebProgressContext value={store}>
+      <LiveLine call={SEARCH_CALL} agent={AGENT} />
+    </WebProgressContext>,
+  );
+
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('the live block of a search', () => {
+describe('a search in the chat', () => {
+  it('is not in the answer while it goes: the live line says it', () => {
+    const { container } = show(running, createWebProgressStore(), true);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('says what the researcher does now and lists the queries and the sites as they come', () => {
     const store = createWebProgressStore();
-    const view = show(running, store, true);
+    const view = showLive(store);
     expect(screen.getByRole('status')).toHaveTextContent('Начинаю поиск в интернете…');
 
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
@@ -82,7 +99,7 @@ describe('the live block of a search', () => {
   it('counts the time from the moment the block appeared, without a jump back when the first step comes', () => {
     vi.useFakeTimers({ now: new Date('2026-11-20T10:00:00Z') });
     const store = createWebProgressStore();
-    const view = show(running, store, true);
+    const view = showLive(store);
     expect(screen.getByText('0:00')).toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(12_000);
@@ -90,9 +107,9 @@ describe('the live block of a search', () => {
     expect(screen.getByText('0:12')).toBeInTheDocument();
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
     expect(screen.getByText('0:12')).toBeInTheDocument();
-    // A block drawn anew keeps its clock.
+    // A line drawn anew keeps its clock.
     view.unmount();
-    show(running, store, true);
+    showLive(store);
     act(() => {
       vi.advanceTimersByTime(53_000);
     });
@@ -101,22 +118,17 @@ describe('the live block of a search', () => {
 
   it('has nothing to unfold before the first step, and stays folded when the steps come', () => {
     const store = createWebProgressStore();
-    show(running, store, true);
-    const head = screen.getByRole('button', { name: /Начинаю поиск/ });
-    expect(head).not.toHaveAttribute('aria-expanded');
-    fireEvent.click(head);
+    showLive(store);
+    expect(screen.queryByRole('button')).toBeNull();
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
     expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('region', { name: 'Запросы' })).toBeNull();
   });
 
-  it('folds into the counts and the time when done, and unfolds the same list on a click', () => {
+  it('comes into the answer as the counts and the time when done, and unfolds the same list on a click', () => {
     const store = createWebProgressStore();
-    const view = show(running, store, true);
     act(() => store.apply(CALL_ID, QUERY, Date.now()));
-    expect(screen.getByRole('button', { name: /Ищу/ })).toHaveAttribute('aria-expanded', 'false');
-
-    view.rerender(inChat(complete({ answer: 'От 520 ₽ за м²', sources: [SOURCE], steps: [QUERY_DONE, PAGE_DONE, PAGE_BLOCKED], ms: 72_000 }), store, true));
+    show(complete({ answer: 'От 520 ₽ за м²', sources: [SOURCE], steps: [QUERY_DONE, PAGE_DONE, PAGE_BLOCKED], ms: 72_000 }), store, true);
     const line = screen.getByRole('button', { name: 'Поиск в интернете · 1 запрос · 1 источник · 1 мин 12 с' });
     expect(line).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('status')).toBeNull();
@@ -155,14 +167,11 @@ describe('the live block of a search', () => {
     expect(screen.getByText('не открылась')).toBeInTheDocument();
   });
 
-  it('stops the clock when its answer ended without the result: «Стоп» or a broken answer', () => {
+  it('comes into the answer stopped when its answer ended without the result: «Стоп» or a broken answer', () => {
     const store = createWebProgressStore();
-    const view = show(running, store, true);
-    act(() => {
-      store.apply(CALL_ID, QUERY_DONE, Date.now());
-      store.apply(CALL_ID, PAGE, Date.now());
-    });
-    view.rerender(inChat(running, store, false));
+    store.apply(CALL_ID, QUERY_DONE, Date.now());
+    store.apply(CALL_ID, PAGE, Date.now());
+    show(running, store, false);
     const line = screen.getByRole('button', { name: 'Поиск в интернете прерван' });
     // The person's own choice, not a failure.
     expect(line.className).not.toMatch(/toolFailed/);

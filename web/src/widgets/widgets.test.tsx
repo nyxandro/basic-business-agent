@@ -460,6 +460,15 @@ describe('the block of a widget', () => {
     expect(pressed).toHaveBeenCalledTimes(1);
   });
 
+  // 21.11: «Готовлю…» turned under the answer while «Работаю» turned below it. Until its first component the live
+  // line of the answer says the widget is being written (decision of the owner 21.11).
+  it('draws no placeholder of its own while no component is written yet', () => {
+    const { container } = show({ status: 'inProgress', parameters: { operations: [{ version: '1.0', createSurface: { surfaceId: 'kp' } }] } }, 'answering');
+    expect(container).toBeEmptyDOMElement();
+    expect(ingest).not.toHaveBeenCalled();
+    expect(toolSummary(WIDGET_TOOL.render, 'inProgress', undefined, { systems: { tools: {}, prefixes: {} }, actions: {} })).toEqual({ state: 'running', text: 'Собираю виджет…' });
+  });
+
   // Review 20.11: a change of a screen above, while it is written, showed «Готовлю…» under the screen for nothing.
   it('draws nothing while a call that changes a screen above is written', () => {
     const { container } = show({ status: 'inProgress', parameters: { operations: [{ version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats' } }] } }, 'answering');

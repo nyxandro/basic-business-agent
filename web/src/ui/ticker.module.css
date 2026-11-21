@@ -25,14 +25,18 @@
   animation: bba-tick-out var(--tick-out) cubic-bezier(0.5, 0, 0.75, 0.4) both;
 }
 
+/* A light blur on the way in and out (decision of the owner 21.11: status changes smooth, not blinking): the words
+   come into focus as they settle and go out of it as they leave. */
 @keyframes bba-tick-in {
   from {
     transform: translateY(140%) rotateX(-75deg);
     opacity: 0;
+    filter: blur(3px);
   }
   to {
     transform: none;
     opacity: 1;
+    filter: none;
   }
 }
 
@@ -40,10 +44,12 @@
   from {
     transform: none;
     opacity: 1;
+    filter: none;
   }
   to {
     transform: translateY(-140%) rotateX(75deg);
     opacity: 0;
+    filter: blur(3px);
   }
 }
 

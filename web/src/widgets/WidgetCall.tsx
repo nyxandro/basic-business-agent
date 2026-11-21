@@ -3,17 +3,19 @@
 // with a place of their own (a target per call), and `GenerativeUISurface` draws it: live while the agent writes the
 // call, and again from the stored calls after a reload. A call that only changed a screen draws nothing of its own.
 // A call the server's check refused draws nothing: no line «rebuilding» — the agent may not rebuild (owner, 20.11).
+// Until the screen has its first component it draws nothing either: the live line under the answer says the widget is
+// being written (decision of the owner 21.11), instead of a placeholder of its own.
 import { WIDGET_CATALOG_ID } from '@bba/contracts';
 import { useAgent } from '@copilotkit/react-core';
 import { GenerativeUISurface, useGenerativeUIRuntime } from '@copilotkit/react-core/generative-ui';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useUnfinished } from '../chat/call-progress.ts';
 import { parseToolResult } from '../chat/tool-result.ts';
-import { Preparing, type CallProps } from '../genui/CatalogBlock.tsx';
+import type { CallProps } from '../genui/CatalogBlock.tsx';
 import { ru } from '../i18n/ru.ts';
 import { answerOf } from '../genui/answer.ts';
 import { BusyPress } from './busy.tsx';
-import { changesAScreen, drawableOperations, laterChanges } from './operations.ts';
+import { drawableOperations, laterChanges } from './operations.ts';
 import { screensOfAnswer, WidgetReplyContext, widgetReply } from './reply.ts';
 import styles from './widgets.module.css';
 
@@ -62,13 +64,14 @@ export function WidgetCall({ call }: { call: CallProps }) {
   if (refused) return null;
   // The answer ended without the result: «Стоп» or a broken answer — what was drawn is not a screen to work with.
   if (call.status !== 'complete' && unfinished === 'stopped') return <p className={styles.note}>{ru.widgets.stopped}</p>;
-  // A change of a screen drawn above it: the screen shows it, also while the change is written.
-  if (!runtime || (!own.written && (call.status === 'complete' || changesAScreen(call.parameters)))) return null;
+  // A change of a screen drawn above it: the screen shows it, also while the change is written. A screen without its
+  // first component yet: the live line of the answer says it is being written.
+  if (!runtime || !own.written || (call.status !== 'complete' && own.ops.length === 0)) return null;
   return (
     <div className={styles.widget} style={{ '--broken-part': JSON.stringify(ru.widgets.brokenPart) } as CSSProperties}>
       <BusyPress.Provider value={reportBusy}>
         <WidgetReplyContext.Provider value={replied}>
-          <GenerativeUISurface id={target} fallback={<Preparing />} autoScroll={false} />
+          <GenerativeUISurface id={target} fallback={null} autoScroll={false} />
         </WidgetReplyContext.Provider>
       </BusyPress.Provider>
       {pressedBusy && running && (

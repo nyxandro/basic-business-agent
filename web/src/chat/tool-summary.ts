@@ -1,7 +1,7 @@
 // What a line of a tool call says (spec, section 7): the call runs, was refused or cancelled, failed,
 // or did its work — with the system, the action, «только чтение» and how many things it found. The
 // line itself (ToolRow) and the head of a stack of lines (ToolStack) say the same.
-import { toolTableResultSchema, WIDGET_TOOL, type AgentSummary } from '@bba/contracts';
+import { GENUI_TOOL, toolTableResultSchema, WIDGET_TOOL, type AgentSummary } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
@@ -123,10 +123,16 @@ function widgetComponentsSummary(status: ToolStatus, result: string | undefined,
   return { state: 'done', text: ru.chat.widgetComponents(Array.isArray(names) ? names.length : 0), readOnly: false, count: null, value: null };
 }
 
+// The calls whose result is a block of the answer: under way they are named in the live line (decision of the owner
+// 21.11), done they are the block itself.
+const BLOCKS_UNDER_WAY: Record<string, string> = { [WIDGET_TOOL.render]: ru.chat.widgetDrawing, [GENUI_TOOL.file]: ru.chat.fileShowing };
+
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
   if (status === 'waiting') return { state: 'waiting', text: ru.chat.toolWaiting };
   if (status === 'stopped') return { state: 'declined', text: ru.chat.toolStopped };
+  const block = BLOCKS_UNDER_WAY[name];
+  if (block && status !== 'complete') return { state: 'running', text: block };
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
   if (skill) return skill;
   const memory = MEMORY_TOOLS[name];

@@ -64,11 +64,14 @@ export function webProgressSubscriber(store: WebProgressStore) {
 
 export const WebProgressContext = createContext<WebProgressStore | null>(null);
 
-// The live steps of one call; nothing outside a chat window (a past conversation shows the steps of its result).
+// The live steps of one call; nothing outside a chat window (a past conversation shows the steps of its result). The live
+// line of the answer (LiveLine.tsx) follows one search after another: a new call counts from its own start.
 export function useWebCall(toolCallId: string): { steps: WebStep[] | undefined; startedAt: number } {
   const store = useContext(WebProgressContext);
   const subscribe = useCallback((listener: () => void) => (store ? store.subscribe(listener) : () => undefined), [store]);
   const steps = useSyncExternalStore(subscribe, () => store?.stepsOf(toolCallId));
-  const [startedAt] = useState(() => (store ? store.startOf(toolCallId, Date.now()) : Date.now()));
-  return { steps, startedAt };
+  const startOf = () => ({ toolCallId, at: store ? store.startOf(toolCallId, Date.now()) : Date.now() });
+  const [start, setStart] = useState(startOf);
+  if (start.toolCallId !== toolCallId) setStart(startOf());
+  return { steps, startedAt: start.at };
 }
