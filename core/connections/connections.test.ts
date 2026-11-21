@@ -89,6 +89,18 @@ describe('personal access with a key', () => {
     });
   });
 
+  it('keeps the connection when the system refuses one record (403) — only a 401 breaks it', async () => {
+    const olga = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'olga@example.com'`)).rows[0]!.id;
+    const tools = await t.connections.toolsFor(olga, { agentId: 'sales', connectorIds: ['crm'] });
+    crm.forbiddenTokens.add('olga-key');
+    try {
+      await expect(tools.crm_deals_search!.execute!({}, ctx(olga))).rejects.toBeTruthy();
+    } finally {
+      crm.forbiddenTokens.delete('olga-key');
+    }
+    expect((await t.connections.statusFor(olga)).find((c) => c.id === 'crm')?.status).toBe('connected');
+  });
+
   it('refuses a wrong key at save time and marks the connection as failed', async () => {
     const anna = await t.createUser({ email: 'anna@example.com' });
     await expect(t.connections.saveStatic(anna, 'crm', { token: 'wrong' })).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });

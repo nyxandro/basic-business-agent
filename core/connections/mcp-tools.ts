@@ -14,10 +14,12 @@ import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { logEvent } from '../server/log.ts';
-import { loadCredential } from './credentials.ts';
-import { authFailed, notConnected, unavailable } from './errors.ts';
+import { classifyCall } from './call-errors.ts';
+import { loadCredential, setCredentialStatus } from './credentials.ts';
+import { accessLost, forbidden, keyRefused, notConnected, unavailable, unknownOutcome } from './errors.ts';
+import { safeCause } from './log-safe.ts';
 import { accessToken, mcpTarget } from './mcp-auth.ts';
-import { accessOf, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
+import { accessOf, markSharedKeyRefused, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
 import { CONNECT_TIMEOUT_MS, describeAction } from './snapshot.ts';
 
 // Section 8: a call waits for the system 60 s at most.
@@ -34,10 +36,12 @@ export interface McpTools {
   toolsFor(userId: string, agentId: string): Promise<Record<string, AnyTool>>;
   // The actions of servers built so far, by the name the model calls them: the card of «Да» names them.
   actionsSeen(): Record<string, ActionDescription>;
-  // Calls the action the admin chose to check a personal key with; nothing when there is none.
-  verify(userId: string, server: RunServer): Promise<void>;
-  // The person's client of a server is rebuilt after their access changed (a new key, «Отключить»).
-  forget(serverId: string, userId: string): void;
+  // Calls the action the admin chose to check a personal key with: «connected» when the system took the key,
+  // «unverified» when there is no such action or the system did not answer; a refused key throws.
+  verify(userId: string, server: RunServer): Promise<'connected' | 'unverified'>;
+  // The client of a server is rebuilt after the access changed: a person's (a new key, «Отключить») or the
+  // organization's (`null`: a new shared key).
+  forget(serverId: string, userId: string | null): void;
   close(): Promise<void>;
 }
 
@@ -94,7 +98,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     const connectorId = mcpConnectorId(server.id);
     const record = await loadCredential(db, box, userId, connectorId, server.title);
     if (!record) throw notConnected(server.title, connectorId);
-    if (record.status === 'auth_error') throw authFailed(server.title, connectorId);
+    if (record.status === 'auth_error') throw accessLost(server.title, connectorId);
     if (server.auth === 'oauth') {
       const target = mcpTarget(deps, { id: server.id, title: server.title, url: server.url, status: server.status, client: undefined });
       // The token is taken, and refreshed ahead of expiry, for every request of this person's client.
@@ -115,6 +119,66 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     return clientFor(server, userId, { url: access.url, requestInit: { headers: access.headers }, ...base }, JSON.stringify([access.url, access.headers]));
   }
 
+  // What a failed call means for the person and for the connection (step 7): by the HTTP status, not the text.
+  async function failureOf(server: RunServer, userId: string, error: unknown): Promise<unknown> {
+    const connectorId = mcpConnectorId(server.id);
+    const failure = classifyCall(error);
+    switch (failure.kind) {
+      case 'own':
+        return failure.error;
+      case 'answered':
+        return error;
+      case 'unknown_outcome':
+        logEvent('warn', 'connector_unknown_outcome', { connectorId });
+        return unknownOutcome(server.title, connectorId);
+      case 'forbidden':
+        return forbidden(server.title, connectorId);
+      case 'refused':
+        if (server.auth === 'personal_key' || server.auth === 'oauth') {
+          await setCredentialStatus(db, userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
+          forget(server.id, userId);
+          logEvent('warn', 'connector_auth_failed', { connectorId });
+          return accessLost(server.title, connectorId);
+        }
+        if (server.auth === 'shared_key') {
+          await markSharedKeyRefused(db, server.id);
+          forget(server.id, null);
+          // The admins learn it from the card in «Подключения»; a notification comes with the feature «Уведомления».
+          logEvent('error', 'mcp_shared_auth_failed', { connectorId });
+          return sharedAuthRefused(server);
+        }
+        logEvent('warn', 'connector_unavailable', { connectorId, httpStatus: 401 });
+        return unavailable(server.title, connectorId);
+      case 'unavailable':
+        logEvent('warn', 'connector_unavailable', { connectorId, httpStatus: failure.httpStatus ?? null });
+        return unavailable(server.title, connectorId, safeCause(error));
+    }
+  }
+
+  function guarded(server: RunServer, userId: string, tool: AnyTool, name: string): AnyTool {
+    const execute = tool.execute!.bind(tool) as (input: unknown, ctx: unknown) => Promise<unknown>;
+    return createTool({
+      ...tool,
+      id: name,
+      execute: async (input: unknown, ctx: unknown) => {
+        try {
+          return await execute(input, ctx);
+        } catch (error) {
+          throw await failureOf(server, userId, error);
+        }
+      },
+    } as Parameters<typeof createTool>[0]) as AnyTool;
+  }
+
+  function forget(serverId: string, userId: string | null): void {
+    for (const [key, entry] of clients) {
+      if (entry.serverId !== serverId || entry.userId !== userId) continue;
+      clearTimeout(entry.timer);
+      clients.delete(key);
+      void entry.client.disconnect();
+    }
+  }
+
   return {
     async toolsFor(userId, agentId) {
       const out: Record<string, AnyTool> = {};
@@ -124,8 +188,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
           for (const action of server.actions) {
             const tool = await client.toolFromDefinition({ serverName: server.slug, definition: action.definition });
             // The model calls it by the name the snapshot gave; the journal and «Да» know it by the same name.
-            const named = createTool({ ...tool, id: action.modelName } as Parameters<typeof createTool>[0]) as AnyTool;
-            out[action.modelName] = applyApprovalPolicy(named, { readOnly: action.readOnly, db });
+            out[action.modelName] = applyApprovalPolicy(guarded(server, userId, tool as AnyTool, action.modelName), { readOnly: action.readOnly, db });
             seen.set(action.modelName, describeAction(action));
           }
         } catch (error) {
@@ -141,20 +204,22 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     actionsSeen: () => Object.fromEntries(seen),
 
     async verify(userId, server) {
-      if (!server.checkAction) return;
+      if (!server.checkAction) return 'unverified';
+      const connectorId = mcpConnectorId(server.id);
       const client = await clientOf(server, userId);
       const tool = await client.toolFromDefinition({ serverName: server.slug, definition: server.checkAction.definition });
-      await tool.execute!({}, {} as never);
-    },
-
-    forget(serverId, userId) {
-      for (const [key, entry] of clients) {
-        if (entry.serverId !== serverId || entry.userId !== userId) continue;
-        clearTimeout(entry.timer);
-        clients.delete(key);
-        void entry.client.disconnect();
+      try {
+        await guarded(server, userId, tool as AnyTool, server.checkAction.modelName).execute!({}, {} as never);
+        return 'connected';
+      } catch (error) {
+        // The system answered the call, even with an error of its own: it took the key.
+        if (classifyCall(error).kind === 'answered') return 'connected';
+        if (isAppError(error) && error.code === 'APP_CONNECTOR_AUTH_FAILED') throw keyRefused(server.title, connectorId);
+        return 'unverified';
       }
     },
+
+    forget,
 
     async close() {
       for (const { client, timer } of clients.values()) {

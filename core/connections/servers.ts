@@ -498,6 +498,12 @@ export async function updateServer(db: Db, box: SecretBox, id: string, patch: Mc
   });
 }
 
+// The system no longer takes the shared key (scenario 4): the admin sees «Общий ключ не принят», agents get an
+// explanation instead of the actions until a new key is saved.
+export async function markSharedKeyRefused(db: Db, id: string): Promise<void> {
+  await db.query(`UPDATE app.mcp_servers SET status = 'shared_auth_error', status_error_code = 'APP_CONNECTOR_AUTH_FAILED', updated_at = now() WHERE id = $1 AND status = 'enabled'`, [id]);
+}
+
 // «Удалить» (scenario 5): the sign-ins and keys of employees go with the server.
 export async function deleteServer(db: Db, id: string): Promise<{ title: string }> {
   return inTransaction(db, async (client) => {

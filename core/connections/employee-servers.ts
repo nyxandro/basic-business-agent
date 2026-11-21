@@ -6,7 +6,6 @@ import { deleteCredential, saveCredential, setCredentialStatus } from './credent
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { authFailed } from './errors.ts';
 import type { McpTools } from './mcp-tools.ts';
 import { mcpConnectorId, serverForEmployee } from './servers.ts';
 
@@ -47,16 +46,10 @@ export async function savePersonalKey(deps: EmployeeServerDeps, input: { userId:
   deps.mcp.forget(server.id, input.userId);
   await saveCredential(deps.db, deps.box, { userId: input.userId, connectorId, credential: { kind: 'static', fields: input.fields }, status: 'unverified' });
   await turnOn(deps.db, server.id, input.userId);
-  if (!server.checkAction) return 'unverified';
-  try {
-    await deps.mcp.verify(input.userId, server);
-  } catch (error) {
-    deps.mcp.forget(server.id, input.userId);
-    await setCredentialStatus(deps.db, input.userId, connectorId, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
-    throw authFailed(server.title, connectorId, error);
-  }
-  await setCredentialStatus(deps.db, input.userId, connectorId, 'connected', null);
-  return 'connected';
+  // A refused key throws with the connection already «Ошибка доступа»; a silent system leaves it «unverified».
+  const status = await deps.mcp.verify(input.userId, server);
+  if (status === 'connected') await setCredentialStatus(deps.db, input.userId, connectorId, 'connected', null);
+  return status;
 }
 
 // «Отключить»: the employee's key or sign-in is deleted, and the server is off for them. Works on a server already

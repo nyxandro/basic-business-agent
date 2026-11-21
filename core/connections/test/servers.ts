@@ -14,6 +14,10 @@ export interface TestMcpServer {
   requested: string[];
   // Requests whose Authorization header is not accepted get 401.
   acceptedTokens: Set<string> | null;
+  // Requests with these tokens get 403: the person may not do this.
+  forbiddenTokens: Set<string>;
+  // Calls of these actions lose the connection after the server got them: the outcome is unknown to the client.
+  dropCalls: Set<string>;
   close(): Promise<void>;
 }
 
@@ -31,7 +35,7 @@ async function listen(server: Server): Promise<string> {
 
 export async function startTestMcpServer(options: TestMcpServerOptions = {}): Promise<TestMcpServer> {
   const seen: IncomingHttpHeaders[] = [];
-  const state: TestMcpServer = { url: '', seen, requested: [], acceptedTokens: options.signIn ? new Set() : null, close: () => Promise.resolve() };
+  const state: TestMcpServer = { url: '', seen, requested: [], acceptedTokens: options.signIn ? new Set() : null, forbiddenTokens: new Set(), dropCalls: new Set(), close: () => Promise.resolve() };
   let base = '';
   const mcp = new MCPServer({
     id: 'crm',
@@ -58,7 +62,24 @@ export async function startTestMcpServer(options: TestMcpServerOptions = {}): Pr
       res.writeHead(401, { 'content-type': 'application/json', ...challenge }).end(JSON.stringify({ error: 'unauthorized' }));
       return;
     }
-    void mcp.startHTTP({ url: new URL(req.url ?? '/', 'http://127.0.0.1'), httpPath: '/mcp', req, res });
+    if (state.forbiddenTokens.has(token)) {
+      res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'forbidden' }));
+      return;
+    }
+    const serve = () => void mcp.startHTTP({ url: new URL(req.url ?? '/', 'http://127.0.0.1'), httpPath: '/mcp', req, res });
+    if (state.dropCalls.size === 0 || req.method !== 'POST') return serve();
+    // Read the call, then cut the connection as if the server crashed while doing it.
+    let body = '';
+    req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+    req.on('end', () => {
+      const message = JSON.parse(body) as { method?: string; params?: { name?: string } };
+      if (message.method === 'tools/call' && state.dropCalls.has(message.params?.name ?? '')) {
+        req.socket.destroy();
+        return;
+      }
+      (req as IncomingMessage & { body?: unknown }).body = message;
+      serve();
+    });
   });
   base = await listen(http);
   state.url = `${base}/mcp`;

@@ -18,6 +18,7 @@ import { logEvent } from '../server/log.ts';
 import { deleteCredential, loadCredential, saveCredential, setCredentialStatus, type CredentialStatus } from './credentials.ts';
 import { authFailed, notConnected, unavailable } from './errors.ts';
 import { IDENTITY_HEADER, signIdentity, type Identity } from './identity.ts';
+import { classifyCall } from './call-errors.ts';
 import { accessToken, pluginTarget, startSignIn, type SignInTarget } from './mcp-auth.ts';
 import { createMcpTools, type McpTools } from './mcp-tools.ts';
 import { serversOfAgents } from './servers.ts';
@@ -75,12 +76,6 @@ function statusTool(c: ConnectorRuntime, error: () => Error): AnyTool {
     inputSchema: z.object({}),
     execute: () => Promise.reject(error()),
   }) as AnyTool;
-}
-
-function isAuthRejection(error: unknown): boolean {
-  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
-  const text = [error instanceof Error ? error.message : String(error), cause instanceof Error ? cause.message : ''].join(' ');
-  return /\b401\b|unauthori[sz]ed|forbidden|\b403\b/i.test(text);
 }
 
 export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUrl: string; connectors: ConnectorRuntime[] }): ConnectionManager {
@@ -181,7 +176,8 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
         try {
           return await execute(input, ctx);
         } catch (error) {
-          if (isAppError(error) || !isAuthRejection(error)) throw error;
+          // Only a 401 breaks the access (step 7): a 403 on one record, or a word in an error's text, does not.
+          if (classifyCall(error).kind !== 'refused') throw error;
           await setCredentialStatus(db, userId, c.id, 'auth_error', 'APP_CONNECTOR_AUTH_FAILED');
           forget(userId, c.id);
           throw authFailed(c.title, c.id, error);

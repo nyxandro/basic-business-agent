@@ -22,6 +22,38 @@ export function authFailed(title: string, connectorId: string, cause?: unknown):
   });
 }
 
+// A call found the access of the employee gone (HTTP 401): scenario 4 of docs/specs/[20.11.2026]-mcp-connections.md.
+export function accessLost(title: string, connectorId: string): AppError {
+  return new AppError({
+    code: 'APP_CONNECTOR_AUTH_FAILED',
+    message: `${connectorId} refused the employee's access (HTTP 401)`,
+    userMessage: `Ваш доступ к ${title} больше не работает. Откройте «Настройки → Подключения» и нажмите «Подключить заново».`,
+    status: 401,
+    details: { connectorId },
+  });
+}
+
+// The check action did not take the key the employee entered.
+export function keyRefused(title: string, connectorId: string): AppError {
+  return new AppError({ code: 'APP_CONNECTOR_AUTH_FAILED', message: `${connectorId} refused the key at its check`, userMessage: `${title} не приняла ключ. Проверьте его.`, status: 401, details: { connectorId } });
+}
+
+// No right to this one thing (HTTP 403): the connection itself is fine.
+export function forbidden(title: string, connectorId: string): AppError {
+  return new AppError({ code: 'APP_CONNECTOR_FORBIDDEN', message: `${connectorId} forbade the action (HTTP 403)`, userMessage: `В ${title} у сотрудника нет прав на это.`, status: 403, details: { connectorId } });
+}
+
+// The connection broke after the system got the call: it may have run, so it is not repeated.
+export function unknownOutcome(title: string, connectorId: string): AppError {
+  return new AppError({
+    code: 'APP_CONNECTOR_UNKNOWN_OUTCOME',
+    message: `${connectorId}: the connection broke after the call was sent`,
+    userMessage: `${title} не ответила, и неизвестно, выполнилось ли действие. Проверьте в ${title}, прежде чем повторять.`,
+    status: 502,
+    details: { connectorId },
+  });
+}
+
 // The sign-in on the system's site did not end with tokens: the link is old, the person cancelled, the system refused.
 export function signInNotFinished(title: string, details: Record<string, unknown>, cause?: unknown): AppError {
   return new AppError({
