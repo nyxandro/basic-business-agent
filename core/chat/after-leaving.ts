@@ -19,9 +19,11 @@ export interface RunLife {
   // «Стоп» of the person: CopilotKit closes the stream first and asks to stop after — the person is there, nothing to tell.
   stopped: boolean;
   failed: boolean;
+  // Ends the blue ring of the conversation (notifications/activity.ts); a second call does nothing.
+  endActivity: () => void;
 }
 
-export const newRunLife = (): RunLife => ({ key: randomUUID(), ended: false, browserLeft: false, stopped: false, failed: false });
+export const newRunLife = (): RunLife => ({ key: randomUUID(), ended: false, browserLeft: false, stopped: false, failed: false, endActivity: () => undefined });
 
 export async function tellAfterLeaving(db: Db, run: { userId: string; agentId: string; threadId: string; life: RunLife }): Promise<void> {
   try {

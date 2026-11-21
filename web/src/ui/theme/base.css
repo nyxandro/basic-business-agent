@@ -197,6 +197,17 @@ p {
   }
 }
 
+/* A conversation waiting for the person's decision (layout/ThreadState.tsx): a soft halo grows and fades now and then. */
+@keyframes bba-attention {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--warn) 0%, transparent);
+  }
+}
+
 /* The bell with something new (layout/ChatHeader.tsx): still most of the time, a short swing now and then. */
 @keyframes bba-bell-rare {
   0%,

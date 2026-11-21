@@ -20,7 +20,7 @@ const list = (refreshKey: number, onShowAll = () => undefined) => (
     <WithMemory>
       <ToastProvider>
         <ConfirmProvider>
-          <RecentThreads refreshKey={refreshKey} names={{}} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onRenamed={() => undefined} onDeleted={() => undefined} />
+          <RecentThreads refreshKey={refreshKey} names={{}} states={{}} currentThreadId={null} onNavigate={() => undefined} onShowAll={onShowAll} onRenamed={() => undefined} onDeleted={() => undefined} />
         </ConfirmProvider>
       </ToastProvider>
     </WithMemory>

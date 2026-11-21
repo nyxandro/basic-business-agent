@@ -85,14 +85,18 @@ describe('the frame of the application', () => {
     expect(localStorage.getItem(LAST_AGENT_KEY)).toBe('assistant');
   });
 
-  it('shows the agents, recent conversations with «новое», the limit and the person', async () => {
-    server();
+  it('shows the agents, recent conversations with their marks, the limit and the person', async () => {
+    const s = server();
+    // The result of a background task not opened yet, and an answer under way (owner, 22.11).
+    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null, threads: { t2: 'done', t1: 'running' } } });
     renderApp('/');
     const side = await screen.findByText('Недавние');
     const panel = side.parentElement!;
     const fresh = await within(panel).findByRole('link', { name: /Задача: Утренняя сводка/ });
     expect(fresh).toHaveAttribute('href', '/agents/sales?thread=t2');
-    expect(within(fresh).getByText('новое')).toBeInTheDocument();
+    expect(await within(fresh).findByRole('img', { name: 'Ответ готов' })).toBeInTheDocument();
+    expect(within(fresh).queryByText('новое')).not.toBeInTheDocument();
+    expect(within(within(panel).getByRole('link', { name: /Сделки без движения/ })).getByRole('img', { name: 'Агент отвечает' })).toBeInTheDocument();
     expect(within(panel).getByText('58%')).toBeInTheDocument();
     expect(within(panel).getByText('Отдел продаж')).toBeInTheDocument();
     // Nothing waits for a decision: no «Ждёт подтверждения» at all.

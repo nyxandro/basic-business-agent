@@ -1,9 +1,11 @@
-// «Недавние» (spec, sections 7 and 8.16): the newest conversations of all the person's agents, a
-// background task's result marked «новое» until opened, and «Ещё» when there are more — it opens all
+// «Недавние» (spec, sections 7 and 8.16): the newest conversations of all the person's agents, each with its mark — an
+// agent at work, a question waiting, an answer broken or ready while nobody watched (owner, 22.11) — and «Ещё» when
+// there are more — it opens all
 // of them in the window of «Поиск» (decision of the owner 15.11: a long list stretched the panel).
 // Each conversation can be renamed or deleted from its three dots. A new `refreshKey` (after an answer or a new
 // name) loads the list again in place: the old list stays until the new one comes, a name being typed
 // stays.
+import type { ThreadState } from '@bba/contracts';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { fetchThreadPage } from '../chat/api.ts';
@@ -22,6 +24,7 @@ export const RECENT_SHOWN = 7;
 export function RecentThreads({
   refreshKey,
   names,
+  states,
   currentThreadId,
   onNavigate,
   onShowAll,
@@ -30,6 +33,8 @@ export function RecentThreads({
 }: {
   refreshKey: number;
   names: Readonly<Record<string, string>>;
+  // The marks of conversations (layout/notifications.tsx: they come with the bell's counters).
+  states: Readonly<Record<string, ThreadState>>;
   currentThreadId: string | null;
   onNavigate: () => void;
   onShowAll: () => void;
@@ -56,6 +61,7 @@ export function RecentThreads({
         <ThreadRow
           key={t.id}
           thread={t}
+          state={states[t.id]}
           current={t.id === currentThreadId}
           onNavigate={onNavigate}
           onRenamed={(title) => onRenamed(t.id, title)}

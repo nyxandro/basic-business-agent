@@ -5,7 +5,9 @@
 // never adds to the bell twice.
 import { APPROVAL_NOTIFICATION_KINDS, type NotificationItem, type NotificationKind, type NotificationsResponse } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
+import type { Activity } from './activity.ts';
 import { decidedSql, NOTIFICATION_KEEP_DAYS } from './delivery.ts';
+import { threadStates } from './thread-states.ts';
 
 const LIST_MAX = 100;
 const KEPT = `n.created_at > now() - interval '${NOTIFICATION_KEEP_DAYS} days'`;
@@ -27,16 +29,17 @@ const READ = `(n.read_at IS NOT NULL OR ${decidedSql('n', 'now()')})`;
 // draft check of a prompt is the admin's own and never waits there.
 export const WAITING_QUESTION = `status = 'pending' AND expires_at > now() AND run_kind <> 'draft'`;
 
-export async function notificationCounts(db: Db, userId: string): Promise<NotificationsResponse> {
-  const [counts, latest] = await Promise.all([
+export async function notificationCounts(db: Db, activity: Activity, userId: string): Promise<NotificationsResponse> {
+  const [counts, latest, threads] = await Promise.all([
     db.query<{ approvals: number; unread: number }>(
       `SELECT (SELECT count(*)::int FROM app.approval_requests WHERE user_id = $1 AND ${WAITING_QUESTION}) AS approvals,
               (SELECT count(*)::int FROM app.notifications n WHERE n.user_id = $1 AND n.read_at IS NULL AND ${KEPT} AND NOT (n.kind = ANY($2))) AS unread`,
       [userId, APPROVAL_NOTIFICATION_KINDS],
     ),
     db.query<Row>(`SELECT n.id, n.kind, n.title, n.body, n.link, n.created_at, false AS read FROM app.notifications n WHERE n.user_id = $1 AND NOT ${READ} AND ${KEPT} ORDER BY n.created_at DESC LIMIT 1`, [userId]),
+    threadStates(db, activity, userId),
   ]);
-  return { pendingApprovals: counts.rows[0]?.approvals ?? 0, unread: counts.rows[0]?.unread ?? 0, latest: latest.rows[0] ? toItem(latest.rows[0]) : null };
+  return { pendingApprovals: counts.rows[0]?.approvals ?? 0, unread: counts.rows[0]?.unread ?? 0, latest: latest.rows[0] ? toItem(latest.rows[0]) : null, threads };
 }
 
 export async function listNotifications(db: Db, userId: string): Promise<NotificationItem[]> {

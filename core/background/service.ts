@@ -31,6 +31,7 @@ import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
+import type { Activity } from '../notifications/activity.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
 import { fireTimeOf } from './schedule.ts';
@@ -72,6 +73,8 @@ export interface BackgroundDeps {
   workspaceRoot: string;
   // Where the files are kept: a run holds its folder (spec, section 8.23).
   storage: Pick<FileStorage, 'hold'>;
+  // Where agents work now: the blue ring of the task's conversation in the lists (docs/specs/[20.11.2026]-notifications.md).
+  activity: Pick<Activity, 'start'>;
 }
 
 export interface BackgroundService {
@@ -151,6 +154,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     const ownerId = optionalContextValue(rc, REQUEST_KEYS.projectOwnerId);
     // The run's folder stays on the disk while it runs (an S3 bucket keeps the files, spec section 8.23).
     const release = await deps.storage.hold(projectId && ownerId ? projectArea(projectId, ownerId) : userArea(userId), 'write');
+    // The agent works in this conversation while the run goes: its blue ring in the employee's lists.
+    const idle = deps.activity.start(userId, threadId);
     try {
       if (!projectId || !ownerId) return await work();
       const snapshot = takeSnapshot(deps.workspaceRoot, { projectId, ownerId, userId, threadId });
@@ -161,6 +166,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
         await settleSnapshot(db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId, error }));
       }
     } finally {
+      idle();
       await release();
     }
   }

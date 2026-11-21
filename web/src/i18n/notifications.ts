@@ -53,6 +53,14 @@ export const notificationTexts = {
   },
   questionGone: 'Такого вопроса нет.',
 
+  // The state of a conversation in the lists (owner, 22.11).
+  threadState: {
+    running: 'Агент отвечает',
+    waiting: 'Ждёт вашего решения',
+    failed: 'Ответ не получился',
+    done: 'Ответ готов',
+  },
+
   // «Режимы работы» → «Подтверждения» (F4).
   modes: {
     title: 'Подтверждения',

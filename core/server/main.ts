@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   await ensureAgentAbilities(db, agentIds);
   const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   // Notifications in the browser: the VAPID keys are made at the first start (docs/specs/[20.11.2026]-notifications.md).
-  const notifications = await createNotifications({ db, box, timezone: installation.app.timezone });
+  const notifications = await createNotifications({ db, box, timezone: installation.app.timezone, databaseUrl: env.DATABASE_URL });
   const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
   const gateway = createModelGateway({ db, client: litellm, box, timezone: installation.app.timezone });
   await gateway.syncOrgBudget();
@@ -166,10 +166,10 @@ async function main(): Promise<void> {
   const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
   const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, signing: { run: org.blank.run, limiter: commandLimiter, workRoot: tmpdir() }, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files, activity: notifications.activity });
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
@@ -199,6 +199,7 @@ async function main(): Promise<void> {
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
     await notifications.delivery.stop();
+    await notifications.live.stop();
     stopTrashPurge();
     stopDraftsSweep();
     stopPreviewPurge();

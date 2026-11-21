@@ -116,6 +116,7 @@ function AgentList({ agents, currentAgentId, onNavigate }: Pick<SidebarProps, 'a
 
 export function Sidebar(props: SidebarProps) {
   const me = useMe();
+  const { threadStates } = useNotifications();
   const hasAdmin = availableSections(me).length > 0;
   return (
     <div className={styles.side}>
@@ -140,7 +141,7 @@ export function Sidebar(props: SidebarProps) {
       <ProjectList refreshKey={props.projectsKey} failure={props.projectsFailure} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
 
       <div className={styles.sectionLabel}>{ru.shell.recent}</div>
-      <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />
+      <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} states={threadStates} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />
 
       <div className={styles.spacer} />
       <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />

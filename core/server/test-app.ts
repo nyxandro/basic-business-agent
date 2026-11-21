@@ -239,6 +239,7 @@ export async function createTestApp(
     db,
     box,
     timezone: 'Europe/Moscow',
+    databaseUrl: database.url,
     push: opts.push ?? { transport: noPush, testOrigin: 'http://push.invalid' },
     ...(opts.quietHours === false ? { quietHours: false as const } : {}),
     ...(opts.now ? { now: opts.now, clock: () => opts.now!().getTime() } : {}),
@@ -357,11 +358,11 @@ export async function createTestApp(
       : {}),
   });
   const editor = { db, mastra, registry };
-  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills, workspaceRoot, storage: files });
+  const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: 'Europe/Moscow', skills, workspaceRoot, storage: files, activity: notifications.activity });
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });
@@ -449,6 +450,7 @@ export async function createTestApp(
     },
     async close() {
       background.stop();
+      await notifications.live.stop();
       files.stop();
       // Deployments this test database put into the shared test LiteLLM leave with it.
       await reconcile(litellm, teamId, []);

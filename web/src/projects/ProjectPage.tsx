@@ -14,6 +14,8 @@ import { ru } from '../i18n/ru.ts';
 import { ChatHeaderBar } from '../layout/ChatHeader.tsx';
 import { useShell } from '../layout/AppShell.tsx';
 import { threadPath } from '../layout/ThreadRow.tsx';
+import { ThreadStateMark } from '../layout/ThreadState.tsx';
+import { useNotifications } from '../layout/notifications.tsx';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
@@ -100,6 +102,8 @@ function NewThread({ projectId, agents }: { projectId: string; agents: AgentSumm
 
 function Threads({ project, agents }: { project: ProjectDto; agents: AgentSummary[] }) {
   const canStart = agents.length > 0 && !project.archivedAt;
+  // The same marks as in «Недавние» (owner, 22.11).
+  const { threadStates } = useNotifications();
   const load = useCallback(() => fetchProjectThreads(project.id), [project.id]);
   const { state, reload } = useLoad(load, projectKeys.threads(project.id));
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
@@ -126,6 +130,7 @@ function Threads({ project, agents }: { project: ProjectDto; agents: AgentSummar
                   {agentName(t.agentId)} · {dateTime(t.updatedAt)}
                 </span>
               </span>
+              <ThreadStateMark state={threadStates[t.id]} />
             </li>
           ))}
         </ul>

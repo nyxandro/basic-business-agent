@@ -1,0 +1,36 @@
+/* The mark of a conversation in the lists (layout/ThreadState.tsx; decision of the owner 22.11). */
+.ring,
+.dot {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+/* An agent works there: a ring turning. */
+.ring {
+  border: 2px solid var(--acc-soft);
+  border-top-color: var(--acc);
+  animation: global(bba-spin) 0.8s linear infinite;
+}
+
+.dot {
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+}
+
+/* A question «Да» waits: amber, a soft halo now and then. */
+.waiting {
+  background: var(--warn);
+  animation: global(bba-attention) 2.4s ease-out infinite;
+}
+
+.failed {
+  background: var(--bad);
+}
+
+.done {
+  background: var(--ok);
+}

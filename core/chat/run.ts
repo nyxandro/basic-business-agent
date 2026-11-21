@@ -29,6 +29,7 @@ import type { AgentAbilities } from '@bba/contracts';
 import type { ConnectionManager } from '../connections/manager.ts';
 import type { NamingDeps } from './naming.ts';
 import type { Presence } from '../notifications/presence.ts';
+import type { Activity } from '../notifications/activity.ts';
 import { newRunLife, tellAfterLeaving, type RunLife } from './after-leaving.ts';
 
 export interface ChatDeps {
@@ -51,6 +52,8 @@ export interface ChatDeps {
   mail: MailService;
   // Which conversation is on the screen of the person's visible tabs (docs/specs/[20.11.2026]-notifications.md).
   presence: Pick<Presence, 'isWatching'>;
+  // Where agents work now: the blue ring of the conversation in the lists (decision of the owner 22.11).
+  activity: Pick<Activity, 'start'>;
 }
 
 export interface RunInput {
@@ -113,6 +116,7 @@ function releaseThread(threadId: string): void {
 // server's to log, not the answer's; the snapshot is left for the start of the server then.
 export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot' | 'presence'>, run: PreparedRun): void {
   if (liveRuns.get(run.threadId) === run) liveRuns.delete(run.threadId);
+  run.life.endActivity();
   if (run.agentStarted && !run.life.ended) {
     run.life.ended = true;
     // Nobody watched the end — the tab closed or hid, or the person went to another conversation or screen (owner,
@@ -290,6 +294,8 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   if (busyThreads.has(threadId)) throw threadBusy(threadId);
   busyThreads.add(threadId);
   liveRuns.set(threadId, run);
+  // The conversation shows its blue ring from now to the end of the agent (or of the refused run: settleRun).
+  if (mode === 'published') run.life.endActivity = deps.activity.start(run.userId, threadId);
   const declinedCalls: PreparedTurn['declinedCalls'] = [];
   try {
     const resume = input.resume?.[0];

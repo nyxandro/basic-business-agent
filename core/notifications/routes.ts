@@ -3,6 +3,7 @@
 import { presenceInputSchema, pushSubscriptionInputSchema, pushUnsubscribeSchema, type NotificationList, type PushKeyResponse, type PushStatusResponse } from '@bba/contracts';
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
@@ -10,6 +11,8 @@ import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { logEvent } from '../server/log.ts';
 import { PUSH_DELIVERY } from './kinds.ts';
 import { listNotifications, markRead, notificationCounts } from './list.ts';
+import type { Activity } from './activity.ts';
+import type { LiveHub } from './live.ts';
 import type { Presence } from './presence.ts';
 import type { PushSender } from './push.ts';
 
@@ -19,9 +22,14 @@ const USER_AGENT_MAX = 500;
 // page, a script) would make every notification of the person slow for everybody.
 export const SUBSCRIPTIONS_PER_PERSON = 10;
 
+// A comment line now and then keeps the open channel alive through proxies that close a silent connection.
+export const LIVE_KEEPALIVE_MS = 25_000;
+
 export interface NotificationRouteDeps {
   db: Db;
   presence: Presence;
+  live: LiveHub;
+  activity: Activity;
   sender: PushSender;
   publicKey: string;
   // The origin of the fake push service of tests; null in an installation.
@@ -31,7 +39,23 @@ export interface NotificationRouteDeps {
 export function registerNotificationRoutes(app: Hono<AppEnv>, deps: NotificationRouteDeps): void {
   const { db } = deps;
 
-  app.get('/app/api/me/notifications', async (c) => c.json(await notificationCounts(db, access(c).userId)));
+  app.get('/app/api/me/notifications', async (c) => c.json(await notificationCounts(db, deps.activity, access(c).userId)));
+
+  // The instant channel (decision of the owner 22.11): «changed» whenever the bell or the states of the person's
+  // conversations change; the page reads them again. An open tab of a hidden page closes it (web/src/layout/notifications.tsx).
+  app.get('/app/api/me/events', (c) => {
+    const userId = access(c).userId;
+    return streamSSE(c, async (stream) => {
+      const stop = deps.live.subscribe(userId, () => void stream.writeSSE({ event: 'changed', data: '1' }).catch(() => undefined));
+      stream.onAbort(stop);
+      await stream.writeSSE({ event: 'ready', data: '1' });
+      while (!stream.aborted && !stream.closed) {
+        await stream.sleep(LIVE_KEEPALIVE_MS);
+        if (!stream.aborted) await stream.write(': keep-alive\n\n');
+      }
+      stop();
+    });
+  });
 
   app.get('/app/api/me/notifications/list', async (c) => {
     const body: NotificationList = { items: await listNotifications(db, access(c).userId) };
@@ -49,7 +73,7 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, deps: Notification
     const { tab, visible, threadId } = await parseJson(c, presenceInputSchema);
     const userId = access(c).userId;
     deps.presence.seen(userId, tab, visible, threadId);
-    return c.json(await notificationCounts(db, userId));
+    return c.json(await notificationCounts(db, deps.activity, userId));
   });
 
   app.get('/app/api/push/key', (c) => {

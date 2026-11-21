@@ -135,6 +135,40 @@ describe('the bell', () => {
   });
 });
 
+describe('the instant channel', () => {
+  // A stand-in for the browser's EventSource: the test plays the server's «changed».
+  class FakeSource {
+    static last: FakeSource | null = null;
+    listeners = new Map<string, () => void>();
+    closed = false;
+    url: string;
+    constructor(url: string) {
+      this.url = url;
+      FakeSource.last = this;
+    }
+    addEventListener(type: string, listener: () => void) {
+      this.listeners.set(type, listener);
+    }
+    close() {
+      this.closed = true;
+    }
+  }
+
+  it('reads the bell and the marks of conversations again the moment the server says «changed»', async () => {
+    vi.stubGlobal('EventSource', FakeSource);
+    const s = server({ pendingApprovals: 0, unread: 0, latest: null, threads: {} });
+    s.set('GET /app/api/threads', { body: { threads: [{ id: 't7', title: 'КП для Вектора', kind: 'chat', unread: false, updatedAt: '2026-11-21T08:00:00Z', agentId: 'sales', projectId: null }], next: null } });
+    renderApp('/settings/memory');
+    const row = await screen.findByRole('link', { name: /КП для Вектора/ });
+    expect(FakeSource.last?.url).toBe('/app/api/me/events');
+    expect(within(row).queryByRole('img')).not.toBeInTheDocument();
+    s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 1, unread: 0, latest: null, threads: { t7: 'waiting' } } });
+    act(() => FakeSource.last!.listeners.get('changed')!());
+    expect(await within(row).findByRole('img', { name: 'Ждёт вашего решения' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Уведомления: 1 вопрос ждёт решения' })).toBeInTheDocument();
+  });
+});
+
 describe('notifications of this browser', () => {
   it('names why a browser cannot: plain http, an iPhone outside the home screen, no support, refused in the browser', async () => {
     server();

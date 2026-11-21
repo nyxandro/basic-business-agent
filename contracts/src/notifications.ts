@@ -33,12 +33,20 @@ export interface NotificationList {
   items: NotificationItem[];
 }
 
+// The state of a conversation in the lists (decision of the owner 22.11), by precedence: an agent works there now; a
+// question «Да» waits for the person; its answer broke while nobody watched; its answer is ready while nobody watched.
+// The last two go when the conversation is opened.
+export const THREAD_STATES = ['running', 'waiting', 'failed', 'done'] as const;
+export type ThreadState = (typeof THREAD_STATES)[number];
+
 // The bell: questions waiting for the person's decision, unread notifications besides questions, and the newest unread
-// one — the page shows it as a hint when it is new (the person is in the app, so no push came).
+// one — the page shows it as a hint when it is new (the person is in the app, so no push came); and the states of the
+// person's conversations that have one.
 export interface NotificationsResponse {
   pendingApprovals: number;
   unread: number;
   latest: NotificationItem | null;
+  threads: Record<string, ThreadState>;
 }
 
 // A visible tab says «I am here» this often; a hidden one says «hidden» at once (the server pushes then).

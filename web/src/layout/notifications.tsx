@@ -1,8 +1,8 @@
 // The bell (docs/specs/[20.11.2026]-notifications.md, scenario 3, F3): its counters — questions waiting for the person
-// and unread notifications — and the panel under it. A visible tab tells the server «I am here» every 30 s and gets the
+// and unread notifications —, the marks of the person's conversations in the lists, and the panel under it. A visible tab tells the server «I am here» every 30 s and gets the
 // counters back; a hidden one says so at once, and the server pushes to the browser instead. A notification that comes
 // while the person is in the app is shown as a hint inside the page. On a phone the panel is a sheet from below.
-import type { NotificationsResponse } from '@bba/contracts';
+import type { NotificationsResponse, ThreadState } from '@bba/contracts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { notificationTexts as t } from '../i18n/notifications.ts';
@@ -16,6 +16,8 @@ import { useMedia, WIDE_QUERY } from './use-media.ts';
 
 interface NotificationsValue {
   counts: NotificationsResponse | null;
+  // The marks of the person's conversations in the lists (layout/ThreadState.tsx).
+  threadStates: Readonly<Record<string, ThreadState>>;
   refresh: () => void;
   panel: { open: boolean; tab: PanelTab };
   openPanel: (tab?: PanelTab) => void;
@@ -23,6 +25,8 @@ interface NotificationsValue {
 }
 
 const NotificationsContext = createContext<NotificationsValue | null>(null);
+const NO_STATES: Readonly<Record<string, ThreadState>> = {};
+const LIVE_PATH = '/app/api/me/events';
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [counts, setCounts] = useState<NotificationsResponse | null>(null);
@@ -71,6 +75,31 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [params] = useSearchParams();
   usePresence(onChat ? params.get('thread') : null, apply);
 
+  // The instant channel (decision of the owner 22.11): the server says «changed» and the page reads the bell and the marks
+  // of conversations again — at once, not at the next check. Only a visible tab keeps it open: a browser allows few
+  // connections to one site over plain http, and a hidden tab needs no news at once (it reads them when shown again).
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    let source: EventSource | null = null;
+    const open = () => {
+      if (source) return;
+      source = new EventSource(LIVE_PATH);
+      source.addEventListener('ready', refresh);
+      source.addEventListener('changed', refresh);
+    };
+    const close = () => {
+      source?.close();
+      source = null;
+    };
+    const onVisibility = () => (document.visibilityState === 'visible' ? open() : close());
+    if (document.visibilityState === 'visible') open();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      close();
+    };
+  }, [refresh]);
+
   // The browser's handler is kept fresh, and a subscription of this browser left by another person is dropped.
   useEffect(() => keepOwnSubscription(), []);
 
@@ -92,7 +121,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setPanel((p) => ({ ...p, open: false }));
     refresh();
   }, [refresh]);
-  const value = useMemo(() => ({ counts, refresh, panel, openPanel, closePanel }), [counts, refresh, panel, openPanel, closePanel]);
+  const threadStates = counts?.threads ?? NO_STATES;
+  const value = useMemo(() => ({ counts, threadStates, refresh, panel, openPanel, closePanel }), [counts, threadStates, refresh, panel, openPanel, closePanel]);
   return (
     <NotificationsContext value={value}>
       {children}

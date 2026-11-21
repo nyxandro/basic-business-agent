@@ -1,7 +1,7 @@
-// A conversation in «Недавние» (spec, section 8.16; owner's list 16.11): its link, and three dots on
+// A conversation in «Недавние» (spec, section 8.16; owner's list 16.11): its link with its mark, and three dots on
 // hover — on a phone always — with «Переименовать» and «Удалить». The name is changed in place
 // (`RenameField`), and the keyboard comes back to the conversation; deleting asks first.
-import { THREAD_TITLE_MAX, type ThreadSummaryDto } from '@bba/contracts';
+import { THREAD_TITLE_MAX, type ThreadState, type ThreadSummaryDto } from '@bba/contracts';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
@@ -13,11 +13,13 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { RenameField } from './RenameField.tsx';
+import { ThreadStateMark } from './ThreadState.tsx';
 import styles from './shell.module.css';
 
 export const threadPath = (t: Pick<ThreadSummaryDto, 'agentId' | 'id'>) => `/agents/${encodeURIComponent(t.agentId)}?thread=${encodeURIComponent(t.id)}`;
 
-export function ThreadRow({ thread, current, onNavigate, onRenamed, onDeleted }: { thread: ThreadSummaryDto; current: boolean; onNavigate: () => void; onRenamed: (title: string) => void; onDeleted: () => void }) {
+// `state` — its mark (decision of the owner 22.11): an agent works there, a question waits, the answer broke or is ready.
+export function ThreadRow({ thread, state, current, onNavigate, onRenamed, onDeleted }: { thread: ThreadSummaryDto; state: ThreadState | undefined; current: boolean; onNavigate: () => void; onRenamed: (title: string) => void; onDeleted: () => void }) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
@@ -69,7 +71,7 @@ export function ThreadRow({ thread, current, onNavigate, onRenamed, onDeleted }:
           aria-current={current ? 'page' : undefined}
         >
           <span className={styles.itemText}>{thread.title}</span>
-          {thread.unread ? <span className={styles.newPill}>{ru.chat.unread}</span> : null}
+          <ThreadStateMark state={state} />
         </Link>
         <div className={styles.threadMore}>
           <MenuAnchor>
