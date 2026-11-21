@@ -13,17 +13,20 @@ function skill(folder: string, name = folder): void {
 }
 
 describe('system skills of the core', () => {
-  it('loads the four document skills with the Russian names of the admin panel', () => {
+  it('loads the document skills and the letterhead with the Russian names of the admin panel', () => {
     dir = mkdtempSync(join(tmpdir(), 'bba-system-'));
     const skills = loadSystemSkills(SYSTEM_SKILLS_DIR);
     expect(skills.map((s) => [s.name, s.title])).toEqual([
       ['docx', 'Документы Word'],
+      ['letterhead', 'Бланк организации'],
       ['pdf', 'PDF'],
       ['pptx', 'Презентации PowerPoint'],
       ['xlsx', 'Таблицы Excel'],
     ]);
     for (const s of skills) {
       expect(s.dir).toBe(join(SYSTEM_SKILLS_DIR, s.name));
+      // The letterhead is the core's own, without scripts or a licence of its own (docs/specs/[20.11.2026]-org-letterhead.md).
+      if (s.name === 'letterhead') continue;
       expect(s.hasScripts).toBe(true);
       expect(s.files.map((f) => f.path)).toContain('SKILL.md');
       expect(s.files.map((f) => f.path)).toContain('LICENSE.txt');

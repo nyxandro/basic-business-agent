@@ -33,7 +33,7 @@ const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 const toSales = { scope: 'departments', departmentIds: [] as string[], userIds: [] as string[] };
 const version = (body: string) => zipSync({ [`${NAME}/SKILL.md`]: skillMd(body) });
 // The folders of the system skills of the core every employee gets first (spec, section 8.18).
-const SYSTEM = ['docx', 'pptx', 'xlsx', 'pdf'].map((n) => join(SYSTEM_SKILLS_DIR, n)).sort();
+const SYSTEM = ['docx', 'letterhead', 'pptx', 'xlsx', 'pdf'].map((n) => join(SYSTEM_SKILLS_DIR, n)).sort();
 const uploaded = (dirs: string[]) => dirs.filter((d) => !d.startsWith(SYSTEM_SKILLS_DIR));
 // Versions of the skill unpacked in <skillsDir>/<sha256>/<name>.
 const copies = () => (existsSync(t.skillsDir) ? readdirSync(t.skillsDir).filter((v) => existsSync(join(t.skillsDir, v, NAME))) : []);
@@ -152,13 +152,14 @@ describe('system skills (spec, section 8.18)', () => {
 
   it('are listed first, always on, for the whole organisation, built into the core', async () => {
     const { skills } = await json<SkillsResponse>(await t.call('GET', '/app/api/admin/skills', { cookie: igor }));
-    expect(skills.slice(0, 4).map((s) => [s.name, s.title, s.system, s.enabled, s.access.scope, s.uploadedAt])).toEqual([
+    expect(skills.slice(0, 5).map((s) => [s.name, s.title, s.system, s.enabled, s.access.scope, s.uploadedAt])).toEqual([
       ['docx', 'Документы Word', true, true, 'org', null],
+      ['letterhead', 'Бланк организации', true, true, 'org', null],
       ['pdf', 'PDF', true, true, 'org', null],
       ['pptx', 'Презентации PowerPoint', true, true, 'org', null],
       ['xlsx', 'Таблицы Excel', true, true, 'org', null],
     ]);
-    expect(skills.slice(4).every((s) => !s.system)).toBe(true);
+    expect(skills.slice(5).every((s) => !s.system)).toBe(true);
   });
 
   it('cannot be switched off, given to someone else, replaced or removed — not even past the admin panel', async () => {
