@@ -267,7 +267,9 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   // `reason` — what the agent is told; an expired question names its own term.
   async function declinePending(where: string, params: unknown[], status: 'expired' | 'declined', reason: string | ((q: ApprovalRequest) => string), code: string): Promise<number> {
     const { rows } = await db.query<{ id: string; user_id: string }>(
-      `UPDATE app.approval_requests SET status = $1, decided_at = now(), error_code = $2 WHERE status = 'pending' AND task_id IS NOT NULL AND ${where} RETURNING id, user_id`,
+      // Questions of background runs — of tasks and of plugins' runs ("ev:", answered in their conversation): nobody is
+      // at their screen, so their waiting run gets its refusal here and now.
+      `UPDATE app.approval_requests SET status = $1, decided_at = now(), error_code = $2 WHERE status = 'pending' AND (task_id IS NOT NULL OR run_kind = 'background') AND ${where} RETURNING id, user_id`,
       [status, code, ...params],
     );
     for (const { id, user_id } of rows) {

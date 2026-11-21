@@ -9,7 +9,7 @@ import { notificationTexts as t } from '../i18n/notifications.ts';
 import { fetchCounts, markRead } from '../notifications/api.ts';
 import { usePresence } from '../notifications/presence.ts';
 import { NotificationsPanel, type PanelTab } from '../notifications/NotificationsPanel.tsx';
-import { refreshWorker } from '../notifications/push.ts';
+import { keepOwnSubscription, OPEN_MESSAGE } from '../notifications/push.ts';
 import { Sheet } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useMedia, WIDE_QUERY } from './use-media.ts';
@@ -31,19 +31,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const toast = useToast();
-  // The newest notification already shown or already there when the page opened: only a newer one is a hint.
-  const shown = useRef<string | null | undefined>(undefined);
+  // When the newest notification shown (or there when the page opened) was made: only a later one is a hint — reading
+  // the newest makes an older one the newest, and that one is not news.
+  const shownAt = useRef<number | undefined>(undefined);
 
   const apply = useCallback(
     (next: NotificationsResponse) => {
       setCounts(next);
       const latest = next.latest;
-      if (shown.current === undefined) {
-        shown.current = latest?.id ?? null;
+      const at = latest ? Date.parse(latest.createdAt) : 0;
+      if (shownAt.current === undefined) {
+        shownAt.current = at;
         return;
       }
-      if (!latest || latest.id === shown.current) return;
-      shown.current = latest.id;
+      if (!latest || at <= shownAt.current) return;
+      shownAt.current = at;
       toast(`${latest.title} · ${latest.body}`, {
         label: t.hintOpen,
         run: () => {
@@ -66,7 +68,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   usePresence(apply);
 
-  useEffect(() => refreshWorker(), []);
+  // The browser's handler is kept fresh, and a subscription of this browser left by another person is dropped.
+  useEffect(() => keepOwnSubscription(), []);
+
+  // A click on a notification while a tab of the app is open: the handler asks the tab to go there itself (a reload
+  // would lose what was typed).
+  useEffect(() => {
+    const container = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+    if (!container) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; link?: unknown } | null;
+      if (data?.type === OPEN_MESSAGE && typeof data.link === 'string' && data.link.startsWith('/')) void navigate(data.link);
+    };
+    container.addEventListener('message', onMessage);
+    return () => container.removeEventListener('message', onMessage);
+  }, [navigate]);
 
   const openPanel = useCallback((next?: PanelTab) => setPanel((p) => ({ open: true, tab: next ?? p.tab })), []);
   const closePanel = useCallback(() => {

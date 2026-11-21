@@ -11,10 +11,13 @@ import { logEvent } from '../server/log.ts';
 import { PUSH_DELIVERY } from './kinds.ts';
 import { listNotifications, markRead, notificationCounts } from './list.ts';
 import type { Presence } from './presence.ts';
-import { checkEndpoint, type PushSender } from './push.ts';
+import type { PushSender } from './push.ts';
 
 const readBody = z.union([z.strictObject({ id: z.uuid() }), z.strictObject({ all: z.literal(true) })]);
 const USER_AGENT_MAX = 500;
+// Browsers of one person: a computer, a phone, a few more. Past this the oldest goes — a pile of subscriptions (a broken
+// page, a script) would make every notification of the person slow for everybody.
+export const SUBSCRIPTIONS_PER_PERSON = 10;
 
 export interface NotificationRouteDeps {
   db: Db;
@@ -57,13 +60,17 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, deps: Notification
   // The browser's subscription is the person's; the same browser turned on by another person moves to them.
   app.post('/app/api/me/push-subscriptions', async (c) => {
     const input = await parseJson(c, pushSubscriptionInputSchema);
-    checkEndpoint(input.endpoint, deps.testOrigin);
+    await deps.sender.check({ endpoint: input.endpoint, p256dh: input.keys.p256dh, auth: input.keys.auth });
     const userId = access(c).userId;
     await db.query(
       `INSERT INTO app.push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent) VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
          user_agent = EXCLUDED.user_agent, created_at = now(), last_ok_at = NULL`,
       [randomUUID(), userId, input.endpoint, input.keys.p256dh, input.keys.auth, c.req.header('user-agent')?.slice(0, USER_AGENT_MAX) ?? null],
+    );
+    await db.query(
+      `DELETE FROM app.push_subscriptions WHERE id IN (SELECT id FROM app.push_subscriptions WHERE user_id = $1 ORDER BY created_at DESC, id OFFSET ${SUBSCRIPTIONS_PER_PERSON})`,
+      [userId],
     );
     logEvent('info', 'push_subscribed', { userId, host: new URL(input.endpoint).host });
     return c.json({ ok: true });
@@ -91,12 +98,10 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, deps: Notification
     const { rows } = await db.query<{ id: string; endpoint: string; p256dh: string; auth: string }>('SELECT id, endpoint, p256dh, auth FROM app.push_subscriptions WHERE user_id = $1', [userId]);
     if (rows.length === 0) throw appError('APP_PUSH_NOT_SUBSCRIBED', 'no push subscription of the person');
     const payload = { id: randomUUID(), kind: 'answer_ready' as const, title: 'Уведомления работают', body: 'Так будут приходить вопросы агента и готовые результаты.', link: '/settings/notifications' };
-    let sent = 0;
-    for (const sub of rows) {
-      const result = await deps.sender.send(sub, payload, PUSH_DELIVERY.answer_ready);
-      if (result.kind === 'sent') sent++;
-      if (result.kind === 'gone') await db.query('DELETE FROM app.push_subscriptions WHERE id = $1', [sub.id]);
-    }
+    const results = await Promise.all(rows.map((sub) => deps.sender.send(sub, payload, PUSH_DELIVERY.answer_ready)));
+    const gone = rows.filter((_, i) => results[i]!.kind === 'gone').map((r) => r.id);
+    if (gone.length > 0) await db.query('DELETE FROM app.push_subscriptions WHERE id = ANY($1::uuid[])', [gone]);
+    const sent = results.filter((r) => r.kind === 'sent').length;
     if (sent === 0) throw appError('APP_PUSH_FAILED', `trial push reached none of ${rows.length} browsers`);
     return c.json({ sent });
   });

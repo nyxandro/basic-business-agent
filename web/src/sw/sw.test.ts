@@ -8,7 +8,7 @@ type Listener = (event: never) => void;
 interface Scope {
   listeners: Map<string, Listener>;
   shown: { title: string; options: Record<string, unknown> }[];
-  tabs: { url: string; focus: ReturnType<typeof vi.fn>; navigate: ReturnType<typeof vi.fn> }[];
+  tabs: { url: string; focus: ReturnType<typeof vi.fn>; postMessage: ReturnType<typeof vi.fn> }[];
   opened: string[];
 }
 
@@ -57,12 +57,13 @@ describe('the handler of notifications', () => {
     expect(scope.shown.map((s) => s.title)).toEqual(['Бизнес-агент', 'Бизнес-агент']);
   });
 
-  it('opens the address in an open tab of the app, or in a new one', async () => {
-    const tab = { url: 'https://agent.example.ru/agents/sales', focus: vi.fn(() => Promise.resolve()), navigate: vi.fn(() => Promise.resolve()) };
+  it('asks an open tab of the app to go to the address, or opens a new one', async () => {
+    const tab = { url: 'https://agent.example.ru/agents/sales', focus: vi.fn(() => Promise.resolve()), postMessage: vi.fn() };
     scope.tabs.push(tab);
     await fire('notificationclick', { notification: { close: vi.fn(), data: { link: '/approvals?question=q1' } } });
     expect(tab.focus).toHaveBeenCalled();
-    expect(tab.navigate).toHaveBeenCalledWith('https://agent.example.ru/approvals?question=q1');
+    // The tab goes there itself, without a reload that would lose what was typed.
+    expect(tab.postMessage).toHaveBeenCalledWith({ type: 'bba-open', link: '/approvals?question=q1' });
     scope.tabs.length = 0;
     await fire('notificationclick', { notification: { close: vi.fn(), data: { link: '/projects/p1' } } });
     expect(scope.opened).toEqual(['https://agent.example.ru/projects/p1']);

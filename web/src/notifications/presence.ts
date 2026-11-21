@@ -7,6 +7,8 @@ import { useEffect, useEffectEvent, useState } from 'react';
 import { sendHidden, sendPresence } from './api.ts';
 
 const newTabId = () => crypto.randomUUID().replaceAll('-', '');
+// Told by the session before signing out (auth/session.tsx): the tab is not the person's any more.
+export const SIGN_OUT_EVENT = 'bba-sign-out';
 
 export function usePresence(onCounts?: (counts: NotificationsResponse) => void): void {
   const [tab] = useState(newTabId);
@@ -21,10 +23,12 @@ export function usePresence(onCounts?: (counts: NotificationsResponse) => void):
     }, PRESENCE_PING_MS);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onHide);
+    window.addEventListener(SIGN_OUT_EVENT, onHide);
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onHide);
+      window.removeEventListener(SIGN_OUT_EVENT, onHide);
     };
   }, [tab]);
 }

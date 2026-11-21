@@ -7,6 +7,8 @@ import { dropSubscription, fetchPushKey, saveSubscription, subscriptionStatus } 
 export type PushState = 'checking' | 'unsupported' | 'insecure' | 'ios-home-screen' | 'denied' | 'off' | 'on';
 
 export const SW_URL = '/sw.js';
+// What the handler sends a tab of the app on a click (src/sw/sw.ts keeps the same name).
+export const OPEN_MESSAGE = 'bba-open';
 const SW_SCOPE = '/';
 
 // The person closed the browser's question without an answer.
@@ -44,8 +46,12 @@ export async function currentState(): Promise<PushState> {
   if (fixed) return fixed;
   const subscription = await ownSubscription();
   if (!subscription || Notification.permission !== 'granted') return 'off';
-  // The browser has a subscription — the server says whether it is this person's (another one may have used it).
-  return (await subscriptionStatus(subscription.endpoint)).subscribed ? 'on' : 'off';
+  // The browser has a subscription — the server says whether it is this person's. One left by another person (signed
+  // out by an ended session, not by «Выйти») is dropped in the browser: their news stops coming to this screen, and
+  // the push service then tells the server it is gone.
+  if ((await subscriptionStatus(subscription.endpoint)).subscribed) return 'on';
+  await subscription.unsubscribe();
+  return 'off';
 }
 
 function base64Url(value: string): Uint8Array<ArrayBuffer> {
@@ -98,8 +104,12 @@ export async function dropPushOnSignOut(): Promise<void> {
   }
 }
 
-// A browser that allowed notifications gets the current handler at every start (a fix to it reaches the person).
-export function refreshWorker(): void {
+// At every start of the app in a browser that allowed notifications: the current handler (a fix to it reaches the
+// person), and the subscription checked to be this person's.
+export function keepOwnSubscription(): void {
   if (fixedState() !== null || Notification.permission !== 'granted') return;
-  navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }).catch((error: unknown) => console.warn('notification handler not registered', error));
+  navigator.serviceWorker
+    .register(SW_URL, { scope: SW_SCOPE })
+    .then(() => currentState())
+    .catch((error: unknown) => console.warn('notification handler not checked', error));
 }

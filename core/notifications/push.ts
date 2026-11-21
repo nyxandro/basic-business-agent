@@ -82,19 +82,37 @@ export function checkEndpoint(raw: string, testOrigin: string | null): URL {
 
 export interface PushSender {
   send(subscription: Subscription, payload: PushPayload, options: { ttlSeconds: number; urgency: 'normal' | 'high' }): Promise<PushResult>;
+  // A subscription whose keys cannot encrypt a push is refused when the browser hands it over.
+  check(subscription: Subscription): Promise<void>;
 }
 
 export function createPushSender(deps: { keys: VapidKeys; subject: () => Promise<string>; transport: PushTransport; testOrigin: string | null }): PushSender {
+  const build = async (subscription: Subscription, payload: PushPayload, options: { ttlSeconds: number; urgency: 'normal' | 'high' }) =>
+    webpush.generateRequestDetails({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify(payload), {
+      vapidDetails: { subject: await deps.subject(), publicKey: deps.keys.publicKey, privateKey: deps.keys.privateKey },
+      TTL: options.ttlSeconds,
+      urgency: options.urgency,
+      // A newer push with the same topic replaces one still waiting at the push service (up to 32 url-safe characters).
+      topic: payload.id.replaceAll('-', ''),
+    });
   return {
+    async check(subscription) {
+      checkEndpoint(subscription.endpoint, deps.testOrigin);
+      try {
+        await build(subscription, { id: '00000000-0000-4000-8000-000000000000', kind: 'answer_ready', title: '-', body: '', link: '/' }, { ttlSeconds: 60, urgency: 'normal' });
+      } catch (error) {
+        throw appError('APP_PUSH_SUBSCRIBE_FAILED', 'the keys of the push subscription cannot encrypt a push', { cause: error });
+      }
+    },
     async send(subscription, payload, options) {
       const endpoint = checkEndpoint(subscription.endpoint, deps.testOrigin);
-      const details = webpush.generateRequestDetails({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify(payload), {
-        vapidDetails: { subject: await deps.subject(), publicKey: deps.keys.publicKey, privateKey: deps.keys.privateKey },
-        TTL: options.ttlSeconds,
-        urgency: options.urgency,
-        // A newer push with the same topic replaces one still waiting at the push service (up to 32 url-safe characters).
-        topic: payload.id.replaceAll('-', ''),
-      });
+      let details: Awaited<ReturnType<typeof build>>;
+      try {
+        details = await build(subscription, payload, options);
+      } catch {
+        // Keys that cannot encrypt (a subscription saved before the check): it never works, like a dropped one.
+        return { kind: 'gone', status: 0 };
+      }
       let status: number;
       try {
         status = await deps.transport(endpoint, details.headers, details.body);

@@ -2,6 +2,8 @@
 // only what it is about — an action, a task, a system, a project, a conversation — never its content: a push passes
 // through Google, Apple or Mozilla (encrypted) and stays on a locked screen.
 import type { NotificationKind } from '@bba/contracts';
+import { MASKING_KINDS } from '../config/schemas.ts';
+import { detect, PLACEHOLDER_NAMES } from '../masking/detect.ts';
 
 export interface Notice {
   userId: string;
@@ -40,6 +42,19 @@ function clip(text: string, max: number): string {
   return chars.length <= max ? chars.join('') : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
+// A conversation is named by its first message until the model names it: a passport, a phone or a card typed there
+// never reaches a locked screen — whatever the installation masks for the model.
+const EVERY_KIND = new Set(MASKING_KINDS);
+export function withoutPersonalData(text: string): string {
+  let out = '';
+  let at = 0;
+  for (const found of detect(text, EVERY_KIND)) {
+    out += `${text.slice(at, found.start)}[${PLACEHOLDER_NAMES[found.kind]}]`;
+    at = found.end;
+  }
+  return out + text.slice(at);
+}
+
 function notice(input: Notice): Notice {
   return { ...input, title: clip(input.title, TITLE_MAX), body: clip(input.body, BODY_MAX) };
 }
@@ -58,7 +73,7 @@ function questionPlace(input: { approvalId: string; origin: QuestionOrigin }): P
     : { link: threadLink(input.origin.agentId, input.origin.threadId), threadId: input.origin.threadId };
 }
 
-const originName = (origin: QuestionOrigin) => (origin.kind === 'task' ? origin.taskTitle : `Разговор «${origin.threadTitle}»`);
+const originName = (origin: QuestionOrigin) => (origin.kind === 'task' ? origin.taskTitle : `Разговор «${withoutPersonalData(origin.threadTitle)}»`);
 
 export const notices = {
   approvalWaiting(input: { userId: string; approvalId: string; action: string; origin: QuestionOrigin }): Notice {
@@ -175,7 +190,7 @@ export const notices = {
       userId: input.userId,
       kind: 'answer_ready',
       title: 'Ответ готов',
-      body: `Разговор «${input.threadTitle}»`,
+      body: `Разговор «${withoutPersonalData(input.threadTitle)}»`,
       link: threadLink(input.agentId, input.threadId),
       dedupKey: `answer_ready:${input.runKey}`,
       subjectRef: null,
@@ -188,7 +203,7 @@ export const notices = {
       userId: input.userId,
       kind: 'answer_failed',
       title: 'Ответ не получился',
-      body: `Разговор «${input.threadTitle}». Откройте его — там видно, что случилось, и можно ответить заново.`,
+      body: `Разговор «${withoutPersonalData(input.threadTitle)}». Откройте его — там видно, что случилось, и можно ответить заново.`,
       link: threadLink(input.agentId, input.threadId),
       dedupKey: `answer_failed:${input.runKey}`,
       subjectRef: null,

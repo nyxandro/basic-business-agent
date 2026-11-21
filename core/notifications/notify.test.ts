@@ -64,6 +64,11 @@ describe('notify', () => {
     }
   });
 
+  it('never carries a passport, a phone or an e-mail of a conversation named by its first message', () => {
+    const notice = notices.answerReady({ userId: 'olga', runKey: 'turn-pd', agentId: 'sales', threadId: 't-pd', threadTitle: 'Оформи договор: паспорт 4510 123456, тел. +7 916 123-45-67, ivan@example.com' });
+    expect(notice.body).toBe('Разговор «Оформи договор: паспорт [ПАСПОРТ], тел. [ТЕЛЕФОН], [ПОЧТА]»');
+  });
+
   it('keeps the texts within what a notification may hold', async () => {
     const long = 'Очень длинное название задачи '.repeat(20);
     expect(await notify(db, notices.taskFailed({ userId: 'olga', runId: 'run-4', taskTitle: long, taskId: 'task-1', agentId: 'sales' }))).toBe(true);

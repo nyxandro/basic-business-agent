@@ -1,7 +1,8 @@
 // The browser's handler of notifications, served at /sw.js (docs/specs/[20.11.2026]-notifications.md, steps 6 and 18).
 // It shows every push it gets — never stays silent: Chrome then shows its own «сайт обновлён в фоне» and Safari drops
 // the subscription after three silent pushes; whether a push goes at all is the server's to decide. A click opens the
-// address of the notification in a tab of the app (an open one if there is). When the browser renews its subscription,
+// address of the notification in a tab of the app (an open one goes there itself, without a reload). When the browser
+// renews its subscription,
 // the handler hands the new one to the server.
 // Kept without imports: Vite serves it as it is while developing, and the build makes it one plain file.
 
@@ -16,7 +17,7 @@ interface PushPayload {
 interface WindowClientLike {
   url: string;
   focus(): Promise<unknown>;
-  navigate(url: string): Promise<unknown>;
+  postMessage(message: unknown): void;
 }
 
 interface WorkerScope {
@@ -35,6 +36,8 @@ interface ExtendableEventLike {
 }
 
 const scope = self as unknown as WorkerScope;
+// The tab goes to the address itself (src/notifications/push.ts: OPEN_MESSAGE): a reload would lose what was typed.
+const OPEN_MESSAGE = 'bba-open';
 const ICON = '/icons/icon-192.png';
 const BADGE = '/icons/badge-96.png';
 // A push the handler cannot read still shows something: a silent push costs the subscription.
@@ -81,8 +84,9 @@ scope.addEventListener('notificationclick', (event: ExtendableEventLike & { noti
       const open = await scope.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const tab = open.find((c) => new URL(c.url).origin === scope.location.origin);
       if (tab) {
+        const url = new URL(target);
+        tab.postMessage({ type: OPEN_MESSAGE, link: url.pathname + url.search + url.hash });
         await tab.focus();
-        await tab.navigate(target);
         return;
       }
       await scope.clients.openWindow(target);

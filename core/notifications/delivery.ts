@@ -31,6 +31,8 @@ interface Due {
   created_at: Date;
   // The question the notification is about is no longer waiting.
   decided: boolean;
+  // The person saw it already (opened the conversation in the morning before 8:00).
+  read: boolean;
 }
 
 export interface DeliveryDeps {
@@ -70,7 +72,7 @@ export function createDelivery(deps: DeliveryDeps): Delivery {
            FROM due WHERE d.notification_id = due.notification_id AND d.channel = 'push'
          RETURNING d.notification_id, d.attempts
        )
-       SELECT c.notification_id, c.attempts, n.user_id, n.kind, n.title, n.body, n.link, n.subject_ref, n.created_at,
+       SELECT c.notification_id, c.attempts, n.user_id, n.kind, n.title, n.body, n.link, n.subject_ref, n.created_at, n.read_at IS NOT NULL AS read,
               ${decidedSql('n', '$1')} AS decided
          FROM claimed c JOIN app.notifications n ON n.id = c.notification_id`,
       [at],
@@ -91,6 +93,7 @@ export function createDelivery(deps: DeliveryDeps): Delivery {
 
   async function deliver(due: Due, at: Date): Promise<void> {
     if (due.decided) return settle(due.notification_id, 'skipped', 'decided');
+    if (due.read) return settle(due.notification_id, 'skipped', 'read');
     if (at.getTime() - due.created_at.getTime() > DELIVERY_MAX_AGE_MS) return settle(due.notification_id, 'skipped', 'stale');
     if (deps.presence.isHere(due.user_id)) return settle(due.notification_id, 'skipped', 'present');
     const quiet = deps.quietHours ? quietUntil(at, deps.timezone) : null;
@@ -103,22 +106,12 @@ export function createDelivery(deps: DeliveryDeps): Delivery {
     if (subscriptions.length === 0) return settle(due.notification_id, 'skipped', 'no_subscription');
 
     const payload: PushPayload = { id: due.notification_id, kind: due.kind, title: due.title, body: due.body, link: due.link };
-    const results: PushResult[] = [];
-    for (const sub of subscriptions) {
-      let result: PushResult;
-      try {
-        result = await deps.sender.send(sub, payload, PUSH_DELIVERY[due.kind]);
-      } catch (error) {
-        // A subscription whose address is no push service (or the subject is missing): never sent, logged with its code.
-        logEvent('error', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId: due.notification_id, host: hostOf(sub.endpoint), error });
-        result = { kind: 'refused', status: 0 };
-      }
-      results.push(result);
+    // All browsers of the person at once: each send has its own time limit, so one slow service holds nobody else.
+    const results = await Promise.all(subscriptions.map((sub) => sendOne(due.notification_id, sub, payload, due.kind)));
+    for (const [i, result] of results.entries()) {
+      const sub = subscriptions[i]!;
       if (result.kind === 'sent') await db.query('UPDATE app.push_subscriptions SET last_ok_at = now() WHERE id = $1', [sub.id]);
       if (result.kind === 'gone') await db.query('DELETE FROM app.push_subscriptions WHERE id = $1', [sub.id]);
-      if (result.kind === 'retry' || result.kind === 'refused') {
-        logEvent('warn', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId: due.notification_id, host: hostOf(sub.endpoint), status: 'status' in result ? result.status : null, reason: result.kind === 'retry' ? result.code : 'refused' });
-      }
     }
     if (results.some((r) => r.kind === 'sent')) return settle(due.notification_id, 'sent', null);
     if (results.some((r) => r.kind === 'retry') && due.attempts < MAX_ATTEMPTS) return postpone(due.notification_id, new Date(at.getTime() + RETRY_AFTER_MS), true);
@@ -126,13 +119,26 @@ export function createDelivery(deps: DeliveryDeps): Delivery {
     return settle(due.notification_id, code === 'subscription_gone' ? 'skipped' : 'failed', code);
   }
 
+  async function sendOne(notificationId: string, sub: { endpoint: string; p256dh: string; auth: string }, payload: PushPayload, kind: NotificationKind): Promise<PushResult> {
+    let result: PushResult;
+    try {
+      result = await deps.sender.send(sub, payload, PUSH_DELIVERY[kind]);
+    } catch (error) {
+      // An address that is no push service, or no subject for VAPID: never sent, logged with its code.
+      logEvent('error', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId, host: hostOf(sub.endpoint), error });
+      return { kind: 'refused', status: 0 };
+    }
+    if (result.kind === 'retry' || result.kind === 'refused') {
+      logEvent('warn', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId, host: hostOf(sub.endpoint), status: result.status, reason: result.kind === 'retry' ? result.code : 'refused' });
+    }
+    return result;
+  }
+
   async function deliverDue(): Promise<number> {
     const at = now();
     const due = await claim(at);
-    for (const item of due) {
-      // One broken delivery never holds back the others; it is taken again after its minute.
-      await deliver(item, at).catch((error: unknown) => logEvent('error', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId: item.notification_id, error }));
-    }
+    // The batch goes at once; one broken delivery never holds back the others — it is taken again after its minute.
+    await Promise.all(due.map((item) => deliver(item, at).catch((error: unknown) => logEvent('error', 'push_failed', { code: 'APP_PUSH_FAILED', notificationId: item.notification_id, error }))));
     return due.length;
   }
 

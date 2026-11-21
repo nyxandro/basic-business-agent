@@ -39,7 +39,7 @@ function stubBrowser(input: { permission: NotificationPermission; subscription?:
   vi.stubGlobal('PushManager', function PushManager() {});
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
-    value: { register: vi.fn(() => Promise.resolve(registration)), ready: Promise.resolve(registration), getRegistration: vi.fn(() => Promise.resolve(registration)) },
+    value: { register: vi.fn(() => Promise.resolve(registration)), ready: Promise.resolve(registration), getRegistration: vi.fn(() => Promise.resolve(registration)), addEventListener: vi.fn(), removeEventListener: vi.fn() },
   });
   Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   return { pushManager, unsubscribe };
@@ -96,6 +96,21 @@ describe('the bell', () => {
     const panel = await screen.findByRole('dialog', { name: 'Уведомления' });
     expect(within(panel).getByRole('radio', { name: 'Ждут решения · 2' })).toHaveAttribute('aria-checked', 'true');
     expect(await within(panel).findByText('Ничего не ждёт вашего решения')).toBeInTheDocument();
+  });
+
+  it('gives no hint when reading the newest makes an older notification the newest', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const s = server({ pendingApprovals: 0, unread: 2, latest: { ...SHARED, id: 'n3', read: false, createdAt: '2026-11-21T07:00:00.000Z' } });
+      renderApp('/agents/sales?thread=t1');
+      await screen.findByRole('button', { name: /^Уведомления:/ });
+      s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 1, latest: READY } });
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Уведомления: 1 новое уведомление' })).toBeInTheDocument());
+      expect(screen.queryByText(/Готово: Утренняя сводка ·/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a notification that came while the person is in the app as a hint inside the page', async () => {
@@ -158,12 +173,14 @@ describe('notifications of this browser', () => {
     expect(screen.getByRole('button', { name: 'Проверить' })).toBeInTheDocument();
   });
 
-  it('a browser whose subscription belongs to another person reads as off', async () => {
+  // A shared computer whose last person did not press «Выйти»: their subscription is dropped in this browser.
+  it('drops a subscription another person left in this browser, and reads as off', async () => {
     const s = server();
     s.set('POST /app/api/me/push-subscriptions/status', { body: { subscribed: false } });
-    stubBrowser({ permission: 'granted', subscription: { endpoint: 'https://push.example/old' } });
+    const browser = stubBrowser({ permission: 'granted', subscription: { endpoint: 'https://push.example/old' } });
     renderApp('/settings/notifications');
     expect(await screen.findByText('Выключены в этом браузере')).toBeInTheDocument();
+    expect(browser.unsubscribe).toHaveBeenCalled();
   });
 
   it('signing out drops the subscription of this browser before the sign-out', async () => {

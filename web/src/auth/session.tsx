@@ -7,6 +7,7 @@ import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { newScreenMemory } from '../ui/screen-memory.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
+import { SIGN_OUT_EVENT } from '../notifications/presence.ts';
 import { dropPushOnSignOut } from '../notifications/push.ts';
 import { fetchMe, signOut as callSignOut } from './api.ts';
 
@@ -61,7 +62,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   const signOut = useCallback(async () => {
-    // A shared computer: the next person here gets none of this person's notifications (notifications spec, section 10).
+    // A shared computer: the next person here gets none of this person's notifications (notifications spec, section 10);
+    // and this tab stops telling the server the person is here.
+    window.dispatchEvent(new Event(SIGN_OUT_EVENT));
     await dropPushOnSignOut();
     await callSignOut();
     apply({ status: 'signed-out' });

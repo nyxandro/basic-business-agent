@@ -16,10 +16,12 @@ export interface RunLife {
   ended: boolean;
   // The browser's stream closed while the agent still worked.
   browserLeft: boolean;
+  // «Стоп» of the person: CopilotKit closes the stream first and asks to stop after — the person is there, nothing to tell.
+  stopped: boolean;
   failed: boolean;
 }
 
-export const newRunLife = (): RunLife => ({ key: randomUUID(), ended: false, browserLeft: false, failed: false });
+export const newRunLife = (): RunLife => ({ key: randomUUID(), ended: false, browserLeft: false, stopped: false, failed: false });
 
 export async function tellAfterLeaving(db: Db, run: { userId: string; agentId: string; threadId: string; life: RunLife }): Promise<void> {
   try {

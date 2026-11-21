@@ -3,12 +3,12 @@
 // no push: the page shows the news itself. The marks live in the memory of the one server process of an installation,
 // like the holds of the file storage (spec of the base, 8.23): they matter for a minute.
 export const PRESENCE_TTL_MS = 60_000;
+// Tabs of one person kept at once: a page that makes new ids (a script) never fills the memory of the server.
+export const TABS_PER_PERSON = 20;
 
 export interface Presence {
   seen(userId: string, tab: string, visible: boolean): void;
   isHere(userId: string): boolean;
-  // Signed out: the marks of the person go (their tabs show the sign-in now).
-  forget(userId: string): void;
 }
 
 export function createPresence(clock: () => number = Date.now): Presence {
@@ -31,13 +31,13 @@ export function createPresence(clock: () => number = Date.now): Presence {
         if (own?.size === 0) tabs.delete(userId);
         return;
       }
-      const own = tabs.get(userId) ?? new Map<string, number>();
+      const own = fresh(userId) ?? new Map<string, number>();
+      own.delete(tab);
       own.set(tab, clock());
+      // A Map keeps the order of setting: the first key is the tab seen longest ago.
+      while (own.size > TABS_PER_PERSON) own.delete(own.keys().next().value!);
       tabs.set(userId, own);
     },
     isHere: (userId) => fresh(userId) !== undefined,
-    forget(userId) {
-      tabs.delete(userId);
-    },
   };
 }

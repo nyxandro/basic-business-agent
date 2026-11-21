@@ -200,14 +200,15 @@ export async function listPending(db: Db, userId: string): Promise<ApprovalReque
 }
 
 // Questions of conversations whose term ran out (F4): they burn here — no model is called; the waiting answer gets
-// its refusal at the next message of the conversation (closeExpired in core/chat/run.ts).
+// its refusal at the next message of the conversation (cancelPending in core/chat/run.ts). Questions of background
+// runs burn in the background sweep (core/background/service.ts), which closes their run at once.
 export async function expireChatQuestions(db: Db): Promise<number> {
   const { rows } = await db.query<Row>(
     `UPDATE app.approval_requests SET status = 'expired', decided_at = now(), error_code = 'APP_APPROVAL_EXPIRED'
-      WHERE status = 'pending' AND task_id IS NULL AND expires_at < now() RETURNING *`,
+      WHERE status = 'pending' AND task_id IS NULL AND run_kind IN ('chat', 'draft') AND expires_at < now() RETURNING *`,
   );
   for (const r of rows.map(toRequest)) {
-    await writeJournal(db, { userId: r.userId, agentId: r.agentId, runKind: r.runKind === 'background' ? 'background' : 'chat', event: 'approval_expired', tool: r.tool, result: 'expired', errorCode: 'APP_APPROVAL_EXPIRED' });
+    await writeJournal(db, { userId: r.userId, agentId: r.agentId, runKind: 'chat', event: 'approval_expired', tool: r.tool, result: 'expired', errorCode: 'APP_APPROVAL_EXPIRED' });
   }
   return rows.length;
 }
@@ -215,7 +216,7 @@ export async function expireChatQuestions(db: Db): Promise<number> {
 // Burnt questions of a conversation whose waiting answer has not had its refusal yet.
 export async function expiredOpenForThread(db: Db, userId: string, threadId: string): Promise<ApprovalRequest[]> {
   const { rows } = await db.query<Row>(
-    "SELECT * FROM app.approval_requests WHERE user_id = $1 AND thread_id = $2 AND status = 'expired' AND task_id IS NULL AND closed_at IS NULL ORDER BY created_at",
+    "SELECT * FROM app.approval_requests WHERE user_id = $1 AND thread_id = $2 AND status = 'expired' AND task_id IS NULL AND run_kind IN ('chat', 'draft') AND closed_at IS NULL ORDER BY created_at",
     [userId, threadId],
   );
   return rows.map(toRequest);

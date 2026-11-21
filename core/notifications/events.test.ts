@@ -15,6 +15,8 @@ let petr: string;
 let petrId: string;
 let igor: string;
 let igorId: string;
+let olgaUserId: string;
+const olgaIdOf = () => olgaUserId;
 let sales: string;
 
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
@@ -57,7 +59,7 @@ beforeAll(async () => {
   igorId = await t.createUser({ email: 'igor@example.com', name: 'Игорь Власов', roleIds: [await t.roleId('superadmin')] });
   sales = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
   await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'sales')`, [sales]);
-  await t.createUser({ email: 'olga@example.com', name: 'Ольга Смирнова', departmentIds: [sales] });
+  olgaUserId = await t.createUser({ email: 'olga@example.com', name: 'Ольга Смирнова', departmentIds: [sales] });
   petrId = await t.createUser({ email: 'petr@example.com', name: 'Пётр Иванов' });
   olga = await t.signIn('olga@example.com');
   petr = await t.signIn('petr@example.com');
@@ -86,6 +88,19 @@ describe('an answer the person left before it ended', () => {
     // Opening the conversation reads it.
     await t.call('POST', '/app/api/copilotkit/agent/sales/connect', { cookie: olga, body: body(left, null) });
     expect((await listOf(olga)).find((n) => n.id === ready[0]!.id)?.read).toBe(true);
+  });
+
+  // CopilotKit's «Стоп» closes the stream first and asks to stop after: the person is at the screen.
+  it('tells nothing when the person stopped the answer', async () => {
+    const stopped = randomUUID();
+    const before = t.model.requests.length;
+    t.model.script({ text: 'Длинный ответ, который остановят.', delayMs: 800 });
+    await runAndLeave(olga, stopped, 'Расскажи подробно о сделках');
+    // The model got the request (its scripted answer is taken), then the person presses «Стоп».
+    await eventually(() => Promise.resolve(t.model.requests.length), (n) => n > before);
+    expect((await t.call('POST', `/app/api/copilotkit/agent/sales/stop/${stopped}`, { cookie: olga, body: {} })).status).toBeLessThan(500);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await listOf(olga)).some((n) => n.link.includes(stopped))).toBe(false);
   });
 
   it('tells «Ждёт вашего решения» instead when the answer stopped at a question «Да»', async () => {
@@ -171,6 +186,20 @@ describe('a question of a conversation (decision of the owner 21.11, F4)', () =>
     await remindExpiring(t.db);
     const reminders = (await listOf(olga)).filter((n) => n.kind === 'approval_expiring' && n.link.includes(threadId));
     expect(reminders).toMatchObject([{ title: 'Вопрос сгорит через 6 ч', link: `/agents/sales?thread=${threadId}` }]);
+  });
+
+  // A plugin's run asks with nobody at the screen: its question burns by the background term and its run is closed then.
+  it('burns a question of a plugin’s run by the background term and gives its run the refusal at once', async () => {
+    t.model.script(sendMail, { text: 'Хорошо, письмо не отправлено.' });
+    const { threadId } = await t.background.startAgentRun({ agentId: 'sales', userId: olgaIdOf(), prompt: 'Новая заявка с сайта: ответь клиенту', title: 'Заявка с сайта' });
+    const q = await questionOf(threadId);
+    expect((q.expires_at.getTime() - q.created_at.getTime()) / 3600_000).toBe(72);
+    await t.db.query(`UPDATE app.approval_requests SET created_at = created_at - interval '72 hours 1 minute', expires_at = expires_at - interval '72 hours 1 minute' WHERE id = $1`, [q.id]);
+    expect(await expireChatQuestions(t.db)).toBe(0);
+    expect(await t.background.expireOverdue()).toBe(1);
+    expect((await questionOf(threadId)).status).toBe('expired');
+    expect(JSON.stringify(t.model.requests.at(-1)?.messages)).toContain('Истекло: сотрудник не ответил за 72 ч.');
+    expect(t.sentMail).toEqual([]);
   });
 
   it('never lists a question of an admin’s draft check of a prompt', async () => {

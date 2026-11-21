@@ -96,6 +96,8 @@ const APPROVAL_PREFIX = 'mastra-approval::';
 const SUPERSEDED = 'Отменено: сотрудник написал новое сообщение.';
 
 const busyThreads = new Set<string>();
+// The turn of each conversation until its agent ends — «Стоп» comes after the browser's stream closed and finds it here.
+const liveRuns = new Map<string, PreparedRun>();
 // A draft check of a prompt never belongs to the admin's projects.
 const NO_PROJECT: RunProject = { projectId: null, projectOwnerId: null, lostProject: null };
 
@@ -107,10 +109,11 @@ function releaseThread(threadId: string): void {
 // agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the
 // server's to log, not the answer's; the snapshot is left for the start of the server then.
 export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
+  if (liveRuns.get(run.threadId) === run) liveRuns.delete(run.threadId);
   if (run.agentStarted && !run.life.ended) {
     run.life.ended = true;
     // The person left before the end: they learn how it ended. A draft check of a prompt is the admin's own screen.
-    if (run.life.browserLeft && run.mode === 'published') void tellAfterLeaving(deps.db, run);
+    if (run.life.browserLeft && !run.life.stopped && run.mode === 'published') void tellAfterLeaving(deps.db, run);
   }
   const { snapshot, release } = run;
   run.snapshot = null;
@@ -124,6 +127,12 @@ export function settleRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: Pre
 
 // The browser's stream of the answer ended (done, closed tab, error). The thread is free; the trash
 // waits for the agent, unless the agent never began (the run was refused before it).
+// «Стоп» of the person for the conversation's turn under way (core/chat/routes.ts).
+export function noteStopped(threadId: string): void {
+  const run = liveRuns.get(threadId);
+  if (run) run.life.stopped = true;
+}
+
 export function endRun(deps: Pick<ChatDeps, 'db' | 'workspaceRoot'>, run: PreparedRun): void {
   if (run.agentStarted && !run.life.ended) run.life.browserLeft = true;
   releaseThread(run.threadId);
@@ -230,6 +239,8 @@ async function cancelPending(deps: ChatDeps, run: PreparedRun, agent: Agent): Pr
     ...(await pendingForThread(deps.db, run.userId, run.threadId)).map((q) => ({ q, expired: false })),
   ];
   for (const { q: pending, expired } of toClose) {
+    // Marked before the refusal, as a superseded question is declined before it: a refusal that keeps failing (the run
+    // is gone in Mastra) must not lock the conversation for every next message; `expired` already runs nothing.
     if (expired) await markClosed(deps.db, pending.id);
     else if (!(await decide(deps.db, pending.id, 'declined', 'APP_CHAT_SUPERSEDED'))) continue;
     cancelled.push({ toolCallId: pending.toolCallId, tool: pending.tool, args: pending.args, superseded: !expired, expiredHours: expired ? termHoursOf(pending) : null });
@@ -273,6 +284,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
 
   if (busyThreads.has(threadId)) throw threadBusy(threadId);
   busyThreads.add(threadId);
+  liveRuns.set(threadId, run);
   const declinedCalls: PreparedTurn['declinedCalls'] = [];
   try {
     const resume = input.resume?.[0];

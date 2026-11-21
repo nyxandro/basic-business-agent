@@ -174,6 +174,39 @@ describe('delivery to the browser', () => {
     expect((await t.db.query('SELECT 1 FROM app.push_subscriptions WHERE endpoint = $1', [browser.endpoint])).rowCount).toBe(0);
   });
 
+  it('does not push in the morning what the person already read before 8:00', async () => {
+    await subscribe(olga, push.subscribe());
+    clock = new Date('2026-11-23T20:00:00Z');
+    const night = told(olgaId);
+    await tell(night);
+    await t.notifications.delivery.deliverDue();
+    await t.db.query('UPDATE app.notifications SET read_at = now() WHERE dedup_key = $1', [night.dedupKey]);
+    clock = new Date('2026-11-24T05:00:00Z');
+    await t.notifications.delivery.deliverDue();
+    expect(push.received).toEqual([]);
+    expect(await deliveryOf(night.dedupKey)).toMatchObject({ status: 'skipped', error_code: 'read' });
+  });
+
+  it('keeps at most 10 browsers per person — the oldest goes — and sends to all of them at once', async () => {
+    const browsers = Array.from({ length: 12 }, () => push.subscribe());
+    for (const b of browsers) {
+      await subscribe(olga, b);
+      // Distinct times of subscribing, so «the oldest» is well defined.
+      await t.db.query(`UPDATE app.push_subscriptions SET created_at = created_at - interval '1 second' WHERE user_id = $1`, [olgaId]);
+    }
+    const kept = (await t.db.query<{ endpoint: string }>('SELECT endpoint FROM app.push_subscriptions WHERE user_id = $1', [olgaId])).rows.map((r) => r.endpoint);
+    expect(kept.sort()).toEqual(browsers.slice(2).map((b) => b.endpoint).sort());
+    await tell(told(olgaId));
+    await t.notifications.delivery.deliverDue();
+    expect(push.received).toHaveLength(10);
+  });
+
+  it('refuses a subscription whose keys cannot encrypt a push', async () => {
+    const res = await subscribe(olga, { endpoint: push.subscribe().endpoint, keys: { p256dh: 'not-a-key', auth: 'x' } });
+    expect(res.status).toBe(400);
+    expect((await json<{ error: { code: string } }>(res)).error.code).toBe('APP_PUSH_SUBSCRIBE_FAILED');
+  });
+
   it('refuses an address that is no push service: an inner address of the server, plain http, another port', async () => {
     const keys = push.subscribe().keys;
     for (const endpoint of ['http://localhost:4000/key/generate', 'https://10.0.0.5/push', 'https://127.0.0.1/push', 'https://fcm.googleapis.com:8443/x']) {

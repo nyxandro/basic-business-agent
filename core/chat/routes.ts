@@ -21,7 +21,7 @@ import { chatPath, chatRoot, conversationRoot, filesRoot, pruneOlderThan, putInF
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
-import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
+import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, noteStopped, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
 import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
@@ -146,6 +146,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       assertAgentOpen(deps, a, agentId, mode);
       const thread = await deps.memory.getThreadById({ threadId: decodeURIComponent(threadId) });
       if (!thread || thread.resourceId !== resourceId) throw notFound('stop of a foreign or unknown thread');
+      // The person stopped the answer: it ends with them at the screen (no «Ответ готов», notifications spec).
+      noteStopped(thread.id);
       return deps.copilot.handle(c.req.raw, { kind: 'listing', userId: a.userId, agentIds: [agentId], mode });
     }
 
