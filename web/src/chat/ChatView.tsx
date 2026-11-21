@@ -6,7 +6,7 @@
 // broke (spec, section 9.1): dropped words go off the screen, «Ответить заново» sends the question again.
 import type { AssistantMessage as AgentMessage, CopilotChatViewProps, Message } from '@copilotkit/react-core';
 import { useAgent } from '@copilotkit/react-core';
-import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'motion/react';
+import { MotionConfig, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -20,7 +20,6 @@ import { AssistantTurn } from './AssistantMessage.tsx';
 import { answersInBrowser, callsUnderWay } from './call-progress.ts';
 import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
-import live from './live-line.module.css';
 import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
 import { useFileDrop } from './FileDrop.tsx';
@@ -42,14 +41,15 @@ function releaseWaitingQuestions(agent: { pendingInterrupts: unknown[] }): void 
   if (agent.pendingInterrupts.length > 0) agent.pendingInterrupts = [];
 }
 
-// The live line grows in from no height, faded and a little blurred, and folds away the same way (decision of the owner
-// 21.11: no blinking); what is above it does not jump. It brings the space above it itself (live-line.module.css).
-// Clipped only while it moves: going, it does not lie over the card «Да» that comes under it.
-const LIVE_HIDDEN = { height: 0, opacity: 0, filter: 'blur(4px)', overflow: 'hidden' };
-const LIVE_SHOWN = { height: 'auto', opacity: 1, filter: 'blur(0px)', transitionEnd: { filter: 'none', overflow: 'visible' } };
-
-// A turn of the agent is every assistant message between two messages of the person.
+// A turn of the agent is every assistant message between two messages of the person. Its row is named by the message
+// of the person it answers: the row of an answer that has shown nothing yet (its mark and «Работаю», decision of the
+// owner 21.11) is the same row once its first words or actions come — the mark stays where it is.
 type Row = { kind: 'user'; message: Message } | { kind: 'agent'; key: string; turn: AgentMessage[] };
+
+const answerKey = (rows: readonly Row[]): string => {
+  const asked = rows.findLast((r) => r.kind === 'user');
+  return `answer-${asked?.kind === 'user' ? asked.message.id : 'start'}`;
+};
 
 function rowsOf(messages: Message[]): Row[] {
   const rows: Row[] = [];
@@ -58,7 +58,7 @@ function rowsOf(messages: Message[]): Row[] {
     if (m.role !== 'assistant') continue;
     const last = rows.at(-1);
     if (last?.kind === 'agent') last.turn.push(m);
-    else rows.push({ kind: 'agent', key: m.id, turn: [m] });
+    else rows.push({ kind: 'agent', key: answerKey(rows), turn: [m] });
   }
   return rows;
 }
@@ -85,10 +85,14 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
   const last = messages.findLast((m) => FEED_ROLES.has(m.role));
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
   const liveCall = underWay.at(-1) ?? null;
-  const rows = rowsOf(messages);
   // Only the last answer has calls under way: they come after the person's last message.
   const underWayIds = new Set(underWay.map((c) => c.id));
   const lastBroken = failures.lastBroken && !running;
+  const live = liveCall || waiting ? <LiveLine call={liveCall} agent={agent} /> : null;
+  const rows = rowsOf(messages);
+  // The answer has shown nothing yet: its row is its mark and the live line; broken before its first words — the mark,
+  // «Ответ прервался» and «Ответить заново».
+  if (rows.at(-1)?.kind !== 'agent' && (live || lastBroken)) rows.push({ kind: 'agent', key: answerKey(rows), turn: [] });
   return (
     <>
       {rows.map((row, i) => {
@@ -104,21 +108,11 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
             underWay={underWayIds}
             asking={!running && isLast && asking}
             interrupted={broken}
+            live={isLast ? live : null}
             {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
           />
         );
       })}
-      {/* The answer broke before its first words: its row is only the mark and «Ответить заново». */}
-      {lastBroken && rows.at(-1)?.kind !== 'agent' ? (
-        <AssistantTurn turn={[]} messages={messages} streaming={false} interrupted {...(failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})} />
-      ) : null}
-      <AnimatePresence initial={false}>
-        {liveCall || waiting ? (
-          <motion.div key="live" className={live.liveWrap} initial={LIVE_HIDDEN} animate={LIVE_SHOWN} exit={LIVE_HIDDEN}>
-            <LiveLine call={liveCall} agent={agent} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </>
   );
 }

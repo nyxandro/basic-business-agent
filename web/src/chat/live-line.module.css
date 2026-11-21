@@ -1,21 +1,8 @@
 /* The live line of the answer (LiveLine.tsx; decisions of the owner 18.11 and 21.11): a ring turns and a light runs
-   over «Работаю» or over the name of what the agent does now. No mark: the row stands under the words of the answer —
-   the mark's 30 px and the gap of 14 px. It brings the space above it itself, so that it grows in and folds away with
-   its height instead of the gap of the feed jumping: 22 px under a message of the person, 12 px — the gap of the lines
-   of an answer — under the answer it belongs to. */
-.liveWrap {
-  margin-top: -22px;
-}
-
+   over «Работаю» or over the name of what the agent does now. It is the last line of the answer, beside the agent's mark
+   from the first moment (owner 21.11) — as high as the mark, so that the two stand level while it is alone. */
 .live {
-  padding-top: 22px;
-  padding-left: 44px;
-  transition: padding-top 0.36s var(--ease-out);
-}
-
-/* Right under the answer it belongs to (AssistantMessage.tsx marks its row). */
-[data-answer-row] + .liveWrap .live {
-  padding-top: 12px;
+  min-width: 0;
 }
 
 /* The wheel of the line turns inside it (ui/Ticker.tsx). */
@@ -24,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 26px;
+  min-height: 30px;
   max-width: 100%;
   overflow: hidden;
   font-weight: 500;

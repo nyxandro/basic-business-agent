@@ -175,11 +175,6 @@
   animation: global(bba-rise) 0.45s var(--ease-rise) both;
 }
 
-/* An answer whose first thing is a done action grows into its place instead (AssistantMessage.tsx). */
-.assistantGrows {
-  animation: none;
-}
-
 .body {
   flex: 1;
   min-width: 0;

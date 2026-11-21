@@ -1,6 +1,6 @@
 // The agent's mark inside a conversation (spec, section 8.17): the conversation's agent's own mark
 // next to its words and its question «Да/Нет»; with the marks turned off in «Интерфейс» — at none of
-// them, and the words and the question are still there. «Работаю» has no mark at all (owner 18.11).
+// them, and the words and the question are still there. An answer has its mark from its first «Работаю» (owner 21.11).
 import type { AgentMark } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
@@ -49,23 +49,32 @@ function extras(mark: AgentMark, interrupt: ReactElement | null): ChatExtras {
   };
 }
 
+interface Place {
+  messages: Message[];
+  running?: boolean;
+  interrupt?: ReactElement | null;
+}
+
+const chatOf = ([mark]: Setting, { messages, running = false, interrupt = null }: Place) => (
+  <MemoryRouter>
+    <SessionProvider>
+      <ToastProvider>
+        <RequireAuth>
+          <ChatExtrasContext value={extras(mark, interrupt)}>
+            <ChatView messages={messages} isRunning={running} />
+          </ChatExtrasContext>
+        </RequireAuth>
+      </ToastProvider>
+    </SessionProvider>
+  </MemoryRouter>
+);
+
 // Each place is the only words of the agent on the screen: the marks found are the marks of that place.
-async function showChat([mark, showAgentMark]: Setting, { messages, running = false, interrupt = null }: { messages: Message[]; running?: boolean; interrupt?: ReactElement | null }) {
-  mockServer({ 'GET /app/api/me': { body: { ...ME, interface: { showAgentMark } } } });
-  render(
-    <MemoryRouter>
-      <SessionProvider>
-        <ToastProvider>
-          <RequireAuth>
-            <ChatExtrasContext value={extras(mark, interrupt)}>
-              <ChatView messages={messages} isRunning={running} />
-            </ChatExtrasContext>
-          </RequireAuth>
-        </ToastProvider>
-      </SessionProvider>
-    </MemoryRouter>,
-  );
+async function showChat(setting: Setting, place: Place) {
+  mockServer({ 'GET /app/api/me': { body: { ...ME, interface: { showAgentMark: setting[1] } } } });
+  const view = render(chatOf(setting, place));
   await screen.findByText('Сколько сделок за неделю?');
+  return view;
 }
 
 // The row of the agent's words: the mark, then the body that holds them.
@@ -95,10 +104,17 @@ describe.each(SETTINGS)('in a conversation the agent’s mark is %s', (_, settin
     expect(marksIn(document)).toEqual(expected);
   });
 
-  it('not at its «Работаю»', async () => {
-    await showChat(setting, { messages: [QUESTION], running: true });
-    expect(screen.getByRole('status', { name: 'Работаю' })).toHaveTextContent('Работаю');
-    expect(marksIn(document)).toEqual([]);
+  // Decision of the owner 21.11 (18.11 «Работаю» had none): the answer's mark is there from its first «Работаю», and
+  // the words that come stand beside the same mark.
+  it('beside its «Работаю» from the first moment, and the same one beside the words that come', async () => {
+    const view = await showChat(setting, { messages: [QUESTION], running: true });
+    const working = screen.getByRole('status', { name: 'Работаю' });
+    expect(marksIn(document)).toEqual(expected);
+    const mark = document.querySelector('[data-agent-mark]');
+    if (expected.length > 0) expect(working.closest('[class*="assistant"]')?.contains(mark)).toBe(true);
+    view.rerender(chatOf(setting, { messages: [QUESTION, ANSWER], running: true }));
+    expect(marksIn(document)).toEqual(expected);
+    expect(document.querySelector('[data-agent-mark]')).toBe(mark);
   });
 
   it('next to its question «Да/Нет»', async () => {

@@ -11,9 +11,9 @@
 import type { AssistantMessage as AgentMessage, Message } from '@copilotkit/react-core';
 import { useRenderToolCall } from '@copilotkit/react-core';
 import { AnimatePresence, motion } from 'motion/react';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
-import { cx, IconButton } from '../ui/Button.tsx';
+import { IconButton } from '../ui/Button.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { AgentMark } from './AgentMark.tsx';
 import { AnswerText } from './AnswerText.tsx';
@@ -34,15 +34,14 @@ const ITEM_GAP = 12;
 const ITEM_HIDDEN = { height: 0, opacity: 0, marginTop: -ITEM_GAP, overflow: 'hidden' };
 const ITEM_SHOWN = { height: 'auto', opacity: 1, marginTop: 0, transitionEnd: { overflow: 'visible' } };
 
-// An answer that begins with a done action, not with words, grows into its place the same way, the gap of the feed above
-// it (22 px) with it: the live line under it goes down gliding. Words come into a row that rises (chat.module.css).
-const FEED_GAP = 22;
-const ROW_HIDDEN = { height: 0, opacity: 0, marginTop: -FEED_GAP, overflow: 'hidden' };
-const ROW_SHOWN = { height: 'auto', opacity: 1, marginTop: 0, transitionEnd: { overflow: 'visible' } };
+// The live line (LiveLine.tsx) grows in and folds away the same way, a little blurred (decision of the owner 21.11: no
+// blinking); clipped while it moves, going it does not lie over the card «Да» that comes under the answer.
+const LIVE_HIDDEN = { ...ITEM_HIDDEN, filter: 'blur(4px)' };
+const LIVE_SHOWN = { ...ITEM_SHOWN, filter: 'blur(0px)', transitionEnd: { overflow: 'visible', filter: 'none' } };
 
-function Arrives({ children }: { children: ReactNode }) {
+function Arrives({ children, blurred = false }: { children: ReactNode; blurred?: boolean }) {
   return (
-    <motion.div className={styles.arrives} initial={ITEM_HIDDEN} animate={ITEM_SHOWN} exit={ITEM_HIDDEN}>
+    <motion.div className={styles.arrives} initial={blurred ? LIVE_HIDDEN : ITEM_HIDDEN} animate={blurred ? LIVE_SHOWN : ITEM_SHOWN} exit={blurred ? LIVE_HIDDEN : ITEM_HIDDEN}>
       {children}
     </motion.div>
   );
@@ -84,6 +83,7 @@ export function AssistantTurn({
   underWay = NONE,
   asking = false,
   interrupted = false,
+  live = null,
   onAnswerAgain,
 }: {
   turn: AgentMessage[];
@@ -94,18 +94,16 @@ export function AssistantTurn({
   // The answer ended with the question «Да» open under it.
   asking?: boolean;
   interrupted?: boolean;
+  // The live line of the answer being written: under what it has shown, beside its mark from its first moment.
+  live?: ReactNode;
   onAnswerAgain?: () => void;
 }) {
   const renderToolCall = useRenderToolCall();
   const { agent } = useChatExtras();
   const items = turnItems(turn, messages, underWay);
-  // How the row came in, settled when it first shows something (it draws nothing while its first action is under way).
-  const [arrival, setArrival] = useState<'grows' | 'rises' | null>(null);
-  const first = items[0];
-  const came = arrival ?? (first ? (streaming && first.kind !== 'text' ? 'grows' : 'rises') : null);
-  if (arrival === null && came !== null) setArrival(came);
-  // A broken answer stays even when it showed nothing: its mark and «Ответить заново» are its row.
-  if (items.length === 0 && !interrupted) return null;
+  // A broken answer stays even when it showed nothing: its mark and «Ответить заново» are its row; so does one being
+  // written: its mark and its live line.
+  if (items.length === 0 && !interrupted && !live) return null;
   const lastText = [...turn].reverse().map(textOfAgent).find(Boolean) ?? '';
   const draw = (call: ToolCall) => renderToolCall({ toolCall: call, toolMessage: toolMessageOf(messages, call.id) });
   // In a stack a widget or a file is its line: the screen or the file stands after the stack (turn-items.ts).
@@ -118,8 +116,8 @@ export function AssistantTurn({
   // the message of its words, and the next step is a message of its own.
   const writing = (item: TurnItem) => streaming && item === items.at(-1) && item.kind === 'text' && item.message === turn.at(-1);
 
-  const content = (
-    <>
+  return (
+    <div className={styles.assistant}>
       <AgentMark />
       <div className={styles.body}>
         <TurnStateContext value={streaming ? 'answering' : asking ? 'asking' : 'ended'}>
@@ -135,19 +133,15 @@ export function AssistantTurn({
                 </Arrives>
               ),
             )}
+            {live ? (
+              <Arrives key="live" blurred>
+                {live}
+              </Arrives>
+            ) : null}
           </AnimatePresence>
         </TurnStateContext>
         <TurnFooter text={lastText} streaming={streaming} interrupted={interrupted} {...(onAnswerAgain ? { onAnswerAgain } : {})} />
       </div>
-    </>
-  );
-  return came === 'grows' ? (
-    <motion.div className={cx(styles.assistant, styles.assistantGrows)} data-answer-row initial={ROW_HIDDEN} animate={ROW_SHOWN}>
-      {content}
-    </motion.div>
-  ) : (
-    <div className={styles.assistant} data-answer-row>
-      {content}
     </div>
   );
 }

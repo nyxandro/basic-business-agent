@@ -3,7 +3,8 @@
 // with how much of it the model has written (owner 20.11: only real progress); the search with a still magnifier, its
 // clock and its list a click away (owner 20.11). Done, the action goes up into the stack of the answer above, and the line
 // turns back to «Работаю» while the agent goes on. Every change of the line turns like the wheel of a date picker
-// (ui/Ticker.tsx); the line itself grows in and folds away (ChatView.tsx).
+// (ui/Ticker.tsx); the line itself grows in and folds away (AssistantMessage.tsx). It is the last line of the answer,
+// beside the agent's mark from the first moment (decision of the owner 21.11; until then «Работаю» had no mark, 18.11).
 import { WEB_RESEARCH_TOOL, type AgentSummary, type WebStep } from '@bba/contracts';
 import { useState } from 'react';
 import { ru } from '../i18n/ru.ts';
