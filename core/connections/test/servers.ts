@@ -26,10 +26,12 @@ export interface TestMcpServer {
 // nowhere (a server that takes a key).
 export interface TestMcpServerOptions {
   signIn?: { where: 'challenge' | 'well-known' | 'nowhere'; authorizationServer: string };
+  port?: number;
 }
 
-async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+// A port of its own (0) in tests; a fixed one on the browser stand, whose scenarios type the address.
+async function listen(server: Server, port = 0): Promise<string> {
+  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
@@ -81,7 +83,7 @@ export async function startTestMcpServer(options: TestMcpServerOptions = {}): Pr
       serve();
     });
   });
-  base = await listen(http);
+  base = await listen(http, options.port);
   state.url = `${base}/mcp`;
   state.close = () => new Promise((resolve) => http.close(() => resolve()));
   return state;
@@ -110,6 +112,7 @@ export interface TestOAuthServer {
 export interface TestOAuthServerOptions {
   // Clients may register themselves (RFC 7591); without it only the client set up in advance works.
   dynamicRegistration?: boolean;
+  port?: number;
 }
 
 // An authorization server with PKCE and single-use, rotating refresh tokens (like Bitrix24 or amoCRM), its metadata
@@ -210,7 +213,7 @@ export async function startTestOAuthServer(options: TestOAuthServerOptions = {})
       return reply(400, { error: 'unsupported_grant_type' });
     });
   });
-  s.base = await listen(http);
+  s.base = await listen(http, options.port);
   s.issuer = s.base;
   s.authorizeUrl = `${s.base}/authorize`;
   s.tokenUrl = `${s.base}/token`;

@@ -14,12 +14,15 @@ import { createProject } from '../../core/projects/projects.ts';
 import { createSkill } from '../../core/skills-admin/store.ts';
 import { startFakeChatGpt } from '../../core/models/fake-chatgpt.ts';
 import { createTestApp, TEST_PASSWORD } from '../../core/server/test-app.ts';
+import { startStandMcp } from './stand-mcp.ts';
 import { createStandModel, standNaming, standWeb } from './stand-model.ts';
 
 const PORT = 3000;
 
 const openai = await startFakeChatGpt();
-const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true, web: standWeb });
+// Systems for «Подключения» → «Добавить сервер MCP» (stand-mcp.ts).
+const mcp = await startStandMcp();
+const t = await createTestApp({ modelFallback: createStandModel(), namingFallback: standNaming, assistantSubagent: true, chatgpt: { authBase: openai.url }, sandbox: true, web: standWeb, mcpRunner: mcp.runner });
 const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
 await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
 const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Продажи') RETURNING id`)).rows[0]!.id;
@@ -81,6 +84,7 @@ async function shutdown(): Promise<void> {
   server.close();
   await t.close();
   await openai.close();
+  await mcp.close();
   process.exit(0);
 }
 process.on('SIGINT', () => void shutdown());

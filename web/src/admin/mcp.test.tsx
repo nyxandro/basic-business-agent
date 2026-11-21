@@ -113,6 +113,8 @@ describe('a new server', () => {
     expect(await within(dialog).findByRole('radio', { name: 'Личный ключ сотрудника — каждый введёт свой' })).toBeChecked();
     expect(within(dialog).getByDisplayValue('token')).toBeInTheDocument();
     expect(s.calls.some((c) => c.path.endsWith('/probe'))).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
 

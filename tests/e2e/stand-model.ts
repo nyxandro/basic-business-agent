@@ -108,6 +108,11 @@ function standModel(req: FakeRequest): FakeTurn {
     if (/not approved|declin|отклон|отмен/i.test(result)) return { text: 'Хорошо, не отправляю.' };
     if (/waitForAnswer/.test(result)) return { text: 'Жду вашего ответа.' };
     if (/sent/.test(result)) return { text: 'Письмо отправлено.' };
+    // An action of an MCP server the admin added (docs/specs/[20.11.2026]-mcp-connections.md): its answer as it came.
+    if (/_(deals_search|deal_create|echo)$/.test(lastCallName(req) ?? '')) {
+      const answer = JSON.parse(result) as { content: { text: string }[] };
+      return { text: `Система ответила: ${answer.content.map((part) => part.text).join(' ')}` };
+    }
     return { text: 'Готово, показал выше.' };
   }
   const text = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).toLowerCase();
@@ -132,6 +137,17 @@ function standModel(req: FakeRequest): FakeTurn {
     // An agent with «Виджеты в чате» switched off has no render_ui (spec, section 8.31).
     if (!req.tools?.some((x) => x.function.name === WIDGET_TOOL.render)) return { text: 'Виджетов у меня нет, отвечаю текстом: Поставка бетона, ООО «Пример», 120 000 ₽.' };
     return call(WIDGET_TOOL.render, screen);
+  }
+  // MCP servers of «Подключения» (stand-mcp.ts): the action is found by the end of its name — the slug of a server
+  // is not known in advance.
+  const mcpAction = (suffix: string) => req.tools?.map((x) => x.function.name).find((name) => name.endsWith(suffix));
+  if (text.includes('в мойсклад')) {
+    const name = mcpAction(text.includes('создай') ? '_deal_create' : '_deals_search');
+    return name ? call(name, text.includes('создай') ? { title: 'Поставка' } : {}) : { text: 'МойСклад мне не подключён.' };
+  }
+  if (text.includes('в 1с')) {
+    const name = mcpAction('_echo');
+    return name ? call(name, { text: 'остатки на складе' }) : { text: '1С мне не подключена.' };
   }
   if (text.includes('почтальон') && req.tools?.some((x) => x.function.name === 'agent-mailer')) return call('agent-mailer', { prompt: 'Отправь письмо клиенту client@example.com' });
   if (text.includes('письм')) return call('mail_send', { to: 'client@example.com', text: 'Добрый день! Напоминаю о встрече.' });

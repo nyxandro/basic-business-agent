@@ -6,6 +6,10 @@
   padding: 20px 20px 0;
 }
 
+.close {
+  margin-left: auto;
+}
+
 .dialogNotice {
   padding: 12px 20px 0;
 }

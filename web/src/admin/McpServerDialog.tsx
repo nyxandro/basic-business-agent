@@ -6,7 +6,7 @@ import { MCP_TRANSPORTS, type McpProbeAuth, type McpServerView, type McpTranspor
 import { useEffect, useId, useRef, useState, type SubmitEvent } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { Button } from '../ui/Button.tsx';
+import { Button, IconButton } from '../ui/Button.tsx';
 import { Pill } from '../ui/Display.tsx';
 import { Feedback, useAction } from './parts.tsx';
 import { Field, Input } from '../ui/Field.tsx';
@@ -263,6 +263,8 @@ export function McpServerDialog({ server, autoCheck, initialError, onClose, onCh
       <div className={styles.dialogHead}>
         <h2 className={section.formTitle}>{current ? current.title : t.dialog}</h2>
         {current ? <Pill tone={current.status === 'enabled' ? 'ok' : current.status === 'draft' ? 'neutral' : 'bad'}>{t.states[current.status]}</Pill> : null}
+        {/* On a phone the window covers most of the screen: closing by Esc or past the window is not obvious. */}
+        <IconButton icon="x" label={t.close} className={styles.close} onClick={onClose} />
       </div>
       {initialError ? (
         <div className={styles.dialogNotice}>
