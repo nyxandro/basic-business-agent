@@ -2,7 +2,7 @@
 // the real sandbox — the fixtures of core/preview/fixtures, fictional. Not part of `pnpm test`: a dozen
 // conversions there would run out of time under the load of the whole parallel run.
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,7 @@ import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTE
 import { sandboxPath } from '../core/sandbox/environment.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../core/sandbox/limiter.ts';
 import { createDocTextService, DOC_TEXT_CACHE_SUFFIX } from '../core/doctext/service.ts';
+import { ORG_SCRIPTS_DIR, prepareBlank } from '../core/org-docs/blank.ts';
 import { SYSTEM_SKILLS_DIR } from '../core/skills-admin/system.ts';
 import { assertIsolationAvailable } from '../core/sandbox/workspace.ts';
 import { areaDir, userArea } from '../core/storage/areas.ts';
@@ -130,7 +131,39 @@ try {
 } finally {
   rmSync(textRoot, { recursive: true, force: true });
 }
-const total = EXPECTED.length + TEXT_EXPECTED.length;
+// The letterheads of the organisation (docs/specs/[20.11.2026]-org-letterhead.md): their copy without text keeps the headers,
+// the footers and everything above [[ТЕКСТ]], and none of the letter below; a letterhead drawn in the body without the line
+// leaves nothing and says so.
+const BLANK_FIXTURES = fileURLToPath(new URL('../core/org-docs/fixtures', import.meta.url));
+const BLANK_EXPECTED: { file: string; mark: boolean; bodyDrawing: boolean; has?: string; hasNot: string }[] = [
+  { file: 'header-footer.docx', mark: false, bodyDrawing: false, has: 'ИНН 7700000000', hasNot: 'Уважаемый' },
+  { file: 'body-table.docx', mark: false, bodyDrawing: true, hasNot: 'Альфа-Строй' },
+  { file: 'body-table-mark.docx', mark: true, bodyDrawing: false, has: 'Исх. №', hasNot: 'Уважаемый' },
+  { file: 'first-page.docx', mark: false, bodyDrawing: false, has: 'ИНН 7700000000', hasNot: 'Пункт' },
+  { file: 'split-mark.docx', mark: true, bodyDrawing: false, has: 'ИНН 7700000000', hasNot: 'ТЕК' },
+];
+const blankRoot = mkdtempSync(join(tmpdir(), 'bba-blank-check-'));
+try {
+  const blankDeps = { run: sandboxRunner({ venv: VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS), workRoot: blankRoot };
+  for (const want of BLANK_EXPECTED) {
+    const started = Date.now();
+    const made = await prepareBlank(blankDeps, readFileSync(join(BLANK_FIXTURES, want.file)));
+    const pdf = join(blankRoot, `${want.file}.pdf`);
+    writeFileSync(pdf, made.preview);
+    const text = execFileSync('pdftotext', [pdf, '-']).toString();
+    const problems = [
+      made.info.mark !== want.mark ? `mark ${made.info.mark}` : '',
+      made.info.bodyDrawing !== want.bodyDrawing ? `bodyDrawing ${made.info.bodyDrawing}` : '',
+      want.has && !text.includes(want.has) ? `no «${want.has}»` : '',
+      text.includes(want.hasNot) ? `has «${want.hasNot}»` : '',
+    ].filter(Boolean);
+    if (problems.length > 0) failures++;
+    console.log(`blank ${want.file.padEnd(20)} ${problems.length === 0 ? 'ok' : `FAIL  ${problems.join('; ')}`} (${Date.now() - started} ms)`);
+  }
+} finally {
+  rmSync(blankRoot, { recursive: true, force: true });
+}
+const total = EXPECTED.length + TEXT_EXPECTED.length + BLANK_EXPECTED.length;
 if (failures > 0) {
   console.error(`${failures} of ${total} checks failed`);
   process.exit(1);
