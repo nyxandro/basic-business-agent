@@ -197,6 +197,30 @@ p {
   }
 }
 
+/* The bell with something new (layout/ChatHeader.tsx): still most of the time, a short swing now and then. */
+@keyframes bba-bell-rare {
+  0%,
+  92%,
+  100% {
+    transform: rotate(0);
+  }
+  93% {
+    transform: rotate(16deg);
+  }
+  94.5% {
+    transform: rotate(-14deg);
+  }
+  96% {
+    transform: rotate(10deg);
+  }
+  97.5% {
+    transform: rotate(-6deg);
+  }
+  99% {
+    transform: rotate(3deg);
+  }
+}
+
 @keyframes bba-bell {
   0%,
   82%,

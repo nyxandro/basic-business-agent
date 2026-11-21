@@ -453,13 +453,15 @@
   position: relative;
 }
 
-.bellRinging {
-  color: var(--acc-text);
+/* Something new — a question waiting or an unread notification (owner, 22.11): the bell turns red and swings now and
+   then to catch the eye. */
+.bellAlert {
+  color: var(--bad);
 }
 
-.bellRinging svg {
-  transform-origin: 50% 15%;
-  animation: global(bba-bell) 3.2s ease-in-out infinite;
+.bellAlert svg {
+  transform-origin: 50% 12%;
+  animation: global(bba-bell-rare) 9s ease-in-out infinite;
 }
 
 /* The title of a screen in its header on a computer: a name, not a button. */
@@ -478,17 +480,19 @@
 
 .bellCount {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 18px;
-  height: 18px;
+  top: 0;
+  right: 0;
+  min-width: 20px;
+  height: 20px;
   padding: 0 4px;
   box-sizing: border-box;
   border-radius: var(--radius-pill);
-  background: var(--acc);
-  color: var(--on-acc);
+  border: 2px solid var(--bg);
+  background: var(--bad);
+  color: var(--bg);
   font-size: 10px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   display: grid;
   place-items: center;
 }

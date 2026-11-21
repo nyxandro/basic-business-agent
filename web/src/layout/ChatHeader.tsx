@@ -16,8 +16,9 @@ import styles from './shell.module.css';
 
 const PANEL_WIDTH_PX = 420;
 
-// Always there: the count is the questions waiting for the person plus unread notifications; it rings while a question
-// waits (mockup). On a computer the panel hangs under it; on a phone it opens as a sheet (layout/notifications.tsx).
+// Always there: the count is the questions waiting for the person plus unread notifications; with anything new it is red
+// and swings now and then (owner, 22.11). On a computer the panel hangs under it; on a phone it opens as a sheet
+// (layout/notifications.tsx).
 function Bell() {
   const { counts, panel, openPanel, closePanel } = useNotifications();
   const wide = useMedia(WIDE_QUERY);
@@ -33,7 +34,7 @@ function Bell() {
       aria-haspopup="dialog"
       aria-expanded={panel.open}
       onClick={() => (panel.open ? closePanel() : openPanel(waiting > 0 ? 'waiting' : 'list'))}
-      className={cx(styles.headerTitle, styles.bell, waiting > 0 && styles.bellRinging)}
+      className={cx(styles.headerTitle, styles.bell, total > 0 && styles.bellAlert)}
     >
       <Icon name="bell" />
       {total > 0 ? <span className={styles.bellCount}>{total}</span> : null}
