@@ -20,6 +20,7 @@ import { keepMemorySeen, personalMemoryText, projectMemoryText, seenVersions } f
 import { SHARED } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
+import { loadAccess } from '../auth/access.ts';
 import type { AgentAbilities } from '@bba/contracts';
 import { contextRoot, draftsPath, DRAFTS_KEEP_DAYS, listFiles } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
@@ -34,8 +35,17 @@ export function commandsRules(drafts: string): string {
 }
 const SWITCHED_OFF = 'выключен в настройках агента';
 export const COMMANDS_OFF = `Запуск программ тебе ${SWITCHED_OFF}: скрипты и программы ты не запускаешь, файлы Word, Excel, PowerPoint и PDF не создаёшь и не правишь, архивы не распаковываешь, документ дальше показанного фрагмента не дочитываешь. Если сотруднику нужно это — скажи, что запуск программ ${SWITCHED_OFF}, и сделай, что можешь, текстом.`;
-export const WEB_RULES = `## Интернет\n- Свежие сведения из интернета и чтение страниц по ссылкам — через \`web_research\`: опиши задание полностью (что найти, ссылки, в каком виде вернуть) — исследователь не видит этот разговор.\n- В ответе называй источники ссылками.\n- Не ищи в интернете то, что есть в документах, памяти и подключённых системах.`;
-export const WEB_OFF = `Интернета у тебя нет — он ${SWITCHED_OFF}. Если нужны свежие сведения из интернета, скажи об этом сотруднику; свои знания не выдавай за свежие.`;
+// What the model's own knowledge gets wrong by its age: checked on the internet, or named as unchecked without it.
+const CHANGEABLE = 'курсы и цены, законы, налоги, пошлины, штрафы, пороги и сроки по законам, тарифы, требования ведомств, кто руководит организацией, новости';
+export const WEB_RULES = [
+  '## Интернет',
+  '- Свежие сведения из интернета и чтение страниц по ссылкам — через `web_research`: опиши задание полностью (что найти, ссылки, в каком виде вернуть) — исследователь не видит этот разговор.',
+  '- В ответе называй источники ссылками.',
+  '- Не ищи в интернете то, что есть в документах, памяти и подключённых системах.',
+  `- Изменчивое — ${CHANGEABLE} — по своей памяти не называй как действующее. Если сотрудник спрашивает именно об этом или на этом значении стоит расчёт, который он просил, сверь через \`web_research\` сразу, не спрашивая разрешения: все такие значения ответа — одним заданием, уже проверенное в этом разговоре не перепроверяй. Назови источник и дату, на которую он это даёт, если источник её называет («по данным ЦБ на 3 октября»); проверенное не сопровождай оговорками «уточните сами». Упоминаешь мимоходом — отметь одной фразой, что не проверял и это могло измениться.`,
+  '- В задание исследователю клади только то, что нужно для поиска: название, ИНН и ОГРН организации или ИП, которую нужно проверить, — можно; переписку, внутренние документы организации и данные людей, не нужные для поиска, — нет. Человека из разговора не отождествляй с однофамильцем из поиска.',
+].join('\n');
+export const WEB_OFF = `Интернета у тебя нет — он ${SWITCHED_OFF}. Изменчивое — ${CHANGEABLE} — по своей памяти называй только с пометкой одной фразой: не проверено, могло измениться. Если нужны свежие сведения из интернета, скажи сотруднику, что интернет ${SWITCHED_OFF}.`;
 
 // The block of what the agent may do: it changes only with the switches, so the system prompt stays the same
 // from turn to turn.
@@ -59,6 +69,15 @@ export interface LayersDeps {
   // The agent whose prompt this is: a past conversation with another agent is named so.
   agentId: string;
   agentName: (id: string) => string;
+  // Every agent of the installation: the one the person talks to names the others open to them, to send a question
+  // outside its role there (the core's rules, «Твоя роль»).
+  agents: () => readonly AgentCard[];
+}
+
+export interface AgentCard {
+  id: string;
+  name: string;
+  description: string;
 }
 
 // The model sees this many project files by name; it lists the folder itself when it needs more.
@@ -107,6 +126,19 @@ export async function employeeLayer(db: Db, userId: string): Promise<string> {
     ['Должность', user?.position],
     ['Отделы', user?.departments?.join(', ')],
   ])!;
+}
+
+// The other agents the person may open (the superadmin — every one), where the agent sends a question outside its
+// role. None open — no layer: a person unknown to the directory has no department, so no agent either.
+export async function otherAgentsLayer(db: Db, userId: string, agentId: string, agents: readonly AgentCard[]): Promise<string | null> {
+  const access = await loadAccess(db, userId);
+  const open = agents.filter((a) => a.id !== agentId && (access?.isSuperadmin || access?.agentIds.has(a.id)));
+  if (open.length === 0) return null;
+  return [
+    '# Другие агенты сотрудника',
+    'К ним сотрудник переходит сам — выбирает агента по названию в шапке чата. Там начнётся новый разговор: этот разговор и его файлы другой агент не увидит — суть и файлы сотрудник передаст ему сам.',
+    ...open.map((a) => `- «${a.name}» — ${a.description}`),
+  ].join('\n');
 }
 
 function sizeText(bytes: number): string {
@@ -187,9 +219,12 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         : [null, 0];
       if (threadId && requestContext) keepHiddenNote(requestContext, hiddenMessagesNote(stored, LAST_MESSAGES));
       const conversations = past ? pastConversationsText(past, { currentAgentId: deps.agentId, agentName: deps.agentName, timezone: deps.timezone }) : null;
-      const [org, employee, project] = await Promise.all([
+      const [org, employee, others, project] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
+        // A sub-agent answers the agent that called it, not the person: it sends nobody anywhere. Without the core's
+        // rules no rule asks for the list.
+        deps.level === 'top' && deps.baseRules ? otherAgentsLayer(deps.db, userId, deps.agentId, deps.agents()) : Promise.resolve(null),
         projectId
           ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId, projectMemory ? projectMemoryText(projectMemory, deps.timezone) : null, conversations)
           : Promise.resolve(lost ? lostProjectLayer(JSON.parse(lost) as { name: string; reason: LostProjectReason }) : null),
@@ -205,6 +240,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
           ...systemMessages,
           { role: 'system' as const, content: org },
           { role: 'system' as const, content: employee },
+          ...(others ? [{ role: 'system' as const, content: others }] : []),
           ...(project ? [{ role: 'system' as const, content: project }] : []),
           ...(personalMemory ? [{ role: 'system' as const, content: personalMemoryText(personalMemory, deps.timezone) }] : []),
         ],

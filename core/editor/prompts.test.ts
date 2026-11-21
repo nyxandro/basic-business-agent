@@ -17,6 +17,7 @@ import { createMemory } from '../memory/memory.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 import { createFileStorage } from '../storage/engine.ts';
+import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
@@ -45,19 +46,20 @@ function runtime(passport: Partial<AgentPassport> & { id: string }, instructions
 
 const sales = runtime({ id: 'sales' }, 'Ты агент отдела продаж.');
 const raw = runtime({ id: 'raw', baseRules: false }, 'Ты агент без правил ядра.');
+const lawyer = runtime({ id: 'lawyer', name: 'Юрист', description: 'Проверяет договоры и претензии.' }, 'Ты юрист организации.');
 const registry: Registry = {
-  agents: [sales, raw],
-  get: (id) => [sales, raw].find((a) => a.passport.id === id),
-  ids: () => new Set(['sales', 'raw']),
+  agents: [sales, raw, lawyer],
+  get: (id) => [sales, raw, lawyer].find((a) => a.passport.id === id),
+  ids: () => new Set(['sales', 'raw', 'lawyer']),
   pluginMigrations: [],
   connectors: [],
   triggers: [],
 };
 
-async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string, threadId = `t-${Date.now()}`): Promise<string[]> {
+async function systemPromptOf(agentId: string, mode: 'published' | 'draft', projectId?: string, threadId = `t-${Date.now()}`, user = 'olga'): Promise<string[]> {
   const agent = await resolveAgent(deps, agentId, mode);
   const rc = new RequestContext();
-  rc.set(REQUEST_KEYS.userId, 'olga');
+  rc.set(REQUEST_KEYS.userId, user);
   rc.set(REQUEST_KEYS.runKind, mode === 'draft' ? 'draft' : 'chat');
   rc.set(REQUEST_KEYS.modelId, 'test-paid');
   rc.set(REQUEST_KEYS.skillPaths, '[]');
@@ -68,7 +70,7 @@ async function systemPromptOf(agentId: string, mode: 'published' | 'draft', proj
     rc.set(REQUEST_KEYS.projectOwnerId, 'olga');
   }
   model.script({ text: 'Ок.' });
-  await agent.generate('привет', { requestContext: rc, maxSteps: 1, memory: { thread: threadId, resource: 'olga' } });
+  await agent.generate('привет', { requestContext: rc, maxSteps: 1, memory: { thread: threadId, resource: user } });
   return model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content));
 }
 
@@ -141,6 +143,42 @@ describe('prompt layers', () => {
     const { messages } = await memory.recall({ threadId: 'time-check', resourceId: 'olga', perPage: false });
     expect(JSON.stringify(messages)).toContain('который час?');
     expect(JSON.stringify(messages)).not.toContain('Сейчас:');
+  });
+
+  it('names the other agents open to the employee after the employee, so an agent can send a question outside its role to one of them', async () => {
+    const other = '# Другие агенты сотрудника';
+    expect((await systemPromptOf('sales', 'published')).join('\n')).not.toContain(other);
+    await db.query(`INSERT INTO app.department_agents (department_id, agent_id) SELECT id, unnest(ARRAY['sales', 'lawyer']) FROM app.departments WHERE name = 'Продажи'`);
+    try {
+      const all = (await systemPromptOf('sales', 'published')).join('\n');
+      expect(all.indexOf(other)).toBeGreaterThan(all.indexOf('# Сотрудник, с которым ты говоришь'));
+      const layer = all.slice(all.indexOf(other));
+      expect(layer).toContain('- «Юрист» — Проверяет договоры и претензии.');
+      // Neither the agent itself nor an agent the employee has no access to.
+      expect(layer).not.toContain('«sales»');
+      expect(layer).not.toContain('«raw»');
+      // An agent without the core's rules has no rule that asks for the list.
+      expect((await systemPromptOf('raw', 'published')).join('\n')).not.toContain(other);
+      // A sub-agent answers the agent that called it, not the person.
+      const rc = new RequestContext();
+      for (const [key, value] of [[REQUEST_KEYS.userId, 'olga'], [REQUEST_KEYS.threadId, 'sub-check'], [REQUEST_KEYS.runKind, 'chat'], [REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}']] as const) rc.set(key, value);
+      const layersOf = (level: 'top' | 'sub') =>
+        createPromptLayersProcessor({ db, timezone: 'Europe/Moscow', baseRules: true, workspaceRoot, level, agentId: 'sales', agentName: (id) => id, agents: () => registry.agents.map((a) => a.passport) });
+      const systemOfLevel = async (level: 'top' | 'sub') =>
+        JSON.stringify((await layersOf(level).processInput({ messages: [], systemMessages: [], requestContext: rc } as never)).systemMessages);
+      expect(await systemOfLevel('top')).toContain(other);
+      expect(await systemOfLevel('sub')).not.toContain(other);
+      // The superadmin has every agent but the one it talks to.
+      await db.query(`INSERT INTO app.user_roles (user_id, role_id) SELECT 'igor', id FROM app.roles WHERE builtin = 'superadmin'`);
+      const admin = (await systemPromptOf('sales', 'published', undefined, `t-${Date.now()}`, 'igor')).join('\n');
+      const adminLayer = admin.slice(admin.indexOf(other));
+      expect(adminLayer).toContain('- «raw» — x');
+      expect(adminLayer).toContain('- «Юрист»');
+      expect(adminLayer).not.toContain('«sales»');
+    } finally {
+      await db.query(`DELETE FROM app.department_agents`);
+      await db.query(`DELETE FROM app.user_roles WHERE user_id = 'igor'`);
+    }
   });
 
   it('leaves the core rules out only when the passport says baseRules: false', async () => {

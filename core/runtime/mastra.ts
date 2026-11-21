@@ -87,6 +87,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const memoryTools = createMemoryTools(deps.db);
   // An agent no longer in the registry keeps its id as its name in the lists of past conversations.
   const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
+  const agentCards = () => deps.registry.agents.map(({ passport }) => ({ id: passport.id, name: passport.name, description: passport.description }));
   const historyTools = createHistoryTools({ db: deps.db, timezone: deps.app.timezone, agentName, workspaceRoot: deps.workspaceRoot, files: deps.files });
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
@@ -110,7 +111,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
         // hides personal data in it (spec, section 8.29).
         input: [
           docText,
-          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
+          createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName, agents: agentCards }),
           // The letterhead, the director and the stamp, after the layers (docs/specs/[20.11.2026]-org-letterhead.md).
           createOrgDocsPromptProcessor({ db: deps.db, filesDir: deps.orgFilesDir, level }),
           // Descriptions of components of earlier turns are not sent again (spec, section 8.31). Before the pictures:

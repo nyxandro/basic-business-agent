@@ -136,7 +136,7 @@ describe('past conversations in the prompt', () => {
       { level: 'top', runKind: 'draft' },
     ];
     for (const { level, runKind } of cases) {
-      const processor = createPromptLayersProcessor({ db: t.db, timezone: 'Europe/Moscow', baseRules: false, workspaceRoot: t.workspaceRoot, level, agentId: 'sales', agentName: (id) => id });
+      const processor = createPromptLayersProcessor({ db: t.db, timezone: 'Europe/Moscow', baseRules: false, workspaceRoot: t.workspaceRoot, level, agentId: 'sales', agentName: (id) => id, agents: () => [] });
       const rc = new RequestContext();
       for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, long], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}'], [REQUEST_KEYS.runKind, runKind], [REQUEST_KEYS.projectId, projectId], [REQUEST_KEYS.projectOwnerId, olgaId]] as const) rc.set(key, value);
       const out = await processor.processInput({ messages: [], systemMessages: [], requestContext: rc } as never);
@@ -151,7 +151,7 @@ describe('past conversations in the prompt', () => {
     const long = await conversation(olgaId, 'Длинный с помощником', Array.from({ length: 40 }, (_, i) => `[[${i + 1}]]`));
     const rc = new RequestContext();
     for (const [key, value] of [[REQUEST_KEYS.userId, olgaId], [REQUEST_KEYS.threadId, long], [REQUEST_KEYS.agentId, 'sales'], [REQUEST_KEYS.abilities, '{"web":true,"commands":true,"widgets":true}'], [REQUEST_KEYS.runKind, 'chat']] as const) rc.set(key, value);
-    const deps = { db: t.db, timezone: 'Europe/Moscow', baseRules: false, workspaceRoot: t.workspaceRoot, agentId: 'sales', agentName: (id: string) => id };
+    const deps = { db: t.db, timezone: 'Europe/Moscow', baseRules: false, workspaceRoot: t.workspaceRoot, agentId: 'sales', agentName: (id: string) => id, agents: () => [] };
     const top = createPromptLayersProcessor({ ...deps, level: 'top' });
     const sub = createPromptLayersProcessor({ ...deps, level: 'sub' });
     await top.processInput({ messages: [], systemMessages: [], requestContext: rc } as never);
