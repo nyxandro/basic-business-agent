@@ -12,7 +12,7 @@ export const notificationTexts = {
   waitingEmpty: 'Ничего не ждёт вашего решения',
   listEmpty: 'Новых уведомлений нет',
   listFailed: 'Не удалось загрузить уведомления',
-  readAll: 'Отметить все прочитанными',
+  readAll: 'Пометить как прочитанные',
   openAll: 'Открыть «Ждёт подтверждения»',
   unreadMark: 'Новое',
   fromConversation: (title: string) => `Из разговора «${title}»`,

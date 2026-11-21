@@ -66,7 +66,7 @@ describe('the bell', () => {
     expect(within(panel).getByText('Вам открыли проект «Тендер»')).toBeInTheDocument();
     expect(within(panel).getByLabelText('Новое')).toBeInTheDocument();
 
-    await user.click(within(panel).getByRole('button', { name: 'Отметить все прочитанными' }));
+    await user.click(within(panel).getByRole('button', { name: 'Пометить как прочитанные' }));
     await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/me/notifications/read')?.body).toEqual({ all: true }));
     expect(within(panel).queryByLabelText('Новое')).not.toBeInTheDocument();
   });

@@ -10,22 +10,44 @@
   padding: 0;
 }
 
-.head {
+/* The top line: «Пометить как прочитанные» in the middle, on a phone «Закрыть» at the right. */
+.top {
+  position: relative;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
+  min-height: 26px;
 }
 
-.title {
-  flex: 1;
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+.topCompact {
+  min-height: 44px;
 }
 
-.panelCompact .title {
-  font-size: 18px;
+.readAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.readAll:hover,
+.readAll:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.close {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .panel [role='radiogroup'] {
@@ -55,11 +77,6 @@
   border-radius: 16px;
   color: var(--muted);
   text-align: center;
-}
-
-.listHead {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .items {

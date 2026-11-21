@@ -1,9 +1,9 @@
 // The panel under the bell (docs/specs/[20.11.2026]-notifications.md, F3): «Ждут решения» — questions of background
 // tasks with «Да» / «Нет», questions of conversations leading to their card, only while something waits — and
 // «Уведомления» of 30 days with
-// «Отметить все прочитанными» and, while this browser is not on, the block «Включите уведомления…». On a computer it
+// «Пометить как прочитанные» at the top and, while this browser is not on, the block «Включите уведомления…». On a computer it
 // hangs under the bell; on a phone it is a sheet (`compact`).
-import type { NotificationItem, NotificationKind } from '@bba/contracts';
+import type { NotificationItem, NotificationKind, NotificationList } from '@bba/contracts';
 import { useCallback, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { fetchApprovals } from '../approvals/api.ts';
@@ -11,13 +11,13 @@ import { ApprovalLists } from '../approvals/ApprovalCards.tsx';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
 import { useNotifications } from '../layout/notifications.tsx';
-import { Button, cx, IconButton } from '../ui/Button.tsx';
+import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { whenLabel } from '../ui/format.ts';
 import { Icon, type IconName } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
-import { useLoad } from '../ui/use-load.ts';
+import { useLoad, type LoadState } from '../ui/use-load.ts';
 import { fetchList, markAllRead, markRead } from './api.ts';
 import { PushPrompt } from './PushControls.tsx';
 import styles from './notifications.module.css';
@@ -72,11 +72,10 @@ function Item({ item, onOpen }: { item: NotificationItem; onOpen: (item: Notific
   );
 }
 
-function List({ onClose }: { onClose: () => void }) {
-  const { state, reload } = useLoad(fetchList);
+// The list of what is not dealt with; the panel loads it — its top line holds «Пометить как прочитанные».
+function List({ state, reload, items, onClose }: { state: LoadState<NotificationList>; reload: () => void; items: NotificationItem[]; onClose: () => void }) {
   const { refresh } = useNotifications();
   const navigate = useNavigate();
-  const [allRead, setAllRead] = useState(false);
   const open = useCallback(
     (item: NotificationItem) => {
       markRead(item.id).then(refresh, (error: unknown) => console.warn('notification not marked read', error));
@@ -87,17 +86,8 @@ function List({ onClose }: { onClose: () => void }) {
   );
   if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner title={t.listFailed} error={state.error} onRetry={reload} />;
-  // The list holds only what is not dealt with (owner, 22.11): all read — nothing left.
-  const items = allRead ? [] : state.data.items;
   return (
     <>
-      {items.some((i) => !i.read) ? (
-        <div className={styles.listHead}>
-          <Button variant="ghost" size="sm" onClick={() => void markAllRead().then(() => (setAllRead(true), refresh()), (error: unknown) => console.warn('notifications not marked read', error))}>
-            {t.readAll}
-          </Button>
-        </div>
-      ) : null}
       {items.length === 0 ? (
         <p className={styles.empty}>{t.listEmpty}</p>
       ) : (
@@ -113,7 +103,7 @@ function List({ onClose }: { onClose: () => void }) {
 }
 
 export function NotificationsPanel({ compact, onClose }: { compact: boolean; onClose: () => void }) {
-  const { counts, panel, openPanel } = useNotifications();
+  const { counts, panel, openPanel, refresh } = useNotifications();
   const waiting = counts?.pendingApprovals ?? 0;
   const unread = counts?.unread ?? 0;
   // «Ждут решения» is there only while something waits (owner, 22.11: an empty tab is extra layout). Once shown, it stays
@@ -126,12 +116,27 @@ export function NotificationsPanel({ compact, onClose }: { compact: boolean; onC
     setChosen(next);
     openPanel(next);
   };
+  const { state, reload } = useLoad(fetchList);
+  // The list holds only what is not dealt with (owner, 22.11): all read — nothing left.
+  const [cleared, setCleared] = useState(false);
+  const items = state.status === 'ready' && !cleared ? state.data.items : [];
+  const readAll = () => markAllRead().then(() => (setCleared(true), refresh()), (error: unknown) => console.warn('notifications not marked read', error));
+  // No title (owner, 22.11: «заголовок не нужен»). At the very top, in the middle, small: «Пометить как прочитанные» with
+  // its icon (owner, 22.11); on a phone «Закрыть» at the right of the same line.
+  const canReadAll = tab === 'list' && items.length > 0;
   return (
     <div className={cx(styles.panel, compact && styles.panelCompact)}>
-      <div className={styles.head}>
-        <h2 className={styles.title}>{t.bell}</h2>
-        {compact ? <IconButton icon="x" label={ru.approvals.close} onClick={onClose} /> : null}
-      </div>
+      {canReadAll || compact ? (
+        <div className={cx(styles.top, compact && styles.topCompact)}>
+          {canReadAll ? (
+            <button type="button" className={styles.readAll} onClick={() => void readAll()}>
+              <Icon name="check" size={14} />
+              {t.readAll}
+            </button>
+          ) : null}
+          {compact ? <IconButton icon="x" label={ru.approvals.close} onClick={onClose} className={styles.close} /> : null}
+        </div>
+      ) : null}
       {withWaiting ? (
         <Segmented
           label={t.bell}
@@ -143,7 +148,7 @@ export function NotificationsPanel({ compact, onClose }: { compact: boolean; onC
           ]}
         />
       ) : null}
-      <div className={cx(styles.body, !compact && 'scroll-thin')}>{tab === 'waiting' ? <Waiting compact={compact} onClose={onClose} /> : <List onClose={onClose} />}</div>
+      <div className={cx(styles.body, !compact && 'scroll-thin')}>{tab === 'waiting' ? <Waiting compact={compact} onClose={onClose} /> : <List state={state} reload={reload} items={items} onClose={onClose} />}</div>
     </div>
   );
 }
