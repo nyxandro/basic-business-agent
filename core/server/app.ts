@@ -36,6 +36,7 @@ import type { FileStorage } from '../storage/engine.ts';
 import { registerStorageRoutes } from '../storage/routes.ts';
 import { registerMailRoutes } from '../mail/routes.ts';
 import { registerMemoryRoutes } from '../memory/routes.ts';
+import { registerOrgDocsRoutes, type OrgDocsRouteDeps } from '../org-docs/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
@@ -62,6 +63,8 @@ export interface ServerDeps {
   storage: FileStorage;
   // PDFs of Word, Excel and PowerPoint files for the viewer (spec, section 8.27).
   preview: PreviewService;
+  // The letterhead, the logo, the stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md).
+  org: Omit<OrgDocsRouteDeps, 'db'>;
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -97,6 +100,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
+  registerOrgDocsRoutes(app, { db: deps.db, ...deps.org });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });
   registerModelRoutes(app, deps.models, deps.accounts);
   registerSkillRoutes(app, deps.skills);

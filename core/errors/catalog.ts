@@ -148,6 +148,19 @@ export const ERROR_CATALOG = {
     userMessage: 'Программы-серверы в этой установке не включены: нет контейнера mcp-runner. Подключите систему по адресу или попросите того, кто ставил установку, включить его.',
   },
   APP_MCP_OAUTH_NEEDS_HTTPS: { status: 409, userMessage: 'Вход через сайт системы работает только когда установка открыта по https.' },
+  // The letterhead, the stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md).
+  APP_ORG_BLANK_FORMAT: { status: 400, userMessage: 'Нужен бланк в формате Word (.docx). Откройте файл в Word и сохраните как .docx.' },
+  APP_ORG_BLANK_BROKEN: { status: 422, userMessage: 'Бланк не открывается: он защищён паролем или повреждён. Выберите другой файл.' },
+  APP_ORG_IMAGE_FORMAT: { status: 400, userMessage: 'Нужна картинка PNG или JPEG. Выберите другую.' },
+  APP_SIGN_FORBIDDEN_KIND: {
+    status: 422,
+    userMessage: 'На счёте-фактуре, УПД и доверенности факсимиле подписи не допускается — подпишите документ от руки или электронной подписью.',
+  },
+  APP_SIGN_NOT_ALLOWED: { status: 403, userMessage: 'Печать и подпись руководителя ставят только ответственные лица. Документ готов со строкой для подписи.' },
+  APP_SIGN_NOT_UPLOADED: { status: 409, userMessage: 'Печать организации не загружена. Суперадминистратор может добавить её в «Профиле организации».' },
+  APP_SIGN_NO_MARKS: { status: 422, userMessage: 'В документе нет места для подписи: метки [[ПОДПИСЬ_РУКОВОДИТЕЛЯ]].' },
+  APP_SIGN_FORMAT: { status: 422, userMessage: 'Печать и подпись ставятся только в документ Word (.docx).' },
+  APP_SIGN_FAILED: { status: 500, userMessage: 'Не получилось поставить печать и подпись. Попробуйте ещё раз; если повторяется — сообщите код ошибки администратору.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

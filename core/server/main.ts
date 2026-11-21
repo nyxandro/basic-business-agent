@@ -43,6 +43,8 @@ import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
 import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, PREVIEW_CACHE_SUFFIX, startPreviewPurge } from '../preview/cache.ts';
 import { sandboxRunner } from '../preview/convert.ts';
+import { cleanBlankWork, ORG_SCRIPTS_DIR } from '../org-docs/blank.ts';
+import { ORG_FILES_DIR, prepareOrgFiles } from '../org-docs/files.ts';
 import { cleanWorkRoot, createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import { cleanDocTextWork, createDocTextService, DOC_TEXT_CACHE_DIR, DOC_TEXT_CACHE_MAX_AGE_MS, DOC_TEXT_CACHE_MAX_BYTES, DOC_TEXT_CACHE_SUFFIX } from '../doctext/service.ts';
 import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
@@ -120,6 +122,12 @@ async function main(): Promise<void> {
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   cleanWorkRoot(tmpdir());
+  // The letterhead and the logo laid out for agents; blank.py and LibreOffice prepare an uploaded letterhead
+  // (docs/specs/[20.11.2026]-org-letterhead.md).
+  const orgFilesDir = join(tmpdir(), ORG_FILES_DIR);
+  await prepareOrgFiles(db, orgFilesDir);
+  cleanBlankWork(tmpdir());
+  const org = { filesDir: orgFilesDir, blank: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: officeLimiter, workRoot: tmpdir() } };
   // The text of attached documents for the model: made in the sandbox, kept a week like the viewer's PDFs (8.29).
   const docTextCache = createPreviewCache({ dir: join(tmpdir(), DOC_TEXT_CACHE_DIR), suffix: DOC_TEXT_CACHE_SUFFIX, maxBytes: DOC_TEXT_CACHE_MAX_BYTES, maxAgeMs: DOC_TEXT_CACHE_MAX_AGE_MS });
   const pptxScripts = join(SYSTEM_SKILLS_DIR, 'pptx', 'scripts');
@@ -157,7 +165,7 @@ async function main(): Promise<void> {
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);

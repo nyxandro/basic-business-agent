@@ -50,6 +50,8 @@ import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS, type FileStorage } from '../storage/engine.ts';
 import { createPreviewCache, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, PREVIEW_CACHE_SUFFIX } from '../preview/cache.ts';
 import { sandboxRunner, type RunCommand } from '../preview/convert.ts';
+import { ORG_SCRIPTS_DIR } from '../org-docs/blank.ts';
+import { prepareOrgFiles } from '../org-docs/files.ts';
 import { createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import { createDocTextService, DOC_TEXT_CACHE_MAX_AGE_MS, DOC_TEXT_CACHE_MAX_BYTES, DOC_TEXT_CACHE_SUFFIX } from '../doctext/service.ts';
 import type { ObjectStore, S3Config } from '../storage/object-store.ts';
@@ -98,6 +100,8 @@ export interface TestApp {
   skillsDir: string;
   // What the skills routes and runtime of this installation work with (system skills included).
   skillsDeps: SkillsDeps;
+  // Where the letterhead and the logo are laid out for agents (docs/specs/[20.11.2026]-org-letterhead.md).
+  orgFilesDir: string;
   // Actions the test agent "sales" performed (its mail_send tool).
   sentMail: { to: string; text: string }[];
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
@@ -200,6 +204,8 @@ export async function createTestApp(
     // How the text of an attached document is made (spec, section 8.29): without `sandbox`, no program runs —
     // plain text, letters and pages without programs still give their text.
     docTextRun?: RunCommand;
+    // How an uploaded letterhead is prepared (blank.py and LibreOffice): without `sandbox`, no program runs.
+    orgRun?: RunCommand;
   } = {},
 ): Promise<TestApp> {
   const database = await createTestDatabase();
@@ -347,7 +353,13 @@ export async function createTestApp(
     workRoot: previewRoot,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
+  const orgFilesDir = join(previewRoot, 'org-files');
+  await prepareOrgFiles(db, orgFilesDir);
+  const org = {
+    filesDir: orgFilesDir,
+    blank: { run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }) : (opts.orgRun ?? noProgram), limiter: officeLimiter, workRoot: previewRoot },
+  };
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview, org });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -387,6 +399,7 @@ export async function createTestApp(
     memory,
     skillsDir,
     skillsDeps,
+    orgFilesDir,
     sentMail,
     call,
     roleId,
