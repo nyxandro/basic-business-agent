@@ -201,3 +201,8 @@
   line-height: 1.45;
   color: var(--muted);
 }
+
+/* Under the head of a card (ui/Display.tsx: CardHead has its own inset). */
+.cardBody {
+  padding: 0 18px 18px;
+}

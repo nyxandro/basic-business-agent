@@ -152,11 +152,15 @@
 }
 
 /* «Подтверждения»: the two terms side by side, one under the other on a phone. */
+.termsBody {
+  padding: 0 18px 18px;
+}
+
 .terms {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
-  margin: 14px 0 6px;
+  margin: 0 0 6px;
 }
 
 .termsNote {

@@ -26,11 +26,13 @@ function hoursOf(text: string): number | null {
 export function ApprovalTerms() {
   const { state, reload } = useLoad(adminApi.approvalSettings);
   return (
-    <Card padded className="rise">
+    <Card className="rise">
       <CardHead title={t.title} sub={t.sub} />
-      {state.status === 'loading' ? <DelayedBar /> : null}
-      {state.status === 'error' ? <ErrorBanner title={t.loadFailed} error={state.error} onRetry={reload} /> : null}
-      {state.status === 'ready' ? <TermsForm initial={state.data} /> : null}
+      <div className={styles.termsBody}>
+        {state.status === 'loading' ? <DelayedBar /> : null}
+        {state.status === 'error' ? <ErrorBanner title={t.loadFailed} error={state.error} onRetry={reload} /> : null}
+        {state.status === 'ready' ? <TermsForm initial={state.data} /> : null}
+      </div>
     </Card>
   );
 }

@@ -9,9 +9,11 @@ import styles from '../notifications/notifications.module.css';
 export function NotificationsPage() {
   return (
     <PageFrame title={t.settingsTitle} lead={t.settingsLead}>
-      <Card padded className="rise">
+      <Card className="rise">
         <CardHead title={t.inThisBrowser} sub={t.everyDevice} />
-        <PushSettings />
+        <div className={styles.cardBody}>
+          <PushSettings />
+        </div>
       </Card>
       <p className={styles.note}>{t.quietHours}</p>
     </PageFrame>
