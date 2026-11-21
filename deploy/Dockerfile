@@ -52,8 +52,8 @@ COPY . .
 # workspaces, the unpacked skills, the generated LiteLLM config (compose: one-shot service litellm-config),
 # the login files of the ChatGPT accounts and, in the container mcp-runner, the packages of program servers.
 RUN useradd --system --create-home --uid 10001 app \
-  && mkdir -p /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth /packages \
-  && chown app /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth /packages \
+  && mkdir -p /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth /packages /run/mcp-runner \
+  && chown app /workspace /app/deploy/litellm /app/skills-unpacked /chatgpt-auth /packages /run/mcp-runner \
   && chmod 700 /chatgpt-auth
 ENV NODE_ENV=production
 USER app

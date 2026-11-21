@@ -108,9 +108,12 @@ reach() { compose exec -T mcp-runner node -e "const s = require('net').connect({
 check "mcp-runner does not reach the database" closed "$(reach db 5432)"
 check "mcp-runner does not reach LiteLLM" closed "$(reach litellm 4000)"
 check "mcp-runner does not reach SearXNG" closed "$(reach searxng 8080)"
+check "mcp-runner does not reach the app (its sign-in and internal addresses)" closed "$(reach app 3000)"
 check "mcp-runner reaches the internet (a package registry)" open "$(reach registry.npmjs.org 443)"
-check "the app reaches mcp-runner" 200 "$(compose exec -T app node -e "fetch('http://mcp-runner:3100/health').then((r) => console.log(r.status), () => console.log('down'))")"
-check "mcp-runner refuses a request the app did not sign" 500 "$(compose exec -T app node -e "fetch('http://mcp-runner:3100/servers/0b8f5d6e-1c2a-4f3b-9d4e-5a6b7c8d9e0f/prepare', { method: 'POST' }).then((r) => console.log(r.status), () => console.log('down'))")"
+# The app talks to mcp-runner through the socket in their shared volume only.
+via_socket() { compose exec -T app node -e "require('http').request({ socketPath: '/run/mcp-runner/runner.sock', path: '$2', method: '$1' }, (r) => console.log(r.statusCode)).on('error', () => console.log('down')).end()"; }
+check "the app reaches mcp-runner through its socket" 200 "$(via_socket GET /health)"
+check "mcp-runner refuses a request the app did not sign" 500 "$(via_socket POST /servers/0b8f5d6e-1c2a-4f3b-9d4e-5a6b7c8d9e0f/prepare)"
 check "a program in the isolation of mcp-runner starts and sees only its folder" ok "$(compose exec -T mcp-runner bwrap --unshare-all --share-net --die-with-parent --clearenv --tmpfs /tmp --proc /proc --dev /dev --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind-try /lib64 /lib64 --ro-bind /bin /bin /usr/local/bin/node -e "console.log(require('fs').existsSync('/app') || require('fs').existsSync('/packages') ? 'sees more' : 'ok')" 2>&1)"
 
 echo "== login files of the ChatGPT accounts (volume chatgpt-auth)"

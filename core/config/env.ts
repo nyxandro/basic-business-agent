@@ -23,11 +23,12 @@ export const coreEnvSchema = z.object({
   APP_SKILLS_DIR: z.string().startsWith('/', 'must be an absolute path'),
   // Login files of the ChatGPT accounts, shared with LiteLLM (/chatgpt-auth in its container).
   APP_CHATGPT_AUTH_DIR: z.string().startsWith('/', 'must be an absolute path'),
-  // The container of program servers (http://mcp-runner:3100 in deploy/compose.yaml) and the secret of its requests.
-  MCP_RUNNER_URL: z.url().optional(),
+  // The socket of the container of program servers (a volume shared with the app in deploy/compose.yaml) and the
+  // secret of its requests.
+  MCP_RUNNER_SOCKET: z.string().startsWith('/', 'must be an absolute path').optional(),
   MCP_RUNNER_SECRET: secret.optional(),
-}).refine((env) => (env.MCP_RUNNER_URL === undefined) === (env.MCP_RUNNER_SECRET === undefined), {
-  message: 'MCP_RUNNER_URL and MCP_RUNNER_SECRET go together: set both or neither',
+}).refine((env) => (env.MCP_RUNNER_SOCKET === undefined) === (env.MCP_RUNNER_SECRET === undefined), {
+  message: 'MCP_RUNNER_SOCKET and MCP_RUNNER_SECRET go together: set both or neither',
   path: ['MCP_RUNNER_SECRET'],
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;

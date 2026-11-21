@@ -96,15 +96,13 @@ services:
       # Unpacked copies of uploaded skills; the archives are in the database, so no volume is needed.
       APP_SKILLS_DIR: /app/skills-unpacked
       APP_CHATGPT_AUTH_DIR: /chatgpt-auth
-      MCP_RUNNER_URL: http://mcp-runner:3100
+      MCP_RUNNER_SOCKET: /run/mcp-runner/runner.sock
       MCP_RUNNER_SECRET: ${MCP_RUNNER_SECRET:?set MCP_RUNNER_SECRET in deploy/.env}
-    # The app is the only service on both networks: mcp-runner reaches nothing of the installation but it.
-    networks:
-      - default
-      - programs
     volumes:
       - workspace:/workspace
       - chatgpt-auth:/chatgpt-auth
+      # The app reaches mcp-runner through its socket: they share no network.
+      - mcp-runner-socket:/run/mcp-runner
     # bubblewrap isolates skill scripts with user namespaces: Docker's default seccomp profile plus
     # the 7 calls of the isolation (tooling/seccomp/build-profile.ts). No extra capabilities.
     security_opt:
@@ -123,8 +121,9 @@ services:
     restart: unless-stopped
 
   # Program servers of MCP the admin adds (npx, uvx; docs/specs/[20.11.2026]-mcp-connections.md, F1, the owner's
-  # decision 21.11): each runs in bubblewrap here, in a container only on the network «programs» with the app — the
-  # internet and the office's network are reachable, the database, LiteLLM and SearXNG are not.
+  # decision 21.11): each runs in bubblewrap here, in a container alone on the network «programs» — the internet and
+  # the office's network are reachable; the app, the database, LiteLLM and SearXNG are not. The app talks to it through
+  # a socket in the volume mcp-runner-socket.
   mcp-runner:
     image: bba-app:local
     build:
@@ -139,10 +138,11 @@ services:
     volumes:
       # Packages are installed once, when the admin checks a server; later starts need no registry.
       - mcp-runner-packages:/packages
+      - mcp-runner-socket:/run/mcp-runner
     security_opt:
       - seccomp=./seccomp-bwrap.json
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3100/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get({ socketPath: '/run/mcp-runner/runner.sock', path: '/health' }, (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -170,7 +170,7 @@ services:
     restart: unless-stopped
 
 networks:
-  # Only the app and mcp-runner: programs reach the internet through it, not the database.
+  # mcp-runner alone: programs reach the internet through it, nothing of the installation.
   programs:
 
 volumes:
@@ -180,3 +180,4 @@ volumes:
   chatgpt-auth:
   caddy-data:
   mcp-runner-packages:
+  mcp-runner-socket:

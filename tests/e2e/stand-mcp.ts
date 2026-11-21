@@ -3,7 +3,6 @@
 // package from npm; the sandbox is real). The scenarios type the addresses, so the ports are fixed.
 import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +20,7 @@ export const STAND_MCP = {
 const SECRET = 'stand-mcp-runner-secret-0123456789abcdef';
 const FIXTURE = fileURLToPath(new URL('../../core/mcp-runner/fixtures/echo-server', import.meta.url));
 
-export async function startStandMcp(): Promise<{ runner: { url: string; secret: string }; close(): Promise<void> }> {
+export async function startStandMcp(): Promise<{ runner: { socketPath: string; secret: string }; close(): Promise<void> }> {
   const keyed = await startTestMcpServer({ port: 39201 });
   const signIn = await startTestOAuthServer({ dynamicRegistration: true, port: 39203 });
   const portal = await startTestMcpServer({ port: 39202, signIn: { where: 'challenge', authorizationServer: signIn.issuer } });
@@ -38,10 +37,12 @@ export async function startStandMcp(): Promise<{ runner: { url: string; secret: 
     },
     log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
   });
+  // The app reaches mcp-runner through a socket, as in an installation (deploy/compose.yaml).
+  const socketPath = join(packages, 'runner.sock');
   const http = createServer((req, res) => void runner.handle(req, res));
-  await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => http.listen(socketPath, resolve));
   return {
-    runner: { url: `http://127.0.0.1:${(http.address() as AddressInfo).port}`, secret: SECRET },
+    runner: { socketPath, secret: SECRET },
     async close() {
       await runner.close();
       await new Promise<void>((resolve) => http.close(() => resolve()));

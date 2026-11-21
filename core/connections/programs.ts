@@ -4,14 +4,19 @@
 import type { McpField, McpProgram } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
 import { runnerPath, signedHeaders, type ProgramSpec } from '../mcp-runner/protocol.ts';
+import { unixFetch } from '../mcp-runner/unix-fetch.ts';
 import { isNetworkFailure, safeCause } from './log-safe.ts';
 import { fillTemplate } from './templates.ts';
 
-// Where mcp-runner is and the secret of its requests; null — the installation has no container of programs.
+// The socket of mcp-runner (in a volume shared with the app; no network between them) and the secret of its requests;
+// null — the installation has no container of programs.
 export interface RunnerAccess {
-  url: string;
+  socketPath: string;
   secret: string;
 }
+
+// The host of the address is not used: requests go to the socket.
+const RUNNER_BASE = 'http://mcp-runner';
 
 // Installing a package may take minutes; a started program answers at once.
 const PREPARE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -24,7 +29,7 @@ const PACKAGE_REASONS: Record<string, string> = {
   network: 'хранилище пакетов не ответило',
 };
 
-export const runnerNotConfigured = () => appError('APP_MCP_RUNNER_NOT_CONFIGURED', 'mcp-runner is not configured (MCP_RUNNER_URL, MCP_RUNNER_SECRET)');
+export const runnerNotConfigured = () => appError('APP_MCP_RUNNER_NOT_CONFIGURED', 'mcp-runner is not configured (MCP_RUNNER_SOCKET, MCP_RUNNER_SECRET)');
 
 export function requireRunner(runner: RunnerAccess | null): RunnerAccess {
   if (!runner) throw runnerNotConfigured();
@@ -46,14 +51,15 @@ export function programSpecOf(program: McpProgram, envTemplates: Record<string, 
   return { runner: program.runner, package: program.package, args: program.args, env };
 }
 
-export const programUrl = (runner: RunnerAccess, serverId: string) => new URL(runnerPath(serverId, 'mcp'), runner.url);
+export const programUrl = (_runner: RunnerAccess, serverId: string) => new URL(runnerPath(serverId, 'mcp'), RUNNER_BASE);
 
 // The signed request of every call: the signature is fresh, mcp-runner refuses one older than a few minutes.
 export function signedFetch(runner: RunnerAccess, serverId: string, spec: ProgramSpec) {
+  const viaSocket = unixFetch(runner.socketPath);
   return (url: string | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     for (const [name, value] of Object.entries(signedHeaders(runner.secret, serverId, spec))) headers.set(name, value);
-    return fetch(url, { ...init, headers });
+    return viaSocket(url, { ...init, headers });
   };
 }
 
@@ -61,7 +67,7 @@ export function signedFetch(runner: RunnerAccess, serverId: string, spec: Progra
 export async function prepareProgram(runner: RunnerAccess, serverId: string, spec: ProgramSpec): Promise<void> {
   let response: Response;
   try {
-    response = await signedFetch(runner, serverId, spec)(new URL(runnerPath(serverId, 'prepare'), runner.url), { method: 'POST', signal: AbortSignal.timeout(PREPARE_TIMEOUT_MS) });
+    response = await signedFetch(runner, serverId, spec)(new URL(runnerPath(serverId, 'prepare'), RUNNER_BASE), { method: 'POST', signal: AbortSignal.timeout(PREPARE_TIMEOUT_MS) });
   } catch (error) {
     if (isNetworkFailure(error)) throw appError('APP_MCP_UNREACHABLE', 'mcp-runner does not answer', { cause: safeCause(error), userMessage: 'Контейнер программ-серверов не отвечает. Попробуйте через минуту; если повторяется — сообщите тому, кто ставил установку.' });
     throw error;

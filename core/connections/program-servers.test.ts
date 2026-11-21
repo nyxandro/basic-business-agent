@@ -4,7 +4,6 @@
 import { mkdtempSync } from 'node:fs';
 import { cp, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,9 +39,11 @@ beforeAll(async () => {
     },
     log: () => undefined,
   });
+  // The app reaches mcp-runner through a socket, as in an installation (deploy/compose.yaml).
+  const socketPath = join(packages, 'runner.sock');
   http = createServer((req, res) => void runner.handle(req, res));
-  await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
-  t = await createTestApp({ mcpRunner: { url: `http://127.0.0.1:${(http.address() as AddressInfo).port}`, secret: SECRET } });
+  await new Promise<void>((resolve) => http.listen(socketPath, resolve));
+  t = await createTestApp({ mcpRunner: { socketPath, secret: SECRET } });
   await t.createUser({ email: 'igor@example.com', roleIds: [await t.roleId('superadmin')] });
   admin = await t.signIn('igor@example.com');
   const sales = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Отдел продаж') RETURNING id`)).rows[0]!.id;

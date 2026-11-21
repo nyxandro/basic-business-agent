@@ -1,13 +1,14 @@
 // The entry of the mcp-runner container (deploy/compose.yaml; docs/specs/[20.11.2026]-mcp-connections.md, F1, step 9):
 // serves the program servers of MCP to the app on its own network. Its only setting is the secret it shares with the
 // app; without it nothing starts.
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { logEvent } from '../server/log.ts';
 import { installProgram } from './install.ts';
 import { createRunner } from './runner.ts';
 
-const PORT = 3100;
+// In the volume shared with the app (deploy/compose.yaml): there is no network between them.
+const SOCKET = '/run/mcp-runner/runner.sock';
 const PACKAGES_DIR = '/packages';
 const IDLE_MS = 30 * 60 * 1000;
 const BWRAP = '/usr/bin/bwrap';
@@ -34,7 +35,9 @@ const server = createServer((req, res) => {
     if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'APP_INTERNAL', message: 'mcp-runner failed' } }));
   });
 });
-server.listen(PORT, () => logEvent('info', 'mcp_runner_started', { port: PORT }));
+// A socket left by a stopped container would refuse the new one.
+rmSync(SOCKET, { force: true });
+server.listen(SOCKET, () => logEvent('info', 'mcp_runner_started', { socket: SOCKET }));
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     server.close();

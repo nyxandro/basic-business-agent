@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   await ensureMessageTexts(db);
   const memory = createMemory(storage);
   // Program servers only with the container mcp-runner (docs/specs/[20.11.2026]-mcp-connections.md, F1).
-  const mcpRunner = env.MCP_RUNNER_URL && env.MCP_RUNNER_SECRET ? { url: env.MCP_RUNNER_URL, secret: env.MCP_RUNNER_SECRET } : null;
+  const mcpRunner = env.MCP_RUNNER_SOCKET && env.MCP_RUNNER_SECRET ? { socketPath: env.MCP_RUNNER_SOCKET, secret: env.MCP_RUNNER_SECRET } : null;
   const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors, runner: mcpRunner });
   // The commands of the sandbox and LibreOffice's runs: each its own queue for the whole installation (8.7, 8.27).
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
