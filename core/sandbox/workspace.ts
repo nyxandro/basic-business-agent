@@ -72,6 +72,8 @@ export interface SandboxDeps {
   workspaceRoot: string;
   skillsVenv: string;
   limiter: Limiter;
+  // The letterhead and the logo of the organisation, read-only (core/org-docs/files.ts); a sandbox without it sees none.
+  orgFilesDir?: string;
 }
 
 type Ctx = { get(key: string): unknown } | undefined;
@@ -120,7 +122,8 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
   const workspace: Workspace = new Workspace({
     filesystem: ({ requestContext }) => new LocalFilesystem({ basePath: dirOf(requestContext), allowedPaths: skillPathsOf(requestContext) }),
     sandbox: ({ requestContext }) => {
-      const sandbox = limitedSandbox(sandboxOptions(deps.skillsVenv, dirOf(requestContext), skillPathsOf(requestContext), isolation), deps.limiter);
+      const readOnly = [...skillPathsOf(requestContext), ...(deps.orgFilesDir ? [deps.orgFilesDir] : [])];
+      const sandbox = limitedSandbox(sandboxOptions(deps.skillsVenv, dirOf(requestContext), readOnly, isolation), deps.limiter);
       kept.set(keyOf(requestContext), { sandbox, usedAt: keep.now() });
       return sandbox;
     },

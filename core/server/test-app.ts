@@ -288,6 +288,9 @@ export async function createTestApp(
   const backgroundRef: { current?: BackgroundService } = {};
   const workflow = createBackgroundWorkflow(() => backgroundRef.current!);
   const previewRoot = mkdtempSync(join(tmpdir(), 'bba-test-preview-'));
+  // The letterhead and the logo laid out for the agents of this test installation.
+  const orgFilesDir = join(previewRoot, 'org-files');
+  await prepareOrgFiles(db, orgFilesDir);
   // LibreOffice's runs of the viewer and of the text of documents share one queue, as in core/server/main.ts.
   const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
@@ -311,6 +314,7 @@ export async function createTestApp(
     workspaceRoot,
     files,
     docText,
+    orgFilesDir,
     ...(opts.firstChunkMs ? { firstChunkMs: opts.firstChunkMs } : {}),
     ...(opts.stepMs ? { stepMs: opts.stepMs } : {}),
     connections,
@@ -322,7 +326,7 @@ export async function createTestApp(
     },
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
-      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter }, isolation: assertIsolationAvailable() } }
+      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir }, isolation: assertIsolationAvailable() } }
       : {}),
   });
   const editor = { db, mastra, registry };
@@ -353,8 +357,6 @@ export async function createTestApp(
     workRoot: previewRoot,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
-  const orgFilesDir = join(previewRoot, 'org-files');
-  await prepareOrgFiles(db, orgFilesDir);
   const org = {
     filesDir: orgFilesDir,
     blank: { run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }) : (opts.orgRun ?? noProgram), limiter: officeLimiter, workRoot: previewRoot },

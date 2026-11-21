@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
   const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
   const sandbox = {
-    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: commandLimiter },
+    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir: join(tmpdir(), ORG_FILES_DIR) },
     isolation: assertIsolationAvailable(),
   };
   assertSandboxEnvironment(SKILLS_VENV);
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   cleanWorkRoot(tmpdir());
   // The letterhead and the logo laid out for agents; blank.py and LibreOffice prepare an uploaded letterhead
   // (docs/specs/[20.11.2026]-org-letterhead.md).
-  const orgFilesDir = join(tmpdir(), ORG_FILES_DIR);
+  const orgFilesDir = sandbox.deps.orgFilesDir;
   await prepareOrgFiles(db, orgFilesDir);
   cleanBlankWork(tmpdir());
   const org = { filesDir: orgFilesDir, blank: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: officeLimiter, workRoot: tmpdir() } };
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;

@@ -26,6 +26,7 @@ import type { FileStorage } from '../storage/engine.ts';
 import { createStreamRetry } from './stream-retry.ts';
 import { createWebTools, type WebDeps } from '../web/research.ts';
 import { createWidgetHistoryProcessor } from '../widgets/history.ts';
+import { createOrgDocsPromptProcessor } from '../org-docs/prompt.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -46,6 +47,8 @@ export interface MastraRuntimeDeps {
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // The text of attached documents for the model (spec, section 8.29).
   docText: DocTextService;
+  // Where the letterhead and the logo are laid out for agents (docs/specs/[20.11.2026]-org-letterhead.md).
+  orgFilesDir: string;
   // The mailboxes of employees (spec, section 8.24).
   mail?: MailService;
   // The internet of agents (spec, section 8.30): the search, the reader of pages and the translation of a failed
@@ -108,6 +111,8 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
         input: [
           docText,
           createPromptLayersProcessor({ db: deps.db, timezone: deps.app.timezone, baseRules: r.passport.baseRules !== false, workspaceRoot: deps.workspaceRoot, level, agentId: r.passport.id, agentName }),
+          // The letterhead, the director and the stamp, after the layers (docs/specs/[20.11.2026]-org-letterhead.md).
+          createOrgDocsPromptProcessor({ db: deps.db, filesDir: deps.orgFilesDir, level }),
           // Descriptions of components of earlier turns are not sent again (spec, section 8.31). Before the pictures:
           // they come as a message of their own at the end, and would be taken for the person's latest message.
           ...(level === 'top' ? [widgetHistory] : []),
