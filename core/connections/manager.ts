@@ -18,7 +18,7 @@ import { logEvent } from '../server/log.ts';
 import { deleteCredential, loadCredential, saveCredential, setCredentialStatus, type CredentialStatus } from './credentials.ts';
 import { authFailed, notConnected, unavailable } from './errors.ts';
 import { IDENTITY_HEADER, signIdentity, type Identity } from './identity.ts';
-import { completeOAuth, freshAccessToken, startOAuth } from './oauth.ts';
+import { accessToken, pluginTarget, startSignIn, type SignInTarget } from './mcp-auth.ts';
 
 export interface ConnectorRuntime {
   id: string;
@@ -42,7 +42,8 @@ export interface ConnectionManager {
   saveStatic(userId: string, connectorId: string, fields: Record<string, string>): Promise<CredentialStatus>;
   disconnect(userId: string, connectorId: string): Promise<void>;
   oauthStart(userId: string, connectorId: string): Promise<string>;
-  oauthComplete(userId: string, connectorId: string, input: { state: string; code: string }): Promise<void>;
+  // Whom a plugin's sign-in is for, when the browser comes back from it.
+  signInTarget(connectorId: string): SignInTarget;
   close(): Promise<void>;
 }
 
@@ -78,7 +79,8 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
   const connectors = new Map(deps.connectors.map((c) => [c.id, c]));
   const clients = new Map<string, { client: MCPClient; timer: NodeJS.Timeout }>();
   const identities = new Map<string, { identity: Identity; until: number }>();
-  const redirectUri = (id: string) => new URL(`/app/api/connections/${id}/oauth/callback`, deps.publicUrl).toString();
+  const authDeps = { db, box, publicUrl: deps.publicUrl };
+  const targetOf = (c: ConnectorRuntime) => pluginTarget({ id: c.id, title: c.title, url: c.definition.url, oauth: c.definition.oauth! });
 
   function remember(key: string, client: MCPClient): MCPClient {
     const existing = clients.get(key);
@@ -144,7 +146,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
             url: new URL(definition.url),
             // The access token is refreshed ahead of expiry before every request, under a lock.
             fetch: async (url: string | URL, init?: RequestInit) => {
-              const token = await freshAccessToken(db, box, { userId, connectorId: c.id, title: c.title, config: definition.oauth! });
+              const token = await accessToken(authDeps, targetOf(c), userId);
               const headers = new Headers(init?.headers);
               for (const [k, v] of Object.entries(definition.headers ? definition.headers({ kind: 'oauth', accessToken: token }) : { Authorization: `Bearer ${token}` })) headers.set(k, v);
               return fetch(url, { ...init, headers });
@@ -261,13 +263,16 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
 
     oauthStart(userId, connectorId) {
       const c = requireConnector(connectors, connectorId);
-      return startOAuth(db, { userId, connectorId, title: c.title, config: c.definition.oauth!, redirectUri: redirectUri(connectorId) });
+      if (c.auth !== 'oauth' || !c.definition.oauth) throw new Error(`APP_VALIDATION_FAILED: ${connectorId} has no sign-in on the site`);
+      // A new sign-in replaces the client built with the previous token.
+      forget(userId, connectorId);
+      return startSignIn(authDeps, targetOf(c), { userId, purpose: 'connect' });
     },
 
-    async oauthComplete(userId, connectorId, input) {
+    signInTarget(connectorId) {
       const c = requireConnector(connectors, connectorId);
-      forget(userId, connectorId);
-      await completeOAuth(db, box, { userId, connectorId, title: c.title, config: c.definition.oauth!, redirectUri: redirectUri(connectorId) }, input);
+      if (c.auth !== 'oauth' || !c.definition.oauth) throw new Error(`APP_VALIDATION_FAILED: ${connectorId} has no sign-in on the site`);
+      return targetOf(c);
     },
 
     async close() {

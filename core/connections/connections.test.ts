@@ -3,11 +3,11 @@ import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
-import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/test-app.ts';
+import { createTestApp, TEST_ENCRYPTION_KEYS, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
 import { loadCredential, saveCredential } from './credentials.ts';
 import { IDENTITY_HEADER, verifyIdentity } from './identity.ts';
 import type { ConnectorRuntime } from './manager.ts';
-import { freshAccessToken } from './oauth.ts';
+import { accessToken, MCP_CALLBACK_PATH, pluginTarget } from './mcp-auth.ts';
 import { startTestMcpServer, startTestOAuthServer, type TestMcpServer, type TestOAuthServer } from './test/servers.ts';
 
 let t: TestApp;
@@ -115,13 +115,19 @@ describe('shared server with a signed identity', () => {
   });
 });
 
-describe('personal access through OAuth', () => {
+describe('personal access through OAuth (the plugin names its sign-in addresses; one sign-in for all, F4)', () => {
+  const authDeps = () => ({ db: t.db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL });
+  const plugin = () =>
+    pluginTarget({ id: 'oauth-crm', title: 'CRM', url: oauthCrm.url, oauth: { authorizeUrl: idp.authorizeUrl, tokenUrl: idp.tokenUrl, clientId: idp.clientId, clientSecret: idp.clientSecret, scopes: ['crm'] } });
+
   it('signs in on the system’s site, calls with the token and refreshes it ahead of expiry under a lock', async () => {
     const userId = await t.createUser({ email: 'oauth@example.com' });
     const cookie = await t.signIn('oauth@example.com');
     const started = (await (await t.call('POST', '/app/api/me/connections/oauth-crm/oauth/start', { cookie })).json()) as { url: string };
     const authorize = await fetch(started.url, { redirect: 'manual' });
     const callback = new URL(authorize.headers.get('location')!);
+    expect(callback.pathname).toBe(MCP_CALLBACK_PATH);
+    expect(new URL(started.url).searchParams.get('scope')).toBe('crm');
     const back = await t.call('GET', `${callback.pathname}${callback.search}`, { cookie });
     expect(back.status).toBe(302);
     expect(back.headers.get('location')).toBe('/settings/connections?connected=oauth-crm');
@@ -136,8 +142,7 @@ describe('personal access through OAuth', () => {
     const record = await loadCredential(t.db, box, userId, 'oauth-crm', 'x');
     await saveCredential(t.db, box, { userId, connectorId: 'oauth-crm', credential: { ...(record!.credential as object), expiresAt: new Date(Date.now() + 1000).toISOString() } as never, status: 'connected' });
     idp.refreshUses.length = 0;
-    const target = { userId, connectorId: 'oauth-crm', title: 'CRM', config: { authorizeUrl: idp.authorizeUrl, tokenUrl: idp.tokenUrl, clientId: idp.clientId, clientSecret: idp.clientSecret, scopes: ['crm'] } };
-    const [a, b] = await Promise.all([freshAccessToken(t.db, box, target), freshAccessToken(t.db, box, target)]);
+    const [a, b] = await Promise.all([accessToken(authDeps(), plugin(), userId), accessToken(authDeps(), plugin(), userId)]);
     expect(a).toBe(b);
     expect(idp.refreshUses).toHaveLength(1);
     expect((await t.connections.statusFor(userId)).find((c) => c.id === 'oauth-crm')?.status).toBe('connected');
@@ -147,8 +152,7 @@ describe('personal access through OAuth', () => {
     const userId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'oauth@example.com'`)).rows[0]!.id;
     const box = createSecretBox(TEST_ENCRYPTION_KEYS);
     await saveCredential(t.db, box, { userId, connectorId: 'oauth-crm', credential: { kind: 'oauth', accessToken: 'old', refreshToken: 'rt-revoked', expiresAt: new Date().toISOString() }, status: 'connected' });
-    const target = { userId, connectorId: 'oauth-crm', title: 'CRM', config: { authorizeUrl: idp.authorizeUrl, tokenUrl: idp.tokenUrl, clientId: idp.clientId, clientSecret: idp.clientSecret, scopes: ['crm'] } };
-    await expect(freshAccessToken(t.db, box, target)).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });
+    await expect(accessToken(authDeps(), plugin(), userId)).rejects.toMatchObject({ code: 'APP_CONNECTOR_AUTH_FAILED' });
     expect((await t.connections.statusFor(userId)).find((c) => c.id === 'oauth-crm')?.status).toBe('auth_error');
   });
 });

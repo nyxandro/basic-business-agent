@@ -1,5 +1,5 @@
-// «Настройки → Подключения» (spec, scenario 3) and the OAuth return addresses: of plugins (per connector) and of
-// MCP servers the admin added (one address, docs/specs/[20.11.2026]-mcp-connections.md, section 17).
+// «Настройки → Подключения» (spec, scenario 3) and the one return address of the sign-in on a system's site, for MCP
+// servers the admin added and for plugins alike (docs/specs/[20.11.2026]-mcp-connections.md, section 17, F4).
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { SecretBox } from '../crypto/secret-box.ts';
@@ -10,26 +10,29 @@ import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { logEvent } from '../server/log.ts';
 import { signInNotFinished } from './errors.ts';
 import type { ConnectionManager } from './manager.ts';
-import { clientDocument, completeMcpSignIn, MCP_CALLBACK_PATH, MCP_CLIENT_DOCUMENT_PATH, startMcpSignIn, type SignInPurpose } from './mcp-auth.ts';
-import { mcpConnectorId } from './servers.ts';
+import { clientDocument, completeSignIn, MCP_CALLBACK_PATH, MCP_CLIENT_DOCUMENT_PATH, mcpTarget, startMcpSignIn, type SignInPurpose } from './mcp-auth.ts';
+import { loadOAuthServer, mcpConnectorId } from './servers.ts';
 
 const staticBody = z.object({ fields: z.record(z.string(), z.string().min(1)) });
 const SETTINGS_PAGE = '/settings/connections';
 
 const ADMIN_PAGE = '/admin/connections';
 
-// Where the browser lands after a sign-in to an MCP server: the admin's check goes back to the admin panel.
-function afterSignIn(origin: string, serverId: string | undefined, purpose: SignInPurpose | undefined, errorCode: string | null): string {
+const MCP_PREFIX = mcpConnectorId('');
+
+// Where the browser lands after a sign-in: the admin's check of an MCP server goes back to the admin panel.
+function afterSignIn(origin: string, connectorId: string | undefined, purpose: SignInPurpose | undefined, errorCode: string | null): string {
+  const serverId = connectorId?.startsWith(MCP_PREFIX) ? connectorId.slice(MCP_PREFIX.length) : undefined;
   const check = purpose === 'check' && serverId;
   const target = new URL(check ? ADMIN_PAGE : SETTINGS_PAGE, origin);
   if (check) target.searchParams.set('mcp', serverId);
   if (errorCode) {
     target.searchParams.set('error', errorCode);
-    if (!check && serverId) target.searchParams.set('connector', mcpConnectorId(serverId));
+    if (!check && connectorId) target.searchParams.set('connector', connectorId);
   } else if (check) {
     target.searchParams.set('signedIn', '1');
-  } else if (serverId) {
-    target.searchParams.set('connected', mcpConnectorId(serverId));
+  } else if (connectorId) {
+    target.searchParams.set('connected', connectorId);
   }
   return `${target.pathname}${target.search}`;
 }
@@ -65,7 +68,11 @@ export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRout
     return c.json({ url: await startMcpSignIn(deps, { userId: access(c).userId, serverId: id, purpose: 'connect' }) });
   });
 
-  // The browser comes back from the sign-in of an MCP server with the session cookie.
+  // Whom a sign-in was for: an MCP server of the admin, or a plugin's system.
+  const targetOf = async (connectorId: string) =>
+    connectorId.startsWith(MCP_PREFIX) ? mcpTarget(deps, await loadOAuthServer(deps.db, deps.box, connectorId.slice(MCP_PREFIX.length))) : connections.signInTarget(connectorId);
+
+  // The browser comes back here from the system's sign-in page with the session cookie.
   app.get(MCP_CALLBACK_PATH, async (c) => {
     const origin = new URL(c.req.url).origin;
     const state = c.req.query('state');
@@ -73,13 +80,13 @@ export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRout
     try {
       // No code: the person cancelled on the system's site, or the system refused.
       if (!state || !code) throw signInNotFinished('систему', {});
-      const done = await completeMcpSignIn(deps, { userId: access(c).userId, state, code, iss: c.req.query('iss') });
-      return c.redirect(afterSignIn(origin, done.serverId, done.purpose, null), 302);
+      const done = await completeSignIn(deps, { userId: access(c).userId, state, code, iss: c.req.query('iss') }, targetOf);
+      return c.redirect(afterSignIn(origin, done.connectorId, done.purpose, null), 302);
     } catch (error) {
       const errorCode = isAppError(error) ? error.code : 'APP_CONNECTOR_AUTH_FAILED';
-      const details = (isAppError(error) ? error.details : undefined) as { serverId?: string; purpose?: SignInPurpose } | undefined;
-      logEvent('warn', 'connector_auth_failed', { serverId: details?.serverId ?? null, code: errorCode, error });
-      return c.redirect(afterSignIn(origin, details?.serverId, details?.purpose, errorCode), 302);
+      const details = (isAppError(error) ? error.details : undefined) as { connectorId?: string; purpose?: SignInPurpose } | undefined;
+      logEvent('warn', 'connector_auth_failed', { connectorId: details?.connectorId ?? null, code: errorCode, error });
+      return c.redirect(afterSignIn(origin, details?.connectorId, details?.purpose, errorCode), 302);
     }
   });
 
@@ -88,23 +95,5 @@ export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRout
     const document = clientDocument(deps.publicUrl);
     if (!document) throw appError('APP_NOT_FOUND', 'no client document on an installation without public https');
     return c.json(document);
-  });
-
-  // The browser comes back here from the system's sign-in page with the session cookie.
-  app.get('/app/api/connections/:id/oauth/callback', async (c) => {
-    const id = c.req.param('id');
-    const state = c.req.query('state');
-    const code = c.req.query('code');
-    const target = new URL(SETTINGS_PAGE, new URL(c.req.url).origin);
-    try {
-      if (!state || !code) throw new Error('APP_VALIDATION_FAILED: the system returned no code or state');
-      await connections.oauthComplete(access(c).userId, id, { state, code });
-      target.searchParams.set('connected', id);
-    } catch (error) {
-      logEvent('warn', 'oauth_callback_failed', { connectorId: id, code: isAppError(error) ? error.code : 'APP_CONNECTOR_AUTH_FAILED', error });
-      target.searchParams.set('error', isAppError(error) ? error.code : 'APP_CONNECTOR_AUTH_FAILED');
-      target.searchParams.set('connector', id);
-    }
-    return c.redirect(`${target.pathname}${target.search}`, 302);
   });
 }
