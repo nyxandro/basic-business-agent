@@ -4,7 +4,8 @@
 // tools are rebuilt from them without asking the server on every turn (`toolFromDefinition`, step 6).
 import { createHash, randomUUID } from 'node:crypto';
 import { MCPClient, type MCPDiscoveryErrorDetails, type SerializableMCPToolDefinition } from '@mastra/mcp';
-import type { McpAction, McpActionPatch, McpAuthKind } from '@bba/contracts';
+import type { ActionDescription, McpAction, McpActionPatch, McpAuthKind } from '@bba/contracts';
+import { fieldsOf } from '../approvals/describe.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { origin } from './log-safe.ts';
@@ -55,6 +56,11 @@ function fingerprintOf(definition: SerializableMCPToolDefinition): string {
 }
 
 const serverTitleOf = (definition: SerializableMCPToolDefinition) => definition.title ?? definition.annotations?.title ?? definition.name;
+
+// What the chat line and the card of «Да» say about an action: the admin's title, else the server's.
+export function describeAction(action: StoredAction): ActionDescription {
+  return { title: action.title ?? serverTitleOf(action.definition), fields: fieldsOf(action.definition.inputSchema), readOnly: action.readOnly };
+}
 
 export function toActionView(action: StoredAction): McpAction {
   const description = action.definition.description ?? '';

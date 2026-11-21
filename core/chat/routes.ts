@@ -86,6 +86,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const ownStarters = new Map(rows.map((r) => [r.agent_id, r.starters]));
     const marks = await agentMarks(deps.db);
     const seen = deps.connections.actionsSeen();
+    // The MCP servers the admin added for each agent (docs/specs/[20.11.2026]-mcp-connections.md, step 6).
+    const mcp = await deps.connections.mcpCatalog();
     const agents = deps.registry.agents
       .filter((rt) => a.isSuperadmin || a.agentIds.has(rt.passport.id))
       .map((rt) => ({
@@ -101,14 +103,16 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
           ...mailActions,
           ...computerActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
+          ...mcp.get(rt.passport.id)?.actions,
           ...agentActions(rt),
           ...subagentCalls(rt),
         },
         systems: {
           tools: { ...mailSystems, ...computerSystems, ...rt.toolSystems },
-          prefixes: Object.fromEntries(
-            deps.registry.connectors.filter((conn) => rt.connectorIds.includes(conn.id)).map((conn) => [`${serverKey(conn.id)}_`, conn.title]),
-          ),
+          prefixes: {
+            ...Object.fromEntries(deps.registry.connectors.filter((conn) => rt.connectorIds.includes(conn.id)).map((conn) => [`${serverKey(conn.id)}_`, conn.title])),
+            ...mcp.get(rt.passport.id)?.prefixes,
+          },
         },
       }));
     const body: AgentListResponse = { agents };

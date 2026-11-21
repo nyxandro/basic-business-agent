@@ -26,8 +26,11 @@ beforeAll(async () => {
   t = await createTestApp();
   await t.createUser({ email: 'igor@example.com', roleIds: [await t.roleId('superadmin')] });
   admin = await t.signIn('igor@example.com');
+  // «Подключить» is offered for the servers of one's own agents: the employees are in the department of «Продажи».
+  const sales = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Отдел продаж') RETURNING id`)).rows[0]!.id;
+  await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'sales')`, [sales]);
   for (const name of ['olga', 'petr', 'anna']) {
-    const id = await t.createUser({ email: `${name}@example.com` });
+    const id = await t.createUser({ email: `${name}@example.com`, departmentIds: [sales] });
     people[name] = { id, cookie: await t.signIn(`${name}@example.com`) };
   }
 });

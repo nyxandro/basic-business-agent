@@ -19,6 +19,9 @@ import { deleteCredential, loadCredential, saveCredential, setCredentialStatus, 
 import { authFailed, notConnected, unavailable } from './errors.ts';
 import { IDENTITY_HEADER, signIdentity, type Identity } from './identity.ts';
 import { accessToken, pluginTarget, startSignIn, type SignInTarget } from './mcp-auth.ts';
+import { createMcpTools, type McpTools } from './mcp-tools.ts';
+import { serversOfAgents } from './servers.ts';
+import { describeAction } from './snapshot.ts';
 
 export interface ConnectorRuntime {
   id: string;
@@ -35,7 +38,13 @@ export type ConnectionStatus = MyConnection;
 
 export interface ConnectionManager {
   connectors: ReadonlyMap<string, ConnectorRuntime>;
-  toolsFor(userId: string, connectorIds: readonly string[]): Promise<Record<string, AnyTool>>;
+  // The tools of the systems of one agent's turn: of its plugins (`connectorIds`) and of the MCP servers the admin
+  // added for this agent and the person turned on (docs/specs/[20.11.2026]-mcp-connections.md, step 6).
+  toolsFor(userId: string, run: { agentId: string; connectorIds: readonly string[] }): Promise<Record<string, AnyTool>>;
+  // The actions and the systems of the MCP servers of each agent, whoever the person: the chat's lines.
+  mcpCatalog(): Promise<Map<string, { actions: Record<string, ActionDescription>; prefixes: Record<string, string> }>>;
+  // The MCP servers the admin added: the employee's actions on them.
+  mcp: McpTools;
   // Names of the actions of connected systems listed so far (the same for every employee).
   actionsSeen(): Record<string, ActionDescription>;
   statusFor(userId: string): Promise<ConnectionStatus[]>;
@@ -183,13 +192,27 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
 
   // Tool definitions of a system do not depend on the employee: the last listing is kept.
   const seen = new Map<string, ActionDescription>();
+  const mcp = createMcpTools(authDeps);
 
   return {
     connectors,
-    actionsSeen: () => Object.fromEntries(seen),
-    async toolsFor(userId, connectorIds) {
-      const out: Record<string, AnyTool> = {};
-      for (const id of connectorIds) {
+    mcp,
+    actionsSeen: () => ({ ...Object.fromEntries(seen), ...mcp.actionsSeen() }),
+    async mcpCatalog() {
+      const out = new Map<string, { actions: Record<string, ActionDescription>; prefixes: Record<string, string> }>();
+      for (const server of await serversOfAgents(db, box)) {
+        for (const agentId of server.agents) {
+          const entry = out.get(agentId) ?? { actions: {}, prefixes: {} };
+          for (const action of server.actions) entry.actions[action.modelName] = describeAction(action);
+          entry.prefixes[`${server.slug}_`] = server.title;
+          out.set(agentId, entry);
+        }
+      }
+      return out;
+    },
+    async toolsFor(userId, run) {
+      const out: Record<string, AnyTool> = await mcp.toolsFor(userId, run.agentId);
+      for (const id of run.connectorIds) {
         const c = requireConnector(connectors, id);
         const prefix = `${serverKey(c.id)}_`;
         try {
@@ -281,6 +304,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
         await client.disconnect();
       }
       clients.clear();
+      await mcp.close();
     },
   };
 }

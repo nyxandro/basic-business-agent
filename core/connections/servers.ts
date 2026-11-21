@@ -298,6 +298,79 @@ export async function saveServerClient(client: pg.PoolClient, box: SecretBox, id
   await client.query('UPDATE app.mcp_servers SET secret_ciphertext = $2, secret_iv = $3, secret_key_version = $4 WHERE id = $1', [id, sealed.ciphertext, sealed.iv, sealed.keyVersion]);
 }
 
+// A server as an agent's turn uses it: its access and the actions the admin turned on.
+export interface RunServer {
+  id: string;
+  slug: string;
+  title: string;
+  url: string;
+  auth: McpServerInput['auth'];
+  fields: McpField[];
+  headerTemplates: Record<string, string>;
+  status: McpServerStatus;
+  actions: StoredAction[];
+  // The action the admin chose to check a personal key with (it may be off for agents).
+  checkAction: StoredAction | null;
+  shared: Record<string, string> | null;
+}
+
+// Statuses in which a server still reaches the agent: turned on, or turned on and failing — then the agent gets a
+// line explaining what is wrong instead of the actions.
+const RUN_STATUSES = ['enabled', 'shared_auth_error', 'program_crashed'];
+
+function toRunServer(box: SecretBox, row: ServerRow): RunServer {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    url: row.url!,
+    auth: row.auth,
+    fields: row.fields,
+    headerTemplates: row.header_templates,
+    status: row.status,
+    actions: row.snapshot.filter((action) => action.enabled),
+    checkAction: row.snapshot.find((action) => action.check) ?? null,
+    shared: row.auth === 'shared_key' ? openSecrets(box, row).shared : null,
+  };
+}
+
+// The servers an agent's turn gets for this person: the admin turned them on for this agent, and the person turned
+// them on for themselves (the owner's decision F2, 21.11). Programs come with the sandbox container (step 9).
+export async function serversForRun(db: Db, box: SecretBox, userId: string, agentId: string): Promise<RunServer[]> {
+  const { rows } = await db.query<ServerRow>(
+    `SELECT s.* FROM app.mcp_servers s
+      WHERE s.status = ANY($3::text[]) AND s.transport = 'http'
+        AND EXISTS (SELECT 1 FROM app.mcp_server_agents a WHERE a.server_id = s.id AND a.agent_id = $2)
+        AND EXISTS (SELECT 1 FROM app.mcp_server_users u WHERE u.server_id = s.id AND u.user_id = $1)
+      ORDER BY s.created_at, s.id`,
+    [userId, agentId, RUN_STATUSES],
+  );
+  return rows.map((row) => toRunServer(box, row));
+}
+
+// The servers of each agent, whoever the person: the chat names their actions and systems (`/agents`).
+export async function serversOfAgents(db: Db, box: SecretBox): Promise<Array<RunServer & { agents: string[] }>> {
+  const { rows } = await db.query<ServerRow & { agents: string[] }>(
+    `SELECT s.*, array(SELECT a.agent_id FROM app.mcp_server_agents a WHERE a.server_id = s.id) AS agents
+       FROM app.mcp_servers s WHERE s.status = ANY($1::text[]) AND s.transport = 'http' ORDER BY s.created_at, s.id`,
+    [RUN_STATUSES],
+  );
+  return rows.map((row) => ({ ...toRunServer(box, row), agents: row.agents }));
+}
+
+// A server an employee may turn on or connect: turned on by the admin for at least one of the employee's agents.
+// Anything else answers as «no such connection»: a draft or another department's server is not shown at all.
+export async function serverForEmployee(db: Db, box: SecretBox, serverId: string, agentIds: ReadonlySet<string> | 'all'): Promise<RunServer> {
+  const { rows } = await db.query<ServerRow>(
+    `SELECT s.* FROM app.mcp_servers s
+      WHERE s.id = $1 AND s.status <> 'draft' AND s.status <> 'disabled'
+        AND ($2::text[] IS NULL OR EXISTS (SELECT 1 FROM app.mcp_server_agents a WHERE a.server_id = s.id AND a.agent_id = ANY($2::text[])))`,
+    [serverId, agentIds === 'all' ? null : [...agentIds]],
+  );
+  if (!rows[0]) throw appError('APP_NOT_FOUND', `mcp server ${serverId} is not available to the employee`, { userMessage: 'Это подключение сейчас недоступно. Обновите страницу.' });
+  return toRunServer(box, rows[0]);
+}
+
 export async function getServer(db: Db, box: SecretBox, id: string): Promise<McpServerView> {
   return viewOf(db, box, await loadRow(db, id, false));
 }

@@ -66,7 +66,7 @@ describe('personal access with a key', () => {
 
     for (const [user, key] of [[olga, 'olga-key'], [igor, 'igor-key']] as const) {
       crm.seen.length = 0;
-      const tools = await t.connections.toolsFor(user, ['crm']);
+      const tools = await t.connections.toolsFor(user, { agentId: 'sales', connectorIds: ['crm'] });
       await tools.crm_deals_search!.execute!({}, ctx(user));
       expect(new Set(crm.seen.map((h) => h.authorization))).toEqual(new Set([`Bearer ${key}`]));
     }
@@ -74,14 +74,14 @@ describe('personal access with a key', () => {
 
   it('asks for "Да" on server tools that are not read-only', async () => {
     const olga = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'olga@example.com'`)).rows[0]!.id;
-    const tools = await t.connections.toolsFor(olga, ['crm']);
+    const tools = await t.connections.toolsFor(olga, { agentId: 'sales', connectorIds: ['crm'] });
     expect(tools.crm_deals_search!.requireApproval).toBe(false);
     expect(tools.crm_deal_create!.requireApproval).toBe(true);
   });
 
   it('tells an employee without a connection to connect, with a link to the settings', async () => {
     const petr = await t.createUser({ email: 'petr@example.com' });
-    const tools = await t.connections.toolsFor(petr, ['crm']);
+    const tools = await t.connections.toolsFor(petr, { agentId: 'sales', connectorIds: ['crm'] });
     expect(Object.keys(tools)).toEqual(['crm_connection']);
     await expect(tools.crm_connection!.execute!({}, ctx(petr))).rejects.toMatchObject({
       code: 'APP_CONNECTOR_NOT_CONNECTED',
@@ -106,7 +106,7 @@ describe('personal access with a key', () => {
 describe('shared server with a signed identity', () => {
   it('signs who is asking into every call', async () => {
     const olga = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'olga@example.com'`)).rows[0]!.id;
-    const tools = await t.connections.toolsFor(olga, ['company-mcp']);
+    const tools = await t.connections.toolsFor(olga, { agentId: 'sales', connectorIds: ['company-mcp'] });
     shared.seen.length = 0;
     await tools.company_mcp_deals_search!.execute!({}, ctx(olga));
     const identities = shared.seen.map((h) => verifyIdentity(h[IDENTITY_HEADER] as string | undefined, IDENTITY_SECRET)).filter(Boolean);
@@ -133,7 +133,7 @@ describe('personal access through OAuth (the plugin names its sign-in addresses;
     expect(back.headers.get('location')).toBe('/settings/connections?connected=oauth-crm');
 
     oauthCrm.acceptedTokens = idp.accessTokens;
-    const tools = await t.connections.toolsFor(userId, ['oauth-crm']);
+    const tools = await t.connections.toolsFor(userId, { agentId: 'sales', connectorIds: ['oauth-crm'] });
     await expect(tools.oauth_crm_deals_search!.execute!({}, ctx(userId))).resolves.toBeTruthy();
 
     // Make the token look almost expired: two parallel requests must refresh once, not burn the single-use refresh token twice.

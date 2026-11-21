@@ -1,7 +1,8 @@
 // «Настройки → Подключения» (spec, scenario 3) and the one return address of the sign-in on a system's site, for MCP
 // servers the admin added and for plugins alike (docs/specs/[20.11.2026]-mcp-connections.md, section 17, F4).
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
+import { mcpFieldValueSchema } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
@@ -11,9 +12,12 @@ import { logEvent } from '../server/log.ts';
 import { signInNotFinished } from './errors.ts';
 import type { ConnectionManager } from './manager.ts';
 import { clientDocument, completeSignIn, MCP_CALLBACK_PATH, MCP_CLIENT_DOCUMENT_PATH, mcpTarget, startMcpSignIn, type SignInPurpose } from './mcp-auth.ts';
-import { loadOAuthServer, mcpConnectorId } from './servers.ts';
+import { disconnectServer, savePersonalKey, useServer, type EmployeeAgents } from './employee-servers.ts';
+import { loadOAuthServer, mcpConnectorId, serverForEmployee } from './servers.ts';
 
 const staticBody = z.object({ fields: z.record(z.string(), z.string().min(1)) });
+const useBody = z.object({ on: z.boolean() });
+const keyBody = z.object({ fields: z.record(z.string(), mcpFieldValueSchema) });
 const SETTINGS_PAGE = '/settings/connections';
 
 const ADMIN_PAGE = '/admin/connections';
@@ -61,11 +65,38 @@ export function registerConnectionRoutes(app: Hono<AppEnv>, deps: ConnectionRout
 
   app.post('/app/api/me/connections/:id/oauth/start', async (c) => c.json({ url: await connections.oauthStart(access(c).userId, c.req.param('id')) }));
 
-  // «Подключить» a server the admin added and turned on (the owner's decision F2, 21.11).
-  app.post('/app/api/me/connections/mcp/:id/sign-in', async (c) => {
+  // The MCP servers the admin added and allowed for the employee's agents (the owner's decision F2, 21.11).
+  const employee = { db: deps.db, box: deps.box, mcp: connections.mcp };
+  const agentsOf = (c: Context<AppEnv>): EmployeeAgents => (access(c).isSuperadmin ? 'all' : access(c).agentIds);
+  const mcpServerId = (c: Context<AppEnv>) => {
     const id = c.req.param('id');
     if (!z.uuid().safeParse(id).success) throw appError('APP_NOT_FOUND', `mcp server id ${id} is not a uuid`, { userMessage: 'Это подключение сейчас недоступно. Обновите страницу.' });
+    return id!;
+  };
+
+  // «Подключить» through the system's site.
+  app.post('/app/api/me/connections/mcp/:id/sign-in', async (c) => {
+    const id = mcpServerId(c);
+    await serverForEmployee(deps.db, deps.box, id, agentsOf(c));
     return c.json({ url: await startMcpSignIn(deps, { userId: access(c).userId, serverId: id, purpose: 'connect' }) });
+  });
+
+  // «Использовать» a server without a sign-in or with the shared key.
+  app.post('/app/api/me/connections/mcp/:id/use', async (c) => {
+    const { on } = await parseJson(c, useBody);
+    await useServer(employee, { userId: access(c).userId, agents: agentsOf(c), serverId: mcpServerId(c), on });
+    return c.json({ ok: true });
+  });
+
+  // «Подключить» with the employee's own key.
+  app.put('/app/api/me/connections/mcp/:id', async (c) => {
+    const { fields } = await parseJson(c, keyBody);
+    return c.json({ status: await savePersonalKey(employee, { userId: access(c).userId, agents: agentsOf(c), serverId: mcpServerId(c), fields }) });
+  });
+
+  app.delete('/app/api/me/connections/mcp/:id', async (c) => {
+    await disconnectServer(employee, { userId: access(c).userId, serverId: mcpServerId(c) });
+    return c.json({ ok: true });
   });
 
   // Whom a sign-in was for: an MCP server of the admin, or a plugin's system.

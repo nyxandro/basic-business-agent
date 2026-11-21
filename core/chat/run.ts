@@ -40,7 +40,7 @@ export interface ChatDeps {
   timezone: string;
   skills: Pick<SkillsRuntime, 'skillsFor'>;
   // Names of the actions of connected systems, for the confirmation card.
-  connections: Pick<ConnectionManager, 'actionsSeen'>;
+  connections: Pick<ConnectionManager, 'actionsSeen' | 'mcpCatalog'>;
   // The service call that names a conversation beside the answer (spec, section 8.16).
   naming: NamingDeps;
   // Where the files are kept: a run holds its folder until the agent ends (spec, section 8.23).

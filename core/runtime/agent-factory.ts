@@ -132,7 +132,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
         ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
         ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
         ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
-        ...(rt.connectorIds.length > 0 && deps.connections ? await deps.connections.toolsFor(userId, rt.connectorIds) : {}),
+        ...(deps.connections ? await deps.connections.toolsFor(userId, { agentId: rt.passport.id, connectorIds: rt.connectorIds }) : {}),
         ...(abilities.web && deps.web ? deps.web.tools : {}),
         ...(abilities.widgets ? widgetTools : {}),
       };

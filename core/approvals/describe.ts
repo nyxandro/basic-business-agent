@@ -21,7 +21,7 @@ function firstSentence(text: string): string {
 }
 
 // Zod objects keep a field's description on the field; an MCP tool may bring a JSON schema.
-function fieldsOf(schema: unknown): Record<string, string> {
+export function fieldsOf(schema: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   const shape = (schema as { shape?: Record<string, { description?: unknown }> } | undefined)?.shape;
   const properties = (schema as { jsonSchema?: { properties?: Record<string, { description?: unknown; title?: unknown }> }; properties?: Record<string, { description?: unknown; title?: unknown }> } | undefined);
