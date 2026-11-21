@@ -2,8 +2,8 @@
 // tells how it lets people in; the way of sign-in and the keys — saved as a draft; «Проверить своим доступом» — the
 // list of actions; the actions and the agents — «Включить». A server with a sign-in on the system's site sends the
 // admin there first and comes back to this window (ConnectionsSection opens it again with `autoCheck`).
-import type { McpProbeAuth, McpServerView } from '@bba/contracts';
-import { useEffect, useRef, useState, type SubmitEvent } from 'react';
+import { MCP_TRANSPORTS, type McpProbeAuth, type McpServerView, type McpTransport } from '@bba/contracts';
+import { useEffect, useId, useRef, useState, type SubmitEvent } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button } from '../ui/Button.tsx';
@@ -12,7 +12,7 @@ import { Feedback, useAction } from './parts.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import { AccessFields, formOf, inputOf, keyed, placeholdersOf, withKeyDefaults, type McpForm } from './McpAccessForm.tsx';
+import { AccessFields, formOf, inputOf, keyed, placeholdersOf, ProgramFields, withKeyDefaults, type McpForm } from './McpAccessForm.tsx';
 import { ActionsEditor, marksOf, type Mark } from './McpActions.tsx';
 import { adminApi } from './api.ts';
 import section from './section.module.css';
@@ -31,6 +31,13 @@ function Setup({ server, onSaved }: { server: McpServerView | null; onSaved: (ne
   // A new server shows the way of sign-in after «Далее»: the address tells it first.
   const [probed, setProbed] = useState<McpProbeAuth | null>(server ? probedOf(server) : null);
   const { busy, error, run } = useAction();
+  const transportName = useId();
+  const program = form.transport === 'program';
+  // A program has no address to look at: its way of sign-in is chosen right away (none or the shared key).
+  const chooseTransport = (transport: McpTransport) => {
+    setForm({ ...form, transport, auth: 'none', fields: [], headers: [], env: [] });
+    setProbed(transport === 'program' ? 'none' : null);
+  };
 
   function next() {
     void run(async () => {
@@ -63,21 +70,36 @@ function Setup({ server, onSaved }: { server: McpServerView | null; onSaved: (ne
           <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Битрикс24" />
         </Field>
       </div>
-      <Field label={t.url} hint={t.urlHint}>
-        <Input
-          mono
-          required
-          value={form.url}
-          onChange={(e) => {
-            setForm({ ...form, url: e.target.value });
-            if (!server) setProbed(null);
-          }}
-          placeholder="https://mcp.example.com/mcp"
-        />
-      </Field>
+      <fieldset className={styles.group}>
+        <legend className={styles.legend}>{t.transportLegend}</legend>
+        <div className={styles.radios}>
+          {MCP_TRANSPORTS.map((transport) => (
+            <label key={transport} className={styles.radio}>
+              <input type="radio" name={transportName} checked={form.transport === transport} onChange={() => chooseTransport(transport)} />
+              {t.transports[transport]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {program ? (
+        <ProgramFields form={form} onChange={setForm} />
+      ) : (
+        <Field label={t.url} hint={t.urlHint}>
+          <Input
+            mono
+            required
+            value={form.url}
+            onChange={(e) => {
+              setForm({ ...form, url: e.target.value });
+              if (!server) setProbed(null);
+            }}
+            placeholder="https://mcp.example.com/mcp"
+          />
+        </Field>
+      )}
       {probed ? (
         <>
-          {server ? null : <p className={styles.probed}>{t.probed[probed]}</p>}
+          {server || program ? null : <p className={styles.probed}>{t.probed[probed]}</p>}
           <AccessFields form={form} onChange={setForm} server={server} />
         </>
       ) : null}

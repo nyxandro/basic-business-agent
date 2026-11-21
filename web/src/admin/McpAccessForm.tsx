@@ -1,24 +1,32 @@
 // The address and the way of sign-in of an MCP server (docs/specs/[20.11.2026]-mcp-connections.md, scenario 1 and 1a):
 // what the form keeps, and its parts — the four ways of sign-in, the fields of a key and where it goes (a header or
 // the address), the values of the shared key, the app of the installation for a sign-in on the system's site.
-import { MCP_AUTH_KINDS, MCP_OAUTH_CALLBACK_PATH, type McpAuthKind, type McpField, type McpServerInput, type McpServerView } from '@bba/contracts';
+import { MCP_AUTH_KINDS, MCP_OAUTH_CALLBACK_PATH, MCP_PROGRAM_RUNNERS, type McpAuthKind, type McpField, type McpProgramRunner, type McpServerInput, type McpServerView, type McpTransport } from '@bba/contracts';
 import { useId, useState } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
-import { Field, Input } from '../ui/Field.tsx';
+import { Field, Input, Select, TextArea } from '../ui/Field.tsx';
 import section from './section.module.css';
 import styles from './mcp.module.css';
 
 const t = ru.mcp.admin;
 const PLACEHOLDER = /\{\{\s*([a-z][a-z0-9_]{0,31})\s*\}\}/g;
 
+type Rows = { name: string; value: string }[];
+
 export interface McpForm {
   title: string;
+  transport: McpTransport;
   url: string;
+  // A program (docs/specs/[20.11.2026]-mcp-connections.md, F1): the command, the pinned package, its arguments.
+  runner: McpProgramRunner;
+  pkg: string;
+  args: string;
   auth: McpAuthKind;
   fields: McpField[];
-  headers: { name: string; value: string }[];
+  headers: Rows;
+  env: Rows;
   // Typed values of the shared key; empty — the saved ones stay (a draft being edited).
   shared: Record<string, string>;
   clientId: string;
@@ -31,10 +39,15 @@ export const keyed = (auth: McpAuthKind) => auth === 'personal_key' || auth === 
 export function formOf(server: McpServerView | null): McpForm {
   return {
     title: server?.title ?? '',
+    transport: server?.transport ?? 'http',
     url: server?.url ?? '',
+    runner: server?.program?.runner ?? 'npx',
+    pkg: server?.program?.package ?? '',
+    args: (server?.program?.args ?? []).join('\n'),
     auth: server?.auth ?? 'none',
     fields: server?.fields ?? [],
     headers: Object.entries(server?.headers ?? {}).map(([name, value]) => ({ name, value })),
+    env: Object.entries(server?.env ?? {}).map(([name, value]) => ({ name, value })),
     shared: {},
     clientId: server?.clientId ?? '',
     clientSecret: '',
@@ -44,6 +57,7 @@ export function formOf(server: McpServerView | null): McpForm {
 // A key goes into the address when the address has {{…}}; otherwise — as a bearer token by default.
 export function withKeyDefaults(form: McpForm): McpForm {
   if (!keyed(form.auth) || form.fields.length > 0) return form;
+  if (form.transport === 'program') return { ...form, fields: [{ key: 'token', label: 'Ключ API', hint: '', secret: true }], env: [{ name: 'API_TOKEN', value: '{{token}}' }] };
   const inUrl = placeholdersOf(form.url);
   if (inUrl.length > 0) return { ...form, fields: inUrl.map((key) => ({ key, label: key === 'token' ? 'Ключ API' : key, hint: '', secret: true })) };
   return { ...form, fields: [{ key: 'token', label: 'Ключ API', hint: '', secret: true }], headers: [{ name: 'Authorization', value: 'Bearer {{token}}' }] };
@@ -52,15 +66,17 @@ export function withKeyDefaults(form: McpForm): McpForm {
 export function inputOf(form: McpForm, creating: boolean): McpServerInput {
   const withKey = keyed(form.auth);
   const typed = form.fields.every((f) => form.shared[f.key]);
+  const program = form.transport === 'program';
+  const rows = (list: Rows) => Object.fromEntries(list.filter((r) => r.name.trim()).map((r) => [r.name.trim(), r.value]));
   return {
     title: form.title.trim(),
-    transport: 'http',
-    url: form.url.trim(),
-    program: null,
+    transport: form.transport,
+    url: program ? null : form.url.trim(),
+    program: program ? { runner: form.runner, package: form.pkg.trim(), args: form.args.split('\n').map((a) => a.trim()).filter(Boolean) } : null,
     auth: form.auth,
     fields: withKey ? form.fields : [],
-    headers: withKey ? Object.fromEntries(form.headers.filter((h) => h.name.trim()).map((h) => [h.name.trim(), h.value])) : {},
-    env: {},
+    headers: withKey && !program ? rows(form.headers) : {},
+    env: withKey && program ? rows(form.env) : {},
     // A draft keeps its saved shared key unless all of it is typed again (the browser never gets it back).
     sharedValues: form.auth === 'shared_key' && (creating || typed) ? Object.fromEntries(form.fields.map((f) => [f.key, form.shared[f.key] ?? ''])) : null,
     client: form.auth === 'oauth' && form.clientId.trim() ? { clientId: form.clientId.trim(), ...(form.clientSecret ? { clientSecret: form.clientSecret } : {}) } : null,
@@ -97,27 +113,55 @@ function FieldsEditor({ form, onChange }: { form: McpForm; onChange: (next: McpF
   );
 }
 
-function HeadersEditor({ form, onChange }: { form: McpForm; onChange: (next: McpForm) => void }) {
-  const set = (i: number, patch: Partial<McpForm['headers'][number]>) => onChange({ ...form, headers: form.headers.map((h, j) => (j === i ? { ...h, ...patch } : h)) });
+// Where the key goes: headers of a server by address, environment variables of a program.
+function RowsEditor({ rows, onRows, kind }: { rows: Rows; onRows: (next: Rows) => void; kind: 'headers' | 'env' }) {
+  const set = (i: number, patch: Partial<Rows[number]>) => onRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const env = kind === 'env';
   return (
     <fieldset className={styles.group}>
-      <legend className={styles.legend}>{t.headersLegend}</legend>
-      <p className={section.sub}>{t.headersHint}</p>
-      {form.headers.map((header, i) => (
+      <legend className={styles.legend}>{env ? t.envLegend : t.headersLegend}</legend>
+      <p className={section.sub}>{env ? t.envHint : t.headersHint}</p>
+      {rows.map((row, i) => (
         <div key={i} className={styles.headerRow}>
-          <Field label={t.headerName}>
-            <Input mono value={header.name} onChange={(e) => set(i, { name: e.target.value })} />
+          <Field label={env ? t.envName : t.headerName}>
+            <Input mono value={row.name} onChange={(e) => set(i, { name: e.target.value })} />
           </Field>
           <Field label={t.headerValue}>
-            <Input mono value={header.value} onChange={(e) => set(i, { value: e.target.value })} />
+            <Input mono value={row.value} onChange={(e) => set(i, { value: e.target.value })} />
           </Field>
-          <IconButton icon="trash" label={t.removeHeader(header.name)} onClick={() => onChange({ ...form, headers: form.headers.filter((_, j) => j !== i) })} />
+          <IconButton icon="trash" label={env ? t.removeEnv(row.name) : t.removeHeader(row.name)} onClick={() => onRows(rows.filter((_, j) => j !== i))} />
         </div>
       ))}
-      <Button size="sm" icon="plus" onClick={() => onChange({ ...form, headers: [...form.headers, { name: '', value: '' }] })}>
-        {t.addHeader}
+      <Button size="sm" icon="plus" onClick={() => onRows([...rows, { name: '', value: '' }])}>
+        {env ? t.addEnv : t.addHeader}
       </Button>
     </fieldset>
+  );
+}
+
+// A program: the command, the package with its exact version and the arguments (one per line).
+export function ProgramFields({ form, onChange }: { form: McpForm; onChange: (next: McpForm) => void }) {
+  return (
+    <>
+      <p className={section.note}>{t.programLead}</p>
+      <div className={section.row}>
+        <Field label={t.runner}>
+          <Select value={form.runner} onChange={(e) => onChange({ ...form, runner: e.target.value as McpProgramRunner })}>
+            {MCP_PROGRAM_RUNNERS.map((runner) => (
+              <option key={runner} value={runner}>
+                {runner}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t.package} hint={t.packageHint}>
+          <Input mono required value={form.pkg} onChange={(e) => onChange({ ...form, pkg: e.target.value })} placeholder={form.runner === 'npx' ? '1c-mcp-server@2.3.1' : 'mcp-server-1c==2.3.1'} />
+        </Field>
+      </div>
+      <Field label={t.args}>
+        <TextArea mono rows={3} value={form.args} onChange={(e) => onChange({ ...form, args: e.target.value })} />
+      </Field>
+    </>
   );
 }
 
@@ -156,7 +200,7 @@ export function AccessFields({ form, onChange, server }: { form: McpForm; onChan
       <fieldset className={styles.group}>
         <legend className={styles.legend}>{t.authLegend}</legend>
         <div className={styles.radios}>
-          {MCP_AUTH_KINDS.map((kind) => (
+          {MCP_AUTH_KINDS.filter((kind) => form.transport === 'http' || kind === 'none' || kind === 'shared_key').map((kind) => (
             <label key={kind} className={styles.radio}>
               <input type="radio" name={name} checked={form.auth === kind} onChange={() => choose(kind)} />
               {t.authKinds[kind]}
@@ -168,7 +212,11 @@ export function AccessFields({ form, onChange, server }: { form: McpForm; onChan
       {keyed(form.auth) ? (
         <>
           <FieldsEditor form={form} onChange={onChange} />
-          <HeadersEditor form={form} onChange={onChange} />
+          {form.transport === 'program' ? (
+            <RowsEditor kind="env" rows={form.env} onRows={(env) => onChange({ ...form, env })} />
+          ) : (
+            <RowsEditor kind="headers" rows={form.headers} onRows={(headers) => onChange({ ...form, headers })} />
+          )}
         </>
       ) : null}
       {form.auth === 'shared_key'

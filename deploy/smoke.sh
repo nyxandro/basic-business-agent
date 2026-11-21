@@ -31,6 +31,7 @@ LITELLM_MASTER_KEY=sk-$(random)
 LITELLM_CALLBACK_SECRET=$(random)
 LITELLM_SALT_KEY=sk-$(random)
 SEARXNG_SECRET=$(random)
+MCP_RUNNER_SECRET=$(random)
 ENV
 
 compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$HERE/compose.yaml" "$@"; }
@@ -101,6 +102,17 @@ try {
 check "every format of the document viewer turns into PDF, and gives its text for the model, in the sandbox" "all 34 checks ok" "$(compose exec -T app node tooling/preview-check.ts 2>/dev/null | tail -1)"
 check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
+echo "== program servers of MCP (mcp-runner; docs/specs/[20.11.2026]-mcp-connections.md, F1)"
+# A connection from inside mcp-runner: «open», or «closed» when the name or the address is not reachable.
+reach() { compose exec -T mcp-runner node -e "const s = require('net').connect({ host: '$1', port: $2, timeout: 3000 }, () => { console.log('open'); process.exit(0); }); s.on('error', () => { console.log('closed'); process.exit(0); }); s.on('timeout', () => { console.log('closed'); process.exit(0); });"; }
+check "mcp-runner does not reach the database" closed "$(reach db 5432)"
+check "mcp-runner does not reach LiteLLM" closed "$(reach litellm 4000)"
+check "mcp-runner does not reach SearXNG" closed "$(reach searxng 8080)"
+check "mcp-runner reaches the internet (a package registry)" open "$(reach registry.npmjs.org 443)"
+check "the app reaches mcp-runner" 200 "$(compose exec -T app node -e "fetch('http://mcp-runner:3100/health').then((r) => console.log(r.status), () => console.log('down'))")"
+check "mcp-runner refuses a request the app did not sign" 500 "$(compose exec -T app node -e "fetch('http://mcp-runner:3100/servers/0b8f5d6e-1c2a-4f3b-9d4e-5a6b7c8d9e0f/prepare', { method: 'POST' }).then((r) => console.log(r.status), () => console.log('down'))")"
+check "a program in the isolation of mcp-runner starts and sees only its folder" ok "$(compose exec -T mcp-runner bwrap --unshare-all --share-net --die-with-parent --clearenv --tmpfs /tmp --proc /proc --dev /dev --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind-try /lib64 /lib64 --ro-bind /bin /bin /usr/local/bin/node -e "console.log(require('fs').existsSync('/app') || require('fs').existsSync('/packages') ? 'sees more' : 'ok')" 2>&1)"
+
 echo "== login files of the ChatGPT accounts (volume chatgpt-auth)"
 check "the app writes a login file" ok "$(compose exec -T app sh -c 'echo "{}" > /chatgpt-auth/a-00000000.json && echo ok || echo denied')"
 check "LiteLLM reads it and writes a refreshed token back" ok "$(compose exec -T litellm sh -c 'cat /chatgpt-auth/a-00000000.json >/dev/null && echo "{}" > /chatgpt-auth/a-00000000.json && echo ok || echo denied')"

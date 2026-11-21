@@ -11,6 +11,11 @@ import type { ProgramSpec } from './protocol.ts';
 import type { Launch } from './sandbox.ts';
 
 const run = promisify(execFile);
+// About 512 MB per program (section 8): the heap of Node, the address space of Python (Node reserves more address
+// space than it uses, so it is limited by its heap instead).
+const NODE_HEAP_MB = 448;
+const PYTHON_ADDRESS_SPACE = 512 * 1024 * 1024;
+const PRLIMIT = '/usr/bin/prlimit';
 const INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
 const READY = '.installed.json';
 const OUTPUT_LIMIT = 8 * 1024 * 1024;
@@ -46,7 +51,7 @@ async function installNpm(spec: ProgramSpec, root: string, cache: string): Promi
   const bins = typeof manifest.bin === 'string' ? { [name]: manifest.bin } : (manifest.bin ?? {});
   const bin = bins[name.replace(/^@[^/]+\//, '')] ?? Object.values(bins)[0];
   if (!bin) throw new PackageFailed('no_bin', `${name} has no bin`);
-  return { command: process.execPath, args: [join(dir, bin), ...spec.args], root, extraPaths: [dirname(dirname(process.execPath))] };
+  return { command: process.execPath, args: [`--max-old-space-size=${NODE_HEAP_MB}`, join(dir, bin)], root, extraPaths: [dirname(dirname(process.execPath))] };
 }
 
 async function installPip(spec: ProgramSpec, root: string): Promise<Launch> {
@@ -55,22 +60,21 @@ async function installPip(spec: ProgramSpec, root: string): Promise<Launch> {
   await run(join(venv, 'bin', 'pip'), ['install', '--only-binary=:all:', '--no-cache-dir', '--disable-pip-version-check', spec.package], { timeout: INSTALL_TIMEOUT_MS, maxBuffer: OUTPUT_LIMIT });
   const command = join(venv, 'bin', nameOf(spec));
   if (!existsSync(command)) throw new PackageFailed('no_bin', `${nameOf(spec)} has no command`);
-  return { command, args: spec.args, root, extraPaths: [] };
+  return { command: PRLIMIT, args: [`--as=${PYTHON_ADDRESS_SPACE}`, command], root, extraPaths: [] };
 }
 
-// The folder of a package is reused while it is complete; a failed install leaves nothing behind.
+// The folder of a package is reused while it is complete; a failed install leaves nothing behind. The folder keeps
+// how the package starts; the admin's arguments are added at every start (two servers may share a package).
 export async function installProgram(spec: ProgramSpec, root: string, cache: string): Promise<Launch> {
   const ready = join(root, READY);
-  if (existsSync(ready)) {
-    const launch = JSON.parse(await readFile(ready, 'utf8')) as Launch;
-    return { ...launch, args: spec.runner === 'npx' ? [launch.args[0]!, ...spec.args] : spec.args };
-  }
+  const withArgs = (launch: Launch): Launch => ({ ...launch, args: [...launch.args, ...spec.args] });
+  if (existsSync(ready)) return withArgs(JSON.parse(await readFile(ready, 'utf8')) as Launch);
   await rm(root, { recursive: true, force: true });
   await mkdir(root, { recursive: true });
   try {
     const launch = spec.runner === 'npx' ? await installNpm(spec, root, cache) : await installPip(spec, root);
     await writeFile(ready, JSON.stringify(launch));
-    return launch;
+    return withArgs(launch);
   } catch (error) {
     await rm(root, { recursive: true, force: true });
     if (error instanceof PackageFailed) throw error;

@@ -135,3 +135,37 @@ describe('the card of a server', () => {
     expect(screen.getByText('3 из 5')).toBeInTheDocument();
   });
 });
+
+describe('a program server', () => {
+  it('is a command and a pinned package with arguments, without an address and with the shared key in its environment', async () => {
+    const s = mockServer({ 'GET /app/api/me': { body: ADMIN }, 'GET /app/api/admin/connections': { body: { connections: [] } }, 'POST /app/api/admin/mcp-servers': { body: { server: server({ transport: 'program', url: null }) } } });
+    renderApp('/admin/connections');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Добавить сервер MCP' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Сервер MCP' });
+    await user.type(within(dialog).getByLabelText('Название'), '1С');
+    await user.click(within(dialog).getByRole('radio', { name: 'Программа (npx или uvx)' }));
+    expect(within(dialog).queryByLabelText('Адрес сервера')).not.toBeInTheDocument();
+    // A program is one process for everybody: no sign-in of each employee.
+    expect(within(dialog).queryByRole('radio', { name: /Личный ключ/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /Вход через сайт/ })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Пакет с точной версией'), '1c-mcp-server@2.3.1');
+    await user.type(within(dialog).getByLabelText('Аргументы — по одному в строке'), '--base{Enter}http://1c.local');
+    await user.click(within(dialog).getByRole('radio', { name: 'Общий ключ организации — один на всех' }));
+    await user.type(within(dialog).getByLabelText('Ключ API — значение организации'), 'shared-7731');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить черновик' }));
+    await waitFor(() => expect(s.calls.find((c) => c.method === 'POST' && c.path === '/app/api/admin/mcp-servers')).toBeDefined());
+    expect(s.calls.find((c) => c.method === 'POST' && c.path === '/app/api/admin/mcp-servers')?.body).toEqual({
+      title: '1С',
+      transport: 'program',
+      url: null,
+      program: { runner: 'npx', package: '1c-mcp-server@2.3.1', args: ['--base', 'http://1c.local'] },
+      auth: 'shared_key',
+      fields: [{ key: 'token', label: 'Ключ API', hint: '', secret: true }],
+      headers: {},
+      env: { API_TOKEN: '{{token}}' },
+      sharedValues: { token: 'shared-7731' },
+      client: null,
+    });
+  });
+});
