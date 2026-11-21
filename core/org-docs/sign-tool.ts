@@ -4,7 +4,7 @@
 // kind of document or a document without the mark is refused before the card: nothing to say «Да» to. The signing runs
 // in a one-off sandbox in a temporary folder — the pictures never reach the sandbox of the answer — and the result is
 // written back in place through the held folder, the document as it was kept in the drafts of the conversation.
-import { closeSync, mkdtempSync, readFileSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { closeSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, relative } from 'node:path';
 import type { ActionDescription } from '@bba/contracts';
 import { createTool } from '@mastra/core/tools';
@@ -185,7 +185,8 @@ function signTool(deps: SignDeps): AnyTool {
       const real = existingInside(root, path);
       const before = real ? readDocument(root, path) : null;
       if (!real || !before) throw appError('APP_NOT_FOUND', `no document ${path} to sign`, { userMessage: `Файла ${path} в рабочей папке нет.` });
-      const rel = relative(root, real);
+      // From the real folder, as existingInside found the file: a link on the way to the workspace must not shift it.
+      const rel = relative(realpathSync(root), real);
       const director = await readDirector(deps.db);
       // Asked again after «Да»: the person may have left the list, or the stamp gone, while the card waited.
       const allowed = await isSigner(deps.db, userId);

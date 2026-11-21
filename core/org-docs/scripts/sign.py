@@ -35,6 +35,7 @@ R_DOC = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/off
 R_IMAGE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
 R_PARTS = ('http://schemas.openxmlformats.org/officeDocument/2006/relationships/header', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer')
 MARK = '[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'
+XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 HAND_LINE = '____________'
 
 EMU_PER_CM = 360000
@@ -217,7 +218,7 @@ def text_run(text, rpr):
         run.append(copy.deepcopy(rpr))
     t = etree.SubElement(run, q(W, 't'))
     t.text = text
-    t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+    t.set(XML_SPACE, 'preserve')
     return run
 
 
@@ -262,6 +263,8 @@ def cut_mark(texts, start):
                 t.text = text[: lo - a]
             else:
                 t.text = text[: lo - a] + text[hi - a :]
+            # The words left around the cut may now start or end with a space: Word drops such spaces without this.
+            t.set(XML_SPACE, 'preserve')
         pos = b
     run = first.getparent()
     return run, run.find(q(W, 'rPr')), tail

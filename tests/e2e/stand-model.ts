@@ -21,6 +21,17 @@ const MAKE_DOCUMENT =
   `node -e "const d = require('docx'); const doc = new d.Document({ sections: [{ children: [new d.Paragraph('Коммерческое предложение для ООО Ёлка')] }] }); ` +
   `d.Packer.toBuffer(doc).then((b) => require('fs').writeFileSync(process.argv[1], b))" '${STAND_DOCUMENT}'`;
 
+// «на бланке» (docs/specs/[20.11.2026]-org-letterhead.md): the agent writes an offer on the copy of the letterhead the
+// prompt names, with the mark of the signature on a line of its own, asks to sign it and shows it with «Скачать».
+export const STAND_ON_BLANK = 'КП на бланке.docx';
+const blankOf = (req: FakeRequest): string | null => {
+  const system = req.messages.filter((m) => m.role === 'system').map((m) => textOf(m.content)).join('\n');
+  return /Бланк организации: (\S+\.docx)/.exec(system)?.[1] ?? null;
+};
+const makeOnBlank = (blank: string) =>
+  `python3 -c "from docx import Document; d = Document('${blank}'); d.add_paragraph('Коммерческое предложение для ООО Вектор'); ` +
+  `d.add_paragraph('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'); d.save('${STAND_ON_BLANK}')"`;
+
 function lastCallName(req: FakeRequest): string | undefined {
   const calls = [...req.messages].reverse().find((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))?.tool_calls as { function: { name: string } }[] | undefined;
   return calls?.at(-1)?.function.name;
@@ -100,6 +111,11 @@ function standModel(req: FakeRequest): FakeTurn {
   if (last?.role === 'tool') {
     const result = textOf(last.content);
     if (lastCallName(req) === WEB_RESEARCH_TOOL) return { text: STAND_WEB_ANSWER };
+    const asked = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).toLowerCase();
+    if (asked.includes('на бланке') && lastCallName(req)?.endsWith('execute_command')) {
+      return req.tools?.some((x) => x.function.name === 'org_sign_document') ? call('org_sign_document', { path: STAND_ON_BLANK, kind: 'commercial_offer' }) : call('show_file', { path: STAND_ON_BLANK });
+    }
+    if (lastCallName(req) === 'org_sign_document') return call('show_file', { path: STAND_ON_BLANK });
     if (lastCallName(req)?.endsWith('execute_command')) return call('show_file', { path: STAND_DOCUMENT });
     // The memory of the project or of the person (spec, section 8.26).
     if (lastCallName(req)?.endsWith('_memory')) return { text: /"error":\s*true/.test(result) ? 'Не получилось запомнить.' : 'Запомнил.' };
@@ -121,6 +137,12 @@ function standModel(req: FakeRequest): FakeTurn {
     const fact = textOf([...req.messages].reverse().find((m) => m.role === 'user')?.content).split('\n')[0]!.replace(/^запомни[:,]?\s*/i, '').trim();
     if (!req.tools?.some((x) => x.function.name === 'project_memory')) return { text: 'Факты о работе могу запомнить в проекте.' };
     return call('project_memory', { operations: [{ action: 'add', text: fact }] });
+  }
+  if (text.includes('на бланке')) {
+    const blank = blankOf(req);
+    const tool = req.tools?.map((x) => x.function.name).find((n) => n.endsWith('execute_command'));
+    if (!blank || !tool) return { text: 'Бланка организации у меня нет.' };
+    return call(tool, { command: makeOnBlank(blank) });
   }
   if (text.includes('документ word')) {
     const tool = req.tools?.map((x) => x.function.name).find((n) => n.endsWith('execute_command'));
