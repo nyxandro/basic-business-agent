@@ -30,7 +30,7 @@ import { takeBack, turnToAnswerAgain } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { MEMORY_ACTIONS } from '../memory/tools.ts';
-import { SIGN_ACTIONS } from '../org-docs/sign-tool.ts';
+import { signActionsFor } from '../org-docs/sign-tool.ts';
 import { CONVERSATIONS_ACTIONS } from '../history/tool.ts';
 import { withoutWidgetEnvelope } from '../widgets/envelope.ts';
 
@@ -87,6 +87,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const ownStarters = new Map(rows.map((r) => [r.agent_id, r.starters]));
     const marks = await agentMarks(deps.db);
     const seen = deps.connections.actionsSeen();
+    // The stamp and the signature: the card names the stamp only in an organisation that has one.
+    const signActions = await signActionsFor(deps.db);
     // The MCP servers the admin added for each agent (docs/specs/[20.11.2026]-mcp-connections.md, step 6).
     const mcp = await deps.connections.mcpCatalog();
     const agents = deps.registry.agents
@@ -102,7 +104,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
           ...MEMORY_ACTIONS,
           ...CONVERSATIONS_ACTIONS,
           ...mailActions,
-          ...SIGN_ACTIONS,
+          ...signActions,
           ...computerActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...mcp.get(rt.passport.id)?.actions,

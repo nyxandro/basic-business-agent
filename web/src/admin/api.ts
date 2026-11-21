@@ -158,6 +158,7 @@ export const adminApi = {
   removeOrgAsset: (kind: OrgAssetKind) => api<OrgAssetsState>('DELETE', `${A}/org-assets/${kind}`),
   saveOrgDirector: (director: OrgDirector) => api<OrgAssetsState>('PUT', `${A}/org-director`, director),
   saveOrgSigners: (userIds: string[]) => api<OrgAssetsState>('PUT', `${A}/org-signers`, { userIds }),
+  saveOrgSealMode: (withoutStamp: boolean) => api<OrgAssetsState>('PUT', `${A}/org-seal-mode`, { withoutStamp }),
   interfaceSettings: () => api<InterfaceAdminState>('GET', `${A}/interface`),
   mail: () => api<AdminMailResponse>('GET', `${A}/mail`),
   saveMailApp: (provider: MailOAuthProvider, input: MailOAuthAppInput) => api<AdminMailResponse>('PUT', `${A}/mail/oauth/${provider}`, input),

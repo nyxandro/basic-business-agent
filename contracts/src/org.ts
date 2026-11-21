@@ -61,6 +61,8 @@ export interface OrgAssetsState {
   signatureOutdated: boolean;
   // Only for a superadmin: the stamp, the signature and the responsible people.
   seal: {
+    // The organisation works without a stamp: the signature of the director is put alone (decision of the owner 21.11).
+    withoutStamp: boolean;
     stamp: OrgPictureState | null;
     signature: (OrgPictureState & { director: string | null }) | null;
     signers: OrgSigner[];
@@ -88,3 +90,4 @@ export const orgDirectorSchema = z
   .refine((d) => noMark(d.position) && noMark(d.fullName) && noMark(d.signatureName), { path: ['marks'], message: 'brackets of a mark' });
 
 export const orgSignersSchema = z.object({ userIds: z.array(z.string().min(1)).max(500) });
+export const orgSealModeSchema = z.object({ withoutStamp: z.boolean() });

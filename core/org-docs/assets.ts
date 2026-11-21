@@ -92,6 +92,20 @@ interface AssetRow {
 
 const picture = (r: AssetRow): OrgPictureState => ({ width: r.width!, height: r.height!, updatedAt: r.updated_at.toISOString(), version: versionOf(r.sha256) });
 
+// The organisation works without a stamp: the signature is put alone (decision of the owner 21.11).
+export async function readWithoutStamp(db: Queryable): Promise<boolean> {
+  const { rows } = await db.query<{ without_stamp: boolean }>('SELECT without_stamp FROM app.org_profile');
+  if (!rows[0]) throw new Error('app.org_profile has no row: ensureOrgName runs at the start of the server');
+  return rows[0].without_stamp;
+}
+
+export async function saveWithoutStamp(db: Db, actorUserId: string, withoutStamp: boolean): Promise<void> {
+  await inTransaction(db, async (c) => {
+    await c.query('UPDATE app.org_profile SET without_stamp = $1, updated_by = $2, updated_at = now()', [withoutStamp, actorUserId]);
+    await writeAudit(c, { actorUserId, action: 'org_profile.seal_mode', target: null, details: { withoutStamp } });
+  });
+}
+
 export async function readDirector(db: Queryable): Promise<OrgDirector> {
   const { rows } = await db.query<{ director_position: string; director_full_name: string; director_signature_name: string }>(
     'SELECT director_position, director_full_name, director_signature_name FROM app.org_profile',
@@ -117,6 +131,7 @@ export async function orgAssetsState(db: Db, viewer: { isSuperadmin: boolean }):
     signatureOutdated: signature !== null && signatureOutdated(signature.director_name, director.fullName),
     seal: viewer.isSuperadmin
       ? {
+          withoutStamp: await readWithoutStamp(db),
           stamp: stamp ? picture(stamp) : null,
           signature: signature ? { ...picture(signature), director: signature.director_name || null } : null,
           signers: await listSigners(db),

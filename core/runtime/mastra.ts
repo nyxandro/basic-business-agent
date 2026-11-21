@@ -27,7 +27,8 @@ import { createStreamRetry } from './stream-retry.ts';
 import { createWebTools, type WebDeps } from '../web/research.ts';
 import { createWidgetHistoryProcessor } from '../widgets/history.ts';
 import { createOrgDocsPromptProcessor } from '../org-docs/prompt.ts';
-import { createSignTools, SIGN_ACTIONS, type SignDeps } from '../org-docs/sign-tool.ts';
+import { createSignTools, signActionsFor, type SignDeps } from '../org-docs/sign-tool.ts';
+import { SIGN_TOOL } from '../org-docs/prompt.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -96,7 +97,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);
-    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? mailActions[tool] ?? SIGN_ACTIONS[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
+    return createApprovalRecorder(deps.db, async (tool) => (tool === SIGN_TOOL ? (await signActionsFor(deps.db))[tool]! : (own[tool] ?? mailActions[tool] ?? deps.connections?.actionsSeen()[tool] ?? null)));
   };
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {

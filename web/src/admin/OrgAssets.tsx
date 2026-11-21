@@ -12,6 +12,7 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
+import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { adminApi } from './api.ts';
@@ -267,6 +268,24 @@ function SignersCard({ state, onChange }: { state: NonNullable<OrgAssetsState['s
   );
 }
 
+// «Организация работает без печати» (decision of the owner 21.11): the signature of the director then goes alone; a stamp
+// uploaded before stays kept and comes back when the switch goes off.
+function WithoutStamp({ on, onChange }: { on: boolean; onChange: Update }) {
+  const { busy, error, run } = useAction();
+  return (
+    <div className={styles.row}>
+      <div className={styles.switchRow}>
+        <div className={styles.rowHead}>
+          <span className={styles.label}>{t.withoutStamp}</span>
+          <span className={section.sub}>{on ? t.withoutStampOn : t.withoutStampOff}</span>
+        </div>
+        <Switch checked={on} label={t.withoutStamp} disabled={busy} onChange={(next) => void run(async () => onChange(await adminApi.saveOrgSealMode(next)))} />
+      </div>
+      <Feedback error={error} />
+    </div>
+  );
+}
+
 function Loaded({ initial }: { initial: OrgAssetsState }) {
   const [state, setState] = useState(initial);
   const seal = state.seal;
@@ -280,9 +299,10 @@ function Loaded({ initial }: { initial: OrgAssetsState }) {
           <PictureRow kind="logo" picture={state.logo} onChange={setState} />
           {seal ? (
             <>
-              <PictureRow kind="stamp" picture={seal.stamp} onChange={setState} />
+              <WithoutStamp on={seal.withoutStamp} onChange={setState} />
+              {seal.withoutStamp ? null : <PictureRow kind="stamp" picture={seal.stamp} onChange={setState} />}
               <PictureRow kind="signature" picture={seal.signature} warning={oldSignature ? t.oldSignature(oldSignature) : null} onChange={setState} />
-              <p className={styles.warning}>{t.copyWarning}</p>
+              <p className={styles.warning}>{seal.withoutStamp ? t.copyWarningSignature : t.copyWarning}</p>
             </>
           ) : (
             <div className={styles.row}>

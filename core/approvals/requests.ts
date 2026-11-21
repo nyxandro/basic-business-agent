@@ -79,8 +79,9 @@ function contextValue(ctx: { get(key: string): unknown } | undefined, key: strin
   return typeof v === 'string' && v ? v : null;
 }
 
-// `describe` names the actions of the agent's tools (core/approvals/describe.ts).
-export function createApprovalRecorder(db: Db, describe: (toolName: string) => ActionDescription | null) {
+// `describe` names the actions of the agent's tools (core/approvals/describe.ts); a name that depends on settings (the
+// stamp of the organisation) is read when the question is asked.
+export function createApprovalRecorder(db: Db, describe: (toolName: string) => ActionDescription | null | Promise<ActionDescription | null>) {
   return {
     id: 'bba-approval-recorder',
     async processOutputStream({ part, requestContext }) {
@@ -90,7 +91,7 @@ export function createApprovalRecorder(db: Db, describe: (toolName: string) => A
       const threadId = contextValue(requestContext, REQUEST_KEYS.threadId);
       const runId = (part as { runId?: string }).runId;
       if (!userId || !threadId || !runId) throw new Error('approval request without employee, thread or run in the request context');
-      const action = describe(payload.toolName);
+      const action = await describe(payload.toolName);
       await db.query(
         `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at, project_id, choices)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,

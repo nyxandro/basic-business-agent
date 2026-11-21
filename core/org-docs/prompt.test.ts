@@ -11,7 +11,7 @@ import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createLimiter } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable, createAgentWorkspace } from '../sandbox/workspace.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { NOT_A_SIGNER, orgDocsText, SIGN_MARK } from './prompt.ts';
+import { notASigner, orgDocsText, SIGN_MARK } from './prompt.ts';
 import { testPng } from './test-pictures.ts';
 
 const VENV = fileURLToPath(new URL('../../.venv-skills', import.meta.url));
@@ -56,7 +56,7 @@ describe('the prompt', () => {
   it('tells an employee who is not responsible only that the stamp is not theirs to put', async () => {
     t.model.script({ text: 'Готово.' });
     await chat('Сделай КП');
-    expect(systemOf()).toContain(NOT_A_SIGNER);
+    expect(systemOf()).toContain(notASigner(true));
     expect(systemOf()).not.toContain('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]');
     expect(systemOf()).not.toContain('Бланк организации');
   });
@@ -78,7 +78,7 @@ describe('the prompt', () => {
     t.model.script({ text: 'Готово.' });
     await chat('Сделай КП с подписью');
     expect(systemOf()).toContain('печати организации и подписи руководителя в профиле нет');
-    expect(systemOf()).not.toContain(NOT_A_SIGNER);
+    expect(systemOf()).not.toContain(notASigner(true));
     await putAsset('stamp', testPng(10, 10, { alpha: true }), 'c'.repeat(64));
     await putAsset('signature', testPng(10, 10, { alpha: true }), 'd'.repeat(64));
     t.model.script({ text: 'Готово.' });
@@ -106,12 +106,22 @@ describe('the text of the prompt', () => {
   // tell a responsible person's agent «это делают ответственные лица».
   it('tells a sub-agent of the letterhead and the director, nothing of the stamp', () => {
     const facts = { director: { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' }, paths: { blank: '/b/blank.docx', logo: null }, commands: true };
-    const sub = orgDocsText({ ...facts, sealGaps: [], level: 'sub' })!;
+    const sub = orgDocsText({ ...facts, sealGaps: [], level: 'sub', withStamp: true })!;
     expect(sub).toContain('Бланк организации: /b/blank.docx');
-    expect(sub).not.toContain(NOT_A_SIGNER);
+    expect(sub).not.toContain(notASigner(true));
     expect(sub).not.toContain(SIGN_MARK);
-    expect(orgDocsText({ ...facts, sealGaps: [], level: 'top' })).toContain(SIGN_MARK);
-    expect(orgDocsText({ ...facts, sealGaps: null, level: 'top' })).toContain(NOT_A_SIGNER);
+    expect(orgDocsText({ ...facts, sealGaps: [], level: 'top', withStamp: true })).toContain(SIGN_MARK);
+    expect(orgDocsText({ ...facts, sealGaps: null, level: 'top', withStamp: true })).toContain(notASigner(true));
+  });
+
+  // An organisation without a stamp (decision of the owner 21.11): the agent puts and speaks of the signature alone.
+  it('speaks of the signature alone in an organisation without a stamp', () => {
+    const facts = { director: { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' }, paths: { blank: null, logo: null }, commands: true, level: 'top' as const };
+    const signer = orgDocsText({ ...facts, sealGaps: [], withStamp: false })!;
+    expect(signer).toContain('Подпись руководителя ставишь');
+    expect(signer).toContain('печати у организации нет');
+    expect(orgDocsText({ ...facts, sealGaps: null, withStamp: false })).toContain(notASigner(false));
+    expect(notASigner(false)).not.toContain('Печать');
   });
 });
 

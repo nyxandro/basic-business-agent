@@ -107,6 +107,13 @@
   color: var(--muted);
 }
 
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .foot {
   display: flex;
   justify-content: flex-end;

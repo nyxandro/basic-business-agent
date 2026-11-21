@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The stamp and the signature of the director put in place of the mark [[ПОДПИСЬ_РУКОВОДИТЕЛЯ]] in a Word document.
 
-Usage: python3 sign.py IN.docx OUT.docx --position POSITION --name NAME (--stamp STAMP.png --signature SIGNATURE.png | --plain)
+Usage: python3 sign.py IN.docx OUT.docx --position POSITION --name NAME (--signature SIGNATURE.png [--stamp STAMP.png] | --plain)
+(no --stamp: an organisation working without a stamp, the signature alone)
 
 Run by the server in a one-off sandbox after «Да» (docs/specs/[20.11.2026]-org-letterhead.md); the pictures are never in
 the agent's folder. The mark is looked for in every paragraph of the body, of the cells of tables, of text boxes, of the
@@ -325,13 +326,15 @@ def sign_paragraph(pkg, part, p, document, args, images):
     if args.plain:
         new.append(text_run(HAND_LINE, rpr))
     else:
-        sig_data, stamp_data = images
+        sig_data = images[0]
         sw, sh = png_size(sig_data)
         cy = SIGNATURE_HEIGHT
         cx = int(cy * sw / sh)
         if cx > SIGNATURE_MAX_WIDTH:
             cx, cy = SIGNATURE_MAX_WIDTH, int(SIGNATURE_MAX_WIDTH * sh / sw)
         new.append(inline_run(pkg.add_image(part, sig_data, 'bba-signature'), pkg.next_id(), 'Подпись руководителя', cx, cy))
+    if not args.plain and images[1] is not None:
+        stamp_data = images[1]
         tw, th = png_size(stamp_data)
         stamp_cx, stamp_cy = STAMP_WIDTH, int(STAMP_WIDTH * th / tw)
         # From the end of the signature: centred on it and a quarter of the stamp to the left, over the position; its
@@ -364,14 +367,19 @@ def main():
     ap.add_argument('--signature')
     ap.add_argument('--plain', action='store_true')
     args = ap.parse_args()
-    if not args.plain and not (args.stamp and args.signature):
-        fail(1, 'the stamp and the signature are needed without --plain')
+    if not args.plain and not args.signature:
+        fail(1, 'the signature is needed without --plain')
     if any(s in (args.position + args.name) for s in ('[[', ']]')):
         fail(1, 'the position or the name holds brackets of a mark')
     images = None
     if not args.plain:
-        with open(args.signature, 'rb') as s, open(args.stamp, 'rb') as t:
-            images = (s.read(), t.read())
+        with open(args.signature, 'rb') as s:
+            signature = s.read()
+        stamp = None
+        if args.stamp:
+            with open(args.stamp, 'rb') as t:
+                stamp = t.read()
+        images = (signature, stamp)
     pkg = Package(args.source)
     document = pkg.xml(pkg.main)
     marks = 0

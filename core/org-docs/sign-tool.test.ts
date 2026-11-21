@@ -11,7 +11,7 @@ import type { FakeRequest } from '../models/fake-openai.ts';
 import { createTask } from '../background/tasks.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { conversationRoot } from '../workspace/layout.ts';
-import { NOT_A_SIGNER, SIGN_TOOL } from './prompt.ts';
+import { notASigner, SIGN_TOOL } from './prompt.ts';
 import { testPng } from './test-pictures.ts';
 
 const FIXTURES = new URL('./fixtures/', import.meta.url);
@@ -241,6 +241,31 @@ describe('the signing tool', () => {
     await t.db.query("INSERT INTO app.org_assets (kind, content, sha256, width, height) VALUES ('stamp', $1, $2, 400, 400)", [stamp!.content, 'c'.repeat(64)]);
   }, 60_000);
 
+  it('puts the signature alone in an organisation working without a stamp, and the card says so', async () => {
+    await t.db.query('UPDATE app.org_profile SET without_stamp = true');
+    const { rows: [stamp] } = await t.db.query<{ content: Buffer }>("DELETE FROM app.org_assets WHERE kind = 'stamp' RETURNING content");
+    try {
+      const { agents } = (await (await t.call('GET', '/app/api/agents', { cookie: olga })).json()) as AgentListResponse;
+      expect(agents.find((a) => a.id === 'sales')!.actions[SIGN_TOOL]!.title).toBe('Поставить подпись руководителя в документ Word');
+      const threadId = randomUUID();
+      const dir = putDocument(olgaId, threadId, 'Письмо.docx', 'to-sign.docx');
+      t.model.script(sign('Письмо.docx', 'letter'), { text: 'Готово.' });
+      const interrupt = interruptOf(await run(olga, threadId, 'Подпиши письмо'));
+      expect(interrupt?.metadata?.mastra?.toolName).toBe(SIGN_TOOL);
+      const { rows: [asked] } = await t.db.query<{ summary: string }>('SELECT summary FROM app.approval_requests WHERE thread_id = $1', [threadId]);
+      expect(asked!.summary).toBe('Поставить подпись руководителя в документ Word');
+      await run(olga, threadId, null, [{ interruptId: interrupt!.id, status: 'resolved', payload: { approved: true } }]);
+      const doc = signed(join(dir, 'Письмо.docx'));
+      expect(doc.text).not.toContain('[[');
+      expect(doc.text).toContain('И. П. Иванов');
+      // The logo of the letterhead and the signature: no stamp.
+      expect(doc.media.filter((n) => n.includes('bba-'))).toEqual([expect.stringContaining('bba-signature')]);
+    } finally {
+      await t.db.query('UPDATE app.org_profile SET without_stamp = false');
+      await t.db.query("INSERT INTO app.org_assets (kind, content, sha256, width, height) VALUES ('stamp', $1, $2, 400, 400)", [stamp!.content, 'c'.repeat(64)]);
+    }
+  }, 60_000);
+
   it('signs in a background run after «Да» on «Ждёт подтверждения», with the kind of the document in words', async () => {
     const make = (req: FakeRequest) => ({
       toolCalls: [{ name: (req.tools ?? []).map((x) => x.function.name).find((n) => n.endsWith('execute_command'))!, args: { command: `python3 -c "from docx import Document; d = Document(); d.add_paragraph('Сводка'); d.add_paragraph('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]'); d.save('Сводка.docx')"` } }],
@@ -271,7 +296,7 @@ describe('the signing tool', () => {
     t.model.script({ text: 'Подпись ставят ответственные лица.' });
     await run(petr, randomUUID(), 'Поставь подпись директора на КП');
     expect(toolNames()).not.toContain(SIGN_TOOL);
-    expect(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content)).join('\n')).toContain(NOT_A_SIGNER);
+    expect(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'system').map((m) => String(m.content)).join('\n')).toContain(notASigner(true));
   });
 
   it('asks the list again after «Да»: removed meanwhile — no stamp, a plain line of the signature instead of the mark', async () => {

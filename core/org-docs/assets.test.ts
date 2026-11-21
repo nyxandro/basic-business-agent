@@ -132,6 +132,19 @@ describe('the director and the responsible people', () => {
     expect(state.seal?.signature?.director).toBe('Иванов Иван Петрович');
   });
 
+  // Decision of the owner 21.11: an organisation without a stamp is a switch of the admin panel, a superadmin's like the stamp.
+  it('switches the organisation to working without a stamp — only a superadmin, with a record in the audit', async () => {
+    expect((await json<OrgAssetsState>(await t.call('GET', '/app/api/admin/org-assets', { cookie: admin }))).seal?.withoutStamp).toBe(false);
+    expect((await t.call('PUT', '/app/api/admin/org-seal-mode', { cookie: profiler, body: { withoutStamp: true } })).status).toBe(403);
+    const on = await json<OrgAssetsState>(await t.call('PUT', '/app/api/admin/org-seal-mode', { cookie: admin, body: { withoutStamp: true } }));
+    expect(on.seal?.withoutStamp).toBe(true);
+    // The stamp uploaded before stays kept: it comes back when the switch goes off.
+    expect(on.seal?.stamp).not.toBeNull();
+    const { rows } = await t.db.query<{ details: { withoutStamp: boolean } }>("SELECT details FROM app.admin_audit WHERE action = 'org_profile.seal_mode'");
+    expect(rows.map((r) => r.details.withoutStamp)).toEqual([true]);
+    expect((await json<OrgAssetsState>(await t.call('PUT', '/app/api/admin/org-seal-mode', { cookie: admin, body: { withoutStamp: false } }))).seal?.withoutStamp).toBe(false);
+  });
+
   it('lets only a superadmin name the responsible people, nobody by default, and writes who was added and removed', async () => {
     expect((await json<OrgAssetsState>(await t.call('GET', '/app/api/admin/org-assets', { cookie: admin }))).seal?.signers).toEqual([]);
     const set = await json<OrgAssetsState>(await t.call('PUT', '/app/api/admin/org-signers', { cookie: admin, body: { userIds: [olgaId, adminId] } }));

@@ -1,5 +1,6 @@
 // org_sign_document — the stamp and the signature of the director in a Word document of the agent's folder
-// (docs/specs/[20.11.2026]-org-letterhead.md, F1): only a responsible person's agent has it (core/runtime/agent-factory.ts),
+// (docs/specs/[20.11.2026]-org-letterhead.md, F1; an organisation without a stamp — the signature alone, decision of the
+// owner 21.11): only a responsible person's agent has it (core/runtime/agent-factory.ts),
 // only after «Да» (core/approvals/policy.ts writes the journal), and the right is asked again after «Да». A forbidden
 // kind of document or a document without the mark is refused before the card: nothing to say «Да» to. The signing runs
 // in a one-off sandbox in a temporary folder — the pictures never reach the sandbox of the answer — and the result is
@@ -23,7 +24,7 @@ import { runRoot } from '../sandbox/workspace.ts';
 import { logEvent } from '../server/log.ts';
 import { inFolderOf } from '../workspace/held-folder.ts';
 import { draftsPath, existingInside, saveInFolder } from '../workspace/layout.ts';
-import { assetContent, readDirector } from './assets.ts';
+import { assetContent, readDirector, readWithoutStamp } from './assets.ts';
 import { ORG_SCRIPTS_DIR, ORG_WORK_PREFIX } from './blank.ts';
 import { sealGapsOf, sealMissingWords, SIGN_MARK, SIGN_TOOL, type SealGap } from './prompt.ts';
 import { assertUnpackable, fingerprintOf, hasMark, readSignable, rememberAsked, takeAsked } from './sign-document.ts';
@@ -79,16 +80,19 @@ const contextOf = (ctx: ApprovalCtx['requestContext']): Ctx => {
 const refusal = (code: string, message: string) => ({ proceed: false as const, output: { error: true, code, message } });
 
 // The document after «Да»: the paper's line with the pictures, or with a line to sign by hand.
-async function signed(deps: SignDeps, source: Buffer, director: { position: string; signatureName: string }, seal: { stamp: Buffer; signature: Buffer } | null): Promise<Buffer> {
+async function signed(deps: SignDeps, source: Buffer, director: { position: string; signatureName: string }, seal: { stamp: Buffer | null; signature: Buffer } | null): Promise<Buffer> {
   return deps.limiter.run(async () => {
     const dir = mkdtempSync(join(deps.workRoot, ORG_WORK_PREFIX));
     try {
       writeFileSync(join(dir, 'in.docx'), source);
       const args = [join(ORG_SCRIPTS_DIR, 'sign.py'), 'in.docx', 'out.docx', '--position', director.position, '--name', director.signatureName];
       if (seal) {
-        writeFileSync(join(dir, 'stamp.png'), seal.stamp);
         writeFileSync(join(dir, 'signature.png'), seal.signature);
-        args.push('--stamp', 'stamp.png', '--signature', 'signature.png');
+        args.push('--signature', 'signature.png');
+        if (seal.stamp) {
+          writeFileSync(join(dir, 'stamp.png'), seal.stamp);
+          args.push('--stamp', 'stamp.png');
+        }
       } else {
         args.push('--plain');
       }
@@ -151,10 +155,16 @@ const SIGN_INPUT = z.object({
   kind: z.enum(DOCUMENT_KINDS).describe('Вид документа'),
 });
 
-// How the card and the chat line name the action, with the kinds of documents in words — the same for everybody.
-export const SIGN_ACTIONS: Record<string, ActionDescription> = {
-  [SIGN_TOOL]: { ...describeTool(createTool({ id: SIGN_TOOL, description: SIGN_DESCRIPTION, inputSchema: SIGN_INPUT, requireApproval: true }) as AnyTool), choices: { kind: KIND_CHOICES } },
-};
+// How the card and the chat line name the action, with the kinds of documents in words — the same for everybody; without
+// a stamp the card speaks of the signature alone (decision of the owner 21.11).
+const DESCRIBED = describeTool(createTool({ id: SIGN_TOOL, description: SIGN_DESCRIPTION, inputSchema: SIGN_INPUT, requireApproval: true }) as AnyTool);
+export function signActions(withStamp: boolean): Record<string, ActionDescription> {
+  return { [SIGN_TOOL]: { ...DESCRIBED, title: withStamp ? DESCRIBED.title : 'Поставить подпись руководителя в документ Word', choices: { kind: KIND_CHOICES } } };
+}
+
+export async function signActionsFor(db: Db): Promise<Record<string, ActionDescription>> {
+  return signActions(!(await readWithoutStamp(db)));
+}
 
 function signTool(deps: SignDeps): AnyTool {
   const tool = createTool({
@@ -210,10 +220,11 @@ function signTool(deps: SignDeps): AnyTool {
         if (!allowed) throw appError('APP_SIGN_NOT_ALLOWED', `the person is no longer a responsible signer: ${result}`, lined ? {} : { userMessage: NOT_ALLOWED_UNCHANGED });
         throw appError('APP_SIGN_NOT_UPLOADED', `missing ${gaps!.map((g) => GAP_NAMES[g]).join(', ')}: ${result}`, { userMessage: notUploadedText(gaps!, lined) });
       }
-      const [stamp, signature] = await Promise.all([assetContent(deps.db, 'stamp'), assetContent(deps.db, 'signature')]);
-      if (!stamp || !signature) throw appError('APP_SIGN_NOT_UPLOADED', 'the stamp or the signature went away while signing');
+      const [withoutStamp, stamp, signature] = await Promise.all([readWithoutStamp(deps.db), assetContent(deps.db, 'stamp'), assetContent(deps.db, 'signature')]);
+      if ((!withoutStamp && !stamp) || !signature) throw appError('APP_SIGN_NOT_UPLOADED', 'the stamp or the signature went away while signing');
       try {
-        replace(deps, ctx, root, rel, before, await signed(deps, before, director, { stamp: stamp.bytes, signature: signature.bytes }));
+        // Without a stamp the signature goes alone, even when a stamp uploaded before is kept.
+        replace(deps, ctx, root, rel, before, await signed(deps, before, director, { stamp: withoutStamp ? null : stamp!.bytes, signature: signature.bytes }));
       } catch (error) {
         if (isAppError(error)) throw error;
         throw appError('APP_SIGN_FAILED', 'the signed document could not be written', { cause: error });

@@ -16,7 +16,7 @@ const SUPERADMIN = { ...ME, isSuperadmin: true, permissions: ['org_profile', 'us
 const PROFILER = { ...ME, isSuperadmin: false, permissions: ['org_profile'] };
 const PICTURE = { width: 400, height: 400, updatedAt: '2026-11-21T10:00:00.000Z', version: '0123456789ab' };
 const DIRECTOR = { position: 'Генеральный директор', fullName: 'Иванов Иван Петрович', signatureName: 'И. П. Иванов' };
-const EMPTY: OrgAssetsState = { blank: null, logo: null, director: { position: '', fullName: '', signatureName: '' }, signatureOutdated: false, seal: { stamp: null, signature: null, signers: [] } };
+const EMPTY: OrgAssetsState = { blank: null, logo: null, director: { position: '', fullName: '', signatureName: '' }, signatureOutdated: false, seal: { withoutStamp: false, stamp: null, signature: null, signers: [] } };
 
 function server(me: object, state: OrgAssetsState) {
   let current = state;
@@ -51,7 +51,7 @@ describe('«Бланк, печать и подпись»', () => {
       ...EMPTY,
       blank: { fileName: 'Бланк Альфа-Строй.docx', updatedAt: PICTURE.updatedAt, info: { mark: false, header: false, bodyDrawing: true } },
       director: { ...DIRECTOR, fullName: 'Петров Пётр Петрович', signatureName: 'П. П. Петров' },
-      seal: { stamp: PICTURE, signature: { ...PICTURE, director: 'Иванов Иван Петрович' }, signers: [] },
+      seal: { withoutStamp: false, stamp: PICTURE, signature: { ...PICTURE, director: 'Иванов Иван Петрович' }, signers: [] },
     });
     renderApp('/admin/org-profile');
     expect(await screen.findByText('Бланк Альфа-Строй.docx')).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe('«Бланк, печать и подпись»', () => {
 
   it('prepares a scan of the stamp without the white, shows it before saving and sends the PNG only on «Сохранить»', async () => {
     const { s, reply } = server(SUPERADMIN, EMPTY);
-    s.set('PUT /app/api/admin/org-assets/stamp', () => reply({ ...EMPTY, seal: { stamp: PICTURE, signature: null, signers: [] } }));
+    s.set('PUT /app/api/admin/org-assets/stamp', () => reply({ ...EMPTY, seal: { withoutStamp: false, stamp: PICTURE, signature: null, signers: [] } }));
     vi.mocked(prepareOrgImage).mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
     renderApp('/admin/org-profile');
     const user = userEvent.setup();
@@ -101,8 +101,8 @@ describe('«Бланк, печать и подпись»', () => {
   });
 
   it('makes the signature line from the full name, lets it be corrected, and asks for a new signature after a new director', async () => {
-    const { s, reply } = server(SUPERADMIN, { ...EMPTY, director: DIRECTOR, seal: { stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } });
-    s.set('PUT /app/api/admin/org-director', (call) => reply({ ...EMPTY, director: call.body as typeof DIRECTOR, signatureOutdated: true, seal: { stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } }));
+    const { s, reply } = server(SUPERADMIN, { ...EMPTY, director: DIRECTOR, seal: { withoutStamp: false, stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } });
+    s.set('PUT /app/api/admin/org-director', (call) => reply({ ...EMPTY, director: call.body as typeof DIRECTOR, signatureOutdated: true, seal: { withoutStamp: false, stamp: null, signature: { ...PICTURE, director: DIRECTOR.fullName }, signers: [] } }));
     renderApp('/admin/org-profile');
     const user = userEvent.setup();
     const fullName = await screen.findByLabelText('ФИО руководителя');
@@ -122,9 +122,22 @@ describe('«Бланк, печать и подпись»', () => {
     expect(await screen.findByText(/печать и подпись через агентов не ставятся/)).toBeInTheDocument();
   });
 
+  // Decision of the owner 21.11: an organisation without a stamp is a switch; the signature then goes alone.
+  it('switches the organisation to working without a stamp and hides the stamp, keeping it on the server', async () => {
+    const { s, reply } = server(SUPERADMIN, { ...EMPTY, seal: { withoutStamp: false, stamp: PICTURE, signature: null, signers: [] } });
+    s.set('PUT /app/api/admin/org-seal-mode', (call) => reply({ ...EMPTY, seal: { withoutStamp: (call.body as { withoutStamp: boolean }).withoutStamp, stamp: PICTURE, signature: null, signers: [] } }));
+    renderApp('/admin/org-profile');
+    const user = userEvent.setup();
+    expect(await screen.findByRole('group', { name: 'Печать' })).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Организация работает без печати' }));
+    await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/admin/org-seal-mode')?.body).toEqual({ withoutStamp: true }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Печать' })).not.toBeInTheDocument());
+    expect(screen.getByText(/агенты ответственных лиц ставят только подпись руководителя/)).toBeInTheDocument();
+  });
+
   it('names the responsible people from the list of employees', async () => {
     const { s, reply } = server(SUPERADMIN, EMPTY);
-    s.set('PUT /app/api/admin/org-signers', () => reply({ ...EMPTY, seal: { stamp: null, signature: null, signers: [{ userId: 'olga', name: 'Ольга Смирнова', email: 'olga@example.com' }] } }));
+    s.set('PUT /app/api/admin/org-signers', () => reply({ ...EMPTY, seal: { withoutStamp: false, stamp: null, signature: null, signers: [{ userId: 'olga', name: 'Ольга Смирнова', email: 'olga@example.com' }] } }));
     renderApp('/admin/org-profile');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('checkbox', { name: 'Ольга Смирнова' }));

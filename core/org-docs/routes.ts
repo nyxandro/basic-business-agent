@@ -2,7 +2,7 @@
 // letterhead and the logo — right «Профиль организации»; the stamp, the signature and the responsible people — only a
 // superadmin, who alone sees them too (independent review 20.11: otherwise whoever has the right would make themselves
 // responsible). Every change goes to the audit.
-import { ORG_ASSET_KINDS, ORG_BLANK_MAX_BYTES, orgDirectorSchema, orgSignersSchema, SUPERADMIN_ASSETS, type OrgAssetKind } from '@bba/contracts';
+import { ORG_ASSET_KINDS, ORG_BLANK_MAX_BYTES, orgDirectorSchema, orgSealModeSchema, orgSignersSchema, SUPERADMIN_ASSETS, type OrgAssetKind } from '@bba/contracts';
 import type { Hono, Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Db } from '../db/pool.ts';
@@ -10,7 +10,7 @@ import { appError } from '../errors/catalog.ts';
 import { MULTIPART_OVERHEAD_BYTES } from '../projects/routes.ts';
 import { requirePermission } from '../server/guards.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { assetContent, blankPreview, checkBlankFile, checkPicture, orgAssetsState, removeAsset, saveBlank, saveDirector, savePicture, versionOf } from './assets.ts';
+import { assetContent, blankPreview, checkBlankFile, checkPicture, orgAssetsState, removeAsset, saveBlank, saveDirector, savePicture, saveWithoutStamp, versionOf } from './assets.ts';
 import { prepareBlank, type BlankDeps } from './blank.ts';
 import { orgFilePaths } from './files.ts';
 import { setSigners } from './signers.ts';
@@ -114,6 +114,14 @@ export function registerOrgDocsRoutes(app: Hono<AppEnv>, deps: OrgDocsRouteDeps)
       throw appError('APP_VALIDATION_FAILED', `bad director: ${parsed.error.message}`, userMessage ? { userMessage } : {});
     }
     await saveDirector(deps.db, access(c).userId, parsed.data);
+    return c.json(await state(c));
+  });
+
+  // «Организация работает без печати» — a setting of the stamp, a superadmin's like the stamp itself.
+  app.put('/app/api/admin/org-seal-mode', right, async (c) => {
+    assertSuperadmin(c, 'the mode without a stamp');
+    const { withoutStamp } = await parseJson(c, orgSealModeSchema);
+    await saveWithoutStamp(deps.db, access(c).userId, withoutStamp);
     return c.json(await state(c));
   });
 
