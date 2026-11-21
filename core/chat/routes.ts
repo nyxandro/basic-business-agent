@@ -30,6 +30,7 @@ import { takeBack, turnToAnswerAgain } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { MEMORY_ACTIONS } from '../memory/tools.ts';
+import { SIGN_ACTIONS } from '../org-docs/sign-tool.ts';
 import { CONVERSATIONS_ACTIONS } from '../history/tool.ts';
 import { withoutWidgetEnvelope } from '../widgets/envelope.ts';
 
@@ -101,6 +102,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
           ...MEMORY_ACTIONS,
           ...CONVERSATIONS_ACTIONS,
           ...mailActions,
+          ...SIGN_ACTIONS,
           ...computerActions,
           ...Object.fromEntries(Object.entries(seen).filter(([tool]) => rt.connectorIds.some((id) => tool.startsWith(`${serverKey(id)}_`)))),
           ...mcp.get(rt.passport.id)?.actions,

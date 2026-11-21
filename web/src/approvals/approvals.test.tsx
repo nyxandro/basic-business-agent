@@ -57,6 +57,22 @@ describe('«Ждёт подтверждения»', () => {
     await waitFor(() => expect(screen.queryByRole('link', { name: /^Ждёт подтверждения/ })).not.toBeInTheDocument());
   });
 
+  // The stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md): a kind of document reads in words, an act with
+  // the line about the consent of the other party.
+  it('shows a value of a fixed set in words of the action', async () => {
+    const sign = {
+      ...QUESTION,
+      tool: 'org_sign_document',
+      action: { title: 'Поставить печать организации и подпись руководителя в документ Word', fields: { path: 'Документ', kind: 'Вид документа' }, readOnly: false, choices: { kind: { act: 'акт — первичный документ: факсимиле допустимо, только если это прямо предусмотрено договором с клиентом' } } },
+      args: { path: 'Акт.docx', kind: 'act' },
+    };
+    server({ pending: [sign], failed: [] });
+    renderApp('/approvals');
+    const card = (await screen.findByText('Утренняя сводка')).closest('article')!;
+    expect(within(card).getByText(/^акт — первичный документ/)).toBeInTheDocument();
+    expect(within(card).queryByText('act')).not.toBeInTheDocument();
+  });
+
   it('shows «Отклонено» after «Нет»', async () => {
     const s = server({ pending: [QUESTION], failed: [] });
     renderApp('/approvals');

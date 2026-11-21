@@ -23,6 +23,8 @@ export interface ApprovalRequest {
   // The name of the action and the labels of its fields as they were when asked.
   summary: string;
   labels: Record<string, string>;
+  // How the card shows values of fields with a fixed set (core/org-docs/sign-tool.ts), as they were when asked.
+  choices: Record<string, Record<string, string>>;
   args: unknown;
   status: ApprovalStatus;
   errorCode: string | null;
@@ -43,6 +45,7 @@ interface Row {
   tool: string;
   summary: string;
   labels: Record<string, string>;
+  choices: Record<string, Record<string, string>>;
   args: unknown;
   status: ApprovalStatus;
   error_code: string | null;
@@ -62,6 +65,7 @@ const toRequest = (r: Row): ApprovalRequest => ({
   tool: r.tool,
   summary: r.summary,
   labels: r.labels,
+  choices: r.choices,
   args: r.args,
   status: r.status,
   errorCode: r.error_code,
@@ -88,8 +92,8 @@ export function createApprovalRecorder(db: Db, describe: (toolName: string) => A
       if (!userId || !threadId || !runId) throw new Error('approval request without employee, thread or run in the request context');
       const action = describe(payload.toolName);
       await db.query(
-        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at, project_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
+        `INSERT INTO app.approval_requests (user_id, agent_id, task_id, thread_id, run_id, tool_call_id, tool, summary, labels, args, status, expires_at, project_id, choices)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13) ON CONFLICT (run_id, tool_call_id) DO NOTHING`,
         [
           userId,
           contextValue(requestContext, REQUEST_KEYS.agentId) ?? 'unknown',
@@ -104,6 +108,7 @@ export function createApprovalRecorder(db: Db, describe: (toolName: string) => A
           JSON.stringify(summariseArgs(payload.args ?? {})),
           new Date(Date.now() + APPROVAL_TTL_MS),
           contextValue(requestContext, REQUEST_KEYS.projectId),
+          JSON.stringify(action?.choices ?? {}),
         ],
       );
       return part;

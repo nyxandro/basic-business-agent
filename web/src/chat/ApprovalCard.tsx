@@ -43,7 +43,7 @@ export function ApprovalCard({ interrupt, agent, onYes, onNo }: { interrupt: App
           {args.map(([k, v]) => (
             <div key={k} className={styles.approvalField}>
               <dt>{action?.fields[k] ?? k}</dt>
-              <dd>{valueText(v)}</dd>
+              <dd>{action?.choices?.[k]?.[String(v)] ?? valueText(v)}</dd>
             </div>
           ))}
         </dl>

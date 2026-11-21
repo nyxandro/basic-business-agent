@@ -75,6 +75,8 @@ export interface AgentFactoryDeps {
   historyTools?: HistoryTools;
   // The person's mailbox (spec, section 8.24): its tools, when the person has connected one.
   mail?: { toolsFor(userId: string): Promise<Record<string, AnyTool>> };
+  // The stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md): the tool of a responsible person only.
+  signing?: { toolsFor(userId: string): Promise<Record<string, AnyTool>> };
   // Files and commands of the employee's own folder; without it the agent only reads skills.
   sandbox?: { deps: SandboxDeps; isolation: 'bwrap' | 'seatbelt' };
   // The internet (spec, section 8.30): the tools an agent with «Доступ к сети интернет» gets.
@@ -132,6 +134,8 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
         ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
         ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
         ...(deps.mail ? await deps.mail.toolsFor(userId) : {}),
+        // Documents need programs (spec, section 8.30); a sub-agent answers its parent, never puts the stamp.
+        ...(deps.signing && level === 'top' && abilities.commands ? await deps.signing.toolsFor(userId) : {}),
         ...(deps.connections ? await deps.connections.toolsFor(userId, { agentId: rt.passport.id, connectorIds: rt.connectorIds }) : {}),
         ...(abilities.web && deps.web ? deps.web.tools : {}),
         ...(abilities.widgets ? widgetTools : {}),

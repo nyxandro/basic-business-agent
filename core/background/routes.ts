@@ -40,7 +40,7 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
         task: p.taskId ? (titles.get(p.taskId) ?? p.taskId) : null,
         tool: p.tool,
         // A question exists only for an action that changes data.
-        action: { title: p.summary, fields: p.labels, readOnly: false },
+        action: { title: p.summary, fields: p.labels, readOnly: false, choices: p.choices },
         args: argsByThread.get(p.threadId)?.get(p.toolCallId) ?? p.args,
         createdAt: p.createdAt.toISOString(),
         expiresAt: p.expiresAt.toISOString(),

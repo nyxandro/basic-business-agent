@@ -326,7 +326,10 @@ export async function createTestApp(
     },
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
-      ? { sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir }, isolation: assertIsolationAvailable() } }
+      ? {
+          sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir }, isolation: assertIsolationAvailable() },
+          signing: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: commandLimiter, workRoot: previewRoot },
+        }
       : {}),
   });
   const editor = { db, mastra, registry };

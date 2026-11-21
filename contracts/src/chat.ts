@@ -9,6 +9,9 @@ export interface ActionDescription {
   fields: Record<string, string>;
   // Reads only: works without «Да» («только чтение» in the chat).
   readOnly: boolean;
+  // How the card shows a value of a field with a fixed set of values (field → value → text): «act» reads «акт — …»
+  // with the line about the consent of the other party (docs/specs/[20.11.2026]-org-letterhead.md).
+  choices?: Record<string, Record<string, string>>;
 }
 
 export interface AgentSummary {

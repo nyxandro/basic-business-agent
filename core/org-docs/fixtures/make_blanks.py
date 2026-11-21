@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds the sample letterheads of core/org-docs/fixtures (a fictional organisation): the ways real
-letterheads are made, for blank.py and sign.py. Run with the Python of the skills:
+letterheads are made, for blank.py; and documents with the mark of the signature, for sign.py. Run with the Python of the skills:
 .venv-skills/bin/python core/org-docs/fixtures/make_blanks.py core/org-docs/fixtures
 """
 import io
@@ -134,6 +134,25 @@ def split_mark(out: Path) -> None:
     doc.save(out / 'split-mark.docx')
 
 
+def to_sign(out: Path) -> None:
+    """A letter on the letterhead with the mark of the signature on a line of its own, as the agent leaves it."""
+    doc = Document(out / 'header-footer.docx')
+    doc.add_paragraph('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]')
+    doc.save(out / 'to-sign.docx')
+
+
+def to_sign_table(out: Path) -> None:
+    """The mark in a cell of a table, cut by Word into three pieces, with words around it."""
+    doc = Document()
+    letter(doc)
+    table = doc.add_table(rows=1, cols=2)
+    table.cell(0, 0).paragraphs[0].text = 'Поставщик:'
+    cell = table.cell(0, 1).paragraphs[0]
+    for piece in ('Подпись: [[ПОД', 'ПИСЬ_РУКОВО', 'ДИТЕЛЯ]] М. П.'):
+        cell.add_run(piece)
+    doc.save(out / 'to-sign-table.docx')
+
+
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     header_footer(target)
@@ -141,3 +160,5 @@ if __name__ == '__main__':
     body_table(target, mark=True)
     first_page(target)
     split_mark(target)
+    to_sign(target)
+    to_sign_table(target)

@@ -45,6 +45,18 @@ describe('confirmation card', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Нет' }));
     expect(onNo).toHaveBeenCalledTimes(1);
   });
+
+  // The stamp and the signature (docs/specs/[20.11.2026]-org-letterhead.md): the kind of document in words of the action.
+  it('shows a value of a fixed set in words, the warning of an act included', () => {
+    const agent = {
+      systems: SYSTEMS,
+      actions: { org_sign_document: { title: 'Поставить печать организации и подпись руководителя в документ Word', fields: { path: 'Документ', kind: 'Вид документа' }, readOnly: false, choices: { kind: { act: 'акт — первичный документ: факсимиле допустимо, только если это прямо предусмотрено договором с клиентом' } } } },
+    };
+    render(<ApprovalCard interrupt={{ metadata: { mastra: { toolName: 'org_sign_document', args: { path: 'Акт.docx', kind: 'act' } } } }} agent={agent} onYes={vi.fn()} onNo={vi.fn()} />);
+    expect(screen.getByText('Вид документа')).toBeInTheDocument();
+    expect(screen.getByText(/^акт — первичный документ/)).toBeInTheDocument();
+    expect(screen.getByText('Акт.docx')).toBeInTheDocument();
+  });
 });
 
 describe('tool line', () => {

@@ -27,6 +27,7 @@ import { createStreamRetry } from './stream-retry.ts';
 import { createWebTools, type WebDeps } from '../web/research.ts';
 import { createWidgetHistoryProcessor } from '../widgets/history.ts';
 import { createOrgDocsPromptProcessor } from '../org-docs/prompt.ts';
+import { createSignTools, SIGN_ACTIONS, type SignDeps } from '../org-docs/sign-tool.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -49,6 +50,8 @@ export interface MastraRuntimeDeps {
   docText: DocTextService;
   // Where the letterhead and the logo are laid out for agents (docs/specs/[20.11.2026]-org-letterhead.md).
   orgFilesDir: string;
+  // The one-off sandbox that puts the stamp and the signature; without it nobody has the signing tool.
+  signing?: Omit<SignDeps, 'db' | 'workspaceRoot'>;
   // The mailboxes of employees (spec, section 8.24).
   mail?: MailService;
   // The internet of agents (spec, section 8.30): the search, the reader of pages and the translation of a failed
@@ -84,6 +87,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
   const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
   const mailActions = mailTools ? describeTools(mailTools) : {};
+  const signTools = deps.signing ? createSignTools({ db: deps.db, workspaceRoot: deps.workspaceRoot, ...deps.signing }) : null;
   const memoryTools = createMemoryTools(deps.db);
   // An agent no longer in the registry keeps its id as its name in the lists of past conversations.
   const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
@@ -92,7 +96,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   // Questions keep the name of the action: the agent's own tools, else the mailbox's or a connected system's.
   const recorderOf = (rt: (typeof deps.registry.agents)[number]) => {
     const own = agentActions(rt);
-    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? mailActions[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
+    return createApprovalRecorder(deps.db, (tool) => own[tool] ?? mailActions[tool] ?? SIGN_ACTIONS[tool] ?? deps.connections?.actionsSeen()[tool] ?? null);
   };
   for (const rt of deps.registry.agents) {
     agents[rt.passport.id] = createMastraAgent(rt, {
@@ -105,6 +109,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),
+      ...(signTools ? { signing: signTools } : {}),
       ...(web ? { web } : {}),
       processorsFor: (r, level) => ({
         // The text of documents first: before the layers add the time to the latest message and before masking

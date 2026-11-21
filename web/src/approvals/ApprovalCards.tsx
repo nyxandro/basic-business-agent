@@ -29,7 +29,7 @@ function Fields({ item }: { item: PendingApproval }) {
   return (
     <dl className={styles.fields}>
       {entries.map(([key, v]) => {
-        const text = typeof v === 'string' ? v : JSON.stringify(v);
+        const text = item.action.choices?.[key]?.[String(v)] ?? (typeof v === 'string' ? v : JSON.stringify(v));
         return (
           <div key={key} className={styles.field}>
             <dt>{item.action.fields[key] ?? key}</dt>

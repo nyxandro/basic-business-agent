@@ -43,7 +43,7 @@ import { ensureMessageTexts } from '../search/message-texts.ts';
 import { createFileStorage, KEEP_COPY_MS } from '../storage/engine.ts';
 import { createPreviewCache, PREVIEW_CACHE_DIR, PREVIEW_CACHE_MAX_AGE_MS, PREVIEW_CACHE_MAX_BYTES, PREVIEW_CACHE_SUFFIX, startPreviewPurge } from '../preview/cache.ts';
 import { sandboxRunner } from '../preview/convert.ts';
-import { cleanBlankWork, ORG_SCRIPTS_DIR } from '../org-docs/blank.ts';
+import { cleanOrgWork, ORG_SCRIPTS_DIR } from '../org-docs/blank.ts';
 import { ORG_FILES_DIR, prepareOrgFiles } from '../org-docs/files.ts';
 import { cleanWorkRoot, createPreviewService, PREVIEW_MAX_CONCURRENT, PREVIEW_MAX_UNPACKED_BYTES, PREVIEW_QUEUE_WAIT_MS } from '../preview/service.ts';
 import { cleanDocTextWork, createDocTextService, DOC_TEXT_CACHE_DIR, DOC_TEXT_CACHE_MAX_AGE_MS, DOC_TEXT_CACHE_MAX_BYTES, DOC_TEXT_CACHE_SUFFIX } from '../doctext/service.ts';
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   // (docs/specs/[20.11.2026]-org-letterhead.md).
   const orgFilesDir = sandbox.deps.orgFilesDir;
   await prepareOrgFiles(db, orgFilesDir);
-  cleanBlankWork(tmpdir());
+  cleanOrgWork(tmpdir());
   const org = { filesDir: orgFilesDir, blank: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: sandbox.isolation, readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: officeLimiter, workRoot: tmpdir() } };
   // The text of attached documents for the model: made in the sandbox, kept a week like the viewer's PDFs (8.29).
   const docTextCache = createPreviewCache({ dir: join(tmpdir(), DOC_TEXT_CACHE_DIR), suffix: DOC_TEXT_CACHE_SUFFIX, maxBytes: DOC_TEXT_CACHE_MAX_BYTES, maxAgeMs: DOC_TEXT_CACHE_MAX_AGE_MS });
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, signing: { run: org.blank.run, limiter: commandLimiter, workRoot: tmpdir() }, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files });
   backgroundRef.current = background;
