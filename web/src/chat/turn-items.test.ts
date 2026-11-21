@@ -60,6 +60,8 @@ describe('the layout of the turn being answered now', () => {
     return turnItems(turn, messages, underWay).map((item) => (item.kind === 'text' ? item.text : item.kind === 'call' ? item.call.id : `[${item.calls.map((c) => c.id).join(' ')}]`));
   };
   const written = (id: string, args: string) => ({ id, type: 'function' as const, function: { name: WIDGET_TOOL.render, arguments: args } });
+  const FILE_SHOWN = '{"shown":true,"path":"КП.docx","name":"КП.docx","bytes":10}';
+  const SCREEN_WHOLE = '{"operations":[{"version":"1.0","createSurface":{"surfaceId":"kp","components":[{"id":"root","component":"Text","text":"А"}]}}]}';
   const SCREEN = '{"operations":[{"version":"1.0","createSurface":{"surfaceId":"kp","dataModel":{},"components":[{"id":"root","component":"Column","children":["a"]},{"id":"a","component":"Text","text":"Первый"},';
 
   it('keeps a call under way out of its stack, and puts it in once it is done', () => {
@@ -72,7 +74,7 @@ describe('the layout of the turn being answered now', () => {
   it('keeps the search and the file out while they are under way', () => {
     const turn = [said('a1', '', [call('w1', WEB_RESEARCH_TOOL), call('f1', GENUI_TOOL.file)])];
     expect(live(turn)).toEqual([]);
-    expect(live(turn, [result('w1', '{"sources":[]}'), result('f1', '{"name":"КП.docx"}')])).toEqual(['w1', 'f1']);
+    expect(live(turn, [result('w1', '{"sources":[]}'), result('f1', FILE_SHOWN)])).toEqual(['w1', '[f1]', 'f1']);
   });
 
   // The engine draws a screen as the model writes it (spec, section 8.31): it is in sight from its first component.
@@ -98,6 +100,22 @@ describe('the layout of the turn being answered now', () => {
     };
     expect(keyOf([result('c2', '{}')])).toBe('c1');
     expect(keyOf([result('c2', '{}'), result('c1', '{}')])).toBe('c1');
+  });
+
+  // 21.11: the model wrote its screen four times before the check let it through, and the answer showed nothing above
+  // «Собираю виджет…». Every done attempt is a line of the stack, the screen comes after its line.
+  it('puts every attempt of a widget into the stack, and the screen after it', () => {
+    const turn = [said('a1', '', [call('d1', WIDGET_TOOL.components), written('u1', SCREEN_WHOLE), written('u2', SCREEN_WHOLE), written('u3', '{"operations":')])];
+    const refused = '{"error":true,"code":"APP_WIDGET_INVALID","message":"Экран не собран"}';
+    expect(live(turn, [result('d1', '{"guide":"…"}'), result('u1', refused)])).toEqual(['[d1 u1]']);
+    expect(live(turn, [result('d1', '{"guide":"…"}'), result('u1', refused), result('u2', '{"shown":true,"surfaceId":"kp","note":"…"}')])).toEqual(['[d1 u1 u2]', 'u2']);
+  });
+
+  it('gives a change of a screen above only its line, and a file its line before its block', () => {
+    const change = written('u1', '{"operations":[{"version":"1.0","updateDataModel":{"surfaceId":"kp","path":"/seats","value":3}}]}');
+    expect(live([said('a1', '', [change])], [result('u1', '{"shown":true,"surfaceId":"kp","note":"…"}')])).toEqual(['[u1]']);
+    const files = [said('a1', '', [call('f1', GENUI_TOOL.file), call('f2', GENUI_TOOL.file)])];
+    expect(live(files, [result('f1', '{"shown":false,"error":"Файла нет"}'), result('f2', FILE_SHOWN)])).toEqual(['[f1 f2]', 'f2']);
   });
 
   it('keeps every call of an answer that ended', () => {

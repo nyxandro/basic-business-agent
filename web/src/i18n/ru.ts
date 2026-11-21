@@ -311,8 +311,15 @@ export const ru = {
     widgetComponents: (count: number) => `Подобраны элементы виджета: ${count}`,
     // The model writes the screen of a widget (spec, section 8.31); the screen itself comes into the answer.
     widgetDrawing: 'Собираю виджет…',
+    // Done, its line goes into the stack of the answer (decision of the owner 21.11); the screen comes after it.
+    widgetMade: 'Виджет собран',
+    widgetChanged: 'Виджет изменён',
+    // The server's check did not let the screen through; the agent gets the reasons (spec, section 8.31).
+    widgetRefused: 'Виджет не прошёл проверку',
     // The agent shows a file it made (show_file, spec, section 8.18); the block of the file comes into the answer.
     fileShowing: 'Показываю файл…',
+    fileShown: (name: string) => `Показан файл «${name}»`,
+    fileNotShown: 'Не получилось показать файл',
     skillActivated: (title: string | null) => (title ? `Активирован навык «${title}»` : 'Активирован навык'),
     skillNotFound: (name: string) => `Навык «${name}» не найден`,
     // What the agent remembered (spec, section 8.26).

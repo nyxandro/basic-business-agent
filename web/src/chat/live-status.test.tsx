@@ -4,6 +4,7 @@
 import { COMPUTER_TOOLS, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -109,6 +110,26 @@ describe('the live line of the answer being written', () => {
     expect(screen.queryByText('Работаю')).not.toBeInTheDocument();
     expect(screen.queryByText('Готовлю…')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Подобраны элементы виджета: 1' })).toBeInTheDocument();
+  });
+
+  // 21.11: the check let the screen through at the fifth try; the attempts before showed nothing — a mark beside nothing.
+  it('puts the attempts the check refused into the stack above the line', async () => {
+    const refused = '{"error":true,"code":"APP_WIDGET_INVALID","message":"Экран не собран"}';
+    const tries: Message = { id: 'a1', role: 'assistant', content: '', toolCalls: [call('u1', WIDGET_TOOL.render, '{"operations":[]}'), call('u2', WIDGET_TOOL.render, '{"operations":')] };
+    await show([QUESTION, tries, result('u1', refused)], true);
+    expect(statuses()).toHaveLength(1);
+    expect(screen.getByRole('status', { name: 'Собираю виджет…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Виджет не прошёл проверку' })).toBeInTheDocument();
+  });
+
+  // Unfolded, a stack shows the line of a widget or a file, not the screen or the file again.
+  it('unfolds the attempts of a widget into their lines', async () => {
+    const refused = '{"error":true,"code":"APP_WIDGET_INVALID","message":"Экран не собран"}';
+    const tries: Message = { id: 'a1', role: 'assistant', content: '', toolCalls: [call('d1', WIDGET_TOOL.components, '{"names":["Card"]}'), call('u1', WIDGET_TOOL.render, '{"operations":[]}'), call('u2', WIDGET_TOOL.render, '{"operations":')] };
+    await show([QUESTION, tries, result('d1', '{"guide":"…"}'), result('u1', refused)], true);
+    await userEvent.setup().click(screen.getByRole('button', { name: /Виджет не прошёл проверку.*2 действия/ }));
+    expect(screen.getByText(/APP_WIDGET_INVALID/)).toBeInTheDocument();
+    expect(screen.queryByText('block u1')).not.toBeInTheDocument();
   });
 
   it('counts what the model has written of the action, and puts the action into the stack once it is done', async () => {

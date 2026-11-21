@@ -1,8 +1,9 @@
 // What a line of a tool call says (spec, section 7): the call runs, was refused or cancelled, failed,
 // or did its work — with the system, the action, «только чтение» and how many things it found. The
 // line itself (ToolRow) and the head of a stack of lines (ToolStack) say the same.
-import { GENUI_TOOL, toolTableResultSchema, WIDGET_TOOL, type AgentSummary } from '@bba/contracts';
+import { fileBlockResultSchema, GENUI_TOOL, toolTableResultSchema, WIDGET_TOOL, type AgentSummary } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
+import { drawableOperations } from '../widgets/operations.ts';
 import { systemOf } from './systems.ts';
 import { parseToolResult } from './tool-result.ts';
 
@@ -123,9 +124,26 @@ function widgetComponentsSummary(status: ToolStatus, result: string | undefined,
   return { state: 'done', text: ru.chat.widgetComponents(Array.isArray(names) ? names.length : 0), readOnly: false, count: null, value: null };
 }
 
-// The calls whose result is a block of the answer: under way they are named in the live line (decision of the owner
-// 21.11), done they are the block itself.
+// The calls whose result is a block of the answer: under way they are named in the live line, done their line goes into
+// the stack like any action and the block comes after it (decision of the owner 21.11) — a refused screen or a file that
+// was not there is the line only.
 const BLOCKS_UNDER_WAY: Record<string, string> = { [WIDGET_TOOL.render]: ru.chat.widgetDrawing, [GENUI_TOOL.file]: ru.chat.fileShowing };
+
+function shownSummary(name: string, result: string | undefined, parameters: unknown): ToolSummary | null {
+  const outcome = parseToolResult(result);
+  if (name === WIDGET_TOOL.render) {
+    if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.widgetRefused, code: outcome.code };
+    if (outcome.kind !== 'ok') return null;
+    // A call that begins with a change of a screen above draws no screen of its own.
+    const made = drawableOperations(parameters, '', true).written !== null;
+    return { state: 'done', text: made ? ru.chat.widgetMade : ru.chat.widgetChanged, readOnly: false, count: null, value: outcome.value };
+  }
+  if (outcome.kind === 'declined') return null;
+  if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.fileNotShown, code: outcome.code };
+  const file = fileBlockResultSchema.safeParse(outcome.value);
+  if (file.success && file.data.shown) return { state: 'done', text: ru.chat.fileShown(file.data.name), readOnly: false, count: null, value: outcome.value };
+  return { state: 'failed', text: ru.chat.fileNotShown, code: null };
+}
 
 // `parameters` — what the call was asked, for the lines that name it.
 export function toolSummary(name: string, status: ToolStatus, result: string | undefined, agent: Pick<AgentSummary, 'systems' | 'actions'>, parameters?: unknown): ToolSummary {
@@ -133,6 +151,8 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   if (status === 'stopped') return { state: 'declined', text: ru.chat.toolStopped };
   const block = BLOCKS_UNDER_WAY[name];
   if (block && status !== 'complete') return { state: 'running', text: block };
+  const shown = block ? shownSummary(name, result, parameters) : null;
+  if (shown) return shown;
   const skill = name === SKILL_TOOL ? skillSummary(status, result, parameters) : null;
   if (skill) return skill;
   const memory = MEMORY_TOOLS[name];

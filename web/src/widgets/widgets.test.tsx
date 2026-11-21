@@ -1,7 +1,7 @@
 // Widgets in the chat (spec, section 8.31): the set of components is the approved one, the operations of a call reach
 // CopilotKit's engine one component at a time under the call's own surface, a later call of the same answer changes the
 // screen in place, and the block says what happened when there is no screen to show.
-import { WIDGET_CATALOG_ID, WIDGET_COMPONENTS, WIDGET_TOOL } from '@bba/contracts';
+import { GENUI_TOOL, WIDGET_CATALOG_ID, WIDGET_COMPONENTS, WIDGET_TOOL } from '@bba/contracts';
 import { standardUI } from '@copilotkit/react-core/generative-ui';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -405,6 +405,25 @@ describe('the line of the descriptions of components', () => {
     expect(toolSummary(WIDGET_TOOL.components, 'executing', undefined, agent, { names: ['Card'] })).toMatchObject({ state: 'running', text: 'Подбираю элементы виджета…' });
     expect(toolSummary(WIDGET_TOOL.components, 'complete', JSON.stringify({ guide: '…' }), agent, { names: ['Card', 'Table', 'Button'] })).toMatchObject({ state: 'done', text: 'Подобраны элементы виджета: 3' });
     expect(toolSummary(WIDGET_TOOL.components, 'complete', JSON.stringify({ error: true, code: 'APP_WIDGET_UNKNOWN_COMPONENT', message: 'нет' }), agent, { names: ['Foo'] })).toMatchObject({ state: 'failed', code: 'APP_WIDGET_UNKNOWN_COMPONENT' });
+  });
+});
+
+// What the line of a done widget or file says in the stack (decision of the owner 21.11: every done action goes there).
+describe('the lines of the screens and files the agent showed', () => {
+  const agent = { systems: { tools: {}, prefixes: {} }, actions: {} };
+  const shown = JSON.stringify({ shown: true, surfaceId: 'kp', note: '…' });
+
+  it('says the widget was made, changed or not let through the check', () => {
+    expect(toolSummary(WIDGET_TOOL.render, 'complete', shown, agent, { operations: SCREEN })).toMatchObject({ state: 'done', text: 'Виджет собран', readOnly: false });
+    const change = { operations: [{ version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 3 } }] };
+    expect(toolSummary(WIDGET_TOOL.render, 'complete', shown, agent, change)).toMatchObject({ state: 'done', text: 'Виджет изменён' });
+    const refused = JSON.stringify({ error: true, code: 'APP_WIDGET_INVALID', message: 'Экран не собран' });
+    expect(toolSummary(WIDGET_TOOL.render, 'complete', refused, agent, { operations: SCREEN })).toEqual({ state: 'failed', text: 'Виджет не прошёл проверку', code: 'APP_WIDGET_INVALID' });
+  });
+
+  it('says which file was shown, or that it was not', () => {
+    expect(toolSummary(GENUI_TOOL.file, 'complete', JSON.stringify({ shown: true, path: 'итоги/КП.docx', name: 'КП.docx', bytes: 10 }), agent, { path: 'итоги/КП.docx' })).toMatchObject({ state: 'done', text: 'Показан файл «КП.docx»' });
+    expect(toolSummary(GENUI_TOOL.file, 'complete', JSON.stringify({ shown: false, error: 'Файла «нет.docx» нет в рабочей папке.' }), agent, { path: 'нет.docx' })).toEqual({ state: 'failed', text: 'Не получилось показать файл', code: null });
   });
 });
 

@@ -22,7 +22,8 @@ import { useChatExtras } from './chat-context.ts';
 import styles from './chat.module.css';
 import { toolMessageOf } from './messages.ts';
 import { ToolStack } from './ToolStack.tsx';
-import { turnItems, type ToolCall, type TurnItem } from './turn-items.ts';
+import { ToolRow } from './ToolRow.tsx';
+import { argumentsOf, showsByResult, turnItems, type ToolCall, type TurnItem } from './turn-items.ts';
 
 const textOfAgent = (m: AgentMessage) => (typeof m.content === 'string' ? m.content : '');
 
@@ -107,6 +108,12 @@ export function AssistantTurn({
   if (items.length === 0 && !interrupted) return null;
   const lastText = [...turn].reverse().map(textOfAgent).find(Boolean) ?? '';
   const draw = (call: ToolCall) => renderToolCall({ toolCall: call, toolMessage: toolMessageOf(messages, call.id) });
+  // In a stack a widget or a file is its line: the screen or the file stands after the stack (turn-items.ts).
+  const drawLine = (call: ToolCall) => {
+    if (!showsByResult(call)) return draw(call);
+    const result = toolMessageOf(messages, call.id)?.content;
+    return <ToolRow name={call.function.name} status="complete" parameters={argumentsOf(call)} {...(typeof result === 'string' ? { result } : {})} agent={agent} />;
+  };
   // Words are still being written only while nothing came after them: the calls of a step come on
   // the message of its words, and the next step is a message of its own.
   const writing = (item: TurnItem) => streaming && item === items.at(-1) && item.kind === 'text' && item.message === turn.at(-1);
@@ -124,7 +131,7 @@ export function AssistantTurn({
                 <Arrives key={item.call.id}>{draw(item.call)}</Arrives>
               ) : (
                 <Arrives key={item.key}>
-                  <ToolStack calls={item.calls} messages={messages} agent={agent} renderCall={draw} />
+                  <ToolStack calls={item.calls} messages={messages} agent={agent} renderCall={drawLine} />
                 </Arrives>
               ),
             )}

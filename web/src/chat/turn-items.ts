@@ -5,10 +5,11 @@
 // the calls of a step on the message of the words said before them.
 // What the agent does now is not here but in the live line under the answer (decision of the owner 21.11): a call under
 // way comes into the turn once it is done — into its stack, or as its block; a widget comes as soon as it has something
-// to draw, since the engine draws it as it is written.
+// to draw, since the engine draws it as it is written. A widget or a file the agent showed goes into the stack as a line
+// like any done action — every attempt, the ones the check refused too — and its screen or file comes after it.
 import { GENUI_TOOL, toolTableResultSchema, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
-import { drawsWhileWritten } from '../widgets/operations.ts';
+import { drawableOperations, drawsWhileWritten } from '../widgets/operations.ts';
 import { toolMessageOf } from './messages.ts';
 import { parseToolResult } from './tool-result.ts';
 
@@ -42,6 +43,17 @@ function standsAlone(call: ToolCall, messages: readonly Message[]): boolean {
   return outcome.kind === 'ok' && toolTableResultSchema.safeParse(outcome.value).success;
 }
 
+// The calls that show something by their result: their line goes into the stack, and what they show after it.
+const SHOWING: ReadonlySet<string> = new Set([WIDGET_TOOL.render, GENUI_TOOL.file]);
+export const showsByResult = (call: ToolCall): boolean => SHOWING.has(call.function.name);
+
+// What a done showing call shows: a screen of its own (not a change of one above), a file that was there.
+function showsBlock(call: ToolCall, result: string): boolean {
+  const outcome = parseToolResult(result);
+  if (outcome.kind !== 'ok' || (outcome.value as { shown?: unknown } | null)?.shown !== true) return false;
+  return call.function.name !== WIDGET_TOOL.render || drawableOperations(argumentsOf(call), call.id, true).written !== null;
+}
+
 // `underWay` — the ids of the calls the answer being written works on now (callsUnderWay, call-progress.ts).
 export function turnItems(turn: readonly AssistantMessage[], messages: readonly Message[], underWay: ReadonlySet<string> = new Set()): TurnItem[] {
   const items: TurnItem[] = [];
@@ -53,21 +65,30 @@ export function turnItems(turn: readonly AssistantMessage[], messages: readonly 
       items.push({ kind: 'text', id: m.id, text, message: m });
       anchor = null;
     }
+    const toStack = (call: ToolCall) => {
+      const open = items.at(-1);
+      if (open?.kind === 'stack') open.calls.push(call);
+      else items.push({ kind: 'stack', key: anchor ?? call.id, calls: [call] });
+      anchor = null;
+    };
+    const asBlock = (call: ToolCall) => {
+      items.push({ kind: 'call', call });
+      anchor = null;
+    };
     for (const call of m.toolCalls ?? []) {
-      const alone = standsAlone(call, messages);
-      if (underWay.has(call.id) && !(call.function.name === WIDGET_TOOL.render && drawsWhileWritten(call))) {
-        if (!alone && items.at(-1)?.kind !== 'stack') anchor ??= call.id;
+      const result = toolMessageOf(messages, call.id)?.content;
+      const showing = SHOWING.has(call.function.name) && typeof result === 'string';
+      const alone = !showing && standsAlone(call, messages);
+      if (underWay.has(call.id)) {
+        if (call.function.name === WIDGET_TOOL.render && drawsWhileWritten(call)) asBlock(call);
+        else if (!alone && items.at(-1)?.kind !== 'stack') anchor ??= call.id;
         continue;
       }
-      const open = items.at(-1);
-      if (alone) {
-        items.push({ kind: 'call', call });
-        anchor = null;
-      } else if (open?.kind === 'stack') open.calls.push(call);
-      else {
-        items.push({ kind: 'stack', key: anchor ?? call.id, calls: [call] });
-        anchor = null;
-      }
+      if (showing) {
+        toStack(call);
+        if (showsBlock(call, result)) asBlock(call);
+      } else if (alone) asBlock(call);
+      else toStack(call);
     }
   }
   return items;
