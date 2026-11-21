@@ -131,6 +131,9 @@ export const ERROR_CATALOG = {
   APP_WEB_FETCH_UNSUPPORTED: { status: 415, userMessage: 'По ссылке не страница и не документ — прочитать его нельзя.' },
   APP_WEB_FETCH_BUSY: { status: 503, userMessage: 'Сервер сейчас занят разбором документов — попробуйте чуть позже.' },
   APP_WEB_FETCH_NO_TEXT: { status: 422, userMessage: 'На странице нет текста — прочитать её не получилось.' },
+  // MCP servers the admin adds (docs/specs/[20.11.2026]-mcp-connections.md, section 9).
+  APP_MCP_UNREACHABLE: { status: 502, userMessage: 'Сервер не отвечает по этому адресу. Проверьте адрес и что сервер включён.' },
+  APP_MCP_NOT_MCP: { status: 422, userMessage: 'По этому адресу нет сервера MCP. В инструкции системы адрес обычно заканчивается на /mcp.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 
 export type CatalogCode = keyof typeof ERROR_CATALOG;

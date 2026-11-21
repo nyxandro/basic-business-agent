@@ -9,9 +9,8 @@ import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { decryptFailed } from './credentials.ts';
+import { PLACEHOLDER, placeholders } from './templates.ts';
 
-// {{field}} in a template: the key of a field the admin described.
-const PLACEHOLDER = /\{\{\s*([a-z][a-z0-9_]{0,31})\s*\}\}/g;
 // An exact version: npx «name@1.2.3» (scoped too), uvx «name==1.2.3». Ranges, tags and «latest» would
 // let every start fetch other code (the owner's decision 21.11: programs only in the sandbox, pinned).
 const NPX_EXACT = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
@@ -47,10 +46,6 @@ interface ServerRow {
 }
 
 const invalid = (message: string, userMessage: string) => appError('APP_VALIDATION_FAILED', message, { userMessage });
-
-function placeholders(template: string): string[] {
-  return [...template.matchAll(PLACEHOLDER)].map((m) => m[1]!);
-}
 
 function checkTemplates(input: McpServerInput): void {
   const known = new Set(input.fields.map((f) => f.key));

@@ -66,6 +66,7 @@
     "@mastra/mcp": "2.9.0",
     "@mastra/memory": "1.41.1",
     "@mastra/pg": "1.36.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "better-auth": "1.7.22",
     "croner": "10.0.1",
     "fflate": "0.8.2",

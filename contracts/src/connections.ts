@@ -93,3 +93,20 @@ export interface McpServerView {
   createdAt: string;
   updatedAt: string;
 }
+
+// What an address tells about itself before the admin fills the form (spec, scenario 1): a server without
+// sign-in, one with a sign-in on the system's site, or one that takes a key (it refuses and names no sign-in).
+export const MCP_PROBE_AUTH = ['none', 'oauth', 'key'] as const;
+export type McpProbeAuth = (typeof MCP_PROBE_AUTH)[number];
+
+// An address may carry {{field}} (a key in the path, as at МойСклад): the admin's value is needed to check it.
+export const mcpProbeInputSchema = z.object({
+  url: z.string().trim().min(1).max(2000),
+  fields: z.array(mcpFieldSchema).max(MCP_FIELDS_MAX),
+  values: z.record(z.string(), z.string().min(1).max(4000)),
+});
+export type McpProbeInput = z.infer<typeof mcpProbeInputSchema>;
+
+export interface McpProbeResult {
+  auth: McpProbeAuth;
+}
