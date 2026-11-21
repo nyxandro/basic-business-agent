@@ -161,6 +161,23 @@ def to_sign_footer(out: Path) -> None:
     doc.save(out / 'to-sign-footer.docx')
 
 
+def to_sign_twice(out: Path) -> None:
+    """The agent wrote a line to sign by hand and the mark right under it, as a model does following the skill."""
+    doc = Document()
+    letter(doc)
+    doc.add_paragraph('Генеральный директор ____________ И. П. Иванов')
+    doc.add_paragraph('[[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]')
+    doc.save(out / 'to-sign-twice.docx')
+
+
+def to_sign_own_line(out: Path) -> None:
+    """The agent wrote the position in the paragraph of the mark itself."""
+    doc = Document()
+    letter(doc)
+    doc.add_paragraph('Генеральный директор [[ПОДПИСЬ_РУКОВОДИТЕЛЯ]]')
+    doc.save(out / 'to-sign-own-line.docx')
+
+
 if __name__ == '__main__':
     target = Path(sys.argv[1])
     header_footer(target)
@@ -171,3 +188,5 @@ if __name__ == '__main__':
     to_sign(target)
     to_sign_table(target)
     to_sign_footer(target)
+    to_sign_twice(target)
+    to_sign_own_line(target)

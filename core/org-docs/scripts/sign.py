@@ -276,11 +276,42 @@ def cut_mark(texts, start):
     return run, run.find(q(W, 'rPr')), tail
 
 
+def squeezed(text):
+    return ''.join(ch for ch in text if not ch.isspace() and ch != '_')
+
+
+def drop_hand_line_above(p, args):
+    """A line to sign by hand the agent wrote right above the mark with the same position and name (the skill writes it
+    for a document without the stamp): left there, the paper would have the line twice."""
+    above = p.getprevious()
+    if above is None or above.tag != q(W, 'p') or above.find(f'.//{q(W, "drawing")}') is not None:
+        return
+    # Underscores and spaces aside, the line is the position, the name or both.
+    line = squeezed(''.join(t.text or '' for t in own_texts(above)))
+    if line and line in (squeezed(args.position), squeezed(args.name), squeezed(args.position + args.name)):
+        above.getparent().remove(above)
+
+
+def is_own_line(full, args):
+    """Besides the mark the paragraph holds only the position, the name or underscores — the agent wrote the line of the
+    signature around the mark: the whole paragraph is the line."""
+    rest = squeezed(full.replace(MARK, '', 1))
+    return rest in ('', squeezed(args.position), squeezed(args.name), squeezed(args.position + args.name))
+
+
 def sign_paragraph(pkg, part, p, document, args, images):
     texts = own_texts(p)
     full = ''.join(t.text or '' for t in texts)
+    if is_own_line(full, args) and full.strip() != MARK:
+        # The words around go: the tool writes the position and the name itself, once.
+        for t in texts:
+            t.text = ''
+        texts[0].text = MARK
+        full = MARK
     start = full.find(MARK)
     alone = full.strip() == MARK
+    if alone:
+        drop_hand_line_above(p, args)
     in_body = part == pkg.main and next(p.iterancestors(q(W, 'tc')), None) is None and next(p.iterancestors(q(W, 'txbxContent')), None) is None
     run, rpr, tail = cut_mark(texts, start)
     tabs = alone and in_body

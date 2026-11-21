@@ -189,6 +189,21 @@ describe('the signing tool', () => {
     expect(signed(join(dir, 'КП.docx')).media).toEqual([]);
   }, 60_000);
 
+  // Live check on the development model 21.11: the model wrote the line to sign by hand and the mark under it.
+  it('leaves one line of the signature when the agent wrote one by hand above the mark or the position beside it', async () => {
+    for (const fixture of ['to-sign-twice.docx', 'to-sign-own-line.docx']) {
+      const threadId = randomUUID();
+      const dir = putDocument(olgaId, threadId, 'Письмо.docx', fixture);
+      t.model.script(sign('Письмо.docx', 'letter'), { text: 'Готово.' });
+      const interrupt = interruptOf(await run(olga, threadId, 'Поставь подпись'));
+      await run(olga, threadId, null, [{ interruptId: interrupt!.id, status: 'resolved', payload: { approved: true } }]);
+      const doc = signed(join(dir, 'Письмо.docx'));
+      expect(doc.text.split('Генеральный директор'), fixture).toHaveLength(2);
+      expect(doc.text).not.toContain('____');
+      expect(doc.media).toHaveLength(2);
+    }
+  }, 90_000);
+
   it('puts the line of the signature in a footer', async () => {
     const threadId = randomUUID();
     const dir = putDocument(olgaId, threadId, 'Письмо.docx', 'to-sign-footer.docx');
