@@ -68,7 +68,7 @@ function fillAddress(input: McpProbeInput): URL {
 
 // http only inside the office network or on this machine (the 1C server): over the internet the keys of employees
 // would travel in the open. The admin types the address, so inner addresses are allowed (section 15).
-async function checkPlainHttp(url: URL): Promise<void> {
+export async function assertPlainHttpAllowed(url: URL): Promise<void> {
   if (url.protocol !== 'http:') return;
   const host = url.hostname.startsWith('[') ? url.hostname.slice(1, -1) : url.hostname;
   let addresses: string[];
@@ -122,7 +122,7 @@ export async function probeServer(raw: McpProbeInput, timeoutMs = PROBE_TIMEOUT_
   const parsed = mcpProbeInputSchema.safeParse(raw);
   if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'mcp probe input does not match the schema', { cause: parsed.error });
   const url = fillAddress(parsed.data);
-  await checkPlainHttp(url);
+  await assertPlainHttpAllowed(url);
 
   let challenge: URL | undefined;
   const transport = new StreamableHTTPClientTransport(url, {

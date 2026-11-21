@@ -344,7 +344,7 @@ export async function createTestApp(
     workRoot: previewRoot,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(

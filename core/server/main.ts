@@ -155,7 +155,7 @@ async function main(): Promise<void> {
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, chat, background, timezone: installation.app.timezone, storage: files, preview });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, chat, background, timezone: installation.app.timezone, storage: files, preview });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);

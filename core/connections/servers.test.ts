@@ -51,20 +51,20 @@ async function rejection(promise: Promise<unknown>): Promise<{ code: string; use
 
 describe('a server the admin adds', () => {
   it('starts as a draft with a short Latin slug for the names of its actions', async () => {
-    const server = await createServer(db, box, httpServer({}), 'igor');
+    const server = await createServer(db, box, httpServer({}), 'igor', ['sales']);
     expect(server.status).toBe('draft');
     expect(server.slug).toMatch(/^m[0-9a-f]{6}$/);
     expect(server.actions).toEqual([]);
   });
 
   it('rejects a template that names a field nobody fills in', async () => {
-    const failure = await rejection(createServer(db, box, httpServer({ headers: { Authorization: 'Bearer {{api_key}}' } }), 'igor'));
+    const failure = await rejection(createServer(db, box, httpServer({ headers: { Authorization: 'Bearer {{api_key}}' } }), 'igor', ['sales']));
     expect(failure.code).toBe('APP_VALIDATION_FAILED');
     expect(failure.userMessage).toContain('{{api_key}}');
   });
 
   it('rejects a personal key without fields', async () => {
-    const failure = await rejection(createServer(db, box, httpServer({ url: 'https://mcp.example.com/mcp', fields: [] }), 'igor'));
+    const failure = await rejection(createServer(db, box, httpServer({ url: 'https://mcp.example.com/mcp', fields: [] }), 'igor', ['sales']));
     expect(failure.code).toBe('APP_VALIDATION_FAILED');
   });
 
@@ -79,12 +79,14 @@ describe('a server the admin adds', () => {
         sharedValues: { token: 'shared-secret-7731' },
       }),
       'igor',
+      ['sales'],
     );
     const oauth = await createServer(
       db,
       box,
       httpServer({ url: 'https://portal.example.com/mcp', auth: 'oauth', fields: [], client: { clientId: 'app-42', clientSecret: 'client-secret-9915' } }),
       'igor',
+      ['sales'],
     );
     const { rows } = await db.query<{ dump: string }>(`SELECT row_to_json(s)::text AS dump FROM app.mcp_servers s WHERE id = ANY($1)`, [[server.id, oauth.id]]);
     for (const row of rows) {
@@ -99,7 +101,7 @@ describe('a server the admin adds', () => {
 
   it('asks for every shared field before saving', async () => {
     const failure = await rejection(
-      createServer(db, box, httpServer({ url: 'https://crm.example.com/mcp', auth: 'shared_key', headers: { Authorization: 'Bearer {{token}}' }, sharedValues: {} }), 'igor'),
+      createServer(db, box, httpServer({ url: 'https://crm.example.com/mcp', auth: 'shared_key', headers: { Authorization: 'Bearer {{token}}' }, sharedValues: {} }), 'igor', ['sales']),
     );
     expect(failure.code).toBe('APP_VALIDATION_FAILED');
   });
@@ -118,16 +120,16 @@ describe('a server that is a program (the admin’s decision 21.11: only in the 
   });
 
   it('takes a package only with an exact version', async () => {
-    await expect(createServer(db, box, program('1c-mcp-server@2.3.1'), 'igor')).resolves.toMatchObject({ transport: 'program', status: 'draft' });
+    await expect(createServer(db, box, program('1c-mcp-server@2.3.1'), 'igor', ['sales'])).resolves.toMatchObject({ transport: 'program', status: 'draft' });
     for (const pkg of ['1c-mcp-server', '1c-mcp-server@latest', '1c-mcp-server@^2.3.1', '1c-mcp-server@2']) {
-      const failure = await rejection(createServer(db, box, program(pkg), 'igor'));
+      const failure = await rejection(createServer(db, box, program(pkg), 'igor', ['sales']));
       expect(failure.code).toBe('APP_VALIDATION_FAILED');
       expect(failure.userMessage).toContain('точную версию');
     }
   });
 
   it('has no sign-in of each employee: a process per person would not fit the server', async () => {
-    const failure = await rejection(createServer(db, box, program('1c-mcp-server@2.3.1', { auth: 'personal_key', fields: [{ key: 'token', label: 'Ключ', hint: '', secret: true }], env: { TOKEN: '{{token}}' } }), 'igor'));
+    const failure = await rejection(createServer(db, box, program('1c-mcp-server@2.3.1', { auth: 'personal_key', fields: [{ key: 'token', label: 'Ключ', hint: '', secret: true }], env: { TOKEN: '{{token}}' } }), 'igor', ['sales']));
     expect(failure.code).toBe('APP_VALIDATION_FAILED');
   });
 });
