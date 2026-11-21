@@ -1,0 +1,7 @@
+{
+  "name": "bba-echo-mcp",
+  "version": "1.0.0",
+  "description": "A tiny MCP server over stdio for the tests of mcp-runner: no dependencies, it runs alone in the sandbox.",
+  "bin": { "bba-echo-mcp": "server.mjs" },
+  "license": "MIT"
+}
