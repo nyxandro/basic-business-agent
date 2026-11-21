@@ -14,6 +14,8 @@ export const ORG_IMAGE_MAX_BYTES = 1024 * 1024;
 export const ORG_STAMP_WIDTH_PX = 600;
 // The logo is also put on slides: it keeps more points.
 export const ORG_LOGO_MAX_SIDE_PX = 1200;
+// A picture bigger than this is not opened in the browser: decoding it would hang the tab.
+export const ORG_IMAGE_SOURCE_MAX_BYTES = 20 * 1024 * 1024;
 
 export interface BlankInfo {
   // The line [[ТЕКСТ]] was found: everything above it stays in the documents.

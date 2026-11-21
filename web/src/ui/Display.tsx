@@ -5,9 +5,10 @@ import { cx } from './Button.tsx';
 import styles from './display.module.css';
 import { Icon, type IconName } from './Icon.tsx';
 
-export function Card({ children, padded, lift, className, style, as: Tag = 'div' }: { children: ReactNode; padded?: boolean; lift?: boolean; className?: string; style?: CSSProperties; as?: 'div' | 'section' | 'li' }) {
+// `label` names a card that is a section of its own page (a region for screen readers).
+export function Card({ children, padded, lift, className, style, as: Tag = 'div', label }: { children: ReactNode; padded?: boolean; lift?: boolean; className?: string; style?: CSSProperties; as?: 'div' | 'section' | 'li'; label?: string }) {
   return (
-    <Tag className={cx(styles.card, padded && styles.padded, lift && styles.lift, className)} style={style}>
+    <Tag className={cx(styles.card, padded && styles.padded, lift && styles.lift, className)} style={style} aria-label={label}>
       {children}
     </Tag>
   );

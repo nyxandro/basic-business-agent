@@ -1,5 +1,8 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  OrgAssetKind,
+  OrgAssetsState,
+  OrgDirector,
   McpProbeInput,
   McpProbeResult,
   McpServerInput,
@@ -145,6 +148,16 @@ export const adminApi = {
 
   orgProfile: () => api<OrgProfile>('GET', `${A}/org-profile`),
   saveOrgProfile: (body: OrgProfile) => api<Ok>('PUT', `${A}/org-profile`, body),
+  // «Бланк, печать и подпись» (docs/specs/[20.11.2026]-org-letterhead.md).
+  orgAssets: () => api<OrgAssetsState>('GET', `${A}/org-assets`),
+  uploadOrgAsset: (kind: OrgAssetKind, file: Blob, name: string) => {
+    const form = new FormData();
+    form.append('file', file, name);
+    return apiFormPut<OrgAssetsState>(`${A}/org-assets/${kind}`, form);
+  },
+  removeOrgAsset: (kind: OrgAssetKind) => api<OrgAssetsState>('DELETE', `${A}/org-assets/${kind}`),
+  saveOrgDirector: (director: OrgDirector) => api<OrgAssetsState>('PUT', `${A}/org-director`, director),
+  saveOrgSigners: (userIds: string[]) => api<OrgAssetsState>('PUT', `${A}/org-signers`, { userIds }),
   interfaceSettings: () => api<InterfaceAdminState>('GET', `${A}/interface`),
   mail: () => api<AdminMailResponse>('GET', `${A}/mail`),
   saveMailApp: (provider: MailOAuthProvider, input: MailOAuthAppInput) => api<AdminMailResponse>('PUT', `${A}/mail/oauth/${provider}`, input),

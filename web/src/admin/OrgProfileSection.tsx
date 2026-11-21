@@ -1,5 +1,6 @@
 // «Профиль организации» (spec, scenario 5; mockup): the name, the industry, the tone of answers and
-// the requisites — they go into the prompt of every agent. The tone is a preset or one's own words.
+// the requisites — they go into the prompt of every agent. The tone is a preset or one's own words. Below — the
+// letterhead, the stamp and the director (OrgAssets.tsx).
 import { useState } from 'react';
 import { Button, cx } from '../ui/Button.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
@@ -8,6 +9,7 @@ import { Field, Input, TextArea } from '../ui/Field.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
+import { OrgAssets } from './OrgAssets.tsx';
 import styles from './org.module.css';
 import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
@@ -67,6 +69,8 @@ export function OrgProfileSection() {
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {state.status === 'ready' ? <ProfileForm initial={state.data} /> : null}
+      {/* The letterhead, the stamp, the director (docs/specs/[20.11.2026]-org-letterhead.md): loaded on its own. */}
+      <OrgAssets />
     </div>
   );
 }
