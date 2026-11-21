@@ -138,6 +138,15 @@ export const ERROR_CATALOG = {
     status: 422,
     userMessage: 'Система не разрешает подключать сторонние программы автоматически. Заведите приложение в настройках системы и введите Client ID и Client Secret в «Дополнительно».',
   },
+  APP_MCP_PACKAGE_FAILED: { status: 422, userMessage: 'Не удалось скачать пакет программы. Проверьте название и версию.' },
+  APP_MCP_PROGRAM_CRASHED: {
+    status: 503,
+    userMessage: 'Программа-сервер падает — агенты не могут ею пользоваться. Проверьте настройки или версию пакета и нажмите «Проверить своим доступом».',
+  },
+  APP_MCP_RUNNER_NOT_CONFIGURED: {
+    status: 409,
+    userMessage: 'Программы-серверы в этой установке не включены: нет контейнера mcp-runner. Подключите систему по адресу или попросите того, кто ставил установку, включить его.',
+  },
   APP_MCP_OAUTH_NEEDS_HTTPS: { status: 409, userMessage: 'Вход через сайт системы работает только когда установка открыта по https.' },
 } satisfies Record<`APP_${string}`, CatalogEntry>;
 

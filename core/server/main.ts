@@ -96,7 +96,9 @@ async function main(): Promise<void> {
   await storage.init();
   await ensureMessageTexts(db);
   const memory = createMemory(storage);
-  const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors });
+  // Program servers only with the container mcp-runner (docs/specs/[20.11.2026]-mcp-connections.md, F1).
+  const mcpRunner = env.MCP_RUNNER_URL && env.MCP_RUNNER_SECRET ? { url: env.MCP_RUNNER_URL, secret: env.MCP_RUNNER_SECRET } : null;
+  const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors, runner: mcpRunner });
   // The commands of the sandbox and LibreOffice's runs: each its own queue for the whole installation (8.7, 8.27).
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
   const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
@@ -155,7 +157,7 @@ async function main(): Promise<void> {
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, chat, background, timezone: installation.app.timezone, storage: files, preview });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);

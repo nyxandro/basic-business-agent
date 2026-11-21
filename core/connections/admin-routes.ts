@@ -16,12 +16,15 @@ import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { logEvent } from '../server/log.ts';
 import { mcpAccessToken, startMcpSignIn } from './mcp-auth.ts';
 import { probeServer } from './probe.ts';
+import type { RunnerAccess } from './programs.ts';
 import { checkServer, createServer, deleteServer, getServer, listServers, updateServer } from './servers.ts';
 
 export interface McpAdminDeps {
   db: Db;
   box: SecretBox;
   publicUrl: string;
+  // The container of program servers; null — the installation has none.
+  runner: RunnerAccess | null;
   registry: Pick<Registry, 'ids'>;
 }
 
@@ -88,7 +91,7 @@ export function registerMcpAdminRoutes(app: Hono<AppEnv>, deps: McpAdminDeps): v
       }
     };
     try {
-      return c.json({ server: await checkServer(db, box, id, input, adminToken) });
+      return c.json({ server: await checkServer(db, box, id, input, adminToken, deps.runner) });
     } catch (error) {
       // Only the code and the HTTP facts: the texts of the client library carry the address with its key.
       if (isAppError(error) && error.status < 500) logEvent('warn', 'mcp_snapshot_failed', { serverId: id, code: error.code, details: error.details ?? null });

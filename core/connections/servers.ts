@@ -13,6 +13,7 @@ import { appError } from '../errors/catalog.ts';
 import { countEmployeesWithAgents } from './audience.ts';
 import { decryptFailed } from './credentials.ts';
 import { assertPlainHttpAllowed } from './probe.ts';
+import { prepareProgram, programSpecOf, programUrl, requireRunner, signedFetch, type RunnerAccess } from './programs.ts';
 import { applyActionMarks, mergeSnapshot, readDefinitions, toActionView, type ServerAccess, type StoredAction } from './snapshot.ts';
 import { fillTemplate, PLACEHOLDER, placeholders } from './templates.ts';
 
@@ -316,7 +317,11 @@ export interface RunServer {
   id: string;
   slug: string;
   title: string;
-  url: string;
+  transport: 'http' | 'program';
+  // A server by address; null for a program (it is reached through mcp-runner).
+  url: string | null;
+  program: McpProgram | null;
+  envTemplates: Record<string, string>;
   auth: McpServerInput['auth'];
   fields: McpField[];
   headerTemplates: Record<string, string>;
@@ -336,7 +341,10 @@ function toRunServer(box: SecretBox, row: ServerRow): RunServer {
     id: row.id,
     slug: row.slug,
     title: row.title,
-    url: row.url!,
+    transport: row.transport,
+    url: row.url,
+    program: row.program,
+    envTemplates: row.env_templates,
     auth: row.auth,
     fields: row.fields,
     headerTemplates: row.header_templates,
@@ -348,11 +356,11 @@ function toRunServer(box: SecretBox, row: ServerRow): RunServer {
 }
 
 // The servers an agent's turn gets for this person: the admin turned them on for this agent, and the person turned
-// them on for themselves (the owner's decision F2, 21.11). Programs come with the sandbox container (step 9).
+// them on for themselves (the owner's decision F2, 21.11).
 export async function serversForRun(db: Db, box: SecretBox, userId: string, agentId: string): Promise<RunServer[]> {
   const { rows } = await db.query<ServerRow>(
     `SELECT s.* FROM app.mcp_servers s
-      WHERE s.status = ANY($3::text[]) AND s.transport = 'http'
+      WHERE s.status = ANY($3::text[])
         AND EXISTS (SELECT 1 FROM app.mcp_server_agents a WHERE a.server_id = s.id AND a.agent_id = $2)
         AND EXISTS (SELECT 1 FROM app.mcp_server_users u WHERE u.server_id = s.id AND u.user_id = $1)
       ORDER BY s.created_at, s.id`,
@@ -365,7 +373,7 @@ export async function serversForRun(db: Db, box: SecretBox, userId: string, agen
 export async function serversOfAgents(db: Db, box: SecretBox): Promise<Array<RunServer & { agents: string[] }>> {
   const { rows } = await db.query<ServerRow & { agents: string[] }>(
     `SELECT s.*, array(SELECT a.agent_id FROM app.mcp_server_agents a WHERE a.server_id = s.id) AS agents
-       FROM app.mcp_servers s WHERE s.status = ANY($1::text[]) AND s.transport = 'http' ORDER BY s.created_at, s.id`,
+       FROM app.mcp_servers s WHERE s.status = ANY($1::text[]) ORDER BY s.created_at, s.id`,
     [RUN_STATUSES],
   );
   return rows.map((row) => ({ ...toRunServer(box, row), agents: row.agents }));
@@ -409,11 +417,18 @@ export function accessOf(row: Pick<ServerRow, 'url' | 'header_templates' | 'fiel
 // «Проверить своим доступом» and «Обновить список действий»: the actions with the admin's access become the
 // snapshot; the admin's marks stay on the actions still there. A server with a sign-in is checked with the admin's
 // own token (`adminToken`, the sign-in of step 4).
-export async function checkServer(db: Db, box: SecretBox, id: string, input: McpCheckInput, adminToken: () => Promise<string>): Promise<McpServerView> {
+export async function checkServer(db: Db, box: SecretBox, id: string, input: McpCheckInput, adminToken: () => Promise<string>, runner: RunnerAccess | null): Promise<McpServerView> {
   const row = await loadRow(db, id, false);
-  if (row.transport === 'program') throw invalid('program servers are checked through mcp-runner (step 9)', 'Проверка программ-серверов ещё не готова.');
   let access: ServerAccess;
-  if (row.auth === 'oauth') {
+  let fetchVia: ((url: string | URL, init?: RequestInit) => Promise<Response>) | undefined;
+  if (row.transport === 'program') {
+    // The program is installed and started by mcp-runner first; its actions come through the same bridge as calls.
+    const reachable = requireRunner(runner);
+    const spec = programSpecOf(row.program!, row.env_templates, row.fields, openSecrets(box, row).shared);
+    await prepareProgram(reachable, id, spec);
+    access = { url: programUrl(reachable, id), headers: {} };
+    fetchVia = signedFetch(reachable, id, spec);
+  } else if (row.auth === 'oauth') {
     access = { url: new URL(row.url!), headers: { Authorization: `Bearer ${await adminToken()}` } };
   } else {
     const shared = row.auth === 'shared_key' ? openSecrets(box, row).shared : null;
@@ -423,12 +438,19 @@ export async function checkServer(db: Db, box: SecretBox, id: string, input: Mcp
       return value;
     });
   }
-  await assertPlainHttpAllowed(access.url);
-  const definitions = await readDefinitions(row, access);
+  if (row.transport === 'http') await assertPlainHttpAllowed(access.url);
+  const definitions = await readDefinitions(row, access, fetchVia);
   return inTransaction(db, async (client) => {
     const current = await loadRow(client, id, true);
     const snapshot = mergeSnapshot(current.slug, current.snapshot, definitions, current.snapshot_at === null);
-    const { rows } = await client.query<ServerRow>('UPDATE app.mcp_servers SET snapshot = $2, snapshot_at = now(), updated_at = now() WHERE id = $1 RETURNING *', [id, JSON.stringify(snapshot)]);
+    // A program the admin checked again is up: «Программа-сервер падает» is over.
+    const { rows } = await client.query<ServerRow>(
+      `UPDATE app.mcp_servers SET snapshot = $2, snapshot_at = now(), updated_at = now(),
+         status = CASE WHEN status = 'program_crashed' THEN 'enabled' ELSE status END,
+         status_error_code = CASE WHEN status = 'program_crashed' THEN NULL ELSE status_error_code END
+       WHERE id = $1 RETURNING *`,
+      [id, JSON.stringify(snapshot)],
+    );
     return viewOf(client, box, rows[0]!);
   });
 }
@@ -515,6 +537,11 @@ export async function updateServer(db: Db, box: SecretBox, id: string, patch: Mc
 // explanation instead of the actions until a new key is saved.
 export async function markSharedKeyRefused(db: Db, id: string): Promise<void> {
   await db.query(`UPDATE app.mcp_servers SET status = 'shared_auth_error', status_error_code = 'APP_CONNECTOR_AUTH_FAILED', updated_at = now() WHERE id = $1 AND status = 'enabled'`, [id]);
+}
+
+// mcp-runner answered that the program fell three times in ten minutes: the admin sees «Программа-сервер падает».
+export async function markProgramCrashed(db: Db, id: string): Promise<void> {
+  await db.query(`UPDATE app.mcp_servers SET status = 'program_crashed', status_error_code = 'APP_MCP_PROGRAM_CRASHED', updated_at = now() WHERE id = $1 AND status = 'enabled'`, [id]);
 }
 
 // «Удалить» (scenario 5): the sign-ins and keys of employees go with the server.

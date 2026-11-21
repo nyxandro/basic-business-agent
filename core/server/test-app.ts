@@ -26,6 +26,7 @@ import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../sandbox/workspace.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
+import type { RunnerAccess } from '../connections/programs.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { ensureOrgName } from '../admin/org-profile.ts';
 import { ensureAgentAbilities } from '../abilities/abilities.ts';
@@ -192,6 +193,8 @@ export async function createTestApp(
     mailDiscover?: DiscoverDeps;
     mailEndpoints?: EndpointsOf;
     mailCheck?: typeof checkMailbox;
+    // The container of program servers, started by the test itself (core/mcp-runner/runner.ts).
+    mcpRunner?: RunnerAccess;
     // How the viewer's PDF is made (spec, section 8.27): without `sandbox`, a stand-in that writes a small PDF.
     previewRun?: RunCommand;
     // How the text of an attached document is made (spec, section 8.29): without `sandbox`, no program runs —
@@ -214,7 +217,7 @@ export async function createTestApp(
   await gateway.syncOrgBudget();
   if (!opts.noModels) await seedTestModels(db);
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
-  const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [] });
+  const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [], runner: opts.mcpRunner ?? null });
   await ensureMaskingSettings(db, []);
   await ensureOrgName(db, 'Альфа-Строй');
   const model = await startFakeModel({ ...(opts.modelFallback ? { fallback: opts.modelFallback } : {}), ...(opts.namingFallback ? { naming: opts.namingFallback } : {}) });
@@ -344,7 +347,7 @@ export async function createTestApp(
     workRoot: previewRoot,
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(

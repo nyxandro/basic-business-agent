@@ -34,4 +34,13 @@ describe('readCoreEnv', () => {
       }),
     );
   });
+
+  // The container of program servers (docs/specs/[20.11.2026]-mcp-connections.md, F1): both or neither.
+  it('takes the address and the secret of mcp-runner only together', () => {
+    const runner = { MCP_RUNNER_URL: 'http://mcp-runner:3100', MCP_RUNNER_SECRET: 'z'.repeat(32) };
+    expect(readCoreEnv({ ...valid, ...runner })).toMatchObject(runner);
+    expect(() => readCoreEnv({ ...valid, MCP_RUNNER_URL: runner.MCP_RUNNER_URL })).toThrow(
+      expect.objectContaining({ details: { problems: [{ file: '.env', field: 'MCP_RUNNER_SECRET', message: expect.stringContaining('set both or neither') }] } }),
+    );
+  });
 });

@@ -16,6 +16,7 @@ import { registerChatRoutes } from '../chat/routes.ts';
 import type { ChatDeps } from '../chat/run.ts';
 import { registerMcpAdminRoutes } from '../connections/admin-routes.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
+import type { RunnerAccess } from '../connections/programs.ts';
 import { registerConnectionRoutes } from '../connections/routes.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
@@ -52,6 +53,8 @@ export interface ServerDeps {
   connections: ConnectionManager;
   // Seals the secrets of MCP servers the admin adds (docs/specs/[20.11.2026]-mcp-connections.md).
   box: SecretBox;
+  // The container of program servers (mcp-runner); null — the installation has none.
+  mcpRunner: RunnerAccess | null;
   chat: ChatDeps & { copilot: CopilotHandler };
   background: BackgroundService;
   timezone: string;
@@ -84,7 +87,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerRoleRoutes(app, deps);
   registerUsageRoutes(app, { db: deps.db, ledgerSecret: deps.ledgerSecret, accounts: deps.accounts });
   registerConnectionRoutes(app, { ...deps, registry: deps.chat.registry });
-  registerMcpAdminRoutes(app, { db: deps.db, box: deps.box, publicUrl: deps.publicUrl, registry: deps.chat.registry });
+  registerMcpAdminRoutes(app, { db: deps.db, box: deps.box, publicUrl: deps.publicUrl, runner: deps.mcpRunner, registry: deps.chat.registry });
   registerChatRoutes(app, { ...deps.chat, preview: deps.preview });
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
   registerProjectRoutes(app, { ...projects, preview: deps.preview });

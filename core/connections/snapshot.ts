@@ -144,11 +144,17 @@ function readFailure(server: { title: string; auth: McpAuthKind }, url: URL, det
 
 // The server's actions with the given access. Nothing of the failure's text is kept: the client library writes
 // the address with its path into it.
-export async function readDefinitions(server: { slug: string; title: string; auth: McpAuthKind }, access: ServerAccess): Promise<SerializableMCPToolDefinition[]> {
+// `fetchVia` — a program server: every request goes signed to mcp-runner.
+export async function readDefinitions(
+  server: { slug: string; title: string; auth: McpAuthKind },
+  access: ServerAccess,
+  fetchVia?: (url: string | URL, init?: RequestInit) => Promise<Response>,
+): Promise<SerializableMCPToolDefinition[]> {
+  const transport = fetchVia ? { fetch: fetchVia } : { requestInit: { headers: access.headers } };
   const client = new MCPClient({
     id: `mcp-snapshot-${randomUUID()}`,
     registerProcessHooks: false,
-    servers: { [server.slug]: { url: access.url, requestInit: { headers: access.headers }, connectTimeout: CONNECT_TIMEOUT_MS, timeout: LIST_TIMEOUT_MS } },
+    servers: { [server.slug]: { url: access.url, ...transport, connectTimeout: CONNECT_TIMEOUT_MS, timeout: LIST_TIMEOUT_MS } },
   });
   try {
     const { definitions, errorDetails } = await client.listToolDefinitionsWithErrors({ perServerTimeoutMs: LIST_TIMEOUT_MS });

@@ -1,5 +1,7 @@
 // Environment of the server: only secrets and connection bindings (spec, section 22).
-// Every variable is required; a missing one stops the start with APP_CONFIG_INVALID.
+// Every variable is required; a missing one stops the start with APP_CONFIG_INVALID. The one exception is the pair of
+// the container of program servers (mcp-runner, docs/specs/[20.11.2026]-mcp-connections.md, F1): both or neither —
+// without it program servers are not available, and the admin is told so when adding one.
 import { z } from 'zod';
 import { configError, formatPath } from './validate.ts';
 
@@ -21,6 +23,12 @@ export const coreEnvSchema = z.object({
   APP_SKILLS_DIR: z.string().startsWith('/', 'must be an absolute path'),
   // Login files of the ChatGPT accounts, shared with LiteLLM (/chatgpt-auth in its container).
   APP_CHATGPT_AUTH_DIR: z.string().startsWith('/', 'must be an absolute path'),
+  // The container of program servers (http://mcp-runner:3100 in deploy/compose.yaml) and the secret of its requests.
+  MCP_RUNNER_URL: z.url().optional(),
+  MCP_RUNNER_SECRET: secret.optional(),
+}).refine((env) => (env.MCP_RUNNER_URL === undefined) === (env.MCP_RUNNER_SECRET === undefined), {
+  message: 'MCP_RUNNER_URL and MCP_RUNNER_SECRET go together: set both or neither',
+  path: ['MCP_RUNNER_SECRET'],
 });
 export type CoreEnv = z.infer<typeof coreEnvSchema>;
 

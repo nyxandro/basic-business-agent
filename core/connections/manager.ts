@@ -21,6 +21,7 @@ import { IDENTITY_HEADER, signIdentity, type Identity } from './identity.ts';
 import { classifyCall } from './call-errors.ts';
 import { accessToken, pluginTarget, startSignIn, type SignInTarget } from './mcp-auth.ts';
 import { createMcpTools, type McpTools } from './mcp-tools.ts';
+import type { RunnerAccess } from './programs.ts';
 import { serversOfAgents } from './servers.ts';
 import { describeAction } from './snapshot.ts';
 
@@ -79,7 +80,7 @@ function statusTool(c: ConnectorRuntime, error: () => Error): AnyTool {
   }) as AnyTool;
 }
 
-export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUrl: string; connectors: ConnectorRuntime[] }): ConnectionManager {
+export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUrl: string; connectors: ConnectorRuntime[]; runner: RunnerAccess | null }): ConnectionManager {
   const { db, box } = deps;
   const connectors = new Map(deps.connectors.map((c) => [c.id, c]));
   const clients = new Map<string, { client: MCPClient; timer: NodeJS.Timeout }>();
@@ -189,7 +190,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
 
   // Tool definitions of a system do not depend on the employee: the last listing is kept.
   const seen = new Map<string, ActionDescription>();
-  const mcp = createMcpTools(authDeps);
+  const mcp = createMcpTools({ ...authDeps, runner: deps.runner });
 
   return {
     connectors,

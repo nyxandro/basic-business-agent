@@ -19,7 +19,8 @@ import { loadCredential, setCredentialStatus } from './credentials.ts';
 import { accessLost, forbidden, keyRefused, notConnected, unavailable, unknownOutcome } from './errors.ts';
 import { safeCause } from './log-safe.ts';
 import { accessToken, mcpTarget } from './mcp-auth.ts';
-import { accessOf, markSharedKeyRefused, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
+import { programSpecOf, programUrl, requireRunner, signedFetch, type RunnerAccess } from './programs.ts';
+import { accessOf, markProgramCrashed, markSharedKeyRefused, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
 import { CONNECT_TIMEOUT_MS, describeAction } from './snapshot.ts';
 
 // Section 8: a call waits for the system 60 s at most.
@@ -30,7 +31,13 @@ export interface McpToolsDeps {
   db: Db;
   box: SecretBox;
   publicUrl: string;
+  // The container of program servers; null — the installation has none.
+  runner: RunnerAccess | null;
 }
+
+// mcp-runner answers 503 only for a program that fell three times in ten minutes (a container that is down answers
+// nothing at all).
+const PROGRAM_FELL = 503;
 
 export interface McpTools {
   toolsFor(userId: string, agentId: string): Promise<Record<string, AnyTool>>;
@@ -90,9 +97,16 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     const base = { connectTimeout: CONNECT_TIMEOUT_MS, timeout: CALL_TIMEOUT_MS };
     if (server.status === 'shared_auth_error') throw sharedAuthRefused(server);
     if (server.status === 'program_crashed') throw unavailable(server.title, mcpConnectorId(server.id));
-    if (server.auth === 'none') return clientFor(server, null, { url: new URL(server.url), ...base }, server.url);
+    if (server.transport === 'program') {
+      // One process per server for the whole organization: without a sign-in or with the shared key only.
+      const runner = requireRunner(deps.runner);
+      const spec = programSpecOf(server.program!, server.envTemplates, server.fields, server.shared);
+      return clientFor(server, null, { url: programUrl(runner, server.id), fetch: signedFetch(runner, server.id, spec), ...base }, JSON.stringify(spec));
+    }
+    const url = server.url!;
+    if (server.auth === 'none') return clientFor(server, null, { url: new URL(url), ...base }, url);
     if (server.auth === 'shared_key') {
-      const access = accessOf({ url: server.url, header_templates: server.headerTemplates, fields: server.fields }, (field) => server.shared![field.key]!);
+      const access = accessOf({ url, header_templates: server.headerTemplates, fields: server.fields }, (field) => server.shared![field.key]!);
       return clientFor(server, null, { url: access.url, requestInit: { headers: access.headers }, ...base }, JSON.stringify([access.url, access.headers]));
     }
     const connectorId = mcpConnectorId(server.id);
@@ -100,18 +114,18 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
     if (!record) throw notConnected(server.title, connectorId);
     if (record.status === 'auth_error') throw accessLost(server.title, connectorId);
     if (server.auth === 'oauth') {
-      const target = mcpTarget(deps, { id: server.id, title: server.title, url: server.url, status: server.status, client: undefined });
+      const target = mcpTarget(deps, { id: server.id, title: server.title, url, status: server.status, client: undefined });
       // The token is taken, and refreshed ahead of expiry, for every request of this person's client.
       const fetchWithToken = async (url: string | URL, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         headers.set('Authorization', `Bearer ${await accessToken(deps, target, userId)}`);
         return fetch(url, { ...init, headers });
       };
-      return clientFor(server, userId, { url: new URL(server.url), fetch: fetchWithToken, ...base }, 'oauth');
+      return clientFor(server, userId, { url: new URL(url), fetch: fetchWithToken, ...base }, 'oauth');
     }
     if (record.credential.kind !== 'static') throw notConnected(server.title, connectorId);
     const fields = record.credential.fields;
-    const access = accessOf({ url: server.url, header_templates: server.headerTemplates, fields: server.fields }, (field) => {
+    const access = accessOf({ url, header_templates: server.headerTemplates, fields: server.fields }, (field) => {
       const value = fields[field.key];
       if (!value) throw notConnected(server.title, connectorId);
       return value;
@@ -150,6 +164,13 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
         logEvent('warn', 'connector_unavailable', { connectorId, httpStatus: 401 });
         return unavailable(server.title, connectorId);
       case 'unavailable':
+        if (server.transport === 'program' && failure.httpStatus === PROGRAM_FELL) {
+          await markProgramCrashed(db, server.id);
+          forget(server.id, null);
+          // The admins learn it from the card in «Подключения»; a notification comes with the feature «Уведомления».
+          logEvent('error', 'mcp_program_crashed', { connectorId });
+          return unavailable(server.title, connectorId);
+        }
         logEvent('warn', 'connector_unavailable', { connectorId, httpStatus: failure.httpStatus ?? null });
         return unavailable(server.title, connectorId, safeCause(error));
     }
