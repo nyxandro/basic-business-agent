@@ -102,8 +102,9 @@ try {
 }
 ")"
 # The viewer's conversions (spec, section 8.27): every format of core/preview/fixtures through the same
-# LibreOffice, sandbox and qpdf as the installation, LibreOffice 7.4 of the image.
-check "every format of the document viewer turns into PDF, and gives its text for the model, in the sandbox" "all 34 checks ok" "$(compose exec -T app node tooling/preview-check.ts 2>/dev/null | tail -1)"
+# LibreOffice, sandbox and qpdf as the installation, LibreOffice 7.4 of the image; the text for the model (8.29) and the
+# letterheads (docs/specs/[20.11.2026]-org-letterhead.md) — 39 checks in all.
+check "every format of the document viewer turns into PDF, and gives its text for the model, in the sandbox" "all 39 checks ok" "$(compose exec -T app node tooling/preview-check.ts 2>/dev/null | tail -1)"
 check "no .env files with secrets in the image" none "$(compose exec -T app sh -c 'find /app -name ".env" -not -path "*/node_modules/*" | grep -q . && echo found || echo none')"
 check "the app cannot change its code" denied "$(compose exec -T app sh -c 'touch /app/core/x 2>/dev/null && echo allowed || echo denied')"
 echo "== program servers of MCP (mcp-runner; docs/specs/[20.11.2026]-mcp-connections.md, F1)"
