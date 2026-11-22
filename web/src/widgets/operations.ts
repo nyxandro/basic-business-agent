@@ -7,8 +7,9 @@
 //   manager applies what is new and does not build the screen again from the start.
 // - While a call is still written, its last component may be cut: it waits for the next one or for the end; a screen
 //   whose data may still be written waits for it.
-import { operationsOf, WIDGET_TOOL } from '@bba/contracts';
+import { operationsOf } from '@bba/contracts';
 import { ɵparseToolCallArguments as parseToolCallArguments } from '@copilotkit/react-core';
+import { operationsOfCall, renderCallsOf, type HeldMessage } from './calls.ts';
 
 type Op = Record<string, unknown>;
 type Body = Record<string, unknown>;
@@ -101,42 +102,19 @@ export function drawsWhileWritten(call: { id: string; function: { arguments: str
   return drawn.written !== null && drawn.ops.length > 0;
 }
 
-// The messages of the agent as CopilotKit holds them: assistant messages with tool calls, and their results.
-interface ToolCall {
-  id: string;
-  function: { name: string; arguments: string };
-}
-interface Message {
-  role: string;
-  toolCalls?: ToolCall[];
-  toolCallId?: string;
-  content?: unknown;
-}
-
-function parse(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-const shownResult = (content: unknown): boolean => typeof content === 'string' && (parse(content) as { shown?: unknown } | null)?.shown === true;
-
-// The changes later calls made to the screen the call `callId` drew (written `written`), for its surface `surfaceId`:
-// only calls written whole whose result says the screen was shown, up to the next shown screen of the same name.
-export function laterChanges(messages: readonly Message[], callId: string, written: string, surfaceId: string): Op[] {
-  const calls = messages.flatMap((m) => (m.role === 'assistant' ? (m.toolCalls ?? []) : [])).filter((c) => c.function.name === WIDGET_TOOL.render);
-  const results = new Map(messages.filter((m) => m.role === 'tool' && typeof m.toolCallId === 'string').map((m) => [m.toolCallId!, m.content]));
-  const from = calls.findIndex((c) => c.id === callId);
-  if (from < 0) return [];
+// The calls are read once for all the blocks of the conversation (calls.ts).
+export function laterChanges(messages: readonly HeldMessage[], callId: string, written: string, surfaceId: string): Op[] {
+  const { calls, order, shown } = renderCallsOf(messages);
+  const from = order.get(callId);
+  if (from === undefined) return [];
   const ops: Op[] = [];
   for (const call of calls.slice(from + 1)) {
-    const raw = operationsOf(parse(call.function.arguments));
+    if (!shown.has(call.id)) continue;
+    const raw = operationsOfCall(call);
     const first = raw[0];
     const kind = first ? kindOf(first) : null;
     const target = kind && first ? (first[kind] as Body).surfaceId : null;
-    if (target !== written || !shownResult(results.get(call.id))) continue;
+    if (target !== written) continue;
     // A new screen of the same name ends this one's changes; a refused one is no screen at all.
     if (kind === 'createSurface') break;
     ops.push(...explode(raw, written, surfaceId, true, true));

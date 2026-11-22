@@ -5,9 +5,10 @@
 // Which control sent it is read from the message, so the mark is there again after a reload — only when one control of
 // the whole answer sends those words: three plan cards with «Выбрать» send the same message, and a tick on all three
 // would be a lie (review 20.11). A control pressed in this window knows it was pressed (its own state).
-import { operationsOf, WIDGET_TOOL } from '@bba/contracts';
+import { WIDGET_TOOL } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { createContext } from 'react';
+import { isShownResult, operationsOfCall, type HeldMessage } from './calls.ts';
 
 type Op = Record<string, unknown>;
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -136,29 +137,9 @@ export function widgetReply(own: readonly Op[], screens: readonly (readonly Op[]
   return { answered: true, chosen: new Set(everywhere.size === 1 && here.length === 1 ? [here[0]!.words] : []), sending, sendsUnnamed: unnamed };
 }
 
-// The messages of the agent as CopilotKit holds them.
-interface ToolCall {
-  id: string;
-  function: { name: string; arguments: string };
-}
-interface Held {
-  role: string;
-  toolCalls?: ToolCall[];
-  toolCallId?: string;
-  content?: unknown;
-}
-
-function parse(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
 // The screens shown in the answer that drew the call `callId`: between the person's message before it and the next.
 export function screensOfAnswer(messages: readonly Message[], callId: string): Op[][] {
-  const held = messages as readonly Held[];
+  const held = messages as readonly HeldMessage[];
   const at = held.findIndex((m) => m.role === 'assistant' && (m.toolCalls ?? []).some((c) => c.id === callId));
   if (at < 0) return [];
   let from = at;
@@ -166,9 +147,9 @@ export function screensOfAnswer(messages: readonly Message[], callId: string): O
   let to = at;
   while (to < held.length - 1 && held[to + 1]!.role !== 'user') to++;
   const turn = held.slice(from, to + 1);
-  const shown = new Set(turn.filter((m) => m.role === 'tool' && typeof m.content === 'string' && (parse(m.content) as { shown?: unknown } | null)?.shown === true).map((m) => m.toolCallId));
+  const shown = new Set(turn.filter((m) => m.role === 'tool' && isShownResult(m)).map((m) => m.toolCallId));
   return turn
     .flatMap((m) => (m.role === 'assistant' ? (m.toolCalls ?? []) : []))
     .filter((c) => c.function.name === WIDGET_TOOL.render && shown.has(c.id))
-    .map((c) => operationsOf(parse(c.function.arguments)));
+    .map(operationsOfCall);
 }
