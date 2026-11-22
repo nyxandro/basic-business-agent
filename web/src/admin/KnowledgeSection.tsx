@@ -53,7 +53,9 @@ function stateOf(d: KbDocumentDto): { tone: Tone; text: string } {
   return { tone: d.warning ? 'warn' : 'ok', text: d.warning ?? t.state.ready(d.chunks ?? 0) };
 }
 
-function Documents({ department }: { department: string | null }) {
+// `kind` — the documents of the base, or the samples employees marked in the chat (docs/specs/[20.11.2026]-feedback-and-value.md):
+// a sample is not uploaded or replaced here, only removed.
+function Documents({ department, kind }: { department: string | null; kind: 'document' | 'example' }) {
   const load = useCallback(() => kb.documents(department), [department]);
   const { state, reload } = useLoad(load);
   const { busy, error, run } = useAction();
@@ -70,24 +72,27 @@ function Documents({ department }: { department: string | null }) {
   }
   if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
-  const docs = state.data.documents;
+  const docs = state.data.documents.filter((d) => d.kind === kind);
+  const samples = kind === 'example';
   return (
     <>
       <div className={styles.cardHead}>
-        <h2 className={styles.cardTitle}>{t.documents}</h2>
-        <Button variant="primary" icon="plus" disabled={busy} onClick={() => picker.current?.click()}>
-          {t.upload}
-        </Button>
+        <h2 className={styles.cardTitle}>{samples ? t.examples : t.documents}</h2>
+        {samples ? null : (
+          <Button variant="primary" icon="plus" disabled={busy} onClick={() => picker.current?.click()}>
+            {t.upload}
+          </Button>
+        )}
         <input ref={picker} type="file" multiple hidden accept=".docx,.doc,.odt,.rtf,.pdf,.xlsx,.xls,.ods,.csv,.pptx,.ppt,.odp,.txt,.md,.html" onChange={(e) => void onFiles(e.target.files).finally(() => (e.target.value = ''))} />
       </div>
       <div className={styles.inset}>
         <Feedback error={error} />
-        <p className={section.note}>{t.note}</p>
+        <p className={section.note}>{samples ? t.examplesNote : t.note}</p>
       </div>
       {docs.length === 0 ? (
-        <EmptyState title={t.empty} text={t.emptyText} />
+        samples ? <EmptyState title={t.examplesEmpty} text={t.examplesEmptyText} /> : <EmptyState title={t.empty} text={t.emptyText} />
       ) : (
-        <ul className={styles.phoneList} aria-label={t.listLabel}>
+        <ul className={styles.phoneList} aria-label={samples ? t.examplesLabel : t.listLabel}>
           {docs.map((d) => {
             const st = stateOf(d);
             return (
@@ -95,38 +100,42 @@ function Documents({ department }: { department: string | null }) {
                 <div className={styles.phoneMain}>
                   <div className={styles.taskName}>{d.title}</div>
                   <div className={section.sub}>
-                    {d.fileName}
+                    {samples ? t.exampleOf(d.docType ?? t.examples, d.markedBy) : d.fileName}
                     {d.editionDate ? t.editionShort(d.editionDate.split('-').reverse().join('.')) : ''}
                   </div>
                   <Pill tone={st.tone}>{st.text}</Pill>
-                  <label className={styles.stageHeadRow}>
-                    {t.edition}
-                    <Input
-                      type="date"
-                      aria-label={t.editionOf(d.title)}
-                      value={edition[d.id] ?? d.editionDate ?? ''}
-                      onChange={(e) => setEdition((all) => ({ ...all, [d.id]: e.target.value }))}
-                      onBlur={(e) => {
-                        const next = e.target.value || null;
-                        if (next !== d.editionDate) void run(() => kb.patch(d.id, { editionDate: next }), t.saved).then((ok) => ok && reload());
-                      }}
-                    />
-                  </label>
+                  {samples ? null : (
+                    <label className={styles.stageHeadRow}>
+                      {t.edition}
+                      <Input
+                        type="date"
+                        aria-label={t.editionOf(d.title)}
+                        value={edition[d.id] ?? d.editionDate ?? ''}
+                        onChange={(e) => setEdition((all) => ({ ...all, [d.id]: e.target.value }))}
+                        onBlur={(e) => {
+                          const next = e.target.value || null;
+                          if (next !== d.editionDate) void run(() => kb.patch(d.id, { editionDate: next }), t.saved).then((ok) => ok && reload());
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
                 {d.status === 'rejected' ? (
                   <Button disabled={busy} onClick={() => void run(() => kb.retry(d.id), null).then((ok) => ok && reload())}>
                     {t.retry}
                   </Button>
                 ) : null}
-                <Button
-                  disabled={busy}
-                  onClick={() => {
-                    replacing.current = d.id;
-                    picker.current?.click();
-                  }}
-                >
-                  {t.replace}
-                </Button>
+                {samples ? null : (
+                  <Button
+                    disabled={busy}
+                    onClick={() => {
+                      replacing.current = d.id;
+                      picker.current?.click();
+                    }}
+                  >
+                    {t.replace}
+                  </Button>
+                )}
                 <IconButton
                   icon="trash"
                   label={t.removeLabel(d.title)}
@@ -191,7 +200,7 @@ function Synonyms({ department }: { department: string | null }) {
 export function KnowledgeSection() {
   const { state, reload } = useLoad(kb.bases, ['knowledge', 'bases']);
   const [base, setBase] = useState<string | null | undefined>(undefined);
-  const [tab, setTab] = useState<'documents' | 'synonyms'>('documents');
+  const [tab, setTab] = useState<'documents' | 'examples' | 'synonyms'>('documents');
   const head = <PageHead title={t.title} lead={t.lead} />;
   if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
@@ -212,11 +221,14 @@ export function KnowledgeSection() {
         <button type="button" aria-pressed={tab === 'documents'} className={cx(models.chip, tab === 'documents' && models.chipOn)} onClick={() => setTab('documents')}>
           {t.documents}
         </button>
+        <button type="button" aria-pressed={tab === 'examples'} className={cx(models.chip, tab === 'examples' && models.chipOn)} onClick={() => setTab('examples')}>
+          {t.examples}
+        </button>
         <button type="button" aria-pressed={tab === 'synonyms'} className={cx(models.chip, tab === 'synonyms' && models.chipOn)} onClick={() => setTab('synonyms')}>
           {t.synonyms}
         </button>
       </div>
-      <Card className={`${section.tableCard} rise`}>{tab === 'documents' ? <Documents key={current ?? 'org'} department={current} /> : <Synonyms key={current ?? 'org'} department={current} />}</Card>
+      <Card className={`${section.tableCard} rise`}>{tab === 'synonyms' ? <Synonyms key={current ?? 'org'} department={current} /> : <Documents key={`${current ?? 'org'}:${tab}`} department={current} kind={tab === 'examples' ? 'example' : 'document'} />}</Card>
     </div>
   );
 }

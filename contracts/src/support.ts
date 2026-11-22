@@ -109,6 +109,10 @@ export interface ExampleStateResponse {
   docType: string;
 }
 
+// The documents «Хороший образец» is offered on: Word, Excel, PowerPoint, PDF and their open and older forms.
+const EXAMPLE_EXTENSIONS = new Set(['.docx', '.doc', '.odt', '.rtf', '.xlsx', '.xls', '.ods', '.pptx', '.ppt', '.odp', '.pdf']);
+export const isExampleName = (name: string) => EXAMPLE_EXTENSIONS.has(name.slice(name.lastIndexOf('.')).toLowerCase());
+
 export interface ExampleSaveResponse {
   documentId: string;
 }

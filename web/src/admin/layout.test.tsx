@@ -43,7 +43,7 @@ describe('the frame of the admin panel', () => {
     mockServer({ 'GET /app/api/me': { body: ACCOUNTANT }, 'GET /app/api/admin/usage': USAGE, 'GET /app/api/admin/usage/daily': { body: { days: [] } } });
     renderApp('/admin/limits');
     const chips = await screen.findByRole('navigation', { name: 'Разделы админки' });
-    expect(within(chips).getAllByRole('link').map((a) => a.textContent)).toEqual(['Лимиты и расходы', 'Журнал действий']);
+    expect(within(chips).getAllByRole('link').map((a) => a.textContent)).toEqual(['Лимиты и расходы', 'Польза от агентов', 'Журнал действий']);
     expect(screen.getByRole('link', { name: 'Вернуться в чат' })).toBeInTheDocument();
   });
 });

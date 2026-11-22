@@ -11,10 +11,11 @@
 import type { AssistantMessage as AgentMessage, Message } from '@copilotkit/react-core';
 import { useRenderToolCall } from '@copilotkit/react-core';
 import { AnimatePresence, motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { useToast } from '../ui/Toast.tsx';
+import { ComplainDialog } from '../feedback/ComplainDialog.tsx';
 import { AgentMark } from './AgentMark.tsx';
 import { AnswerText } from './AnswerText.tsx';
 import { TurnStateContext } from './call-progress.ts';
@@ -47,9 +48,11 @@ function Arrives({ children, blurred = false }: { children: ReactNode; blurred?:
   );
 }
 
-// Under an answer: the mark of a broken one and the toolbar.
-export function TurnFooter({ text, streaming, interrupted, onAnswerAgain }: { text: string; streaming: boolean; interrupted: boolean; onAnswerAgain?: () => void }) {
+// Under an answer: the mark of a broken one and the toolbar. «Пожаловаться» (docs/specs/[20.11.2026]-feedback-and-value.md):
+// under an answer that ended — not one being written, broken or waiting for «Да» — with the turn it is (`complaint`).
+export function TurnFooter({ text, streaming, interrupted, onAnswerAgain, complaint }: { text: string; streaming: boolean; interrupted: boolean; onAnswerAgain?: () => void; complaint?: { threadId: string; turn: number } }) {
   const toast = useToast();
+  const [complaining, setComplaining] = useState(false);
   if (streaming) return null;
 
   async function copy() {
@@ -64,12 +67,14 @@ export function TurnFooter({ text, streaming, interrupted, onAnswerAgain }: { te
   return (
     <>
       {interrupted ? <p className={styles.interrupted}>{ru.chat.answerInterrupted}</p> : null}
-      {text || onAnswerAgain ? (
+      {text || onAnswerAgain || complaint ? (
         <div className={styles.toolbar}>
           {text ? <IconButton icon="copy" label={ru.chat.copy} size="sm" onClick={() => void copy()} /> : null}
           {onAnswerAgain ? <IconButton icon="redo" label={ru.chat.answerAgain} size="sm" onClick={onAnswerAgain} /> : null}
+          {complaint ? <IconButton icon="alert" label={ru.feedback.complaint.menu} size="sm" onClick={() => setComplaining(true)} /> : null}
         </div>
       ) : null}
+      {complaint ? <ComplainDialog open={complaining} threadId={complaint.threadId} turn={complaint.turn} onClose={() => setComplaining(false)} /> : null}
     </>
   );
 }
@@ -85,6 +90,7 @@ export function AssistantTurn({
   interrupted = false,
   live = null,
   onAnswerAgain,
+  turnNumber = 0,
 }: {
   turn: AgentMessage[];
   messages: readonly Message[];
@@ -97,9 +103,11 @@ export function AssistantTurn({
   // The live line of the answer being written: under what it has shown, beside its mark from its first moment.
   live?: ReactNode;
   onAnswerAgain?: () => void;
+  // The number of the person's message the answer is to (0 — the opening line of a task's conversation).
+  turnNumber?: number;
 }) {
   const renderToolCall = useRenderToolCall();
-  const { agent } = useChatExtras();
+  const { agent, threadId } = useChatExtras();
   const items = turnItems(turn, messages, underWay);
   // A broken answer stays even when it showed nothing: its mark and «Ответить заново» are its row; so does one being
   // written: its mark and its live line.
@@ -140,7 +148,13 @@ export function AssistantTurn({
             ) : null}
           </AnimatePresence>
         </TurnStateContext>
-        <TurnFooter text={lastText} streaming={streaming} interrupted={interrupted} {...(onAnswerAgain ? { onAnswerAgain } : {})} />
+        <TurnFooter
+          text={lastText}
+          streaming={streaming}
+          interrupted={interrupted}
+          {...(onAnswerAgain ? { onAnswerAgain } : {})}
+          {...(turnNumber > 0 && !interrupted && !asking && items.length > 0 ? { complaint: { threadId, turn: turnNumber } } : {})}
+        />
       </div>
     </div>
   );

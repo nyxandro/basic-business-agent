@@ -1,8 +1,8 @@
 // The file block (spec, sections 8.18, 8.20 and 8.27): a file the agent made in the folder of the
 // conversation — its icon, name, size, «Открыть» (the document viewer, for what it shows) and «Скачать»; a file removed since then is said so. Drawn from the result of show_file, where the server says the file
 // is there; a call that found no file draws nothing (the model is told and tries again).
-import { fileBlockResultSchema, previewKindOf, type ThreadFileStatus } from '@bba/contracts';
-import { useRef, useState, type MouseEvent } from 'react';
+import { fileBlockResultSchema, isExampleName, previewKindOf, type ThreadFileStatus } from '@bba/contracts';
+import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { asApiError } from '../api/client.ts';
 import { fetchThreadFileStatus, threadFilePreviewUrl, threadFileUrl } from '../chat/api.ts';
 import { restoreFromTrash, trashFileUrl } from '../projects/api.ts';
@@ -11,6 +11,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { useChatSend } from '../chat/chat-send.ts';
+import { ExampleButton } from '../feedback/ExampleButton.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { fileSize, fullDate } from '../ui/format.ts';
 import { Preparing, type CallProps } from './CatalogBlock.tsx';
@@ -55,7 +56,8 @@ export function FileNote({ status, onRestored }: { status: Exclude<ThreadFileSta
 
 // `marks` — the file lies in the folder of this conversation: in the viewer marks can be drawn on it and sent to the
 // agent of the conversation (spec, section 8.32).
-export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus>; marks?: { threadId: string; path: string } }) {
+// `under` — what stands under the block: «Хороший образец» of a document the agent made.
+export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks, under }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus>; marks?: { threadId: string; path: string }; under?: ReactNode }) {
   const [note, setNote] = useState<Exclude<ThreadFileStatus, { state: 'ok' }> | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { open, viewer } = useDocumentViewer(useChatSend());
@@ -107,6 +109,7 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks
         {ru.genui.download}
       </ButtonLink>
     </article>
+    {under ? <div className={styles.fileUnder}>{under}</div> : null}
     {note ? <FileNote status={note} onRestored={() => setNote(null)} /> : null}
     {failed ? <p className={styles.fileNoteError}>{failed}</p> : null}
     {viewer}
@@ -130,6 +133,8 @@ export function FileCall({ call, threadId }: { call: CallProps; threadId: string
       previewHref={threadFilePreviewUrl(threadId, path)}
       checkFile={() => fetchThreadFileStatus(threadId, path)}
       marks={{ threadId, path }}
+      // A document the agent made in this answer may become a sample; an attachment of the person never.
+      {...(parsed.data.made && isExampleName(parsed.data.name) ? { under: <ExampleButton threadId={threadId} path={path} /> } : {})}
     />
   );
 }

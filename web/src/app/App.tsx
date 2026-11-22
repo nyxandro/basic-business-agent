@@ -17,6 +17,7 @@ import { ConnectionsPage } from '../settings/ConnectionsPage.tsx';
 import { NotificationsPage } from '../settings/NotificationsPage.tsx';
 import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
+import { MyRequestsPage } from '../feedback/MyRequestsPage.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { loadAdminCode } from './admin-code.ts';
 import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
@@ -67,6 +68,7 @@ export function App() {
                     <Route path="usage" element={<UsagePage />} />
                     <Route path="connections" element={<ConnectionsPage />} />
                     <Route path="notifications" element={<NotificationsPage />} />
+                    <Route path="requests" element={<MyRequestsPage />} />
                   </Route>
                 </Route>
               </Route>

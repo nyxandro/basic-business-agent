@@ -419,6 +419,20 @@
   }
 }
 
+/* Under the block of a document the agent made: «Хороший образец» (docs/specs/[20.11.2026]-feedback-and-value.md). */
+.fileUnder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.fileExample {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* «Скачать» of a file removed from the folder (spec, section 8.20). */
 .fileNote {
   display: grid;

@@ -97,6 +97,8 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
     <>
       {rows.map((row, i) => {
         if (row.kind === 'user') return <UserMessage key={row.message.id} content={row.message.content} />;
+        // The answer's turn: the number of the person's messages up to it — the same live and after a reload.
+        const turnNumber = rows.slice(0, i).filter((r) => r.kind === 'user').length;
         const isLast = i === rows.length - 1;
         const broken = (isLast && lastBroken) || row.turn.some((m) => failures.interrupted.has(m.id));
         return (
@@ -110,6 +112,7 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
             interrupted={broken}
             live={isLast ? live : null}
             {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
+            turnNumber={turnNumber}
           />
         );
       })}

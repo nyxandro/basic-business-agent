@@ -4,6 +4,7 @@ import { plural } from '../ui/format.ts';
 import { marksTexts } from './marks.ts';
 import { mcpAdminTexts, mcpEmployeeTexts } from './mcp.ts';
 import { chainsTexts } from './chains.ts';
+import { feedbackTexts } from './feedback.ts';
 import { knowledgeTexts } from './knowledge.ts';
 import { orgTexts } from './org.ts';
 
@@ -784,6 +785,7 @@ export const ru = {
   marks: marksTexts,
   mcp: { admin: mcpAdminTexts, employee: mcpEmployeeTexts },
   knowledge: knowledgeTexts,
+  feedback: feedbackTexts,
   org: orgTexts,
   clientErrors: {
     APP_PREVIEW_PASSWORD: 'Документ защищён паролем — посмотреть его здесь нельзя. Скачайте его.',

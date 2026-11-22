@@ -53,6 +53,9 @@ export function SettingsMenu({ usage, onNavigate }: { usage: MyUsage | null; onN
         <MenuItem icon="bell" onSelect={go('/settings/notifications')}>
           {notificationTexts.settingsTitle}
         </MenuItem>
+        <MenuItem icon="headset" onSelect={go('/settings/requests')}>
+          {ru.feedback.requests.title}
+        </MenuItem>
         <MenuSeparator />
         <div className={styles.themeBlock}>
           <div className={styles.themeLabel}>{ru.shell.theme}</div>
