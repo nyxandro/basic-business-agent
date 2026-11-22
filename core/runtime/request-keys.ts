@@ -37,6 +37,9 @@ export const REQUEST_KEYS = {
   // The execution of an agreed request of multi-step approvals (core/approvals/execute.ts): the tool runs the call
   // instead of making a request again.
   chainExecution: 'bba.chainExecution',
+  // When the run started (milliseconds): a file changed since then was made by the agent in this answer — its block
+  // offers «Хороший образец» and counts as a document of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
+  runStartedAt: 'bba.runStartedAt',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';

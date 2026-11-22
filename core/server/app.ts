@@ -51,6 +51,7 @@ import { createMailTools } from '../mail/tools.ts';
 import type { KnowledgeIndexer } from '../knowledge/indexer.ts';
 import { registerKnowledgeRoutes } from '../knowledge/routes.ts';
 import { registerSupportRoutes } from '../support/routes.ts';
+import { registerExampleRoutes } from '../knowledge/examples.ts';
 import type { ActionDescription } from '@bba/contracts';
 
 export interface ServerDeps {
@@ -130,6 +131,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerHookRoutes(app, { db: deps.db, wake: () => deps.background.wake() });
   registerKnowledgeRoutes(app, { db: deps.db, indexer: deps.knowledge.indexer });
   const agentName = (id: string) => deps.chat.registry.get(id)?.passport.name ?? id;
+  registerExampleRoutes(app, { db: deps.db, memory: deps.chat.memory, storage: deps.storage, workspaceRoot: deps.chat.workspaceRoot, indexer: deps.knowledge.indexer });
   registerSupportRoutes(app, { db: deps.db, memory: deps.chat.memory, storage: deps.storage, workspaceRoot: deps.chat.workspaceRoot, timezone: deps.timezone, agentName });
   const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.chat.mail, workspaceRoot: deps.chat.workspaceRoot, listNote: false, chains: deps.chat.chains }));
   registerChainRoutes(app, {

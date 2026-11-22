@@ -80,6 +80,7 @@ export function createChainExecutor(deps: ChainExecutorDeps): ChainExecutor {
     rc.set(REQUEST_KEYS.threadId, row.thread_id);
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, row.run_kind);
+    rc.set(REQUEST_KEYS.runStartedAt, String(Date.now()));
     if (row.task_id) rc.set(REQUEST_KEYS.taskId, row.task_id);
     if (project.projectId && project.projectOwnerId) {
       rc.set(REQUEST_KEYS.projectId, project.projectId);

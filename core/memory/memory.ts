@@ -43,17 +43,18 @@ export async function ensureThread(
   memory: Memory,
   // `taskId` — a conversation of an event of a background task: the lists show it under its task (event-tasks.md).
   input: { threadId: string; resourceId: string; agentId: string; kind: ThreadKind; title: string; taskId?: string },
-): Promise<void> {
+): Promise<boolean> {
   const existing = await memory.getThreadById({ threadId: input.threadId });
   if (existing) {
     // Ownership is also enforced by Mastra on every run (step 0, V4); this keeps the error ours.
     if (existing.resourceId !== input.resourceId) throw appError('APP_NOT_FOUND', `thread ${input.threadId} belongs to another resource`, { userMessage: 'Разговор не найден.' });
-    return;
+    return false;
   }
   const now = new Date();
   // A conversation of the chat is named after its first message until the model names it (spec, 8.16).
   const metadata = { agentId: input.agentId, kind: input.kind, ...(input.kind === 'chat' ? { titleSource: FIRST_MESSAGE } : {}), ...(input.taskId ? { taskId: input.taskId } : {}) };
   await memory.saveThread({ thread: { id: input.threadId, resourceId: input.resourceId, title: input.title, metadata, createdAt: now, updatedAt: now } });
+  return true;
 }
 
 // Every conversation is created by ensureThread with its agent: a thread without one is broken data.

@@ -86,6 +86,7 @@ export function createChainContinuation(deps: ChainContinuationDeps): ChainConti
     rc.set(REQUEST_KEYS.threadId, row.thread_id);
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, row.run_kind);
+    rc.set(REQUEST_KEYS.runStartedAt, String(Date.now()));
     if (row.task_id) rc.set(REQUEST_KEYS.taskId, row.task_id);
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);

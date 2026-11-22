@@ -24,7 +24,7 @@ import { loadAccess } from '../auth/access.ts';
 import type { AgentAbilities } from '@bba/contracts';
 import { contextRoot, draftsPath, DRAFTS_KEEP_DAYS, listFiles } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
-import { readableTitles } from '../knowledge/store.ts';
+import { readableExampleKinds, readableTitles } from '../knowledge/store.ts';
 
 export const BASE_RULES = readFileSync(new URL('./base-rules.md', import.meta.url), 'utf8');
 // What the agent may do (spec, section 8.30): the rules of programs only to the agent that may run them; the
@@ -132,10 +132,13 @@ export async function employeeLayer(db: Db, userId: string): Promise<string> {
 // The knowledge base the person reads: up to PROMPT_KNOWLEDGE_TITLES names of documents and how many more; none — no layer.
 export const PROMPT_KNOWLEDGE_TITLES = 100;
 export async function knowledgeLayer(db: Db, userId: string): Promise<string | null> {
-  const { titles, total } = await readableTitles(db, userId, PROMPT_KNOWLEDGE_TITLES);
-  if (total === 0) return null;
+  const [{ titles, total }, examples] = await Promise.all([readableTitles(db, userId, PROMPT_KNOWLEDGE_TITLES), readableExampleKinds(db, userId)]);
+  if (total === 0 && examples.length === 0) return null;
   const more = total > titles.length ? `\nи ещё ${total - titles.length}` : '';
-  return `# База знаний организации\nДокументы, по которым отвечаешь на вопросы о компании (ищи в них инструментом knowledge_search):\n${titles.map((t) => `- ${t}`).join('\n')}${more}`;
+  const documents = total > 0 ? `\nДокументы, по которым отвечаешь на вопросы о компании (ищи в них инструментом knowledge_search):\n${titles.map((t) => `- ${t}`).join('\n')}${more}` : '';
+  // Samples of good documents (docs/specs/[20.11.2026]-feedback-and-value.md): their kinds, for the rule «сначала образцы».
+  const samples = examples.length > 0 ? `\nОбразцы документов (knowledge_search с kind: 'example'): ${examples.map((e) => `${e.docType} — ${e.count}`).join(', ')}` : '';
+  return `# База знаний организации${documents}${samples}`;
 }
 
 // The other agents the person may open (the superadmin — every one), where the agent sends a question outside its

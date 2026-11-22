@@ -9,6 +9,7 @@ import type { ConnectionManager } from '../connections/manager.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { createShowFileTool } from '../sandbox/show-file.ts';
+import type { WorkFacts } from '../work-facts/facts.ts';
 import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE_TOOL } from '../sandbox/workspace.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import type { MemoryTools } from '../memory/tools.ts';
@@ -75,6 +76,8 @@ export interface AgentFactoryDeps {
   historyTools?: HistoryTools;
   // The knowledge base of the organisation (docs/specs/[20.11.2026]-knowledge-base.md): search and the document whole.
   knowledgeTools?: Record<string, AnyTool>;
+  // The facts of work of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md): a document shown.
+  facts?: WorkFacts;
   // The person's mailbox (spec, section 8.24): its tools, when the person has connected one.
   // `top` — the tools of the agent the person talks to: its list of letters may ask for a widget (issue #32).
   mail?: { toolsFor(userId: string, top: boolean): Promise<Record<string, AnyTool>> };
@@ -102,7 +105,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
   const widgetTools = level === 'top' ? createWidgetTools() : {};
   if (deps.sandbox) staticTools[VIEW_IMAGE_TOOL] = createViewImageTool(deps.sandbox.deps.workspaceRoot);
   // The file block, like the other blocks, only for the agent the person talks to (spec, section 8.18).
-  if (deps.sandbox && level === 'top') staticTools[GENUI_TOOL.file] = createShowFileTool(deps.sandbox.deps.workspaceRoot);
+  if (deps.sandbox && level === 'top') staticTools[GENUI_TOOL.file] = createShowFileTool(deps.sandbox.deps.workspaceRoot, deps.facts ?? null);
   // Skills are the employee's own set for the run (core/skills-admin/runtime.ts).
   const workspace = deps.sandbox ? createAgentWorkspace(deps.sandbox.deps, deps.sandbox.isolation) : new Workspace({ skills: ({ requestContext }) => skillPathsOf(requestContext) });
   const subagents = Object.fromEntries(rt.subagents.map((s) => [s.passport.id, buildAgent(s, deps, 'sub')]));

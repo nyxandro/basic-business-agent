@@ -11,9 +11,13 @@ import type { AnyTool } from '../plugins/public/index.ts';
 import { optionalContextValue, REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
 import { logEvent } from '../server/log.ts';
 import type { ChainService } from './chains.ts';
+import { recordFact } from '../work-facts/facts.ts';
 import { describeTool } from './describe.ts';
 
 type ExecuteContext = { requestContext?: { get(key: string): unknown }; agent?: { toolCallId?: string } } | undefined;
+
+const MAIL_SEND_TOOL = 'mailbox_send';
+const refusedOutput = (output: unknown) => typeof output === 'object' && output !== null && (output as { error?: unknown }).error === true;
 
 function contextValue(ctx: ExecuteContext, key: string): string | null {
   const v = ctx?.requestContext?.get(key);
@@ -78,6 +82,9 @@ export function applyApprovalPolicy(tool: AnyTool, opts: { readOnly: boolean; db
       }
       // The action ran: a journal that fails to write it is the server's trouble, never a second run of the action.
       await writeJournal(opts.db, { ...base, result: 'ok' }).catch((error: unknown) => logEvent('error', 'journal_write_failed', { code: 'APP_INTERNAL', tool: base.tool, error }));
+      // A fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md): a letter sent is a letter, any
+      // other change an action; an answer that is an error object did nothing.
+      if (!opts.readOnly && !refusedOutput(output)) await recordFact(opts.db, id === MAIL_SEND_TOOL ? 'email' : 'action', { userId, agentId: base.agentId });
       return output;
     },
   } as Parameters<typeof createTool>[0]) as AnyTool;

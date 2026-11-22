@@ -70,6 +70,10 @@ describe('background tasks', () => {
     expect(messages.at(-1)).toMatchObject({ role: 'assistant', text: 'Сводка: 3 сделки без движения.' });
     expect(await journalOf(task.id)).toEqual(['background_started:started', 'background_finished:ok']);
     expect((await runsOf(task.id)).runs).toMatchObject([{ userId: olgaId, name: 'Ольга', outcome: 'done' }]);
+    // A run done is a fact of the report of value; the journal's «background_finished» is not an action
+    // (docs/specs/[20.11.2026]-feedback-and-value.md, step 6).
+    const facts = await t.db.query<{ kind: string }>(`SELECT kind FROM app.work_facts WHERE user_id = $1 AND agent_id = 'sales' ORDER BY id`, [olgaId]);
+    expect(facts.rows.map((r) => r.kind)).toEqual(['background_run']);
 
     // «Готово: …» tells the result (docs/specs/[20.11.2026]-notifications.md); opening the conversation reads it.
     const threadId = taskThreadId(task.id, olgaId);

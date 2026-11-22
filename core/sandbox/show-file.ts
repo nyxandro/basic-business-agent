@@ -10,10 +10,18 @@ import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { existingInside } from '../workspace/layout.ts';
 import { runRoot } from './workspace.ts';
+import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { isDocumentName, type WorkFacts } from '../work-facts/facts.ts';
 
 const HINT = 'Сохрани файл в рабочую папку и вызови show_file с путём к нему.';
 
-export function showFileIn(root: string, path: string): FileBlockResult {
+// The clock of file times runs a few milliseconds behind the clock of the process: a file written right after the start
+// may get a time a little before it.
+const FILE_CLOCK_SLACK_MS = 50;
+
+// `startedAt` — the start of the run: a file changed since then the agent made in this answer (an attachment of the person
+// came before it).
+export function showFileIn(root: string, path: string, startedAt: number | null = null): FileBlockResult {
   let real: string | null;
   try {
     real = existingInside(root, path);
@@ -24,10 +32,13 @@ export function showFileIn(root: string, path: string): FileBlockResult {
   if (!real) return { shown: false, error: `Файла «${path}» нет в рабочей папке. ${HINT}` };
   const stat = statSync(real);
   if (!stat.isFile()) return { shown: false, error: `«${path}» — папка, а не файл. ${HINT}` };
-  return { shown: true, path: relative(realpathSync(root), real), name: basename(real), bytes: stat.size };
+  return { shown: true, path: relative(realpathSync(root), real), name: basename(real), bytes: stat.size, made: startedAt !== null && stat.mtimeMs >= startedAt - FILE_CLOCK_SLACK_MS };
 }
 
-export function createShowFileTool(workspaceRoot: string): AnyTool {
+// The documents already counted in this run: showing the same file twice is one document.
+const COUNTED = 'bba.documentsCounted';
+
+export function createShowFileTool(workspaceRoot: string, facts: WorkFacts | null): AnyTool {
   return createTool({
     id: GENUI_TOOL.file,
     description:
@@ -36,6 +47,21 @@ export function createShowFileTool(workspaceRoot: string): AnyTool {
       'Черновики, распакованные папки и картинки для проверки не показывай.',
     inputSchema: z.object({ path: z.string().min(1).describe('Путь от рабочей папки или абсолютный путь внутри неё, например «КП ООО Ёлка.docx»') }),
     outputSchema: fileBlockResultSchema,
-    execute: ({ path }, context) => Promise.resolve(showFileIn(runRoot(workspaceRoot, context?.requestContext), path)),
+    execute: async ({ path }, context) => {
+      const rc = context?.requestContext;
+      const started = optionalContextValue(rc, REQUEST_KEYS.runStartedAt);
+      const shown = showFileIn(runRoot(workspaceRoot, rc), path, started === null ? null : Number(started));
+      // A document the agent made in this answer is a fact of work (docs/specs/[20.11.2026]-feedback-and-value.md).
+      if (facts && rc && shown.shown && shown.made && isDocumentName(shown.name)) {
+        const seen: unknown = rc.get(COUNTED);
+        const counted = seen instanceof Set ? (seen as Set<string>) : new Set<string>();
+        if (!counted.has(shown.path)) {
+          counted.add(shown.path);
+          rc.set(COUNTED, counted);
+          await facts.record('document', { userId: optionalContextValue(rc, REQUEST_KEYS.userId), agentId: optionalContextValue(rc, REQUEST_KEYS.agentId) });
+        }
+      }
+      return shown;
+    },
   }) as AnyTool;
 }

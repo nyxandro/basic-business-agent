@@ -13,6 +13,7 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import type { Registry } from '../loader/registry.ts';
 import { draftResourceId, ensureThread, titleFrom } from '../memory/memory.ts';
+import { recordFact } from '../work-facts/facts.ts';
 import { runProjectOf, runProjectOfWaitingAnswer, type RunProject } from '../projects/access.ts';
 import { markSeen } from '../projects/projects.ts';
 import { logEvent } from '../server/log.ts';
@@ -221,6 +222,7 @@ export function requestContextFor(run: PreparedRun): RequestContext {
   rc.set(REQUEST_KEYS.threadId, run.threadId);
   rc.set(REQUEST_KEYS.agentId, run.agentId);
   rc.set(REQUEST_KEYS.runKind, (run.mode === 'draft' ? 'draft' : 'chat') satisfies RunKind);
+  rc.set(REQUEST_KEYS.runStartedAt, String(Date.now()));
   if (run.models) {
     rc.set(REQUEST_KEYS.modelId, run.models.primary);
     if (run.models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, run.models.fallback);
@@ -302,7 +304,12 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   const skillPaths = await deps.skills.skillsFor(access.userId, { documents: abilities.commands });
   const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths, abilities, release: null, life: newRunLife() };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
-  await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
+  const created = await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });
+  // The person wrote to an agent: «работали с агентами» of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
+  if (mode === 'published' && newMessageOf(input) !== '') {
+    if (created) await recordFact(deps.db, 'conversation', { userId: access.userId, agentId });
+    await recordFact(deps.db, 'message', { userId: access.userId, agentId });
+  }
   // Working in a project shared to the person takes its «новое» off.
   if (run.projectId) await markSeen(deps.db, access.userId, run.projectId);
 

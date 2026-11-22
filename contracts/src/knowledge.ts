@@ -10,6 +10,9 @@ export interface KbDocumentDto {
   title: string;
   // A document, or a sample of a good document (docs/specs/[20.11.2026]-feedback-and-value.md).
   kind: 'document' | 'example';
+  // The kind of a sample («Коммерческое предложение») and who marked it; null for a document.
+  docType: string | null;
+  markedBy: string | null;
   // «Редакция от» — the date the agent names in a reference (YYYY-MM-DD).
   editionDate: string | null;
   // The version agents search; null — none read yet.
@@ -53,6 +56,8 @@ export interface KbFragmentDto {
   docId: string;
   version: number;
   document: string;
+  // A sample: its kind («Коммерческое предложение») — structure and tone to follow, not data to copy.
+  example?: string;
   section: string | null;
   page: number | null;
   edition: string | null;

@@ -14,10 +14,14 @@ export const FRAGMENTS_FOUND = 8;
 export const FRAGMENT_CHARS = 1500;
 const LIST_SIZE = 30;
 const RRF_K = 60;
+// What a sample gets over a document found as well (docs/specs/[20.11.2026]-feedback-and-value.md): less than one place of
+// a list (1/60 − 1/61 ≈ 0.00027 at the top), so a sample wins a tie and never a clearly better match.
+const EXAMPLE_BONUS = 0.0002;
 // The likeness of trigrams a fragment needs to the question (as Ctrl+K starts, core/search/match-sql.ts).
 const TRIGRAM_THRESHOLD = 0.3;
 
-export async function searchKnowledge(db: Db, userId: string, question: string, documentId: string | null): Promise<KbFragmentDto[]> {
+// `kind` — 'example': samples only (an agent making a document looks for samples of its kind first).
+export async function searchKnowledge(db: Db, userId: string, question: string, documentId: string | null, kind: 'any' | 'example' = 'any'): Promise<KbFragmentDto[]> {
   const started = Date.now();
   const departments = await readableDepartments(db, userId);
   const clean = cleanQuestion(question);
@@ -26,10 +30,10 @@ export async function searchKnowledge(db: Db, userId: string, question: string, 
     const expanded = await expandQuery(c, variants, clean, departments);
     if (!expanded.tsquery && expanded.norm.length < 3) return [];
     await c.query(`SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`, [String(TRIGRAM_THRESHOLD)]);
-    const { rows } = await c.query<{ id: string; document_id: string; version: number; title: string; section: string | null; page: number | null; edition: string | null; text: string }>(
+    const { rows } = await c.query<{ id: string; document_id: string; version: number; title: string; kind: 'document' | 'example'; doc_type: string | null; section: string | null; page: number | null; edition: string | null; text: string }>(
       `WITH allowed AS (
          SELECT d.id, d.current_version FROM app.kb_documents d
-          WHERE d.current_version IS NOT NULL AND (d.scope = 'org' OR d.department_id::text = ANY($1)) AND ($2::uuid IS NULL OR d.id = $2)
+          WHERE d.current_version IS NOT NULL AND (d.scope = 'org' OR d.department_id::text = ANY($1)) AND ($2::uuid IS NULL OR d.id = $2) AND ($5 = 'any' OR d.kind = $5)
        ),
        q AS (SELECT CASE WHEN $3 = '' THEN NULL ELSE to_tsquery('russian', $3) END AS q),
        fts AS (
@@ -45,10 +49,10 @@ export async function searchKnowledge(db: Db, userId: string, question: string, 
           ORDER BY place LIMIT ${LIST_SIZE}
        ),
        scored AS (SELECT id, sum(1.0 / (${RRF_K} + place)) AS score FROM (SELECT * FROM fts UNION ALL SELECT * FROM tri) x GROUP BY id)
-       SELECT c.id, c.document_id, c.version, d.title, c.section, c.page, to_char(d.edition_date, 'DD.MM.YYYY') AS edition, c.text
+       SELECT c.id, c.document_id, c.version, d.title, d.kind, d.doc_type, c.section, c.page, to_char(d.edition_date, 'DD.MM.YYYY') AS edition, c.text
          FROM scored s JOIN app.kb_chunks c ON c.id = s.id JOIN app.kb_documents d ON d.id = c.document_id
-        ORDER BY s.score DESC, c.id LIMIT ${FRAGMENTS_FOUND}`,
-      [departments, documentId, expanded.tsquery, expanded.norm],
+        ORDER BY s.score + CASE WHEN d.kind = 'example' THEN ${EXAMPLE_BONUS} ELSE 0 END DESC, c.id LIMIT ${FRAGMENTS_FOUND}`,
+      [departments, documentId, expanded.tsquery, expanded.norm, kind],
     );
     return rows;
   });
@@ -58,6 +62,7 @@ export async function searchKnowledge(db: Db, userId: string, question: string, 
     docId: r.document_id,
     version: r.version,
     document: r.title,
+    ...(r.kind === 'example' ? { example: r.doc_type ?? 'Образец' } : {}),
     section: r.section,
     page: r.page,
     edition: r.edition,

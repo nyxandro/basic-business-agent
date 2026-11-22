@@ -35,6 +35,7 @@ import { notify } from '../notifications/notify.ts';
 import type { Activity } from '../notifications/activity.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
+import { recordFact } from '../work-facts/facts.ts';
 import { fireTimeOf } from './schedule.ts';
 import { membersOf } from './scope.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
@@ -148,6 +149,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     rc.set(REQUEST_KEYS.threadId, threadId);
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, 'background');
+    rc.set(REQUEST_KEYS.runStartedAt, String(Date.now()));
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
@@ -231,6 +233,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       });
       await markUnread(threadId);
       await writeJournal(db, { ...journalBase, event: 'background_finished', result: 'ok' });
+      // A run done is a fact of the report of value; one waiting for «Да» is counted when it is done (closeRun).
+      if (!awaiting) await recordFact(db, 'background_run', { userId, agentId: row.agent_id });
       return { outcome: awaiting ? 'awaiting-approval' : 'done', code: null };
     } catch (error) {
       const translated = isAppError(error) ? error : await deps.gateway.translateError(error, userId);
@@ -300,6 +304,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       [approval.taskId, approval.userId, outcome, code, eventId],
     );
     if (eventId) await settleEvent(db, eventId, outcome, code);
+    if (outcome === 'done') await recordFact(db, 'background_run', { userId: approval.userId, agentId: approval.agentId });
   }
 
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {

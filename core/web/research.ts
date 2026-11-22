@@ -12,7 +12,8 @@ import type { Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { recordFact } from '../work-facts/facts.ts';
 import { logEvent } from '../server/log.ts';
 import type { PageReader } from './fetch.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
@@ -119,6 +120,8 @@ export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
           logEvent('warn', 'web_research_failed', { code: 'APP_WEB_RESEARCH_FAILED', reason: 'no_answer', steps: result.steps?.length ?? null });
           return fail(`помощник не дошёл до ответа за ${RESEARCH_MAX_STEPS} шагов.`, trail, started);
         }
+        // A search with sources is a fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
+        if (found.length > 0) await recordFact(deps.db, 'web_research', { userId: optionalContextValue(rc, REQUEST_KEYS.userId), agentId: optionalContextValue(rc, REQUEST_KEYS.agentId) });
         return { answer: result.text, sources: found, steps: trail.steps(), ms: Date.now() - started };
       } catch (error) {
         // «Стоп» of the person stops the run itself, not only this call.

@@ -85,7 +85,8 @@ function assertFile(name: string, bytes: Uint8Array): string {
 
 const titleOf = (name: string) => [...name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim()].slice(0, KB_TITLE_MAX).join('') || name;
 
-export async function uploadDocument(db: Db, actorUserId: string, base: Base, kind: 'document' | 'example', name: string, bytes: Uint8Array): Promise<string> {
+// `docType` — the kind of a sample («Коммерческое предложение»); null for a document.
+export async function uploadDocument(db: Db, actorUserId: string, base: Base, kind: 'document' | 'example', name: string, bytes: Uint8Array, docType: string | null = null): Promise<string> {
   const sha = assertFile(name, bytes);
   const same = await db.query<{ title: string }>(
     `SELECT d.title FROM app.kb_documents d JOIN app.kb_versions v ON v.document_id = d.id AND v.version = coalesce(d.current_version, v.version)
@@ -95,12 +96,12 @@ export async function uploadDocument(db: Db, actorUserId: string, base: Base, ki
   if (same.rows[0]) throw appError('APP_KNOWLEDGE_DUPLICATE', `knowledge file already in the base as ${same.rows[0].title}`, { userMessage: `Этот файл уже есть в базе: «${same.rows[0].title}».` });
   const id = await inTransaction(db, async (c) => {
     const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO app.kb_documents (scope, department_id, kind, title, uploaded_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [base.scope, base.departmentId, kind, titleOf(name), actorUserId],
+      `INSERT INTO app.kb_documents (scope, department_id, kind, title, uploaded_by, doc_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [base.scope, base.departmentId, kind, titleOf(name), actorUserId, docType],
     );
     const documentId = rows[0]!.id;
     await c.query(`INSERT INTO app.kb_versions (document_id, version, file_name, content, size, sha256, status) VALUES ($1, 1, $2, $3, $4, $5, 'pending')`, [documentId, name, Buffer.from(bytes), bytes.byteLength, sha]);
-    await writeAudit(c, { actorUserId, action: 'knowledge.upload', target: documentId, details: { name, scope: base.scope, departmentId: base.departmentId, kind } });
+    await writeAudit(c, { actorUserId, action: kind === 'example' ? 'knowledge.example' : 'knowledge.upload', target: documentId, details: { name, scope: base.scope, departmentId: base.departmentId, kind, docType } });
     return documentId;
   });
   return id;
@@ -168,12 +169,13 @@ export async function retryDocument(db: Db, documentId: string): Promise<void> {
 }
 
 export async function listDocuments(db: Db, base: Base): Promise<KbDocumentDto[]> {
-  const { rows } = await db.query<{ id: string; title: string; kind: 'document' | 'example'; edition_date: string | null; current_version: number | null; updated_at: Date; latest: number; status: 'pending' | 'ready' | 'rejected'; warning: string | null; error_code: string | null; chunks: number | null; file_name: string; size: number }>(
-    `SELECT d.id, d.title, d.kind, to_char(d.edition_date, 'YYYY-MM-DD') AS edition_date, d.current_version, d.updated_at,
+  const { rows } = await db.query<{ id: string; title: string; kind: 'document' | 'example'; doc_type: string | null; marked_by: string | null; edition_date: string | null; current_version: number | null; updated_at: Date; latest: number; status: 'pending' | 'ready' | 'rejected'; warning: string | null; error_code: string | null; chunks: number | null; file_name: string; size: number }>(
+    `SELECT d.id, d.title, d.kind, d.doc_type, u."name" AS marked_by, to_char(d.edition_date, 'YYYY-MM-DD') AS edition_date, d.current_version, d.updated_at,
             v.version AS latest, v.status, v.warning, v.error_code, cv.chunks, v.file_name, v.size
        FROM app.kb_documents d
        JOIN LATERAL (SELECT * FROM app.kb_versions WHERE document_id = d.id ORDER BY version DESC LIMIT 1) v ON true
        LEFT JOIN app.kb_versions cv ON cv.document_id = d.id AND cv.version = d.current_version
+       LEFT JOIN app."user" u ON u."id" = d.uploaded_by
       WHERE d.scope = $1 AND d.department_id IS NOT DISTINCT FROM $2::uuid
       ORDER BY d.kind, d.title`,
     [base.scope, base.departmentId],
@@ -182,6 +184,9 @@ export async function listDocuments(db: Db, base: Base): Promise<KbDocumentDto[]
     id: r.id,
     title: r.title,
     kind: r.kind,
+    docType: r.doc_type,
+    // Who marked a sample in the chat (a document — who uploaded it).
+    markedBy: r.marked_by,
     editionDate: r.edition_date,
     currentVersion: r.current_version,
     latestVersion: r.latest,
@@ -206,6 +211,17 @@ export async function documentFile(db: Db, userId: string, documentId: string, v
   );
   if (!rows[0]) throw appError('APP_NOT_FOUND', `knowledge document ${documentId} not readable by ${userId}`, { userMessage: 'Документ не найден или недоступен.' });
   return { name: rows[0].file_name, content: rows[0].content };
+}
+
+// The kinds of samples a person reads and how many of each, for the layer of the prompt.
+export async function readableExampleKinds(db: Db, userId: string): Promise<{ docType: string; count: number }[]> {
+  const departments = await readableDepartments(db, userId);
+  const { rows } = await db.query<{ doc_type: string; count: number }>(
+    `SELECT doc_type, count(*)::int AS count FROM app.kb_documents
+      WHERE current_version IS NOT NULL AND kind = 'example' AND (scope = 'org' OR department_id::text = ANY($1)) GROUP BY doc_type ORDER BY count(*) DESC, doc_type`,
+    [departments],
+  );
+  return rows.map((r) => ({ docType: r.doc_type, count: r.count }));
 }
 
 // The titles of the documents a person reads, for the layer of the prompt.

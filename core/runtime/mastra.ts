@@ -31,6 +31,7 @@ import { createSignTools, signActionsFor, type SignDeps } from '../org-docs/sign
 import { SIGN_TOOL } from '../org-docs/prompt.ts';
 import type { ChainService } from '../approvals/chains.ts';
 import { createKnowledgeTools } from '../knowledge/tools.ts';
+import { createWorkFacts } from '../work-facts/facts.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -97,6 +98,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const signTools = deps.signing ? createSignTools({ db: deps.db, workspaceRoot: deps.workspaceRoot, ...deps.signing }) : null;
   const memoryTools = createMemoryTools(deps.db);
   const knowledgeTools = createKnowledgeTools({ db: deps.db, workspaceRoot: deps.workspaceRoot });
+  const facts = createWorkFacts(deps.db);
   // An agent no longer in the registry keeps its id as its name in the lists of past conversations.
   const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
   const agentCards = () => deps.registry.agents.map(({ passport }) => ({ id: passport.id, name: passport.name, description: passport.description }));
@@ -115,6 +117,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       memoryTools,
       knowledgeTools,
       historyTools,
+      facts,
       ...(deps.connections ? { connections: deps.connections } : {}),
       ...(deps.sandbox ? { sandbox: deps.sandbox } : {}),
       ...(mail ? { mail } : {}),
