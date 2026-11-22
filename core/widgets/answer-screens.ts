@@ -40,3 +40,24 @@ export function screensOfAnswer(prompt: readonly PromptMessage[]): ShownScreens 
   }
   return screens;
 }
+
+// The same from the conversation as Mastra keeps it (`getMessages` of a tool's context): a call of `render_ui` with its
+// result in one part. Needed when `render_ui` runs before the first model call of a request — a call of the same step
+// as an action that waited for «Да» runs right on «Да».
+type StoredPart = { type?: unknown; toolInvocation?: { state?: unknown; toolName?: unknown; args?: unknown; result?: unknown } };
+type StoredMessage = { role: string; content?: unknown };
+
+export function screensOfStoredAnswer(messages: readonly StoredMessage[]): ShownScreens {
+  const answer = messages.slice(messages.findLastIndex((m) => m.role === 'user') + 1);
+  const screens: ShownScreens = new Map();
+  for (const message of answer) {
+    const parts = message.content && typeof message.content === 'object' && Array.isArray((message.content as { parts?: unknown }).parts) ? (message.content as { parts: StoredPart[] }).parts : [];
+    for (const part of parts) {
+      const call = part.type === 'tool-invocation' ? part.toolInvocation : undefined;
+      if (!call || call.toolName !== WIDGET_TOOL.render || call.state !== 'result') continue;
+      const result = call.result && typeof call.result === 'object' ? (call.result as { shown?: unknown }) : null;
+      if (result?.shown === true) checkScreen(operationsOf(call.args), screens);
+    }
+  }
+  return screens;
+}

@@ -85,8 +85,10 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
       })
     : null;
   // The mail tools do not depend on the person (they read who runs from the request): made once.
-  const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot }) : null;
-  const mail = deps.mail && mailTools ? { toolsFor: async (userId: string) => ((await deps.mail!.connected(userId)).length > 0 ? mailTools : {}) } : null;
+  // Two sets: the agent the person talks to may be asked to show a list of letters as a widget; a sub-agent has none.
+  const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: true }) : null;
+  const subMailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false }) : null;
+  const mail = deps.mail && mailTools && subMailTools ? { toolsFor: async (userId: string, top: boolean) => ((await deps.mail!.connected(userId)).length > 0 ? (top ? mailTools : subMailTools) : {}) } : null;
   const mailActions = mailTools ? describeTools(mailTools) : {};
   const signTools = deps.signing ? createSignTools({ db: deps.db, workspaceRoot: deps.workspaceRoot, ...deps.signing }) : null;
   const memoryTools = createMemoryTools(deps.db);

@@ -22,10 +22,12 @@ export interface WidgetReply {
   // A list of this widget sends with words that come from its data (a template of items, items bound to a path): the
   // words are known only on the screen, so its items count as sending.
   sendsUnnamed: boolean;
+  // The words of the list items whose words the screen itself names (not from the data): they never count as unnamed.
+  namedWords: ReadonlySet<string>;
 }
 
 // Outside a block of a widget (a test of one component) nothing was answered and nothing is known to send.
-export const WidgetReplyContext = createContext<WidgetReply>({ answered: false, chosen: new Set(), sending: new Set(), sendsUnnamed: false });
+export const WidgetReplyContext = createContext<WidgetReply>({ answered: false, chosen: new Set(), sending: new Set(), sendsUnnamed: false, namedWords: new Set() });
 
 // CopilotKit writes a press as «<userMessage or label>», then a blank line and «key: value» lines (buildActionMessageText).
 export const replyHead = (reply: string): string => reply.split(/\n\s*\n/)[0]!.trim();
@@ -69,9 +71,21 @@ function componentsOf(operations: readonly Op[]): Map<string, Op> {
 export function sendsUnnamed(operations: readonly Op[]): boolean {
   for (const component of componentsOf(operations).values()) {
     if (component.component === 'ListItem' && eventOf(component.action) && wordsOf(component) === null) return true;
-    if (component.component === 'List' && eventOf(component.action) && !Array.isArray(component.items)) return true;
+    // Items bound to a path; a List of children carries its picks on the children (ListItem).
+    if (component.component === 'List' && eventOf(component.action) && component.items !== undefined && !Array.isArray(component.items)) return true;
   }
   return false;
+}
+
+// The words of list items the screen names itself.
+function namedItemWords(operations: readonly Op[]): Set<string> {
+  const out = new Set<string>();
+  for (const component of componentsOf(operations).values()) {
+    if (component.component !== 'ListItem') continue;
+    const words = wordsOf(component);
+    if (words !== null) out.add(words);
+  }
+  return out;
 }
 
 export function sendingControls(operations: readonly Op[]): Control[] {
@@ -130,11 +144,12 @@ export function widgetReply(own: readonly Op[], screens: readonly (readonly Op[]
   const mine = sendingControls(own);
   const sending = new Set(mine.map((c) => c.words));
   const unnamed = sendsUnnamed(own);
-  if (reply === null) return { answered: false, chosen: new Set(), sending, sendsUnnamed: unnamed };
+  const namedWords = namedItemWords(own);
+  if (reply === null) return { answered: false, chosen: new Set(), sending, sendsUnnamed: unnamed, namedWords };
   const head = replyHead(reply);
   const everywhere = new Set(screens.flatMap((ops) => sendingControls(ops)).filter((c) => c.head === head).map((c) => c.key));
   const here = mine.filter((c) => c.head === head);
-  return { answered: true, chosen: new Set(everywhere.size === 1 && here.length === 1 ? [here[0]!.words] : []), sending, sendsUnnamed: unnamed };
+  return { answered: true, chosen: new Set(everywhere.size === 1 && here.length === 1 ? [here[0]!.words] : []), sending, sendsUnnamed: unnamed, namedWords };
 }
 
 // The screens shown in the answer that drew the call `callId`: between the person's message before it and the next.

@@ -49,7 +49,8 @@ export function List(props: ListProps): ReactNode {
     const action = async (args: { index: number }) => {
       setPicked(args.index);
       const outcome = await guarded(args);
-      if (!outcome?.ok) setPicked(null);
+      // `undefined` — the second click of a double click, not made while the first goes: the mark stays.
+      if (outcome && !outcome.ok) setPicked(null);
       return outcome;
     };
     return <StandardList {...props} action={action} />;
@@ -63,17 +64,19 @@ export function List(props: ListProps): ReactNode {
 }
 
 export function ListItem(props: ListItemProps): ReactNode {
-  const { answered, chosen, sending, sendsUnnamed } = useContext(WidgetReplyContext);
+  const { answered, chosen, sending, sendsUnnamed, namedWords } = useContext(WidgetReplyContext);
   const [picked, setPicked] = useState(false);
   const guarded = useBusyGuard(props.action as ((args: Record<string, never>) => Promise<Outcome>) | undefined);
   if (!guarded) return <StandardListItem {...props} />;
   const words = typeof props.label === 'string' ? props.label : null;
-  const sends = sendsUnnamed || (words !== null && sending.has(words));
+  // A list whose words come from the data sends with words the answer cannot name; an item whose words the screen names
+  // (a link «Открыть CRM») is judged by them.
+  const sends = words !== null && sending.has(words) ? true : sendsUnnamed && !namedWords.has(words ?? '');
   if (!answered || !sends) {
     const action = async (args: Record<string, never>) => {
       setPicked(true);
       const outcome = await guarded(args);
-      if (!outcome?.ok) setPicked(false);
+      if (outcome && !outcome.ok) setPicked(false);
       return outcome;
     };
     return <StandardListItem {...props} action={action} />;

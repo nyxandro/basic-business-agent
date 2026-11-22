@@ -240,7 +240,7 @@ describe('our components of the mockup', () => {
     const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
     const onClick = vi.fn();
     render(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сравнить с планом']), sending: new Set(['Сравнить с планом', 'Разложить по менеджерам']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сравнить с планом']), sending: new Set(['Сравнить с планом', 'Разложить по менеджерам']), sendsUnnamed: false, namedWords: new Set() }}>
         <Button label="Сравнить с планом" onClick={onClick} />
         <Button label="Разложить по менеджерам" onClick={onClick} />
         <Button label="Открыть сайт" href="https://example.com" />
@@ -262,7 +262,7 @@ describe('our components of the mockup', () => {
     expect(addMessage).toHaveBeenCalledWith(expect.objectContaining({ role: 'user', content: 'Сделай слайд для отчёта' }));
     expect(runAgent).toHaveBeenCalledOnce();
     view.rerender(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сделать слайд']), sending: new Set(['Сравнить с планом', 'Сделать слайд']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Сделать слайд']), sending: new Set(['Сравнить с планом', 'Сделать слайд']), sendsUnnamed: false, namedWords: new Set() }}>
         <FollowUp items={items} />
       </WidgetReplyContext.Provider>,
     );
@@ -292,7 +292,7 @@ describe('our components of the mockup', () => {
     expect(screen.getByText('С')).toBeInTheDocument();
     const Card = widgetOverrides.EntityCard.component as unknown as (props: Record<string, unknown>) => ReactNode;
     render(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Выбрать']), sending: new Set(['Выбрать', 'Сравнить']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Выбрать']), sending: new Set(['Выбрать', 'Сравнить']), sendsUnnamed: false, namedWords: new Set() }}>
         <Card title="Старт" actions={[{ label: 'Выбрать' }, { label: 'Сравнить' }]} onAction={vi.fn()} />
       </WidgetReplyContext.Provider>,
     );
@@ -306,7 +306,7 @@ describe('our components of the mockup', () => {
     const Form = widgetOverrides.Form.component as unknown as (props: Record<string, unknown>) => ReactNode;
     const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
     render(
-      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Отправить']), sending: new Set(['Отправить']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(['Отправить']), sending: new Set(['Отправить']), sendsUnnamed: false, namedWords: new Set() }}>
         <Form onSubmit={onSubmit}>
           <input aria-label="Клиент" />
           <Button label="Отправить" submit />
@@ -323,7 +323,7 @@ describe('our components of the mockup', () => {
     const Button = widgetOverrides.Button.component as unknown as (props: Record<string, unknown>) => ReactNode;
     const onClick = vi.fn(() => Promise.resolve({ ok: true as const, result: undefined }));
     const tree = (answered: boolean) => (
-      <WidgetReplyContext.Provider value={{ answered, chosen: new Set(), sending: new Set(['Выбрать']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={{ answered, chosen: new Set(), sending: new Set(['Выбрать']), sendsUnnamed: false, namedWords: new Set() }}>
         <Button label="Выбрать" onClick={onClick} />
         <Button label="Выбрать" onClick={onClick} />
       </WidgetReplyContext.Provider>

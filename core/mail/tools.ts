@@ -111,6 +111,8 @@ export interface MailToolsDeps {
   db: Db;
   mail: MailService;
   workspaceRoot: string;
+  // The agent the person talks to (it alone has widgets): a list of three and more letters asks for a widget (#32).
+  listNote: boolean;
 }
 
 // Runs an action with the person's mailbox; a refused way in marks the mailbox «Ошибка доступа».
@@ -153,7 +155,7 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
           const all = ((await client.search(query, { uid: true })) || []).filter((uid) => !input.beforeUid || uid < input.beforeUid).sort((a, b) => a - b);
           const limit = input.limit ?? DEFAULT_LIST;
           const letters = await summaries(client, all.slice(-limit));
-          return { folder, letters, older: all.length > limit, ...listNote(ctx, letters.length) };
+          return { folder, letters, older: all.length > limit, ...(deps.listNote ? listNote(ctx, letters.length) : {}) };
         });
       }),
   });
@@ -189,7 +191,7 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
           const found = ((await client.search(query, { uid: true })) || []).sort((a, b) => a - b);
           const limit = input.limit ?? DEFAULT_LIST;
           const letters = await summaries(client, found.slice(-limit));
-          return { folder, letters, more: found.length > limit, ...listNote(ctx, letters.length) };
+          return { folder, letters, more: found.length > limit, ...(deps.listNote ? listNote(ctx, letters.length) : {}) };
         });
       }),
   });

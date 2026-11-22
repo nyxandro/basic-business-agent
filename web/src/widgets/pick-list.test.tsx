@@ -16,7 +16,7 @@ const List = widgetOverrides.List.component as unknown as (props: Record<string,
 const ListItem = widgetOverrides.ListItem.component as unknown as (props: Record<string, unknown>) => ReactNode;
 const PLANS = [{ label: 'Тариф Старт', value: 'start' }, { label: 'Тариф Бизнес', value: 'business' }, 'Тариф Команда'];
 
-const answered = (chosen: string[], sending: string[], sendsUnnamed = false): WidgetReply => ({ answered: true, chosen: new Set(chosen), sending: new Set(sending), sendsUnnamed });
+const answered = (chosen: string[], sending: string[], sendsUnnamed = false, named: string[] = []): WidgetReply => ({ answered: true, chosen: new Set(chosen), sending: new Set(sending), sendsUnnamed, namedWords: new Set(named) });
 
 describe('a list with a pick', () => {
   it('tells the block when CopilotKit drops a pick because the agent is answering', async () => {
@@ -34,13 +34,32 @@ describe('a list with a pick', () => {
     expect(action).toHaveBeenNthCalledWith(1, { index: 1, label: 'Тариф Бизнес', value: 'business' });
   });
 
-  it('sends a double pick once', async () => {
+  it('sends a double pick once and keeps the mark of the pick', async () => {
     let finish = () => undefined as void;
     const action = vi.fn(() => new Promise<typeof SENT>((resolve) => (finish = () => resolve(SENT))));
-    render(<List items={PLANS} action={action} />);
-    await userEvent.dblClick(screen.getByRole('button', { name: 'Тариф Старт' }));
+    const tree = (reply?: WidgetReply) => (
+      <WidgetReplyContext.Provider value={reply ?? { answered: false, chosen: new Set(), sending: new Set(), sendsUnnamed: true, namedWords: new Set() }}>
+        <ListItem label="Сделка ООО «Вектор»" action={action} />
+      </WidgetReplyContext.Provider>
+    );
+    const view = render(tree());
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Сделка ООО «Вектор»' }));
     expect(action).toHaveBeenCalledTimes(1);
     finish();
+    await vi.waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    view.rerender(tree(answered([], [], true)));
+    expect(screen.getByText('Сделка ООО «Вектор»').closest('[data-chosen]')).not.toBeNull();
+  });
+
+  it('keeps an item with its own words that sends nothing working beside a list whose words come from the data', async () => {
+    const open = vi.fn(() => Promise.resolve(SENT));
+    render(
+      <WidgetReplyContext.Provider value={{ answered: true, chosen: new Set(), sending: new Set(), sendsUnnamed: true, namedWords: new Set(['Открыть CRM']) }}>
+        <ListItem label="Открыть CRM" action={open} />
+      </WidgetReplyContext.Provider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть CRM' }));
+    expect(open).toHaveBeenCalledOnce();
   });
 
   it('marks the item that sent the answer and makes the list inactive, without showing the hidden values', () => {
@@ -60,7 +79,7 @@ describe('a list with a pick', () => {
   it('marks the item picked in this window though the answer cannot tell it', async () => {
     const action = vi.fn(() => Promise.resolve(SENT));
     const tree = (reply?: WidgetReply) => (
-      <WidgetReplyContext.Provider value={reply ?? { answered: false, chosen: new Set(), sending: new Set(['Выбрать']), sendsUnnamed: false }}>
+      <WidgetReplyContext.Provider value={reply ?? { answered: false, chosen: new Set(), sending: new Set(['Выбрать']), sendsUnnamed: false, namedWords: new Set() }}>
         <List items={['Выбрать', 'Выбрать']} action={action} />
       </WidgetReplyContext.Provider>
     );

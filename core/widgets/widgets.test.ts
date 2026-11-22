@@ -275,6 +275,23 @@ describe('widgets in a chat', () => {
       });
     }
 
+    // Review 22.11: a change in the same step as the action that waited for «Да» runs right on «Да», before any model call.
+    it('changes the screen in place when the change came in the same step as the action that waited for «Да»', async () => {
+      const threadId = randomUUID();
+      t.model.script(
+        { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: CALCULATOR } }] },
+        { toolCalls: [{ name: 'mail_send', args: { to: 'client@example.com', text: 'КП' } }, { name: WIDGET_TOOL.render, args: { operations: [update] } }] },
+        { text: 'Отправил и отметил.' },
+      );
+      const first = await send({ threadId, messages: [{ id: randomUUID(), role: 'user', content: 'Посчитай и отправь' }] });
+      const after = await send({ threadId, messages: [], resume: [{ interruptId: interruptOf(first)!.id, status: 'resolved', payload: { approved: true } }] });
+      expect(resultsOf(after).filter((r) => 'surfaceId' in r || 'code' in r).at(-1)).toEqual({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE });
+      // A screen of an earlier answer is still not changed from a new one.
+      t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [update] } }] }, { text: 'Нарисую новый.' });
+      const next = await send({ threadId, messages: [{ id: randomUUID(), role: 'user', content: 'Сделай 25' }] });
+      expect(resultsOf(next).at(-1)).toMatchObject({ error: true, code: 'APP_WIDGET_INVALID' });
+    });
+
     it('changes the screen in place after the browser answered its tool', async () => {
       const threadId = randomUUID();
       t.model.script(

@@ -30,8 +30,9 @@ export const REQUEST_KEYS = {
   // Chat runs only: a function told each step of the researcher of the internet, for the live block of its
   // search in the chat (spec, section 8.30).
   webProgress: 'bba.webProgress',
-  // The widgets the agent showed in this run (core/widgets/tools.ts): a later call of the run may change one in
-  // place. Set by the widget tools themselves at the first screen.
+  // The widgets the agent showed in this answer (core/widgets/tools.ts): a later call may change one in place. Put
+  // before the first model call of a request by core/widgets/history.ts — with the screens shown before a pause on
+  // «Да» or the browser — or by `render_ui` itself when it runs before any (core/widgets/answer-screens.ts).
   widgetScreens: 'bba.widgetScreens',
 } as const;
 

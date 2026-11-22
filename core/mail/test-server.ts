@@ -27,25 +27,38 @@ export async function testMailbox(name: string): Promise<{ email: string; passwo
   return { email, password };
 }
 
-export async function deliver(to: string, from: { email: string; password: string }, letter: { subject: string; text: string; attachments?: { filename: string; content: string }[] }): Promise<void> {
+// `messageId` and `headers` make a copy of one letter to several mailboxes, or an automatic reply.
+export async function deliver(
+  to: string | string[],
+  from: { email: string; password: string },
+  letter: { subject: string; text: string; attachments?: { filename: string; content: string }[]; messageId?: string; headers?: Record<string, string> },
+): Promise<void> {
   const smtp = nodemailer.createTransport({ host: '127.0.0.1', port: 54465, secure: true, auth: { user: from.email, pass: from.password }, tls: { rejectUnauthorized: false } });
   try {
-    await smtp.sendMail({ from: from.email, to, subject: letter.subject, text: letter.text, ...(letter.attachments ? { attachments: letter.attachments } : {}) });
+    await smtp.sendMail({
+      from: from.email,
+      to,
+      subject: letter.subject,
+      text: letter.text,
+      ...(letter.attachments ? { attachments: letter.attachments } : {}),
+      ...(letter.messageId ? { messageId: letter.messageId } : {}),
+      ...(letter.headers ? { headers: letter.headers } : {}),
+    });
   } finally {
     smtp.close();
   }
 }
 
-// Subjects and texts of the letters in a mailbox's INBOX.
-export async function inbox(who: { email: string; password: string }): Promise<{ subject: string; source: string }[]> {
+// Subjects, texts and the «read» mark of the letters in a mailbox's INBOX.
+export async function inbox(who: { email: string; password: string }): Promise<{ subject: string; source: string; seen: boolean }[]> {
   const client = new ImapFlow({ host: '127.0.0.1', port: 54993, secure: true, auth: { user: who.email, pass: who.password }, tls: { rejectUnauthorized: false }, logger: false });
   await client.connect();
   try {
     const lock = await client.getMailboxLock('INBOX');
     try {
-      const out: { subject: string; source: string }[] = [];
+      const out: { subject: string; source: string; seen: boolean }[] = [];
       if ((client.mailbox && client.mailbox.exists) === 0) return out;
-      for await (const m of client.fetch('1:*', { envelope: true, source: true })) out.push({ subject: m.envelope?.subject ?? '', source: m.source?.toString('utf8') ?? '' });
+      for await (const m of client.fetch('1:*', { envelope: true, flags: true, source: true })) out.push({ subject: m.envelope?.subject ?? '', source: m.source?.toString('utf8') ?? '', seen: m.flags?.has('\\Seen') ?? false });
       return out;
     } finally {
       lock.release();

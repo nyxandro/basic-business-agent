@@ -9,7 +9,8 @@ import { z } from 'zod';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { logEvent } from '../server/log.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
-import { checkScreen, componentsGuide, unknownComponents, type ShownScreens } from './catalog.ts';
+import { screensOfStoredAnswer } from './answer-screens.ts';
+import { checkScreen, componentsGuide, unknownComponents, type ShownScreen, type ShownScreens } from './catalog.ts';
 
 const componentsInput = z.object({
   names: z
@@ -33,12 +34,16 @@ type Failure = { error: true; code: string; message: string };
 
 type RunContext = { get(key: string): unknown; set(key: string, value: unknown): void } | undefined;
 
-// The screens of this run (the request context lives as long as the run), made at the first screen.
-function shownIn(ctx: RunContext): ShownScreens {
+type AgentContext = { getMessages?: () => readonly { role: string; content?: unknown }[] } | undefined;
+
+// The screens of this answer in the request's context. Usually the processor of the request put them there before the
+// first model call (history.ts); a call that runs before any — queued behind an action that waited for «Да» — reads them
+// from the stored conversation itself (issue #25).
+function shownIn(ctx: RunContext, agent: AgentContext): ShownScreens {
   if (!ctx) throw new Error('render_ui called without a request context: the run was started outside a core entry point');
   const existing = ctx.get(REQUEST_KEYS.widgetScreens);
   if (existing instanceof Map) return existing as ShownScreens;
-  const screens: ShownScreens = new Map();
+  const screens: ShownScreens = agent?.getMessages ? screensOfStoredAnswer(agent.getMessages()) : new Map<string, ShownScreen>();
   ctx.set(REQUEST_KEYS.widgetScreens, screens);
   return screens;
 }
@@ -64,7 +69,7 @@ export function createWidgetTools(): Record<string, AnyTool> {
     inputSchema: renderUiArgsSchema,
     execute: (input, context): Promise<RenderUiResult> => {
       const operations = operationsOf(input);
-      const verdict = checkScreen(operations, shownIn(context?.requestContext));
+      const verdict = checkScreen(operations, shownIn(context?.requestContext, context?.agent));
       if (verdict.ok) {
         logEvent('info', 'widget_shown', { operations: operations.length, created: verdict.created });
         return Promise.resolve({ shown: true, surfaceId: verdict.surfaceId, note: SHOWN_NOTE });
