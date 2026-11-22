@@ -36,16 +36,18 @@ const GROUP_COLUMN: Record<UsageGroup, string> = { user: 'e.user_id', agent: 'e.
 
 export async function usageReport(
   db: Db,
-  input: { from: Date; to: Date; groupBy: UsageGroup; agentNames: ReadonlyMap<string, string> },
+  // Days of the installation's time zone, both included (docs/specs/[20.11.2026]-feedback-and-value.md, F3): the table
+  // counts as the chart and the monthly limit do.
+  input: { from: string; to: string; timezone: string; groupBy: UsageGroup; agentNames: ReadonlyMap<string, string> },
 ): Promise<{ rows: UsageRow[]; totalRub: number; orgLimitRub: number | null }> {
   const column = GROUP_COLUMN[input.groupBy];
   const { rows } = await db.query<{ key: string | null; user_name: string | null; calls: number; input: string; output: string; cost: string; last: Date | null }>(
     `SELECT ${column} AS key, max(u."name") AS user_name, count(*)::int AS calls, sum(e.input_tokens) AS input, sum(e.output_tokens) AS output,
             sum(e.cost_rub) AS cost, max(e.at) AS last
        FROM app.usage_events e LEFT JOIN app."user" u ON u."id" = e.user_id
-      WHERE e.at >= $1 AND e.at < $2
+      WHERE e.at >= ($1::date::timestamp AT TIME ZONE $3) AND e.at < (($2::date + 1)::timestamp AT TIME ZONE $3)
       GROUP BY ${column} ORDER BY sum(e.cost_rub) DESC, count(*) DESC`,
-    [input.from, input.to],
+    [input.from, input.to, input.timezone],
   );
   const models = await db.query<{ id: string; label: string }>('SELECT id, label FROM app.models');
   const modelLabels = new Map(models.rows.map((m) => [m.id, m.label]));

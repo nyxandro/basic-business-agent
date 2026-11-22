@@ -32,9 +32,7 @@ export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; reg
   app.get('/app/api/admin/usage', requirePermission('usage'), async (c) => {
     const parsed = reportQuery.safeParse(c.req.query());
     if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'from, to (YYYY-MM-DD) and groupBy are required');
-    const to = new Date(`${parsed.data.to}T00:00:00Z`);
-    to.setUTCDate(to.getUTCDate() + 1); // the "to" day is included
     const agentNames = new Map(deps.registry.agents.map((a) => [a.passport.id, a.passport.name]));
-    return c.json(await usageReport(deps.db, { from: new Date(`${parsed.data.from}T00:00:00Z`), to, groupBy: parsed.data.groupBy, agentNames }));
+    return c.json(await usageReport(deps.db, { from: parsed.data.from, to: parsed.data.to, timezone: deps.timezone, groupBy: parsed.data.groupBy, agentNames }));
   });
 }

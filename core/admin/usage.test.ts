@@ -42,7 +42,8 @@ describe('usage', () => {
   });
 
   it('gives the admin a report by employee, agent and model', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // The day of the installation (Europe/Moscow in the test app): the report counts its days.
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
     const get = async (groupBy: string) =>
       (await (await t.call('GET', `/app/api/admin/usage?from=${today}&to=${today}&groupBy=${groupBy}`, { cookie: admin })).json()) as { rows: { label: string; costRub: number; calls: number }[]; totalRub: number };
     const byUser = await get('user');
@@ -50,6 +51,20 @@ describe('usage', () => {
     expect(byUser.totalRub).toBe(1760);
     expect((await get('agent')).rows.map((r) => [r.label, r.costRub])).toEqual([['Продажи', 1500], ['Помощник', 260]]);
     expect((await get('model')).rows.map((r) => r.label)).toEqual(['Платная (заглушка)', 'Подписка (заглушка)']);
+  });
+
+  // docs/specs/[20.11.2026]-feedback-and-value.md, F3: the table counts days and months in the installation's time zone,
+  // as the chart and the monthly limit do — 01:30 in Moscow on 1 December is December, not November.
+  it('counts the days of the report in the installation’s time zone', async () => {
+    const userId = await t.createUser({ email: 'edge@example.com', name: 'Край' });
+    await t.db.query(
+      `INSERT INTO app.usage_events (at, user_id, agent_id, model, deployment, is_subscription, input_tokens, output_tokens, cost_rub, litellm_call_id)
+       VALUES ('2025-11-30T22:30:00Z', $1, 'sales', 'test-paid', 'test-paid-1', false, 1, 1, 7, gen_random_uuid()::text)`,
+      [userId],
+    );
+    const report = async (from: string, to: string) => (await (await t.call('GET', `/app/api/admin/usage?from=${from}&to=${to}&groupBy=user`, { cookie: admin })).json()) as { totalRub: number };
+    expect((await report('2025-12-01', '2025-12-01')).totalRub).toBe(7);
+    expect((await report('2025-11-01', '2025-11-30')).totalRub).toBe(0);
   });
 
   it('closes the report to a role without the "usage" right', async () => {
