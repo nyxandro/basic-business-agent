@@ -3,6 +3,7 @@
 // (ui_components, then render_ui), the three rules of the look of the mockup, and one line per component; off — that
 // they are switched off. The block changes only with the switch, so the system prompt stays the same from turn to turn.
 import { WIDGET_TOOL } from '@bba/contracts';
+import { abilitiesOf } from '../abilities/abilities.ts';
 import { componentIndex } from './catalog.ts';
 
 const { components: COMPONENTS, render: RENDER } = WIDGET_TOOL;
@@ -17,7 +18,8 @@ export function widgetsRules(): string {
     '  - сравнение вариантов, тарифов, предложений — рядом, карточками или таблицей, рекомендованный выделен;',
     '  - расчёт, где сотрудник захочет подвигать параметры, — калькулятор со Slider и полями ввода;',
     '  - нужны данные или выбор от сотрудника — форма или выбор вариантов.',
-    '- Текстом, без виджета: короткий ответ, разговор, объяснение, совет, одна сущность в паре фраз, список из нескольких пунктов. Попросили ответить текстом — отвечай текстом.',
+    '- Три и больше однотипных записей — из инструмента (почта, системы, поиск, память) или из сообщения сотрудника — всегда виджетом, даже если хочется пересказать их по категориям: сгруппируй на экране (вкладки, разделы, Badge статуса), а текстом — вывод в одну-две фразы.',
+    '- Текстом, без виджета: короткий ответ, разговор, объяснение, совет, одна сущность в паре фраз, два-три пункта своими словами. Попросили ответить текстом — отвечай текстом.',
     `- Сначала \`${COMPONENTS}\` с именами всех компонентов будущего экрана, потом \`${RENDER}\` по полученному описанию. Один вызов \`${RENDER}\` — один экран целиком, все компоненты сразу, не частями; operations — массив объектов, не строка. Текст ответа — до или после экрана, не повторяй в нём то, что видно на экране.`,
     `- Если \`${RENDER}\` вернул ошибку — исправь и вызови заново целиком; после двух неудач ответь текстом. Чтобы поправить экран, уже показанный в этом ответе, не рисуй второй: вызови \`${RENDER}\` с updateComponents или updateDataModel для его surfaceId — он изменится на месте. Экран прошлого ответа так не меняется: нарисуй новый.`,
     '- Вид: главный итог или рекомендованный вариант — Card с background "discovery-solid" (стеклянная панель) или EntityCard с плашкой цвета "discovery"; такой акцент один на экран. Цвета success, warning, danger, info — только для статусов. Рамка (Card) — у формы, калькулятора и выбора; таблицу и график в Card не клади. У графика — title с единицами, например «Выручка, млн ₽». Отступы (gap, padding) — числом шагов по 4 px.',
@@ -30,3 +32,15 @@ export function widgetsRules(): string {
 }
 
 export const WIDGETS_OFF = 'Виджетов в чате у тебя нет — они выключены в настройках агента. Отвечай текстом; таблицы — в Markdown.';
+
+// The constant line of a tool's result with a list (issue #32; the one field of a result the agent follows, as the note of
+// memory, section 8.26): with widgets on, three and more records go to the person as a widget. The rule in the system
+// prompt alone did not do it — after `mailbox_list` with 20 letters the live model wrote a summary by categories.
+export const LIST_NOTE = `Записей три и больше, а виджеты у тебя включены: покажи их сотруднику виджетом — карточками или таблицей (${COMPONENTS}, затем ${RENDER}), сгруппируй на экране, а текстом напиши вывод в одну-две фразы. Если сотрудник просил ответить текстом — текстом.`;
+export const LIST_NOTE_FROM = 3;
+
+type ToolCtx = { requestContext?: { get(key: string): unknown } } | undefined;
+
+export function listNote(ctx: ToolCtx, records: number): { note?: string } {
+  return records >= LIST_NOTE_FROM && abilitiesOf(ctx?.requestContext).widgets ? { note: LIST_NOTE } : {};
+}

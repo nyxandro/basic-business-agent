@@ -21,6 +21,7 @@ import { openFileInside, saveInFolder } from '../workspace/layout.ts';
 import type { MailAccount } from './accounts.ts';
 import { mailError, smtpTransport, withImap } from './client.ts';
 import { pickAccount, type MailService } from './service.ts';
+import { listNote } from '../widgets/prompt.ts';
 
 export const MAIL_TOOL_NAMES = ['mailbox_folders', 'mailbox_list', 'mailbox_search', 'mailbox_read', 'mailbox_save_attachment', 'mailbox_send'] as const;
 // How the chat names the system of these actions.
@@ -151,7 +152,8 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
           const query: SearchObject = input.unreadOnly ? { seen: false } : { all: true };
           const all = ((await client.search(query, { uid: true })) || []).filter((uid) => !input.beforeUid || uid < input.beforeUid).sort((a, b) => a - b);
           const limit = input.limit ?? DEFAULT_LIST;
-          return { folder, letters: await summaries(client, all.slice(-limit)), older: all.length > limit };
+          const letters = await summaries(client, all.slice(-limit));
+          return { folder, letters, older: all.length > limit, ...listNote(ctx, letters.length) };
         });
       }),
   });
@@ -186,7 +188,8 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
         return inFolder(client, folder, async () => {
           const found = ((await client.search(query, { uid: true })) || []).sort((a, b) => a - b);
           const limit = input.limit ?? DEFAULT_LIST;
-          return { folder, letters: await summaries(client, found.slice(-limit)), more: found.length > limit };
+          const letters = await summaries(client, found.slice(-limit));
+          return { folder, letters, more: found.length > limit, ...listNote(ctx, letters.length) };
         });
       }),
   });

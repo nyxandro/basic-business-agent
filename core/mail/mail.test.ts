@@ -10,6 +10,7 @@ import type { AdminMailResponse, MailAccountsResponse, MailDiscovery } from '@bb
 import { simpleParser } from 'mailparser';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FakeRequest } from '../models/fake-openai.ts';
+import { LIST_NOTE } from '../widgets/prompt.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { chatRoot, conversationRoot } from '../workspace/layout.ts';
 import type { MailLogin } from './client.ts';
@@ -192,6 +193,19 @@ describe('the agent with the mailbox', () => {
     expect(sales.systems.tools.mailbox_list).toBe('Почта');
     const listed = await inbox(box);
     expect(listed[0]!.subject).toBe('Счёт за октябрь');
+  }, 60_000);
+
+  // Issue #32: a summary of 20 letters went out as text. With widgets on, a list of three and more letters carries the
+  // constant line that tells the agent to show them as a widget; a shorter list does not.
+  it('asks for a widget when three and more letters are listed and widgets are on', async () => {
+    t.model.script((req) => call(req, 'mailbox_list', {}), { text: 'Одно письмо.' });
+    await run(randomUUID(), 'Что пришло?');
+    expect(lastResult<Record<string, unknown>>().note).toBeUndefined();
+    await deliver(box.email, client, { subject: 'Акт сверки', text: 'Акт.' });
+    await deliver(box.email, client, { subject: 'Приглашение на тендер', text: 'Тендер.' });
+    t.model.script((req) => call(req, 'mailbox_list', {}), { text: 'Три письма.' });
+    await run(randomUUID(), 'А теперь?');
+    expect(lastResult<{ note?: string; letters: unknown[] }>()).toMatchObject({ note: LIST_NOTE });
   }, 60_000);
 
   it('saves an attachment into the working folder', async () => {

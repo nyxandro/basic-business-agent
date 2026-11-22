@@ -338,6 +338,16 @@ describe('widgets in a chat', () => {
     expect(system).toContain('Данные и сущности показывай виджетом, а не простынёй текста — сам, без просьбы сотрудника');
     expect(system).toContain('сделки, клиенты, письма, задачи, документы');
     expect(system).toContain('Попросили ответить текстом — отвечай текстом.');
+    // Issue #32: a summary of 20 letters by categories went out as text — «a list of several points» was its loophole.
+    expect(system).toContain('Три и больше однотипных записей');
+    expect(system).not.toContain('список из нескольких пунктов');
+    // «вы» or «ты»: the agent's own instructions, else the tone of the organisation.
+    expect(system).toContain('Обращайся к сотруднику так, как задано в твоих инструкциях');
+    // The tools say what they are for, not only how (Mastra picks tools by their descriptions).
+    const tools = (t.model.requests.at(-1)!.tools ?? []) as unknown as { function: { name: string; description?: string } }[];
+    expect(tools.find((x) => x.function.name === WIDGET_TOOL.components)?.function.description).toMatch(/три и больше однотипных записей/);
+    // The note after a screen does not invite a «Хочешь, …?» at the end.
+    expect(SHOWN_NOTE).not.toContain('следующего шага');
   });
 
   it('switched off: no tools, and the agent is told so', async () => {
