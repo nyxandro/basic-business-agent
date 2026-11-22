@@ -98,6 +98,7 @@ export const adminApi = {
   deleteDepartment: (id: string) => api<Ok>('DELETE', `${A}/departments/${enc(id)}`),
   setDepartmentMembers: (id: string, userIds: string[]) => api<Ok>('PUT', `${A}/departments/${enc(id)}/members`, { userIds }),
   setDepartmentAgents: (id: string, agentIds: string[]) => api<Ok>('PUT', `${A}/departments/${enc(id)}/agents`, { agentIds }),
+  setDepartmentHeads: (id: string, userIds: string[]) => api<Ok>('PUT', `${A}/departments/${enc(id)}/heads`, { userIds }),
 
   limits: () => api<LimitSettingsBody>('GET', `${A}/limits`),
   saveLimits: (body: LimitSettingsBody) => api<Ok>('PUT', `${A}/limits`, body),

@@ -172,6 +172,11 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   const outcome = parseToolResult(result);
   if (outcome.kind === 'declined') return { state: 'declined', text: declinedText(outcome) };
   if (outcome.kind === 'failed') return { state: 'failed', text: ru.chat.toolFailed(system ?? action?.title ?? name), code: outcome.code ?? null };
+  // Multi-step approvals: the action went to the approvers — not done yet (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  const chain = outcome.value as { status?: unknown; id?: unknown } | null;
+  if (chain && (chain.status === 'sent_for_approval' || chain.status === 'already_waiting') && typeof chain.id === 'string') {
+    return { state: 'waiting', text: `${[system, action?.title ?? name].filter(Boolean).join(' · ')} — ${chain.status === 'sent_for_approval' ? ru.chains.sentRow(chain.id) : ru.chains.waitingRow(chain.id)}` };
+  }
   return {
     state: 'done',
     text: [system, action?.title ?? name].filter(Boolean).join(' · '),

@@ -235,3 +235,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* «Согласования»: a stage of a rule (multi-step-approvals.md). */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.stageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 500;
+}
+
+.stageHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}

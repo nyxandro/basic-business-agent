@@ -139,5 +139,40 @@ describe('«Ждёт подтверждения»', () => {
     expect(await screen.findByText(/^Вопрос уже решён: выполнено/)).toBeInTheDocument();
     expect(screen.getByText('Отправить письмо клиенту')).toBeInTheDocument();
   });
-});
 
+  // docs/specs/[20.11.2026]-multi-step-approvals.md, scenario 3: a request waiting for my decision — its card, «Согласовать».
+  it('shows a request waiting for my approval with «Зачем», and agrees to it', async () => {
+    const s = server({ pending: [], failed: [] }, 1);
+    const chain = {
+      id: '12',
+      status: 'pending',
+      stage: 1,
+      stages: ['руководитель отдела «Продажи»', 'Сергей Иванов'],
+      action: { title: 'Изменить сделку', fields: { discount: 'Скидка' }, readOnly: false, tool: 'b24_deal_update' },
+      args: { discount: 15 },
+      comment: 'Клиент берёт три вагона',
+      requester: 'Ольга Смирнова',
+      agent: 'Продажи',
+      createdAt: '2026-11-22T06:00:00Z',
+      stageExpiresAt: '2026-11-25T06:00:00Z',
+      decisions: [],
+      errorCode: null,
+      canDecide: true,
+      canWithdraw: false,
+      canRetry: false,
+    };
+    s.set('GET /app/api/approval-chains', { body: { forMe: [chain], mine: [] } });
+    s.set('POST /app/api/approval-chains/12/decision', () => {
+      s.set('GET /app/api/approval-chains', { body: { forMe: [], mine: [] } });
+      return { body: { ...chain, stage: 2, canDecide: false } };
+    });
+    renderApp('/approvals');
+    const card = await screen.findByRole('article', { name: 'Согласование №12 · этап 1 из 2' });
+    expect(within(card).getByText('Изменить сделку')).toBeInTheDocument();
+    expect(within(card).getByText(/Клиент берёт три вагона/)).toBeInTheDocument();
+    expect(within(card).getByText(/^Просит: Ольга Смирнова, агент «Продажи»/)).toBeInTheDocument();
+    await userEvent.setup().click(within(card).getByRole('button', { name: 'Согласовать' }));
+    expect(s.calls.find((c) => c.path === '/app/api/approval-chains/12/decision')?.body).toEqual({ approve: true });
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'Согласование №12 · этап 1 из 2' })).not.toBeInTheDocument());
+  });
+});

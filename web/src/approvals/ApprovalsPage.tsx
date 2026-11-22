@@ -16,6 +16,7 @@ import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchApprovals } from './api.ts';
 import { ApprovalLists } from './ApprovalCards.tsx';
+import { ChainLists } from './ChainLists.tsx';
 
 const HTTP_NOT_FOUND = 404;
 
@@ -67,6 +68,7 @@ export function ApprovalsPage() {
         <div>
           {question && !waiting ? <Decided id={question} /> : null}
           <ApprovalLists data={state.data} compact={!wide} onNavigate={() => undefined} highlighted={question} />
+          <ChainLists />
         </div>
       ) : null}
     </PageFrame>

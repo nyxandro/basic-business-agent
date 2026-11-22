@@ -72,6 +72,8 @@ await t.background.fire(morning.id);
 await t.background.idle();
 // Mail tasks check the mailboxes of their people (docs/specs/[20.11.2026]-event-tasks.md) — here every 2 s, not a minute.
 createMailTrigger({ db: t.db, mail: t.mail, wake: () => t.background.wake(), intervalMs: STAND_MAIL_CHECK_MS }).start();
+// Agreed requests of multi-step approvals run here as in an installation (docs/specs/[20.11.2026]-multi-step-approvals.md).
+t.approvals.executor.start();
 
 // A skill of the company for the whole organisation, as the admin uploads it in «Скиллы»; the
 // system skills of documents are there without any upload (spec, section 8.18).

@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
+import { mockServer } from '../test/fetch-mock.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
 import { TurnStateContext, type TurnState } from './call-progress.ts';
 import { COMPUTER_TOOLS, splitAttachments, withAttachments } from '@bba/contracts';
@@ -22,10 +23,29 @@ const AGENT = {
 describe('confirmation card', () => {
   const interrupt = { metadata: { mastra: { toolName: 'notes_add', args: { text: 'Позвонить в пятницу' } } } };
 
+  // docs/specs/[20.11.2026]-multi-step-approvals.md: under a rule the card shows the stages and asks «Зачем» before
+  // «Отправить на согласование», which sends «Зачем» for the call and then the answer.
+  it('under a rule of approvals asks «Зачем» and sends it before the answer', async () => {
+    const server = mockServer({ 'POST /app/api/approval-chains/preview': { body: { stages: ['руководитель отдела «Продажи»', 'Сергей Иванов'] } }, 'POST /app/api/approval-chains/reason': { body: { ok: true } } });
+    const onYes = vi.fn();
+    render(<ApprovalCard interrupt={{ id: 'mastra-approval::run-1::call-7', ...interrupt }} agent={AGENT} onYes={onYes} onNo={vi.fn()} />);
+    expect(await screen.findByText('Нужно согласование: руководитель отдела «Продажи» → Сергей Иванов')).toBeInTheDocument();
+    const send = screen.getByRole('button', { name: 'Отправить на согласование' });
+    expect(send).toBeDisabled();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Зачем — увидят согласующие'), 'Клиент берёт три вагона');
+    await user.click(send);
+    await vi.waitFor(() => expect(onYes).toHaveBeenCalledOnce());
+    expect(server.calls.find((c) => c.path === '/app/api/approval-chains/reason')?.body).toEqual({ toolCallId: 'call-7', comment: 'Клиент берёт три вагона' });
+  });
+
   it('names the action and its fields from the tool, and answers «Да» once', async () => {
+    mockServer({});
     const onYes = vi.fn();
     const onNo = vi.fn();
     render(<ApprovalCard interrupt={interrupt} agent={AGENT} onYes={onYes} onNo={onNo} />);
+    // The card first asks whether a rule of approvals is on the action (none here).
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Да, выполнить' })).toBeEnabled());
     expect(screen.getByText('Подтвердите действие')).toBeInTheDocument();
     expect(screen.getByText('Заметки · Добавить заметку')).toBeInTheDocument();
     expect(screen.getByText('Изменит данные')).toBeInTheDocument();

@@ -8,10 +8,16 @@ import { Button } from '../ui/Button.tsx';
 import { IconTile, Pill } from '../ui/Display.tsx';
 import styles from './chat.module.css';
 import { systemOf } from './systems.ts';
+import { asApiError, type ApiRequestError } from '../api/client.ts';
+import { ChainReason, reasonReady, sendForApproval, useChainPreview } from '../approvals/ChainReason.tsx';
+import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 
 const MAX_VALUE_LENGTH = 400;
 
 export interface ApprovalInterrupt {
+  // `mastra-approval::<run>::<call>` (core/chat/run.ts): the call «Зачем» of multi-step approvals is written for.
+  id?: string;
+  toolCallId?: string;
   metadata?: { mastra?: { toolName?: string; args?: unknown } } | Record<string, unknown>;
 }
 
@@ -24,6 +30,11 @@ export function ApprovalCard({ interrupt, agent, onYes, onNo }: { interrupt: App
   const [answer, setAnswer] = useState<'yes' | 'no' | null>(null);
   const mastra = (interrupt.metadata as { mastra?: { toolName?: string; args?: unknown } } | undefined)?.mastra;
   const tool = mastra?.toolName ?? '';
+  // Multi-step approvals: an action under a rule asks «Зачем» and goes to the approvers instead of running.
+  const preview = useChainPreview(tool);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<ApiRequestError | null>(null);
+  const chain = preview.status === 'chain';
   const system = systemOf(agent.systems, tool);
   const action = agent.actions[tool];
   const title = action?.title ?? tool;
@@ -48,6 +59,8 @@ export function ApprovalCard({ interrupt, agent, onYes, onNo }: { interrupt: App
           ))}
         </dl>
       ) : null}
+      <ChainReason preview={preview} reason={reason} onReason={setReason} />
+      {error ? <ErrorBanner error={error} /> : null}
       {answer === 'yes' ? (
         <div className={styles.approvalRunning} role="status">
           <span className={styles.spin} />
@@ -68,13 +81,22 @@ export function ApprovalCard({ interrupt, agent, onYes, onNo }: { interrupt: App
           </Button>
           <Button
             variant="primary"
-            disabled={answer !== null}
+            disabled={answer !== null || preview.status === 'loading' || preview.status === 'failed' || (chain && !reasonReady(reason))}
             onClick={() => {
+              if (!chain) {
+                setAnswer('yes');
+                onYes();
+                return;
+              }
+              setError(null);
               setAnswer('yes');
-              onYes();
+              void sendForApproval(interrupt.toolCallId ?? interrupt.id?.split('::')[2] ?? '', reason, onYes).catch((raw: unknown) => {
+                setError(asApiError(raw));
+                setAnswer(null);
+              });
             }}
           >
-            {ru.chat.yes}
+            {chain ? ru.chains.send : ru.chat.yes}
           </Button>
         </div>
       )}

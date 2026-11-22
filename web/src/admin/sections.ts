@@ -19,6 +19,7 @@ export const SECTIONS: SectionDef[] = [
   { path: 'agents', label: 'Агенты и промпты', icon: 'bot', group: 'Агенты', rights: ['agents'] },
   { path: 'skills', label: 'Скиллы', icon: 'layers', group: 'Агенты', rights: ['skills'] },
   { path: 'modes', label: 'Режимы работы', icon: 'clock', group: 'Агенты', rights: ['agents'] },
+  { path: 'approval-rules', label: 'Согласования', icon: 'users', group: 'Агенты', rights: ['agents'] },
   { path: 'users', label: 'Сотрудники', icon: 'users', group: 'Люди', rights: ['users'] },
   { path: 'departments', label: 'Отделы', icon: 'building', group: 'Люди', rights: ['departments'] },
   { path: 'roles', label: 'Роли', icon: 'key', group: 'Люди', rights: ['roles'] },

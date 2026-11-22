@@ -35,7 +35,10 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
     ['POST /app/api/me/presence', (call: MockCall): Reply | Promise<Reply> => answerOf(table.get('GET /app/api/me/notifications'), call)],
     ['GET /app/api/copilotkit/info', { body: { agents: {} } }],
     // «Подключения» show the mailbox in every installation (spec, section 8.24).
-    ['GET /app/api/me/mail', { body: { accounts: [], oauth: [] } }],
+    ['GET /app/api/me/mail', { body: { accounts: [], oauth: [], readBy: [] } }],
+    // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md): no rule on any action, no requests.
+    ['POST /app/api/approval-chains/preview', { body: { stages: null } }],
+    ['GET /app/api/approval-chains', { body: { forMe: [], mine: [] } }],
     ['GET /app/api/admin/mail', { body: { apps: [], redirectUri: 'http://localhost/app/api/mail/oauth/callback', connected: 0, authErrors: 0 } }],
     // MCP servers the admin added (docs/specs/[20.11.2026]-mcp-connections.md): none unless a test adds them.
     ['GET /app/api/admin/mcp-servers', { body: { servers: [] } }],

@@ -39,6 +39,8 @@ function Faces({ ids, users }: { ids: string[]; users: Map<string, AdminUser> })
 function DepartmentEditor({ dep, people, agents, onClose, onChanged }: { dep: AdminDepartment; people: Option[]; agents: Option[]; onClose: () => void; onChanged: () => void }) {
   const [name, setName] = useState(dep.name);
   const [userIds, setUserIds] = useState(dep.userIds);
+  // «Руководители» approve at a stage «руководитель отдела сотрудника» (docs/specs/[20.11.2026]-multi-step-approvals.md, F1).
+  const [headIds, setHeadIds] = useState(dep.headIds);
   const [agentIds, setAgentIds] = useState(dep.agentIds);
   const { busy, error, run } = useAction();
   const confirm = useConfirm();
@@ -49,6 +51,8 @@ function DepartmentEditor({ dep, people, agents, onClose, onChanged }: { dep: Ad
       if (name.trim() !== dep.name) await adminApi.renameDepartment(dep.id, name.trim());
       if (!same(userIds, dep.userIds)) await adminApi.setDepartmentMembers(dep.id, userIds);
       if (!same(agentIds, dep.agentIds)) await adminApi.setDepartmentAgents(dep.id, agentIds);
+      const heads = headIds.filter((id) => userIds.includes(id));
+      if (!same(heads, dep.headIds)) await adminApi.setDepartmentHeads(dep.id, heads);
     });
     if (ok) {
       onChanged();
@@ -78,6 +82,7 @@ function DepartmentEditor({ dep, people, agents, onClose, onChanged }: { dep: Ad
           <Input required value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Checklist legend="Сотрудники" items={people} selected={userIds} onChange={setUserIds} />
+        <Checklist legend="Руководители" items={people.filter((p) => userIds.includes(p.id))} selected={headIds.filter((id) => userIds.includes(id))} onChange={setHeadIds} />
         <Checklist legend="Агенты отдела" items={agents} selected={agentIds} onChange={setAgentIds} />
         <div className={section.formActions}>
           <Button variant="danger" icon="trash" disabled={busy} onClick={() => void remove()} className={styles.pushLeft}>

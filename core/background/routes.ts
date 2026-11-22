@@ -44,6 +44,7 @@ export function registerBackgroundRoutes(app: Hono<AppEnv>, deps: { db: Db; regi
     const body: ApprovalsResponse = {
       pending: pending.map((p) => ({
         id: p.id,
+        toolCallId: p.toolCallId,
         agent: agentName(p.agentId),
         task: p.taskId ? (titles.get(p.taskId) ?? p.taskId) : null,
         conversation: p.taskId ? null : { threadId: p.threadId, agentId: p.agentId, title: threadTitles.get(p.threadId) ?? 'Без названия' },

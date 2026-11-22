@@ -10,8 +10,8 @@ const ROLES = [
   { id: 'r-head', name: 'Руководитель продаж', permissions: ['usage'], builtin: null, userCount: 0 },
 ];
 const DEPARTMENTS = [
-  { id: 'd1', name: 'Продажи', userIds: ['u1'], agentIds: [] },
-  { id: 'd2', name: 'Бухгалтерия', userIds: ['u2'], agentIds: [] },
+  { id: 'd1', name: 'Продажи', userIds: ['u1'], agentIds: [], headIds: [] },
+  { id: 'd2', name: 'Бухгалтерия', userIds: ['u2'], agentIds: [], headIds: [] },
 ];
 const USERS = [
   { id: 'u1', email: 'olga@example.com', name: 'Ольга Смирнова', position: '', blocked: false, roleIds: ['r-emp'], departmentIds: ['d1'], createdAt: '2026-11-01T00:00:00Z', projects: { total: 0, shared: 0 } },

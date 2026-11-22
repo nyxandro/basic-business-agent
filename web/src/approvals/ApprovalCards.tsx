@@ -15,6 +15,7 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { timeLeft, whenLabel } from '../ui/format.ts';
 import { Icon, type IconName } from '../ui/Icon.tsx';
 import { decideApproval } from './api.ts';
+import { ChainReason, reasonReady, sendForApproval, useChainPreview } from './ChainReason.tsx';
 import styles from './approvals.module.css';
 
 const MAX_VALUE_LENGTH = 300;
@@ -83,10 +84,16 @@ function Question({ item, compact, highlighted }: { item: PendingApproval; compa
   const [decision, setDecision] = useState<Decision>('pending');
   const [error, setError] = useState<ApiRequestError | null>(null);
   const { refresh } = useNotifications();
+  // Multi-step approvals: under a rule «Да» sends «Зачем» first and the action goes to the approvers.
+  const preview = useChainPreview(item.tool);
+  const [reason, setReason] = useState('');
+  const chain = preview.status === 'chain';
+  const yesBlocked = preview.status === 'loading' || preview.status === 'failed' || (chain && !reasonReady(reason));
   async function decide(approved: boolean) {
     setDecision('busy');
     setError(null);
     try {
+      if (approved && chain) await sendForApproval(item.toolCallId, reason, () => undefined);
       await decideApproval(item.id, approved);
       setDecision(approved ? 'yes' : 'no');
       refresh();
@@ -111,6 +118,7 @@ function Question({ item, compact, highlighted }: { item: PendingApproval; compa
           </div>
           <div className={styles.what}>{item.action.title}</div>
           <Fields item={item} />
+          {!decided ? <ChainReason preview={preview} reason={reason} onReason={setReason} /> : null}
           <div className={styles.meta}>
             <span>{asked}</span>
             <span className={styles.left}>
@@ -124,8 +132,8 @@ function Question({ item, compact, highlighted }: { item: PendingApproval; compa
             <Button variant="secondary" disabled={decision === 'busy'} onClick={() => void decide(false)}>
               {ru.approvals.no}
             </Button>
-            <Button variant="primary" disabled={decision === 'busy'} onClick={() => void decide(true)}>
-              {ru.approvals.yes}
+            <Button variant="primary" disabled={decision === 'busy' || yesBlocked} onClick={() => void decide(true)}>
+              {chain ? ru.chains.send : ru.approvals.yes}
             </Button>
           </div>
         ) : null}
@@ -136,8 +144,8 @@ function Question({ item, compact, highlighted }: { item: PendingApproval; compa
           <Button variant="secondary" size="lg" disabled={decision === 'busy'} onClick={() => void decide(false)}>
             {ru.approvals.no}
           </Button>
-          <Button variant="primary" size="lg" disabled={decision === 'busy'} onClick={() => void decide(true)}>
-            {ru.approvals.yes}
+          <Button variant="primary" size="lg" disabled={decision === 'busy' || yesBlocked} onClick={() => void decide(true)}>
+            {chain ? ru.chains.send : ru.approvals.yes}
           </Button>
         </div>
       ) : null}

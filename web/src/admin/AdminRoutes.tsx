@@ -18,6 +18,7 @@ import { RolesSection } from './RolesSection.tsx';
 import { SkillsSection } from './SkillsSection.tsx';
 import { StorageSection } from './StorageSection.tsx';
 import { UsersSection } from './UsersSection.tsx';
+import { ApprovalRules } from './ApprovalRules.tsx';
 
 export default function AdminRoutes() {
   return (
@@ -26,6 +27,7 @@ export default function AdminRoutes() {
         <Route index element={<AdminIndex />} />
         <Route path="models" element={<RequireSection path="models"><ModelsSection /></RequireSection>} />
         <Route path="modes" element={<RequireSection path="modes"><ModesSection /></RequireSection>} />
+        <Route path="approval-rules" element={<RequireSection path="approval-rules"><ApprovalRules /></RequireSection>} />
         <Route path="users" element={<RequireSection path="users"><UsersSection /></RequireSection>} />
         <Route path="roles" element={<RequireSection path="roles"><RolesSection /></RequireSection>} />
         <Route path="departments" element={<RequireSection path="departments"><DepartmentsSection /></RequireSection>} />

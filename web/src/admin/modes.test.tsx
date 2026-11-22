@@ -32,7 +32,7 @@ function server(tasks: object[] = [TASK]) {
     'GET /app/api/me': { body: ADMIN },
     'GET /app/api/admin/tasks': { body: { tasks } },
     'GET /app/api/admin/agents': { body: { agents: AGENTS, missingAgents: [] } },
-    'GET /app/api/admin/departments': { body: { departments: [{ id: SALES_DEP, name: 'Отдел продаж', userIds: [], agentIds: ['sales'] }] } },
+    'GET /app/api/admin/departments': { body: { departments: [{ id: SALES_DEP, name: 'Отдел продаж', userIds: [], agentIds: ['sales'], headIds: [] }] } },
     'GET /app/api/admin/people': { body: { people: [] } },
     'GET /app/api/admin/approval-settings': { body: { chatTtlHours: 24, backgroundTtlHours: 72 } },
   });

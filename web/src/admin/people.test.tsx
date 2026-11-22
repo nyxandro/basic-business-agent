@@ -48,7 +48,7 @@ describe('«Отделы»', () => {
   const server = () =>
     mockServer({
       'GET /app/api/me': { body: ADMIN },
-      'GET /app/api/admin/departments': { body: { departments: [{ id: 'd1', name: 'Продажи', userIds: ['u1'], agentIds: ['sales'] }] } },
+      'GET /app/api/admin/departments': { body: { departments: [{ id: 'd1', name: 'Продажи', userIds: ['u1'], agentIds: ['sales'], headIds: [] }] } },
       'GET /app/api/admin/users': {
         body: {
           users: [

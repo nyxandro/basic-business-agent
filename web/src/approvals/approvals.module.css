@@ -263,3 +263,47 @@
   justify-content: center;
   height: 44px;
 }
+
+/* Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md): the stages and «Зачем» on a card of «Да». */
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+}
+
+.chainStages {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--warn);
+}
+
+.chainReason {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.chainNote {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.chainSection {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chainSectionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}

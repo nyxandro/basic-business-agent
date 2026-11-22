@@ -21,6 +21,8 @@ export interface MyConnection {
 
 export interface PendingApproval {
   id: string;
+  // The call it is about: «Зачем» of multi-step approvals is written for it before «Да».
+  toolCallId: string;
   agent: string;
   task: string | null;
   // A question of a conversation (decision of the owner 21.11, F4): it is answered there, on its card «Да»; the list
