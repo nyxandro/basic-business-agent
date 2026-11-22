@@ -14,6 +14,7 @@ import { ForeignPicture, ownAddress, safeHref } from './addresses.tsx';
 import { useBusyGuard } from './busy.tsx';
 import { EntityCard } from './EntityCard.tsx';
 import { FollowUp } from './FollowUp.tsx';
+import { List, ListItem } from './PickList.tsx';
 import { WidgetReplyContext } from './reply.ts';
 import { ChartWidget, chartOf } from './chart.ts';
 import { firstFailedCheck } from './checks.ts';
@@ -302,6 +303,8 @@ export const widgetOverrides = {
   Chart: { component: Chart },
   EntityCard: { component: EntityCard },
   FollowUp: { component: FollowUp },
+  List: { component: List },
+  ListItem: { component: ListItem },
   Math: { component: MathFormula },
   Markdown: { component: Markdown },
   Image: { component: Image },

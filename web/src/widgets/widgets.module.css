@@ -688,6 +688,19 @@
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
 }
 
+/* A list the person picked from (issue #23): the picked item with the accent and a tick, the others greyed out. */
+.picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--acc-text);
+  font-weight: 500;
+}
+
+.pickOff {
+  opacity: 0.55;
+}
+
 /* A card standing upright: its buttons share its width (the plans of the mockup: «Выбрать» across the card). */
 .card:not(.cardRow) .cardActions > *,
 .cardGlass:not(.cardRow) .cardActions > * {

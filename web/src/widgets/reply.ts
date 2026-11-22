@@ -18,10 +18,13 @@ export interface WidgetReply {
   chosen: ReadonlySet<string>;
   // The words of the controls of this widget that send a message.
   sending: ReadonlySet<string>;
+  // A list of this widget sends with words that come from its data (a template of items, items bound to a path): the
+  // words are known only on the screen, so its items count as sending.
+  sendsUnnamed: boolean;
 }
 
 // Outside a block of a widget (a test of one component) nothing was answered and nothing is known to send.
-export const WidgetReplyContext = createContext<WidgetReply>({ answered: false, chosen: new Set(), sending: new Set() });
+export const WidgetReplyContext = createContext<WidgetReply>({ answered: false, chosen: new Set(), sending: new Set(), sendsUnnamed: false });
 
 // CopilotKit writes a press as «<userMessage or label>», then a blank line and «key: value» lines (buildActionMessageText).
 export const replyHead = (reply: string): string => reply.split(/\n\s*\n/)[0]!.trim();
@@ -33,6 +36,15 @@ const userMessageOf = (binding: unknown): string | null => {
   return typeof message === 'string' ? message.trim() : null;
 };
 const wordsOf = (component: Op): string | null => (typeof component.label === 'string' ? component.label : typeof component.text === 'string' ? component.text : null);
+// The first line CopilotKit writes for a pick (buildActionMessageText): `userMessage`, else the «message» or «label» of
+// the event's context, else the words of the item.
+const pickHeadOf = (binding: unknown, words: string): string => {
+  const event = eventOf(binding);
+  const context = event && isObject(event.context) ? event.context : {};
+  const head = [event?.userMessage, context.message, context.label].find((v): v is string => typeof v === 'string' && v.trim() !== '');
+  return head?.trim() ?? words;
+};
+const itemLabelOf = (item: unknown): string | null => (typeof item === 'string' ? item : isObject(item) && typeof item.label === 'string' ? item.label : null);
 
 // A control that sends: its words on the screen, the first line of the message it sends, and which it is — the screen,
 // the component, the place among the component's own (a change of a screen in place sends the same component again).
@@ -50,6 +62,15 @@ function componentsOf(operations: readonly Op[]): Map<string, Op> {
     for (const component of body.components) if (isObject(component) && typeof component.id === 'string') components.set(component.id, component);
   }
   return components;
+}
+
+// A list with a pick whose words come from its data: a ListItem with words bound to a path, a List of bound items.
+export function sendsUnnamed(operations: readonly Op[]): boolean {
+  for (const component of componentsOf(operations).values()) {
+    if (component.component === 'ListItem' && eventOf(component.action) && wordsOf(component) === null) return true;
+    if (component.component === 'List' && eventOf(component.action) && !Array.isArray(component.items)) return true;
+  }
+  return false;
 }
 
 export function sendingControls(operations: readonly Op[]): Control[] {
@@ -90,6 +111,14 @@ export function sendingControls(operations: readonly Op[]): Control[] {
         controls.push({ words: label, head: userMessageOf(component.onFollowUp) ?? message.trim(), key: key(n) });
       });
     }
+    // A pick of a list (issue #23): a ListItem sends its own words, a List the label of the picked item.
+    if (component.component === 'ListItem' && words && eventOf(component.action)) controls.push({ words, head: pickHeadOf(component.action, words), key: key(0) });
+    if (component.component === 'List' && eventOf(component.action) && Array.isArray(component.items)) {
+      component.items.forEach((item: unknown, n) => {
+        const label = itemLabelOf(item);
+        if (label) controls.push({ words: label, head: pickHeadOf(component.action, label), key: key(n) });
+      });
+    }
   }
   return controls;
 }
@@ -99,11 +128,12 @@ export function sendingControls(operations: readonly Op[]): Control[] {
 export function widgetReply(own: readonly Op[], screens: readonly (readonly Op[])[], reply: string | null): WidgetReply {
   const mine = sendingControls(own);
   const sending = new Set(mine.map((c) => c.words));
-  if (reply === null) return { answered: false, chosen: new Set(), sending };
+  const unnamed = sendsUnnamed(own);
+  if (reply === null) return { answered: false, chosen: new Set(), sending, sendsUnnamed: unnamed };
   const head = replyHead(reply);
   const everywhere = new Set(screens.flatMap((ops) => sendingControls(ops)).filter((c) => c.head === head).map((c) => c.key));
   const here = mine.filter((c) => c.head === head);
-  return { answered: true, chosen: new Set(everywhere.size === 1 && here.length === 1 ? [here[0]!.words] : []), sending };
+  return { answered: true, chosen: new Set(everywhere.size === 1 && here.length === 1 ? [here[0]!.words] : []), sending, sendsUnnamed: unnamed };
 }
 
 // The messages of the agent as CopilotKit holds them.
