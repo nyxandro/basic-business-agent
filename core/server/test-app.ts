@@ -69,6 +69,7 @@ import { appError } from '../errors/catalog.ts';
 import type { PageReader } from '../web/fetch.ts';
 import type { WebSearcher } from '../web/search.ts';
 import type { AppEnv } from './http.ts';
+import type { TasksDeps } from '../background/tasks.ts';
 
 export const TEST_PUBLIC_URL = 'http://localhost:8080';
 export const TEST_PASSWORD = 'correct-horse-battery';
@@ -109,6 +110,8 @@ export interface TestApp {
   sentMail: { to: string; text: string }[];
   // Notifications of this installation: presence, the delivery (tests call `deliverDue` themselves).
   notifications: Notifications;
+  // What «Режимы работы» works with in this installation (core/background/tasks.ts).
+  tasks: TasksDeps;
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -432,6 +435,7 @@ export async function createTestApp(
     orgFilesDir,
     sentMail,
     notifications,
+    tasks: { db, registry, background, timezone: 'Europe/Moscow', box, publicUrl: TEST_PUBLIC_URL },
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {

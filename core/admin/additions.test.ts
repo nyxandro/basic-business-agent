@@ -81,10 +81,11 @@ describe('stage 2 additions', () => {
     const sales = (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!;
     expect(sales.actions.mail_send).toEqual({ title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false });
 
-    const task = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, adminId, {
+    const task = await createTask(t.tasks, adminId, {
       title: 'Письма',
       agentId: 'sales',
       access: { scope: 'users', departmentIds: [], userIds: [olgaId] },
+      trigger: 'schedule',
       schedule: { kind: 'daily', time: '09:00' },
       prompt: 'Напиши клиенту',
     });

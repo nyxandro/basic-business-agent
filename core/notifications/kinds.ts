@@ -26,6 +26,7 @@ export const PUSH_DELIVERY: Record<NotificationKind, { ttlSeconds: number; urgen
   connection_broken: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   task_result: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   task_failed: { ttlSeconds: 12 * 3600, urgency: 'normal' },
+  task_trouble: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   project_shared: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_near: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_exhausted: { ttlSeconds: 12 * 3600, urgency: 'normal' },
@@ -34,6 +35,8 @@ export const PUSH_DELIVERY: Record<NotificationKind, { ttlSeconds: number; urgen
 };
 
 const TITLE_MAX = 200;
+// The ceiling of events of a task in an hour (core/background/events.ts, owner 21.11, F2), as the admin reads it.
+const FLOOD_LIMIT_TEXT = '100 событий';
 const BODY_MAX = 300;
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
@@ -115,8 +118,9 @@ export const notices = {
     });
   },
 
-  taskResult(input: { userId: string; runId: string; taskId: string; taskTitle: string; agentId: string }): Notice {
-    const threadId = `bg:${input.taskId}:${input.userId}`;
+  // `threadId` — the conversation of the run: the task's own, or the one of its event (event-tasks.md).
+  taskResult(input: { userId: string; runId: string; taskId: string; taskTitle: string; agentId: string; threadId: string }): Notice {
+    const threadId = input.threadId;
     return notice({
       userId: input.userId,
       kind: 'task_result',
@@ -129,8 +133,8 @@ export const notices = {
     });
   },
 
-  taskFailed(input: { userId: string; runId: string; taskId: string; taskTitle: string; agentId: string }): Notice {
-    const threadId = `bg:${input.taskId}:${input.userId}`;
+  taskFailed(input: { userId: string; runId: string; taskId: string; taskTitle: string; agentId: string; threadId: string }): Notice {
+    const threadId = input.threadId;
     return notice({
       userId: input.userId,
       kind: 'task_failed',
@@ -140,6 +144,21 @@ export const notices = {
       dedupKey: `task_failed:${input.runId}`,
       subjectRef: `run:${input.runId}`,
       threadId,
+    });
+  },
+
+  // An event task skips events (docs/specs/[20.11.2026]-event-tasks.md, scenario 5): told once an hour per task and trouble.
+  taskTrouble(input: { userId: string; taskId: string; taskTitle: string; trouble: 'flood' | 'executor'; at: Date }): Notice {
+    const hour = Math.floor(input.at.getTime() / 3_600_000);
+    return notice({
+      userId: input.userId,
+      kind: 'task_trouble',
+      title: input.trouble === 'flood' ? `Задача «${input.taskTitle}» пропускает события: больше ${FLOOD_LIMIT_TEXT} в час` : `Задача «${input.taskTitle}» не работает: исполнитель недоступен`,
+      body: input.trouble === 'flood' ? 'Проверьте, кто шлёт сообщения на адрес задачи; если нужно — смените адрес в «Режимах работы».' : 'Исполнитель заблокирован или потерял доступ к агенту. Выберите другого в «Режимах работы».',
+      link: '/admin/modes',
+      dedupKey: `task_trouble:${input.taskId}:${input.trouble}:${hour}`,
+      subjectRef: `task:${input.taskId}`,
+      threadId: null,
     });
   },
 

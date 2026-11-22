@@ -56,10 +56,11 @@ t.notifications.delivery.start();
 // A background task for the department «Продажи» that has already asked Ольга a question
 // («Ждёт подтверждения»).
 const igor = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
-const morning = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, igor, {
+const morning = await createTask(t.tasks, igor, {
   title: 'Утренняя сводка',
   agentId: 'sales',
   access: { scope: 'departments', departmentIds: [dep], userIds: [] },
+  trigger: 'schedule',
   schedule: { kind: 'weekdays', time: '09:00' },
   prompt: 'Напиши письмо клиенту со сводкой по сделкам',
 });

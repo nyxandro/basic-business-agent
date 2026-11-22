@@ -1,15 +1,18 @@
 // «Режимы работы» (spec, scenario 4, section 8.6): only the admin creates, changes, pauses and
-// removes background tasks. Every change re-syncs the Mastra schedules at once.
+// removes background tasks. Every change re-syncs the Mastra schedules at once. A task starts by its schedule, on a
+// letter or on a message of another system (docs/specs/[20.11.2026]-event-tasks.md, triggers.ts).
 import { randomBytes } from 'node:crypto';
-import type { AdminTask, RunOutcomeName, TaskCreate, TaskFireSummary, TaskRunsResponse, TaskUpdate } from '@bba/contracts';
+import type { AdminTask, MailFilter, MailReachResponse, RunOutcomeName, TaskAccess, TaskCreate, TaskEventOutcome, TaskEventsResponse, TaskFireSummary, TaskRunsResponse, TaskUpdate } from '@bba/contracts';
 import { RUN_OUTCOMES } from '@bba/contracts';
 import { writeAudit } from '../audit/audit.ts';
 import { checkScope, writeScopeTargets } from '../auth/scope.ts';
+import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Registry } from '../loader/registry.ts';
 import { assertCron, cronOf, scheduleOf } from './schedule.ts';
 import type { BackgroundService, TaskRow } from './service.ts';
+import { accessOf, assertChangeFits, assertExecutor, cleanMailFilter, executorScope, hookUrl, newHookSecret } from './triggers.ts';
 
 export const TITLE_MAX = 120;
 export const PROMPT_MAX = 8000;
@@ -19,6 +22,9 @@ export interface TasksDeps {
   registry: Registry;
   background: Pick<BackgroundService, 'syncSchedules' | 'deleteTask'>;
   timezone: string;
+  // The secret of a webhook task's address is kept encrypted and shown to the admin (always visible, «Сменить адрес»).
+  box: SecretBox;
+  publicUrl: string;
 }
 
 const notFound = (id: string) => appError('APP_NOT_FOUND', `task ${id} not found`, { userMessage: 'Задача не найдена. Обновите страницу.' });
@@ -62,15 +68,21 @@ async function lastFires(db: Db): Promise<Map<string, TaskFireSummary>> {
   return out;
 }
 
-export async function listTasks(db: Db): Promise<AdminTask[]> {
-  const { rows } = await db.query<TaskRow & { author: string | null; department_ids: string[]; user_ids: string[] }>(
-    `SELECT t.*, u."name" AS author,
-            coalesce(array_agg(s.department_id::text) FILTER (WHERE s.department_id IS NOT NULL), '{}') AS department_ids,
-            coalesce(array_agg(s.user_id) FILTER (WHERE s.user_id IS NOT NULL), '{}') AS user_ids
+type ListedRow = TaskRow & { author: string | null; executor_name: string | null; department_ids: string[]; user_ids: string[]; fired: number; skipped: number };
+
+export async function listTasks(deps: Pick<TasksDeps, 'db' | 'box' | 'publicUrl'>): Promise<AdminTask[]> {
+  const { db } = deps;
+  const { rows } = await db.query<ListedRow>(
+    `SELECT t.*, u."name" AS author, x."name" AS executor_name,
+            coalesce(array_agg(DISTINCT s.department_id::text) FILTER (WHERE s.department_id IS NOT NULL), '{}') AS department_ids,
+            coalesce(array_agg(DISTINCT s.user_id) FILTER (WHERE s.user_id IS NOT NULL), '{}') AS user_ids,
+            (SELECT count(*)::int FROM app.task_events e WHERE e.task_id = t.id AND e.received_at > now() - interval '1 day' AND e.outcome NOT LIKE 'skipped%') AS fired,
+            (SELECT count(*)::int FROM app.task_events e WHERE e.task_id = t.id AND e.received_at > now() - interval '1 day' AND e.outcome LIKE 'skipped%') AS skipped
        FROM app.background_tasks t
        LEFT JOIN app.task_scope s ON s.task_id = t.id
        LEFT JOIN app."user" u ON u."id" = t.created_by
-      GROUP BY t.id, u."name"
+       LEFT JOIN app."user" x ON x."id" = t.executor_id
+      GROUP BY t.id, u."name", x."name"
       ORDER BY t.title, t.id`,
   );
   const fires = await lastFires(db);
@@ -78,9 +90,14 @@ export async function listTasks(db: Db): Promise<AdminTask[]> {
     id: r.id,
     title: r.title,
     agentId: r.agent_id,
+    trigger: r.trigger,
     access: { scope: r.scope, departmentIds: [...r.department_ids].sort(), userIds: [...r.user_ids].sort() },
-    schedule: scheduleOf(r.cron),
+    schedule: r.cron ? scheduleOf(r.cron) : null,
     cron: r.cron,
+    mailFilter: r.mail_filter,
+    executor: r.executor_id ? { id: r.executor_id, name: r.executor_name ?? r.executor_id } : null,
+    hookUrl: r.webhook_ciphertext && r.webhook_iv && r.webhook_key_version !== null ? hookUrl(deps.publicUrl, deps.box.open({ ciphertext: r.webhook_ciphertext, iv: r.webhook_iv, keyVersion: r.webhook_key_version })) : null,
+    events: r.trigger === 'schedule' ? null : { fired: r.fired, skipped: r.skipped },
     prompt: r.prompt,
     status: r.status,
     pausedReason: r.paused_reason,
@@ -90,68 +107,85 @@ export async function listTasks(db: Db): Promise<AdminTask[]> {
   }));
 }
 
-async function taskDto(db: Db, id: string): Promise<AdminTask> {
-  const task = (await listTasks(db)).find((t) => t.id === id);
+async function taskDto(deps: TasksDeps, id: string): Promise<AdminTask> {
+  const task = (await listTasks(deps)).find((t) => t.id === id);
   if (!task) throw notFound(id);
   return task;
 }
 
 export async function createTask(deps: TasksDeps, actorUserId: string, input: TaskCreate): Promise<AdminTask> {
   const id = `t-${randomBytes(4).toString('hex')}`;
-  const cron = cronOf(input.schedule);
-  assertCron(cron, deps.timezone);
+  const cron = input.trigger === 'schedule' ? cronOf(input.schedule) : null;
+  if (cron) assertCron(cron, deps.timezone);
+  const mailFilter: MailFilter | null = input.trigger === 'mail' ? cleanMailFilter(input.mailFilter) : null;
+  if (input.trigger === 'webhook') await assertExecutor(deps.db, input.executorId);
+  const hook = input.trigger === 'webhook' ? newHookSecret(deps.box) : null;
   const title = cleanTitle(input.title);
   const prompt = cleanPrompt(input.prompt);
   const agentId = checkAgent(deps, input.agentId);
   await inTransaction(deps.db, async (c) => {
-    const access = await checkScope(c, input.access);
-    await c.query(`INSERT INTO app.background_tasks (id, title, agent_id, scope, cron, prompt, status, created_by) VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)`, [
-      id,
-      title,
-      agentId,
-      access.scope,
-      cron,
-      prompt,
-      actorUserId,
-    ]);
+    const access = await checkScope(c, accessOf(input));
+    await c.query(
+      `INSERT INTO app.background_tasks (id, title, agent_id, scope, trigger, cron, mail_filter, webhook_ciphertext, webhook_iv, webhook_key_version, webhook_secret_hash,
+                                         executor_mode, executor_id, prompt, status, created_by, activated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active', $15, now())`,
+      [id, title, agentId, access.scope, input.trigger, cron, mailFilter, hook?.ciphertext ?? null, hook?.iv ?? null, hook?.keyVersion ?? null, hook?.hash ?? null, input.trigger === 'webhook' ? 'fixed' : null, input.trigger === 'webhook' ? input.executorId : null, prompt, actorUserId],
+    );
     await writeScopeTargets(c, 'task', id, access);
-    await writeAudit(c, { actorUserId, action: 'task.create', target: id, details: { title, agentId, cron, access } });
+    await writeAudit(c, { actorUserId, action: 'task.create', target: id, details: { title, agentId, trigger: input.trigger, cron, mailFilter, executorId: input.trigger === 'webhook' ? input.executorId : null, access } });
   });
   await deps.background.syncSchedules();
-  return taskDto(deps.db, id);
+  return taskDto(deps, id);
 }
 
 export async function updateTask(deps: TasksDeps, actorUserId: string, id: string, change: TaskUpdate): Promise<AdminTask> {
   const row = await taskRow(deps.db, id);
+  assertChangeFits(row.trigger, change);
   const cron = change.schedule ? cronOf(change.schedule) : row.cron;
-  assertCron(cron, deps.timezone);
+  if (cron) assertCron(cron, deps.timezone);
+  const mailFilter = change.mailFilter ? cleanMailFilter(change.mailFilter) : row.mail_filter;
+  if (change.executorId) await assertExecutor(deps.db, change.executorId);
+  const executorId = change.executorId ?? row.executor_id;
   const title = change.title === undefined ? row.title : cleanTitle(change.title);
   const prompt = change.prompt === undefined ? row.prompt : cleanPrompt(change.prompt);
   const agentId = change.agentId === undefined ? row.agent_id : checkAgent(deps, change.agentId);
   await inTransaction(deps.db, async (c) => {
-    const access = change.access ? await checkScope(c, change.access) : null;
+    const scopeChange = change.access ?? (change.executorId ? executorScope(change.executorId) : null);
+    const access = scopeChange ? await checkScope(c, scopeChange) : null;
     // A task stopped for a missing agent or an empty scope goes on once that is fixed.
     const fixed = (row.paused_reason === 'agent_missing' && change.agentId !== undefined) || (row.paused_reason === 'scope_empty' && access !== null);
     await c.query(
-      `UPDATE app.background_tasks SET title = $2, agent_id = $3, cron = $4, prompt = $5, scope = COALESCE($6, scope),
-              status = CASE WHEN $7 THEN 'active' ELSE status END, paused_reason = CASE WHEN $7 THEN NULL ELSE paused_reason END, updated_at = now()
+      `UPDATE app.background_tasks SET title = $2, agent_id = $3, cron = $4, prompt = $5, scope = COALESCE($6, scope), mail_filter = $8, executor_id = $9,
+              status = CASE WHEN $7 THEN 'active' ELSE status END, paused_reason = CASE WHEN $7 THEN NULL ELSE paused_reason END,
+              activated_at = CASE WHEN $7 THEN now() ELSE activated_at END, updated_at = now()
         WHERE id = $1`,
-      [id, title, agentId, cron, prompt, access?.scope ?? null, fixed],
+      [id, title, agentId, cron, prompt, access?.scope ?? null, fixed, mailFilter, executorId],
     );
     if (access) await writeScopeTargets(c, 'task', id, access);
     await writeAudit(c, { actorUserId, action: 'task.update', target: id, details: { ...change } });
   });
   await deps.background.syncSchedules();
-  return taskDto(deps.db, id);
+  return taskDto(deps, id);
+}
+
+// «Сменить адрес»: a new secret; the old address stops working at once.
+export async function renewHook(deps: TasksDeps, actorUserId: string, id: string): Promise<AdminTask> {
+  const row = await taskRow(deps.db, id);
+  if (row.trigger !== 'webhook') throw appError('APP_VALIDATION_FAILED', `task ${id} has no address`, { userMessage: 'Адрес есть только у задачи «Сообщение от другой системы».' });
+  const hook = newHookSecret(deps.box);
+  await deps.db.query('UPDATE app.background_tasks SET webhook_ciphertext = $2, webhook_iv = $3, webhook_key_version = $4, webhook_secret_hash = $5, updated_at = now() WHERE id = $1', [id, hook.ciphertext, hook.iv, hook.keyVersion, hook.hash]);
+  await writeAudit(deps.db, { actorUserId, action: 'task.hook_renew', target: id });
+  return taskDto(deps, id);
 }
 
 export async function setTaskStatus(deps: TasksDeps, actorUserId: string, id: string, status: 'active' | 'paused'): Promise<AdminTask> {
   const row = await taskRow(deps.db, id);
   if (status === 'active' && !deps.registry.get(row.agent_id)) throw appError('APP_VALIDATION_FAILED', `agent ${row.agent_id} is not loaded`, { userMessage: 'Агента этой задачи больше нет. Выберите другого агента.' });
-  await deps.db.query('UPDATE app.background_tasks SET status = $2, paused_reason = NULL, updated_at = now() WHERE id = $1', [id, status]);
+  // Letters that came during a pause are not handled after it: the task takes events from the moment it goes on.
+  await deps.db.query(`UPDATE app.background_tasks SET status = $2, paused_reason = NULL, activated_at = CASE WHEN $2 = 'active' AND status <> 'active' THEN now() ELSE activated_at END, updated_at = now() WHERE id = $1`, [id, status]);
   await writeAudit(deps.db, { actorUserId, action: status === 'active' ? 'task.resume' : 'task.pause', target: id });
   await deps.background.syncSchedules();
-  return taskDto(deps.db, id);
+  return taskDto(deps, id);
 }
 
 export async function removeTask(deps: TasksDeps, actorUserId: string, id: string): Promise<void> {
@@ -176,4 +210,44 @@ export async function taskRuns(db: Db, id: string, fireAt: string | null): Promi
     fireAt: at.toISOString(),
     runs: rows.map((r) => ({ userId: r.user_id, name: r.name, outcome: r.outcome, reasonCode: r.reason_code, startedAt: r.started_at?.toISOString() ?? null, finishedAt: r.finished_at?.toISOString() ?? null })),
   };
+}
+
+// «Последние события» of an event task (docs/specs/[20.11.2026]-event-tasks.md, section 7): the 20 latest — a system's
+// message with its first characters, a letter with only whose mailbox it came to (the mail is the employee's).
+export const EVENTS_SHOWN = 20;
+
+export async function taskEvents(db: Db, id: string): Promise<TaskEventsResponse> {
+  await taskRow(db, id);
+  const { rows } = await db.query<{ id: string; received_at: Date; summary: string | null; name: string | null; kind: string | null; outcome: TaskEventOutcome; reason_code: string | null }>(
+    `SELECT e.id, e.received_at, e.summary, u."name", t.trigger AS kind, e.outcome, e.reason_code
+       FROM app.task_events e JOIN app.background_tasks t ON t.id = e.task_id LEFT JOIN app."user" u ON u."id" = e.user_id
+      WHERE e.task_id = $1 ORDER BY e.received_at DESC, e.id DESC LIMIT ${EVENTS_SHOWN}`,
+    [id],
+  );
+  const rejects = await db.query<{ reason: string; n: number }>(`SELECT reason, sum(count)::int AS n FROM app.task_event_rejects WHERE task_id = $1 AND day >= current_date - 1 GROUP BY reason`, [id]);
+  const rejected = (reason: string) => rejects.rows.find((r) => r.reason === reason)?.n ?? 0;
+  return {
+    events: rows.map((r) => ({ id: String(r.id), receivedAt: r.received_at.toISOString(), summary: r.kind === 'mail' ? null : r.summary, user: r.kind === 'mail' ? r.name : null, outcome: r.outcome, reasonCode: r.reason_code })),
+    rejected: { tooLarge: rejected('too_large'), badFormat: rejected('bad_format') },
+  };
+}
+
+// «Сработает у N из M»: of the people of the scope who may use the agent, how many have a mailbox connected.
+export async function mailReach(deps: Pick<TasksDeps, 'db' | 'registry'>, agentId: string, access: TaskAccess): Promise<MailReachResponse> {
+  checkAgent(deps as TasksDeps, agentId);
+  const { rows } = await deps.db.query<{ total: number; with_mail: number }>(
+    `WITH people AS (
+       SELECT u."id" AS user_id FROM app."user" u WHERE $1 = 'org'
+       UNION SELECT dm.user_id FROM app.department_members dm WHERE $1 = 'departments' AND dm.department_id::text = ANY($2)
+       UNION SELECT u."id" FROM app."user" u WHERE $1 = 'users' AND u."id" = ANY($3)
+     ), able AS (
+       SELECT p.user_id FROM people p LEFT JOIN app.user_profiles pr ON pr.user_id = p.user_id
+        WHERE pr.blocked_at IS NULL AND pr.deletion_started_at IS NULL
+          AND (EXISTS (SELECT 1 FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id WHERE ur.user_id = p.user_id AND r.builtin = 'superadmin')
+               OR EXISTS (SELECT 1 FROM app.department_members dm JOIN app.department_agents da ON da.department_id = dm.department_id WHERE dm.user_id = p.user_id AND da.agent_id = $4))
+     )
+     SELECT count(*)::int AS total, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM app.mail_accounts m WHERE m.user_id = able.user_id AND m.status = 'connected'))::int AS with_mail FROM able`,
+    [access.scope, access.departmentIds, access.userIds, agentId],
+  );
+  return { total: rows[0]?.total ?? 0, withMail: rows[0]?.with_mail ?? 0 };
 }

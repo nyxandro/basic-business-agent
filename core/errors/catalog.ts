@@ -109,6 +109,10 @@ export const ERROR_CATALOG = {
   APP_MARKS_PICTURE_INVALID: { status: 400, userMessage: 'Сервер не принял картинку с пометками. Попробуйте отправить ещё раз; если повторяется — сообщите администратору код ошибки.' },
   APP_BACKGROUND_RUN_SKIPPED: { status: 409, userMessage: 'Запуск задачи пропущен: предыдущий запуск ещё ждёт вашего решения.' },
   APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },
+  // Background tasks by an event (docs/specs/[20.11.2026]-event-tasks.md).
+  APP_TASK_EVENT_GONE: { status: 410, userMessage: 'Событие задачи больше недоступно: запуск не выполнен.' },
+  APP_TASK_EVENT_TOO_LARGE: { status: 413, userMessage: 'Сообщение больше 64 КБ — задача его не принимает.' },
+  APP_TASK_EVENT_BAD_FORMAT: { status: 415, userMessage: 'Сообщение не в формате JSON и не форма — задача его не принимает.' },
   APP_APPROVAL_EXPIRED: { status: 410, userMessage: 'Истекло: действие не выполнено. Если оно ещё нужно, запустите задачу снова.' },
   APP_APPROVAL_DECIDED: { status: 409, userMessage: 'По этому действию решение уже принято.' },
   APP_MEMORY_FULL: { status: 409, userMessage: 'Память заполнена. Удалите устаревшие записи и попробуйте снова.' },

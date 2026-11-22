@@ -44,7 +44,7 @@ describe('notify', () => {
   });
 
   it('writes nothing for a blocked person', async () => {
-    expect(await notify(db, notices.taskResult({ userId: 'petr', runId: 'run-1', taskTitle: 'Утренняя сводка', taskId: 'task-1', agentId: 'sales' }))).toBe(false);
+    expect(await notify(db, notices.taskResult({ userId: 'petr', runId: 'run-1', taskTitle: 'Утренняя сводка', taskId: 'task-1', agentId: 'sales', threadId: 'bg:task-1:petr' }))).toBe(false);
     expect(await rowsOf('petr')).toEqual([]);
   });
 
@@ -52,10 +52,10 @@ describe('notify', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       // A person who does not exist: the database refuses, the caller goes on.
-      await expect(notify(db, notices.taskResult({ userId: 'nobody', runId: 'run-2', taskTitle: 'Сводка', taskId: 'task-1', agentId: 'sales' }))).resolves.toBe(false);
+      await expect(notify(db, notices.taskResult({ userId: 'nobody', runId: 'run-2', taskTitle: 'Сводка', taskId: 'task-1', agentId: 'sales', threadId: 'bg:task-1:nobody' }))).resolves.toBe(false);
       // A broken database connection.
       const broken = createPool(database.url.replace(/\/[^/]+$/, '/bba_no_such_database'));
-      await expect(notify(broken, notices.taskResult({ userId: 'olga', runId: 'run-3', taskTitle: 'Сводка', taskId: 'task-1', agentId: 'sales' }))).resolves.toBe(false);
+      await expect(notify(broken, notices.taskResult({ userId: 'olga', runId: 'run-3', taskTitle: 'Сводка', taskId: 'task-1', agentId: 'sales', threadId: 'bg:task-1:olga' }))).resolves.toBe(false);
       await broken.end();
       const lines = log.mock.calls.map(([line]) => JSON.parse(String(line)) as { event: string; code: string; kind: string });
       expect(lines.some((l) => l.event === 'notification_failed' && l.code === 'APP_NOTIFICATION_FAILED' && l.kind === 'task_result')).toBe(true);
@@ -71,7 +71,7 @@ describe('notify', () => {
 
   it('keeps the texts within what a notification may hold', async () => {
     const long = 'Очень длинное название задачи '.repeat(20);
-    expect(await notify(db, notices.taskFailed({ userId: 'olga', runId: 'run-4', taskTitle: long, taskId: 'task-1', agentId: 'sales' }))).toBe(true);
+    expect(await notify(db, notices.taskFailed({ userId: 'olga', runId: 'run-4', taskTitle: long, taskId: 'task-1', agentId: 'sales', threadId: 'bg:task-1:olga' }))).toBe(true);
     const { rows } = await db.query<{ title: string }>(`SELECT title FROM app.notifications WHERE dedup_key = 'task_failed:run-4'`);
     expect(rows[0]!.title.length).toBeLessThanOrEqual(200);
     expect(rows[0]!.title.endsWith('…')).toBe(true);

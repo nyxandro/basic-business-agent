@@ -274,10 +274,11 @@ describe('the signing tool', () => {
     // A task of the department «Продажи»: its run asks Ольга on «Ждёт подтверждения».
     const igorId = await t.createUser({ email: 'igor@example.com', name: 'Игорь', roleIds: [await t.roleId('superadmin')] });
     const { rows: [sales] } = await t.db.query<{ id: string }>("SELECT id FROM app.departments WHERE name = 'Продажи'");
-    const task = await createTask({ db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' }, igorId, {
+    const task = await createTask(t.tasks, igorId, {
       title: 'Сводка',
       agentId: 'sales',
       access: { scope: 'departments', departmentIds: [sales!.id], userIds: [] },
+      trigger: 'schedule',
       schedule: { kind: 'weekdays', time: '09:00' },
       prompt: 'Сделай сводку с подписью директора',
     });

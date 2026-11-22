@@ -5,6 +5,7 @@
 // conversation "bg:<taskId>:<userId>", and its questions wait on their approvals screen for the term the admin set
 // (core/approvals/settings.ts, 72 hours at first).
 import { randomUUID } from 'node:crypto';
+import type { MailFilter, TaskTrigger } from '@bba/contracts';
 import type { Mastra } from '@mastra/core';
 import { RequestContext } from '@mastra/core/request-context';
 import { createStep, createWorkflow } from '@mastra/core/workflows';
@@ -37,11 +38,13 @@ import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, ty
 import { fireTimeOf } from './schedule.ts';
 import { membersOf } from './scope.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
+import { eventOf, eventOfThread, eventRun, eventThreadId, forgetOldPayloads, settleEvent } from './events.ts';
 
 export const BACKGROUND_WORKFLOW_ID = 'background-run';
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 60 * 1000;
 const EXPIRY_SWEEP_MS = 5 * 60 * 1000;
+const PAYLOAD_SWEEP_MS = 60 * 60 * 1000;
 const DELETED_REASON = 'Задачу удалил администратор.';
 
 export type RunOutcome = 'done' | 'awaiting-approval' | 'failed';
@@ -52,7 +55,15 @@ export interface TaskRow {
   title: string;
   agent_id: string;
   scope: 'org' | 'departments' | 'users';
-  cron: string;
+  trigger: TaskTrigger;
+  // Only a schedule task has a cron (docs/specs/[20.11.2026]-event-tasks.md).
+  cron: string | null;
+  mail_filter: MailFilter | null;
+  webhook_ciphertext: Buffer | null;
+  webhook_iv: Buffer | null;
+  webhook_key_version: number | null;
+  executor_id: string | null;
+  activated_at: Date;
   prompt: string;
   status: 'active' | 'paused';
   paused_reason: string | null;
@@ -84,6 +95,8 @@ export interface BackgroundService {
   recover(): Promise<void>;
   // Resolves when the queue is empty (tests, shutdown).
   idle(): Promise<void>;
+  // Takes queued runs now: an event put one in (core/background/events.ts).
+  wake(): void;
   startAgentRun(input: { agentId: string; userId: string; prompt: string; title: string }): Promise<{ threadId: string; outcome: RunOutcome }>;
   decide(userId: string, approvalId: string, approved: boolean): Promise<void>;
   expireOverdue(): Promise<number>;
@@ -127,7 +140,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
   // `waiting`: the project of an answer that waited for «Да» — the answer is finished there (spec, 8.20).
   async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string, waiting?: { projectId: string | null }): Promise<RequestContext> {
-    const abilities = await readAbilities(db, row.agent_id);
+    // A run of an event has no internet (owner 21.11, F3): its text is written by a stranger, and nobody watches.
+    const abilities = { ...(await readAbilities(db, row.agent_id)), ...(eventOfThread(threadId) ? { web: false } : {}) };
     const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId, { documents: abilities.commands })]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
@@ -178,9 +192,9 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   }
 
   // The first line of the employee's conversation of a task: who set it up and who may stop it.
-  async function openTaskThread(row: TaskRow, userId: string, threadId: string): Promise<void> {
+  async function openTaskThread(row: TaskRow, userId: string, threadId: string, title = `Задача: ${row.title}`): Promise<void> {
     if (await memory.getThreadById({ threadId })) return;
-    await ensureThread(memory, { threadId, resourceId: userId, agentId: row.agent_id, kind: 'background', title: `Задача: ${row.title}` });
+    await ensureThread(memory, { threadId, resourceId: userId, agentId: row.agent_id, kind: 'background', title, ...(eventOfThread(threadId) ? { taskId: row.id } : {}) });
     const { rows } = await db.query<{ name: string }>('SELECT "name" FROM app."user" WHERE "id" = $1', [row.created_by]);
     const author = rows[0] ? `администратор ${rows[0].name}` : 'администратор';
     await memory.saveMessages({
@@ -199,6 +213,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
   // Runs the agent on behalf of the employee and reads the stream to its end.
   async function execute(row: { id: string | null; agent_id: string; prompt: string }, userId: string, threadId: string): Promise<{ outcome: RunOutcome; code: string | null }> {
+    // `prompt` — what the run is given: the task's assignment, or the data of its event and the assignment.
     const journalBase = { userId, agentId: row.agent_id, runKind: 'background' as const, taskId: row.id };
     try {
       await deps.gateway.assertWithinBudget(userId);
@@ -234,26 +249,47 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       await db.query("UPDATE app.background_task_runs SET outcome = 'skipped', reason_code = $2, finished_at = now() WHERE id = $1", [run.id, access?.blocked ? 'blocked' : 'no_access']);
       return;
     }
-    const threadId = taskThreadId(row.id, run.userId);
-    await openTaskThread(row, run.userId, threadId);
-    const result = await execute(row, run.userId, threadId);
+    let threadId = taskThreadId(row.id, run.userId);
+    let prompt = row.prompt;
+    if (run.eventId) {
+      // A run of an event (docs/specs/[20.11.2026]-event-tasks.md): its own conversation, named by the event.
+      const event = await eventOf(db, run.eventId);
+      if (!event?.payload) {
+        await finishRun(db, run.id, 'failed', 'APP_TASK_EVENT_GONE');
+        if (event) await settleEvent(db, event.id, 'failed', 'APP_TASK_EVENT_GONE');
+        return;
+      }
+      const planned = eventRun(event, row.prompt, deps.timezone);
+      threadId = eventThreadId(row.id, run.userId, event.id);
+      prompt = planned.message;
+      await openTaskThread(row, run.userId, threadId, planned.title);
+    } else {
+      await openTaskThread(row, run.userId, threadId);
+    }
+    const result = await execute({ ...row, prompt }, run.userId, threadId);
     await finishRun(db, run.id, result.outcome, result.code);
+    if (run.eventId) await settleEvent(db, run.eventId, result.outcome, result.code);
     // The result is told to the employee; a run that waits for «Да» is told by its question (core/approvals/requests.ts).
-    const told = { userId: run.userId, runId: run.id, taskId: row.id, taskTitle: row.title, agentId: row.agent_id };
+    const told = { userId: run.userId, runId: run.id, taskId: row.id, taskTitle: row.title, agentId: row.agent_id, threadId };
     if (result.outcome === 'done') await notify(db, notices.taskResult(told));
     if (result.outcome === 'failed') await notify(db, notices.taskFailed(told));
   }
 
   const queue: RunQueue = createRunQueue(db, runQueued);
+  // Work that goes on after a request answered (the refusals of a deleted task's questions); tests and shutdown wait.
+  const pending = new Set<Promise<unknown>>();
 
-  // The run of a task waiting for this approval gets its result once the employee decided.
+  // The run of a task waiting for this approval gets its result once the employee decided — only this run: a run of an
+  // event is found by its conversation, the task's own run by the task's conversation (several events may wait at once).
   async function closeRun(approval: ApprovalRequest, outcome: 'done' | 'failed', code: string | null): Promise<void> {
     if (!approval.taskId) return;
+    const eventId = eventOfThread(approval.threadId);
     await db.query(
       `UPDATE app.background_task_runs SET outcome = $3, reason_code = $4, finished_at = now()
-        WHERE task_id = $1 AND user_id = $2 AND outcome = 'awaiting-approval'`,
-      [approval.taskId, approval.userId, outcome, code],
+        WHERE task_id = $1 AND user_id = $2 AND outcome = 'awaiting-approval' AND event_id IS NOT DISTINCT FROM $5::bigint`,
+      [approval.taskId, approval.userId, outcome, code, eventId],
     );
+    if (eventId) await settleEvent(db, eventId, outcome, code);
   }
 
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {
@@ -270,29 +306,42 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     await markUnread(approval.threadId);
   }
 
+  // The refusal of questions already marked: journal, the run closed, the suspended run told — one by one.
+  async function closeDeclined(approvals: ApprovalRequest[], status: 'expired' | 'declined', reason: string | ((q: ApprovalRequest) => string), code: string): Promise<void> {
+    for (const approval of approvals) {
+      await writeJournal(db, { userId: approval.userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: status === 'expired' ? 'approval_expired' : 'tool_declined', tool: approval.tool, result: status, errorCode: code });
+      await closeRun(approval, 'failed', code);
+      // Close the suspended run, so the conversation has no tool call left without a result.
+      await finishApproval(approval, false, typeof reason === 'string' ? reason : reason(approval)).catch((error: unknown) => logEvent('warn', 'approval_close_failed', { approvalId: approval.id, error }));
+    }
+  }
+
   // `reason` — what the agent is told; an expired question names its own term.
   async function declinePending(where: string, params: unknown[], status: 'expired' | 'declined', reason: string | ((q: ApprovalRequest) => string), code: string): Promise<number> {
+    const marked = await markDeclined(where, params, status, code);
+    await closeDeclined(marked, status, reason, code);
+    return marked.length;
+  }
+
+  async function markDeclined(where: string, params: unknown[], status: 'expired' | 'declined', code: string): Promise<ApprovalRequest[]> {
     const { rows } = await db.query<{ id: string; user_id: string }>(
       // Questions of background runs — of tasks and of plugins' runs ("ev:", answered in their conversation): nobody is
       // at their screen, so their waiting run gets its refusal here and now.
       `UPDATE app.approval_requests SET status = $1, decided_at = now(), error_code = $2 WHERE status = 'pending' AND (task_id IS NOT NULL OR run_kind = 'background') AND ${where} RETURNING id, user_id`,
       [status, code, ...params],
     );
+    const marked: ApprovalRequest[] = [];
     for (const { id, user_id } of rows) {
       const approval = await getApproval(db, user_id, id);
-      if (!approval) continue;
-      await writeJournal(db, { userId: approval.userId, agentId: approval.agentId, runKind: 'background', taskId: approval.taskId, event: status === 'expired' ? 'approval_expired' : 'tool_declined', tool: approval.tool, result: status, errorCode: code });
-      await closeRun(approval, 'failed', code);
-      // Close the suspended run, so the conversation has no tool call left without a result.
-      await finishApproval(approval, false, typeof reason === 'string' ? reason : reason(approval)).catch((error: unknown) => logEvent('warn', 'approval_close_failed', { approvalId: id, error }));
+      if (approval) marked.push(approval);
     }
-    return rows.length;
+    return marked;
   }
 
   const service: BackgroundService = {
     async fire(taskId, now = new Date()) {
       const row = await task(taskId);
-      if (!row || row.status !== 'active') return { status: 'not-active' };
+      if (!row || row.status !== 'active' || !row.cron) return { status: 'not-active' };
       if (!deps.registry.get(row.agent_id)) {
         await pause(row, 'agent_missing');
         return { status: 'paused', reason: 'agent_missing' };
@@ -317,7 +366,12 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       queue.drain();
     },
 
-    idle: () => queue.idle(),
+    wake: () => queue.drain(),
+
+    async idle() {
+      await queue.idle();
+      await Promise.all([...pending]);
+    },
 
     async startAgentRun(input) {
       if (!deps.registry.get(input.agentId)) throw appError('APP_NOT_FOUND', `agent ${input.agentId} is not loaded`);
@@ -372,14 +426,20 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
     expireOverdue: () => declinePending('expires_at < now()', [], 'expired', (q) => `Истекло: сотрудник не ответил за ${termHoursOf(q)} ч.`, 'APP_APPROVAL_EXPIRED'),
 
+    // The questions are marked at once and the task goes; telling each suspended run (a model call each) goes on in the
+    // background — a task with a hundred questions answered the admin's request only when the request timed out.
     async deleteTask(taskId) {
-      await declinePending('task_id = $3', [taskId], 'declined', DELETED_REASON, 'APP_TASK_DELETED');
+      const marked = await markDeclined('task_id = $3', [taskId], 'declined', 'APP_TASK_DELETED');
       await db.query('DELETE FROM app.background_tasks WHERE id = $1', [taskId]);
       await service.syncSchedules();
+      const closing = closeDeclined(marked, 'declined', DELETED_REASON, 'APP_TASK_DELETED').catch((error: unknown) => logEvent('error', 'task_delete_close_failed', { taskId, error }));
+      pending.add(closing);
+      void closing.finally(() => pending.delete(closing));
     },
 
     async syncSchedules() {
-      const { rows } = await db.query<TaskRow>('SELECT * FROM app.background_tasks');
+      // Only a schedule task has a schedule; an event task's leftover one (none is made) would go as an orphan.
+      const { rows } = await db.query<TaskRow & { cron: string }>("SELECT * FROM app.background_tasks WHERE trigger = 'schedule'");
       const schedules = mastra().schedules;
       type ScheduleView = { id: string; workflowId?: string; cron?: string; status?: string; inputData?: { taskId?: string } };
       const existing = (await schedules.list()) as unknown as ScheduleView[];
@@ -401,7 +461,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
     // A fire missed while the server was down: one catch-up when it was less than a day ago.
     async catchUp(now = new Date()) {
-      const { rows } = await db.query<TaskRow>("SELECT * FROM app.background_tasks WHERE status = 'active'");
+      const { rows } = await db.query<TaskRow & { cron: string }>("SELECT * FROM app.background_tasks WHERE status = 'active' AND trigger = 'schedule'");
       const fired: string[] = [];
       for (const row of rows) {
         const previous = new Cron(row.cron, { timezone: deps.timezone }).previousRuns(1, now)[0];
@@ -430,6 +490,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
       // of (docs/specs/[20.11.2026]-notifications.md, F4).
       every(EXPIRY_SWEEP_MS, () => expireChatQuestions(db), 'approval_expiry_failed');
       every(EXPIRY_SWEEP_MS, () => remindExpiring(db), 'approval_reminder_failed');
+      every(PAYLOAD_SWEEP_MS, () => forgetOldPayloads(db), 'task_event_payload_sweep_failed');
     },
 
     stop() {

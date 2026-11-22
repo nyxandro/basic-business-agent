@@ -41,8 +41,8 @@ describe('the instant channel', () => {
     let told = 0;
     const stop = t.notifications.live.subscribe(olgaId, () => told++);
     try {
-      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-1', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales' }));
-      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-2', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales' }));
+      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-1', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales', threadId: `bg:task-1:${olgaId}` }));
+      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-2', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales', threadId: `bg:task-1:${olgaId}` }));
       await eventually(() => Promise.resolve(told), (n) => n > 0);
       await new Promise((r) => setTimeout(r, 300));
       expect(told).toBe(1);
@@ -63,7 +63,7 @@ describe('the instant channel', () => {
     const stop = t.notifications.live.subscribe(olgaId, () => told++);
     stopOld();
     try {
-      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-stale', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales' }));
+      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-stale', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales', threadId: `bg:task-1:${olgaId}` }));
       expect(await eventually(() => Promise.resolve(told), (n) => n > 0)).toBe(1);
     } finally {
       stop();
@@ -83,7 +83,7 @@ describe('the instant channel', () => {
       }
     };
     await readUntil('event: ready');
-    await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-3', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales' }));
+    await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-3', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales', threadId: `bg:task-1:${olgaId}` }));
     await readUntil('event: changed');
     await reader.cancel();
   });

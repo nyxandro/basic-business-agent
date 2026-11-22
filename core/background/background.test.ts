@@ -22,7 +22,7 @@ let minute = 0;
 const nextFireTime = () => new Date(Date.UTC(2026, 10, 2, 6, ++minute, 0));
 
 async function newTask(title: string, access: TaskAccess = only(olgaId)): Promise<AdminTask> {
-  return createTask(tasks, igorId, { title, agentId: 'sales', access, schedule: { kind: 'daily', time: '09:00' }, prompt: 'Подготовь сводку по сделкам' });
+  return createTask(tasks, igorId, { title, agentId: 'sales', access, trigger: 'schedule', schedule: { kind: 'daily', time: '09:00' }, prompt: 'Подготовь сводку по сделкам' });
 }
 
 // Fires the task "now" with a cron of every minute, then waits for the queue.
@@ -45,7 +45,7 @@ const messagesOf = async (threadId: string, cookie = olga) =>
 
 beforeAll(async () => {
   t = await createTestApp();
-  tasks = { db: t.db, registry: t.registry, background: t.background, timezone: 'Europe/Moscow' };
+  tasks = t.tasks;
   igorId = await t.createUser({ email: 'igor@example.com', name: 'Игорь Власов', roleIds: [await t.roleId('superadmin')] });
   sales = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Отдел продаж') RETURNING id`)).rows[0]!.id;
   await t.db.query(`INSERT INTO app.department_agents (department_id, agent_id) VALUES ($1, 'sales')`, [sales]);
@@ -185,10 +185,10 @@ describe('background tasks', () => {
     const task = await newTask('После перезапуска');
     const fireAt = nextFireTime();
     await t.db.query(
-      `INSERT INTO app.background_task_runs (task_id, fire_at, user_id, outcome, started_at) VALUES
-         ($1, now() - interval '5 minutes', $2, 'running', now()),
-         ($1, now() - interval '2 days', $2, 'queued', NULL),
-         ($1, $3, $2, 'done', now())`,
+      `INSERT INTO app.background_task_runs (task_id, fire_at, user_id, outcome, started_at, priority) VALUES
+         ($1, now() - interval '5 minutes', $2, 'running', now(), 1),
+         ($1, now() - interval '2 days', $2, 'queued', NULL, 1),
+         ($1, $3, $2, 'done', now(), 1)`,
       [task.id, olgaId, fireAt],
     );
     t.model.script({ text: 'Догнал.' });
@@ -223,7 +223,7 @@ describe('background tasks', () => {
     const { rows } = await t.db.query<{ status: string; paused_reason: string }>('SELECT status, paused_reason FROM app.background_tasks WHERE id = $1', [task.id]);
     expect(rows[0]).toEqual({ status: 'paused', paused_reason: 'agent_missing' });
 
-    const empty = { title: 'Пустая', agentId: 'sales', access: { scope: 'departments', departmentIds: [], userIds: [] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
+    const empty = { title: 'Пустая', agentId: 'sales', trigger: 'schedule', access: { scope: 'departments', departmentIds: [], userIds: [] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
     const res = await t.call('POST', '/app/api/admin/tasks', { cookie: igor, body: empty });
     expect(await json(res)).toMatchObject({ error: { code: 'APP_VALIDATION_FAILED', message: 'Выберите хотя бы один отдел.' } });
     expect((await t.call('GET', '/app/api/admin/tasks', { cookie: olga })).status).toBe(403);

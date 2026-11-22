@@ -7,6 +7,8 @@ export const NOTIFICATION_KINDS = [
   'connection_broken',
   'task_result',
   'task_failed',
+  // To the admins who keep tasks: an event task skips events — a flood, a blocked executor (event-tasks.md).
+  'task_trouble',
   'project_shared',
   'limit_near',
   'limit_exhausted',

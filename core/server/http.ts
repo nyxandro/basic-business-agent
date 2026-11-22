@@ -16,12 +16,15 @@ export function errorJson(c: Context, error: AppError): Response {
   return c.json(body, error.status as ContentfulStatusCode);
 }
 
+// The address of a webhook task carries its secret (core/background/hooks.ts): it never reaches the journal.
+const loggedPath = (path: string) => (path.startsWith('/app/api/hooks/') ? '/app/api/hooks/[secret]' : path);
+
 export function handleError(error: unknown, c: Context): Response {
   if (isAppError(error)) {
-    if (error.status >= 500) logEvent('error', 'request_failed', { code: error.code, path: c.req.path, error });
+    if (error.status >= 500) logEvent('error', 'request_failed', { code: error.code, path: loggedPath(c.req.path), error });
     return errorJson(c, error);
   }
-  logEvent('error', 'request_failed', { code: 'APP_INTERNAL', path: c.req.path, error });
+  logEvent('error', 'request_failed', { code: 'APP_INTERNAL', path: loggedPath(c.req.path), error });
   return errorJson(c, appError('APP_INTERNAL', 'unexpected error', { cause: error }));
 }
 

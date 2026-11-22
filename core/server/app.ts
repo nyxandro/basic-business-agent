@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { registerModelRoutes } from '../admin/routes/models.ts';
 import { registerTaskRoutes } from '../admin/routes/tasks.ts';
+import { registerHookRoutes } from '../background/hooks.ts';
 import { registerPeopleRoutes } from '../admin/routes/people.ts';
 import { registerRoleRoutes } from '../admin/routes/roles.ts';
 import { registerUsageReportRoutes } from '../admin/routes/usage.ts';
@@ -112,6 +113,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerInterfaceRoutes(app, { db: deps.db, registry: deps.chat.registry });
   registerStorageRoutes(app, { db: deps.db, storage: deps.storage });
   registerMailRoutes(app, { db: deps.db, mail: deps.chat.mail });
-  registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone });
+  registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone, box: deps.box, publicUrl: deps.publicUrl });
+  registerHookRoutes(app, { db: deps.db, wake: () => deps.background.wake() });
   return app;
 }

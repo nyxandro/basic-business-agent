@@ -41,7 +41,7 @@ describe('admin sections', () => {
     expect(await json(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }))).toMatchObject({ publishedInstructions: 'Отвечай кратко.' });
     expect((await t.call('POST', '/app/api/admin/agents/sales/prompt/revert', { cookie: admin })).status).toBe(200);
 
-    const body = { title: 'Сводка', agentId: 'sales', access: { scope: 'users', departmentIds: [], userIds: [adminId] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
+    const body = { title: 'Сводка', agentId: 'sales', trigger: 'schedule', access: { scope: 'users', departmentIds: [], userIds: [adminId] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
     expect((await t.call('POST', '/app/api/admin/tasks', { cookie: admin, body })).status).toBe(201);
     const tasks = await json<{ tasks: { title: string; cron: string }[] }>(await t.call('GET', '/app/api/admin/tasks', { cookie: admin }));
     expect(tasks.tasks.map((x) => [x.title, x.cron])).toEqual([['Сводка', '0 9 * * *']]);
@@ -129,7 +129,7 @@ describe('removing an employee', () => {
     const petr = await t.createUser({ email: 'petr@example.com', name: 'Пётр' });
     const session = await t.signIn('petr@example.com');
     await t.gateway.modelConfig('test-paid', petr, 'sales');
-    const task = { title: 'Задача Петра', agentId: 'sales', access: { scope: 'users', departmentIds: [], userIds: [petr] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
+    const task = { title: 'Задача Петра', agentId: 'sales', trigger: 'schedule', access: { scope: 'users', departmentIds: [], userIds: [petr] }, schedule: { kind: 'daily', time: '09:00' }, prompt: 'x' };
     expect((await t.call('POST', '/app/api/admin/tasks', { cookie: admin, body: task })).status).toBe(201);
     const workspace = join(t.workspaceRoot, petr);
     mkdirSync(join(workspace, 'files'), { recursive: true });

@@ -25,7 +25,7 @@ const deliveryOf = async (dedupKey: string) =>
     'SELECT d.status, d.error_code, d.attempts, d.send_after FROM app.notification_deliveries d JOIN app.notifications n ON n.id = d.notification_id WHERE n.dedup_key = $1',
     [dedupKey],
   )).rows[0];
-const told = (userId: string) => notices.taskResult({ userId, runId: `run-${++run}`, taskId: 'task-1', taskTitle: 'Утренняя сводка', agentId: 'sales' });
+const told = (userId: string) => notices.taskResult({ userId, runId: `run-${++run}`, taskId: 'task-1', taskTitle: 'Утренняя сводка', agentId: 'sales', threadId: `bg:task-1:${userId}` });
 const advance = (ms: number) => (clock = new Date(clock.getTime() + ms));
 // The database writes its own time; the notification is moved to the test's clock, as if written at that moment.
 async function tell(notice: Notice): Promise<void> {

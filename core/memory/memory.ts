@@ -41,7 +41,8 @@ export function titleFrom(firstMessage: string): string {
 
 export async function ensureThread(
   memory: Memory,
-  input: { threadId: string; resourceId: string; agentId: string; kind: ThreadKind; title: string },
+  // `taskId` — a conversation of an event of a background task: the lists show it under its task (event-tasks.md).
+  input: { threadId: string; resourceId: string; agentId: string; kind: ThreadKind; title: string; taskId?: string },
 ): Promise<void> {
   const existing = await memory.getThreadById({ threadId: input.threadId });
   if (existing) {
@@ -51,7 +52,7 @@ export async function ensureThread(
   }
   const now = new Date();
   // A conversation of the chat is named after its first message until the model names it (spec, 8.16).
-  const metadata = { agentId: input.agentId, kind: input.kind, ...(input.kind === 'chat' ? { titleSource: FIRST_MESSAGE } : {}) };
+  const metadata = { agentId: input.agentId, kind: input.kind, ...(input.kind === 'chat' ? { titleSource: FIRST_MESSAGE } : {}), ...(input.taskId ? { taskId: input.taskId } : {}) };
   await memory.saveThread({ thread: { id: input.threadId, resourceId: input.resourceId, title: input.title, metadata, createdAt: now, updatedAt: now } });
 }
 
