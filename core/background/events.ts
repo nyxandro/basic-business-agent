@@ -19,7 +19,7 @@ export const MESSAGE_TEXT_MAX = 8000;
 export const SUMMARY_MAX = 200;
 
 export type EventPayload =
-  | { kind: 'mail'; accountId: string; email: string; folder: string; uid: number; from: string; subject: string; date: string; text: string }
+  | { kind: 'mail'; accountId: string; email: string; folder: string; uid: number; from: string; subject: string; date: string; text: string; length: number }
   | { kind: 'webhook'; body: unknown };
 
 export interface NewEvent {
@@ -63,7 +63,7 @@ async function taskKeepers(db: Db): Promise<string[]> {
   return rows.map((r) => r.user_id);
 }
 
-async function tellKeepers(db: Db, task: TaskRow, trouble: 'flood' | 'executor', at: Date): Promise<void> {
+async function tellKeepers(db: Db, task: TaskRow, trouble: 'flood' | 'executor' | 'employee', at: Date): Promise<void> {
   for (const userId of await taskKeepers(db)) await notify(db, notices.taskTrouble({ userId, taskId: task.id, taskTitle: task.title, trouble, at }));
 }
 
@@ -79,20 +79,21 @@ export async function recordEvent(db: Db, input: NewEvent): Promise<Recorded> {
     if (task.status !== 'active') outcome = 'skipped_paused';
     else if (!userId || !(await mayRun(c, userId, task.agent_id))) outcome = 'skipped_executor';
     else {
-      // The ceiling counts what came in the last hour: a task's messages, or the letters of one mailbox.
+      // The ceiling counts what started a run in the last hour: a task's messages, or the letters of one mailbox. What
+      // was skipped does not count — 150 an hour give 100 runs every hour, not 100 once.
       const { rows } = await c.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM app.task_events
-          WHERE task_id = $1 AND received_at > now() - interval '1 hour' AND outcome NOT IN ('skipped_paused', 'skipped_executor')
-            AND ($2::text IS NULL OR payload->>'accountId' = $2)`,
+          WHERE task_id = $1 AND received_at > now() - interval '1 hour' AND outcome NOT LIKE 'skipped%'
+            AND ($2::uuid IS NULL OR mail_account_id = $2)`,
         [task.id, input.payload.kind === 'mail' ? input.payload.accountId : null],
       );
       if ((rows[0]?.n ?? 0) >= FLOOD_PER_HOUR) outcome = 'skipped_flood';
     }
     const skipped = outcome !== 'queued';
     const { rows } = await c.query<{ id: string; received_at: Date }>(
-      `INSERT INTO app.task_events (task_id, user_id, event_key, key_until, summary, payload, outcome)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, received_at`,
-      [task.id, userId, input.key, input.keyUntil, input.summary, skipped ? null : input.payload, outcome],
+      `INSERT INTO app.task_events (task_id, user_id, event_key, key_until, summary, payload, outcome, mail_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, received_at`,
+      [task.id, userId, input.key, input.keyUntil, input.summary, skipped ? null : input.payload, outcome, input.payload.kind === 'mail' ? input.payload.accountId : null],
     );
     const event = rows[0]!;
     if (!skipped) {
@@ -109,7 +110,7 @@ export async function recordEvent(db: Db, input: NewEvent): Promise<Recorded> {
   }
   logEvent(result.outcome === 'queued' ? 'info' : 'warn', result.outcome === 'skipped_flood' ? 'task_event_flood' : 'task_event_received', { taskId: task.id, eventId: result.eventId, outcome: result.outcome });
   if (result.outcome === 'skipped_flood') await tellKeepers(db, task, 'flood', result.at);
-  if (result.outcome === 'skipped_executor') await tellKeepers(db, task, 'executor', result.at);
+  if (result.outcome === 'skipped_executor') await tellKeepers(db, task, task.trigger === 'mail' ? 'employee' : 'executor', result.at);
   return { outcome: result.outcome, eventId: result.eventId };
 }
 
@@ -138,7 +139,15 @@ export function eventRun(event: EventRow, prompt: string, timezone: string): { t
   if (!payload) throw new Error(`event ${event.id} has no payload left to run with`);
   const data =
     payload.kind === 'mail'
-      ? [`Письмо в ящике ${payload.email} (папка ${payload.folder}, номер ${payload.uid})`, `От кого: ${payload.from}`, `Тема: ${payload.subject}`, `Дата: ${payload.date}`, '', clip(payload.text, LETTER_TEXT_MAX)].join('\n')
+      ? [
+          `Письмо в ящике ${payload.email} (папка ${payload.folder}, номер ${payload.uid})`,
+          `От кого: ${payload.from}`,
+          `Тема: ${payload.subject}`,
+          `Дата: ${payload.date}`,
+          '',
+          payload.text,
+          ...(payload.length > [...payload.text].length ? [`[…письмо длиннее: ${payload.length} знаков, здесь первые ${[...payload.text].length}; целиком — инструментом mailbox_read]`] : []),
+        ].join('\n')
       : [`Сообщение от другой системы, ${when(event.received_at, timezone)}`, '', clip(JSON.stringify(payload.body, null, 2), MESSAGE_TEXT_MAX)].join('\n');
   const title = payload.kind === 'mail' ? `Письмо от ${payload.from || 'неизвестного отправителя'}` : `Сообщение от другой системы · ${when(event.received_at, timezone)}`;
   return {
@@ -148,12 +157,21 @@ export function eventRun(event: EventRow, prompt: string, timezone: string): { t
 }
 
 // What became of the event once its run ended; a letter's content is no longer kept.
-export async function settleEvent(db: Db, eventId: string, outcome: 'done' | 'awaiting-approval' | 'failed', reasonCode: string | null): Promise<void> {
+export async function settleEvent(db: Db, eventId: string, outcome: 'done' | 'awaiting-approval' | 'failed' | 'skipped_executor', reasonCode: string | null): Promise<void> {
   await db.query(`UPDATE app.task_events SET outcome = $2, reason_code = $3, payload = CASE WHEN payload->>'kind' = 'mail' THEN NULL ELSE payload END WHERE id = $1`, [eventId, outcome, reasonCode]);
 }
 
-// The body of a system's message is kept 7 days after its outcome (section 13).
+// The body of a system's message is kept 7 days after its outcome (section 13); an event still «В очереди» after a
+// week never ran (its run was refused before the mark) and keeps nothing either.
 export async function forgetOldPayloads(db: Db): Promise<number> {
-  const { rowCount } = await db.query(`UPDATE app.task_events SET payload = NULL WHERE payload IS NOT NULL AND outcome NOT IN ('queued', 'awaiting-approval') AND received_at < now() - interval '7 days'`);
+  const { rowCount } = await db.query(`UPDATE app.task_events SET payload = NULL WHERE payload IS NOT NULL AND outcome <> 'awaiting-approval' AND received_at < now() - interval '7 days'`);
   return rowCount ?? 0;
+}
+
+// The events whose runs the queue skipped as more than a day late: not run, their letters not kept.
+export async function settleLateEvents(db: Db): Promise<void> {
+  await db.query(
+    `UPDATE app.task_events e SET outcome = 'failed', reason_code = 'too_late', payload = CASE WHEN e.payload->>'kind' = 'mail' THEN NULL ELSE e.payload END
+       FROM app.background_task_runs r WHERE r.event_id = e.id AND r.reason_code = 'too_late' AND e.outcome = 'queued'`,
+  );
 }

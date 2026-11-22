@@ -152,6 +152,8 @@ async function mailTasksOf(db: Db, userId: string): Promise<{ title: string; aut
   const { rows } = await db.query<{ title: string; author: string | null }>(
     `SELECT t.title, u."name" AS author FROM app.background_tasks t LEFT JOIN app."user" u ON u."id" = t.created_by
       WHERE t.trigger = 'mail' AND t.status = 'active'
+        AND (EXISTS (SELECT 1 FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id WHERE ur.user_id = $1 AND r.builtin = 'superadmin')
+             OR EXISTS (SELECT 1 FROM app.department_members dm JOIN app.department_agents da ON da.department_id = dm.department_id WHERE dm.user_id = $1 AND da.agent_id = t.agent_id))
         AND (t.scope = 'org'
              OR EXISTS (SELECT 1 FROM app.task_scope s WHERE s.task_id = t.id AND s.user_id = $1)
              OR EXISTS (SELECT 1 FROM app.task_scope s JOIN app.department_members dm ON dm.department_id = s.department_id WHERE s.task_id = t.id AND dm.user_id = $1))

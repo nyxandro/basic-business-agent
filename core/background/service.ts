@@ -38,7 +38,7 @@ import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, ty
 import { fireTimeOf } from './schedule.ts';
 import { membersOf } from './scope.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
-import { eventOf, eventOfThread, eventRun, eventThreadId, forgetOldPayloads, settleEvent } from './events.ts';
+import { eventOf, eventOfThread, eventRun, eventThreadId, forgetOldPayloads, settleEvent, settleLateEvents } from './events.ts';
 
 export const BACKGROUND_WORKFLOW_ID = 'background-run';
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -244,9 +244,18 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function runQueued(run: QueuedRun): Promise<void> {
     const row = await task(run.taskId);
     if (!row) return;
+    // An event task whose agent is gone stops, as a schedule task does at its fire («Агента больше нет»).
+    if (!deps.registry.get(row.agent_id)) {
+      if (row.status === 'active') await pause(row, 'agent_missing');
+      await db.query("UPDATE app.background_task_runs SET outcome = 'skipped', reason_code = 'agent_missing', finished_at = now() WHERE id = $1", [run.id]);
+      if (run.eventId) await settleEvent(db, run.eventId, 'failed', 'agent_missing');
+      return;
+    }
     const access = await loadAccess(db, run.userId);
     if (!access || access.blocked || (!access.isSuperadmin && !access.agentIds.has(row.agent_id))) {
-      await db.query("UPDATE app.background_task_runs SET outcome = 'skipped', reason_code = $2, finished_at = now() WHERE id = $1", [run.id, access?.blocked ? 'blocked' : 'no_access']);
+      const reason = access?.blocked ? 'blocked' : 'no_access';
+      await db.query("UPDATE app.background_task_runs SET outcome = 'skipped', reason_code = $2, finished_at = now() WHERE id = $1", [run.id, reason]);
+      if (run.eventId) await settleEvent(db, run.eventId, 'skipped_executor', reason);
       return;
     }
     let threadId = taskThreadId(row.id, run.userId);
@@ -271,7 +280,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     if (run.eventId) await settleEvent(db, run.eventId, result.outcome, result.code);
     // The result is told to the employee; a run that waits for «Да» is told by its question (core/approvals/requests.ts).
     const told = { userId: run.userId, runId: run.id, taskId: row.id, taskTitle: row.title, agentId: row.agent_id, threadId };
-    if (result.outcome === 'done') await notify(db, notices.taskResult(told));
+    // A run of an event tells only a failure: a «Готово» for every letter or message would drown the list.
+    if (result.outcome === 'done' && !run.eventId) await notify(db, notices.taskResult(told));
     if (result.outcome === 'failed') await notify(db, notices.taskFailed(told));
   }
 
@@ -362,6 +372,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
 
     async recover() {
       const result = await recoverRuns(db);
+      await settleLateEvents(db);
       if (result.requeued || result.late) logEvent('info', 'background_runs_recovered', result);
       queue.drain();
     },

@@ -5,6 +5,7 @@ import type { AdminPerson, AdminTask, MailReachResponse, TaskAccess } from '@bba
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { Field, Input, Select } from '../ui/Field.tsx';
+import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { accessIsEmpty } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
@@ -67,6 +68,7 @@ export function ExecutorField({ value, users, onChange }: { value: string; users
 // The address of a saved webhook task: always visible; a new one stops the old.
 export function HookAddress({ task, onRenewed }: { task: AdminTask; onRenewed: (task: AdminTask) => void }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const { busy, error, run } = useAction();
   if (!task.hookUrl) return null;
   const url = task.hookUrl;
@@ -90,9 +92,9 @@ export function HookAddress({ task, onRenewed }: { task: AdminTask; onRenewed: (
         <Button
           disabled={busy}
           onClick={() =>
-            void run(async () => {
-              onRenewed(await adminApi.renewHook(task.id));
-            }, 'Адрес сменён')
+            void confirm({ title: 'Сменить адрес задачи?', text: 'Старый адрес перестанет работать сразу: другой системе нужно будет вписать новый.', confirmLabel: 'Сменить адрес', danger: true }).then(async (yes) => {
+              if (yes) await run(async () => onRenewed(await adminApi.renewHook(task.id)), 'Адрес сменён');
+            })
           }
         >
           Сменить адрес

@@ -150,13 +150,24 @@ export const notices = {
   },
 
   // An event task skips events (docs/specs/[20.11.2026]-event-tasks.md, scenario 5): told once an hour per task and trouble.
-  taskTrouble(input: { userId: string; taskId: string; taskTitle: string; trouble: 'flood' | 'executor'; at: Date }): Notice {
+  // `employee` — a mail task: the owner of a mailbox is blocked or lost the agent (there is no executor to change).
+  taskTrouble(input: { userId: string; taskId: string; taskTitle: string; trouble: 'flood' | 'executor' | 'employee'; at: Date }): Notice {
     const hour = Math.floor(input.at.getTime() / 3_600_000);
     return notice({
       userId: input.userId,
       kind: 'task_trouble',
-      title: input.trouble === 'flood' ? `Задача «${input.taskTitle}» пропускает события: больше ${FLOOD_LIMIT_TEXT} в час` : `Задача «${input.taskTitle}» не работает: исполнитель недоступен`,
-      body: input.trouble === 'flood' ? 'Проверьте, кто шлёт сообщения на адрес задачи; если нужно — смените адрес в «Режимах работы».' : 'Исполнитель заблокирован или потерял доступ к агенту. Выберите другого в «Режимах работы».',
+      title:
+        input.trouble === 'flood'
+          ? `Задача «${input.taskTitle}» пропускает события: больше ${FLOOD_LIMIT_TEXT} в час`
+          : input.trouble === 'executor'
+            ? `Задача «${input.taskTitle}» не работает: исполнитель недоступен`
+            : `Задача «${input.taskTitle}» пропускает письма сотрудника`,
+      body:
+        input.trouble === 'flood'
+          ? 'Проверьте, кто шлёт сообщения на адрес задачи или письма в ящик; если нужно — смените адрес в «Режимах работы».'
+          : input.trouble === 'executor'
+            ? 'Исполнитель заблокирован или потерял доступ к агенту. Выберите другого в «Режимах работы».'
+            : 'Сотрудник заблокирован или потерял доступ к агенту задачи. Проверьте его отделы или область задачи.',
       link: '/admin/modes',
       dedupKey: `task_trouble:${input.taskId}:${input.trouble}:${hour}`,
       subjectRef: `task:${input.taskId}`,

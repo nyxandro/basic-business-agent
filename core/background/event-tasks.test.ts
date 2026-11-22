@@ -6,7 +6,8 @@ import type { AdminTask, TaskEventsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deliver, inbox, TEST_MAIL_SERVERS, testMailbox, testMailReady } from '../mail/test-server.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { eventThreadId, FLOOD_PER_HOUR } from './events.ts';
+import { eventThreadId, FLOOD_PER_HOUR, recordEvent } from './events.ts';
+import type { TaskRow } from './service.ts';
 import { createMailTrigger, type MailTrigger } from './mail-trigger.ts';
 import { createRunQueue, PRIORITY } from './queue.ts';
 import { createTask } from './tasks.ts';
@@ -128,18 +129,36 @@ describe('tasks by an event', () => {
     expect((await eventsOf(task.id)).rejected).toEqual({ tooLarge: 1, badFormat: 1 });
   }, 30_000);
 
+  // Review 22.11: a stranger's form wrote into the shared prototype of every object of the server.
+  it('a form that names __proto__ writes nothing shared, and text Postgres refuses is cleaned', async () => {
+    const task = await webhookTask('Подозрительная форма');
+    t.model.script({ text: 'Принято.' });
+    const res = await post(pathOf(task), '__proto__%5Bpolluted%5D=yes&constructor%5Bprototype%5D%5Bx%5D=1&name=%D0%98%D0%B2%D0%B0%D0%BD%00', 'application/x-www-form-urlencoded');
+    expect(res.status).toBe(200);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    await t.background.idle();
+    expect((await eventsOf(task.id)).events[0]!.summary).toBe('{"name":"Иван"}');
+  });
+
   it('over 100 events an hour skips the rest and tells the admins once; a blocked executor is skipped and told too', async () => {
     const task = await webhookTask('Сломанный скрипт');
     await t.db.query(
       `INSERT INTO app.task_events (task_id, user_id, event_key, summary, outcome) SELECT $1, $2, 'old-' || g, '{}', 'done' FROM generate_series(1, ${FLOOD_PER_HOUR}) g`,
       [task.id, olgaId],
     );
+    // Skipped events do not count towards the ceiling: an hour later the task runs again.
+    await t.db.query(`INSERT INTO app.task_events (task_id, user_id, event_key, summary, outcome) SELECT $1, $2, 'flooded-' || g, '{}', 'skipped_flood' FROM generate_series(1, 50) g`, [task.id, olgaId]);
     for (const n of [1, 2]) expect((await post(pathOf(task), JSON.stringify({ n }), 'application/json')).status).toBe(200);
     expect((await eventsOf(task.id)).events.slice(0, 2).map((e) => e.outcome)).toEqual(['skipped_flood', 'skipped_flood']);
     const told = await t.db.query<{ title: string }>(`SELECT title FROM app.notifications WHERE user_id = $1 AND kind = 'task_trouble'`, [igorId]);
     expect(told.rows.map((r) => r.title)).toEqual(['Задача «Сломанный скрипт» пропускает события: больше 100 событий в час']);
     const listed = (await json<{ tasks: AdminTask[] }>(await t.call('GET', '/app/api/admin/tasks', { cookie: igor }))).tasks.find((x) => x.id === task.id)!;
-    expect(listed.events).toEqual({ fired: FLOOD_PER_HOUR, skipped: 2 });
+    expect(listed.events).toEqual({ fired: FLOOD_PER_HOUR, skipped: 52 });
+    await t.db.query(`UPDATE app.task_events SET received_at = now() - interval '61 minutes' WHERE task_id = $1 AND event_key LIKE 'old-%'`, [task.id]);
+    t.model.script({ text: 'Снова работаю.' });
+    expect((await post(pathOf(task), JSON.stringify({ n: 3 }), 'application/json')).status).toBe(200);
+    await t.background.idle();
+    expect((await eventsOf(task.id)).events[0]).toMatchObject({ outcome: 'done' });
 
     const blocked = await webhookTask('У Петра', petrId);
     await t.db.query('UPDATE app.user_profiles SET blocked_at = now() WHERE user_id = $1', [petrId]);
@@ -148,6 +167,19 @@ describe('tasks by an event', () => {
     const executorTold = await t.db.query(`SELECT 1 FROM app.notifications WHERE user_id = $1 AND kind = 'task_trouble' AND title LIKE '%исполнитель недоступен%'`, [igorId]);
     expect(executorTold.rowCount).toBe(1);
     await t.db.query('UPDATE app.user_profiles SET blocked_at = NULL WHERE user_id = $1', [petrId]);
+  });
+
+  // Review 22.11: the ceiling of letters counts per mailbox even after the content of the letters is gone.
+  it('counts the ceiling of letters per mailbox', async () => {
+    const mail = await createTask(t.tasks, igorId, { title: 'Письма на лимит', agentId: 'sales', trigger: 'mail', access: { scope: 'users', departmentIds: [], userIds: [olgaId] }, mailFilter: { from: [], subject: [] }, prompt: 'Разбери.' });
+    const row = (await t.db.query<TaskRow>('SELECT * FROM app.background_tasks WHERE id = $1', [mail.id])).rows[0]!;
+    const busy = randomUUID();
+    const calm = randomUUID();
+    await t.db.query(`INSERT INTO app.task_events (task_id, user_id, event_key, outcome, mail_account_id) SELECT $1, $2, 'm-' || g, 'done', $3 FROM generate_series(1, ${FLOOD_PER_HOUR}) g`, [mail.id, olgaId, busy]);
+    const letter = (accountId: string, key: string) => recordEvent(t.db, { task: row, userId: olgaId, key, keyUntil: null, summary: null, payload: { kind: 'mail', accountId, email: 'olga@example.com', folder: 'INBOX', uid: 1, from: 'a@b.ru', subject: 'x', date: new Date().toISOString(), text: 'x', length: 1 } });
+    expect(await letter(busy, 'over')).toMatchObject({ outcome: 'skipped_flood' });
+    expect(await letter(calm, 'other')).toMatchObject({ outcome: 'queued' });
+    await t.db.query('DELETE FROM app.background_tasks WHERE id = $1', [mail.id]);
   });
 
   it('a run of an event is taken from the queue before the runs of schedules', async () => {

@@ -35,6 +35,7 @@ export interface MailTrigger {
 interface Cursor {
   uidvalidity: string;
   last_uid: string;
+  checked_at: Date;
 }
 
 type Mail = Pick<MailService, 'connected' | 'loginOf' | 'refused' | 'transport'>;
@@ -49,13 +50,22 @@ function isAutomatic(headers: Map<string, string>): boolean {
   return /auto_reply/i.test(String(headers.get('precedence') ?? ''));
 }
 
-async function textOf(client: ImapFlow, uid: number, size: number): Promise<string> {
-  if (size > TEXT_READ_MAX_BYTES) return '[Письмо большое — прочитай его целиком инструментом mailbox_read.]';
+// The first characters of a letter for its run, and how long it is (the run is told it reads a part).
+async function textOf(client: ImapFlow, uid: number, size: number): Promise<{ text: string; length: number }> {
+  if (size > TEXT_READ_MAX_BYTES) return { text: '[Письмо большое — прочитай его целиком инструментом mailbox_read.]', length: 0 };
   const full = await client.fetchOne(String(uid), { uid: true, source: true }, { uid: true });
-  if (!full || !full.source) return '';
+  if (!full || !full.source) return { text: '', length: 0 };
   const parsed = await simpleParser(full.source);
-  const text = (parsed.text ?? '').trim();
-  return [...text].slice(0, LETTER_TEXT_MAX + 1).join('');
+  const chars = [...(parsed.text ?? '').trim()];
+  return { text: chars.slice(0, LETTER_TEXT_MAX).join(''), length: chars.length };
+}
+
+// Answers of a mail server that are about the server now, not about the password: too many connections, unavailable.
+const NOT_THE_PASSWORD = new Set(['UNAVAILABLE', 'INUSE', 'LIMIT', 'SERVERBUG', 'CONTACTADMIN', 'OVERQUOTA']);
+function passwordRefused(error: unknown): boolean {
+  if (!isAppError(error) || error.code !== 'APP_MAIL_AUTH_FAILED') return false;
+  const response = (error.cause as { serverResponseCode?: unknown } | undefined)?.serverResponseCode;
+  return !(typeof response === 'string' && NOT_THE_PASSWORD.has(response.toUpperCase()));
 }
 
 const withTimeout = <T>(work: Promise<T>, ms: number): Promise<T> =>
@@ -69,6 +79,8 @@ export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void; 
   const { db } = deps;
   let timer: NodeJS.Timeout | null = null;
   let running: Promise<void> | null = null;
+  // A mailbox whose check outlived its minute keeps its connection until done: no second one is opened meanwhile.
+  const checking = new Set<string>();
 
   // The letters of one mailbox for the tasks it serves; the place it stopped moves once all of them are written.
   async function checkMailbox(account: MailAccount, tasks: TaskRow[], now: Date): Promise<void> {
@@ -79,10 +91,13 @@ export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void; 
         const box = client.mailbox;
         if (!box) throw new Error('mailbox not open');
         const validity = String(box.uidValidity);
-        const { rows } = await db.query<Cursor>('SELECT uidvalidity::text, last_uid::text FROM app.mail_trigger_cursors WHERE mail_account_id = $1 AND folder = $2', [account.id, FOLDER]);
+        const { rows } = await db.query<Cursor>('SELECT uidvalidity::text, last_uid::text, checked_at FROM app.mail_trigger_cursors WHERE mail_account_id = $1 AND folder = $2', [account.id, FOLDER]);
         const cursor = rows[0];
         if (cursor && cursor.uidvalidity !== validity) logEvent('warn', 'mail_trigger_reset', { accountId: account.id });
-        const from = cursor && cursor.uidvalidity === validity ? Number(cursor.last_uid) : null;
+        // A place last seen more than a day ago is no use: letters older than a day are not handled anyway, and the
+        // letters since then would be one huge fetch.
+        const fresh = cursor && cursor.uidvalidity === validity && now.getTime() - cursor.checked_at.getTime() < DAY_MS;
+        const from = fresh ? Number(cursor.last_uid) : null;
         // Without a place to go on from (a new mailbox, a changed UIDVALIDITY) — the letters of the last day.
         const found = from !== null ? ((await client.search({ uid: `${from + 1}:*` }, { uid: true })) || []) : ((await client.search({ since: new Date(now.getTime() - DAY_MS) }, { uid: true })) || []);
         // `UID n:*` gives the last letter even when there is none newer.
@@ -106,10 +121,10 @@ export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void; 
             if (fitting.length === 0) continue;
             const messageId = m.envelope?.messageId?.trim().toLowerCase();
             const key = messageId ? `mail:${messageId}` : `mail:${account.id}:${validity}:${m.uid}`;
-            const text = await textOf(client, m.uid, m.size ?? 0);
+            const { text, length } = await textOf(client, m.uid, m.size ?? 0);
             const fromText = sender?.name ? `${sender.name} <${address}>` : address;
             for (const task of fitting) {
-              const recorded = await recordEvent(db, { task, userId: account.userId, key, keyUntil: null, summary: null, payload: { kind: 'mail', accountId: account.id, email: account.email, folder: FOLDER, uid: m.uid, from: fromText, subject, date: received.toISOString(), text } });
+              const recorded = await recordEvent(db, { task, userId: account.userId, key, keyUntil: null, summary: null, payload: { kind: 'mail', accountId: account.id, email: account.email, folder: FOLDER, uid: m.uid, from: fromText, subject, date: received.toISOString(), text, length } });
               if (recorded.outcome === 'queued') deps.wake();
             }
           }
@@ -142,15 +157,18 @@ export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void; 
         }
       }
     }
-    const queue = [...byAccount.values()];
+    const queue = [...byAccount.values()].filter(({ account }) => !checking.has(account.id));
     const worker = async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {
         const { account, tasks: served } = next;
+        checking.add(account.id);
+        const check = checkMailbox(account, served, now).finally(() => checking.delete(account.id));
         try {
-          await withTimeout(checkMailbox(account, served, now), MAILBOX_TIME_MS);
+          await withTimeout(check, MAILBOX_TIME_MS);
         } catch (error) {
-          // A refused way in is «Ошибка доступа», as for the agent's tools; anything else waits for the next minute.
-          if (isAppError(error) && error.code === 'APP_MAIL_AUTH_FAILED') await deps.mail.refused(account);
+          // A refused password is «Ошибка доступа», as for the agent's tools; a busy or unavailable server and
+          // anything else wait for the next minute.
+          if (passwordRefused(error)) await deps.mail.refused(account);
           logEvent('warn', 'mail_trigger_failed', { accountId: account.id, code: isAppError(error) ? error.code : 'APP_INTERNAL', error });
         }
       }

@@ -32,30 +32,43 @@ async function readLimited(request: Request, max: number): Promise<Buffer | null
   return Buffer.concat(chunks);
 }
 
-// A form with keys like `data[FIELDS][ID]` (Bitrix24) becomes the object it names.
+// The names a stranger's form must never write: they reach the shared prototype of every object of the server.
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+// A form with keys like `data[FIELDS][ID]` (Bitrix24) becomes the object it names — of plain records without a
+// prototype, so `__proto__[x]=y` writes nothing shared (a key with a forbidden part is dropped whole).
 export function nestForm(params: URLSearchParams): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  const out = Object.create(null) as Record<string, unknown>;
   for (const [key, value] of params) {
     const path = key.split(/\[|\]\[|\]/).filter((part) => part !== '');
+    if (path.length === 0 || path.some((part) => FORBIDDEN_KEYS.has(part))) continue;
     let at = out;
     path.forEach((part, i) => {
       if (i === path.length - 1) at[part] = value;
-      else at = (at[part] = typeof at[part] === 'object' && at[part] !== null ? at[part] : {}) as Record<string, unknown>;
+      else at = (at[part] = typeof at[part] === 'object' && at[part] !== null ? at[part] : Object.create(null)) as Record<string, unknown>;
     });
   }
   return out;
+}
+
+// Text Postgres refuses (a NUL character, half of an emoji) is taken out of a stranger's message.
+function cleanText(value: unknown): unknown {
+  if (typeof value === 'string') return value.replaceAll('\u0000', '').toWellFormed();
+  if (Array.isArray(value)) return value.map(cleanText);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([k]) => !FORBIDDEN_KEYS.has(k)).map(([k, v]) => [cleanText(k) as string, cleanText(v)]));
+  return value;
 }
 
 export function parseBody(raw: Buffer, contentType: string): unknown {
   const text = raw.toString('utf8');
   if (contentType.includes('application/json')) {
     try {
-      return JSON.parse(text) as unknown;
+      return cleanText(JSON.parse(text) as unknown);
     } catch {
       return undefined;
     }
   }
-  if (contentType.includes('application/x-www-form-urlencoded')) return nestForm(new URLSearchParams(text));
+  if (contentType.includes('application/x-www-form-urlencoded')) return cleanText(nestForm(new URLSearchParams(text)));
   return undefined;
 }
 
