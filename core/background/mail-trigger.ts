@@ -64,7 +64,8 @@ const withTimeout = <T>(work: Promise<T>, ms: number): Promise<T> =>
     work.then(resolve, reject).finally(() => clearTimeout(timer));
   });
 
-export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void }): MailTrigger {
+// `intervalMs` — how often the check runs: POLL_INTERVAL_MS in an installation; the browser stand checks more often.
+export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void; intervalMs: number }): MailTrigger {
   const { db } = deps;
   let timer: NodeJS.Timeout | null = null;
   let running: Promise<void> | null = null;
@@ -165,7 +166,7 @@ export function createMailTrigger(deps: { db: Db; mail: Mail; wake: () => void }
       return running;
     },
     start() {
-      timer = setInterval(() => void trigger.poll().catch((error: unknown) => logEvent('error', 'mail_trigger_poll_failed', { error })), POLL_INTERVAL_MS);
+      timer = setInterval(() => void trigger.poll().catch((error: unknown) => logEvent('error', 'mail_trigger_poll_failed', { error })), deps.intervalMs);
       timer.unref();
     },
     stop() {

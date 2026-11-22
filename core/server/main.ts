@@ -53,7 +53,7 @@ import { IMAP_PORTS, SMTP_PORTS } from '@bba/contracts';
 import { realDiscoverDeps } from '../mail/discover.ts';
 import { realEndpoints } from '../mail/oauth.ts';
 import { createMailService } from '../mail/service.ts';
-import { createMailTrigger } from '../background/mail-trigger.ts';
+import { createMailTrigger, POLL_INTERVAL_MS } from '../background/mail-trigger.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
 
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
   await mastra.startWorkers();
   background.start();
   // Mail tasks: the mailboxes of their people are checked once a minute (docs/specs/[20.11.2026]-event-tasks.md).
-  const mailTrigger = createMailTrigger({ db, mail, wake: () => background.wake() });
+  const mailTrigger = createMailTrigger({ db, mail, wake: () => background.wake(), intervalMs: POLL_INTERVAL_MS });
   mailTrigger.start();
   notifications.delivery.start();
   // Runs a stopped server left go on first, then fires missed while it was down.
