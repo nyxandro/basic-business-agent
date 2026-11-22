@@ -1,7 +1,7 @@
 // Sections of the admin panel in menu order and groups (mockup «Админка»), and who may open them:
 // a section opens with any of its rights. Kept light — the side panel of the chat reads it to
 // show «Админка», while the panel itself loads separately.
-import type { AdminSection, MeResponse, Permission } from '@bba/contracts';
+import type { MeResponse, Permission } from '@bba/contracts';
 import type { IconName } from '../ui/Icon.tsx';
 
 export interface SectionDef {
@@ -9,7 +9,8 @@ export interface SectionDef {
   label: string;
   icon: IconName;
   group: string;
-  rights: AdminSection[];
+  // A section of the admin panel, or the knowledge base kept with the rights of documents.
+  rights: Permission[];
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -20,6 +21,7 @@ export const SECTIONS: SectionDef[] = [
   { path: 'skills', label: 'Скиллы', icon: 'layers', group: 'Агенты', rights: ['skills'] },
   { path: 'modes', label: 'Режимы работы', icon: 'clock', group: 'Агенты', rights: ['agents'] },
   { path: 'approval-rules', label: 'Согласования', icon: 'users', group: 'Агенты', rights: ['agents'] },
+  { path: 'knowledge', label: 'База знаний', icon: 'file', group: 'Агенты', rights: ['documents.org.manage', 'documents.department.manage'] },
   { path: 'users', label: 'Сотрудники', icon: 'users', group: 'Люди', rights: ['users'] },
   { path: 'departments', label: 'Отделы', icon: 'building', group: 'Люди', rights: ['departments'] },
   { path: 'roles', label: 'Роли', icon: 'key', group: 'Люди', rights: ['roles'] },
@@ -50,7 +52,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'documents.department.manage': 'Документы отдела',
 };
 
-export const hasRight = (me: MeResponse, right: AdminSection): boolean => me.isSuperadmin || me.permissions.includes(right);
+export const hasRight = (me: MeResponse, right: Permission): boolean => me.isSuperadmin || me.permissions.includes(right);
 
 export const canOpen = (me: MeResponse, section: SectionDef): boolean => section.rights.some((r) => hasRight(me, r));
 

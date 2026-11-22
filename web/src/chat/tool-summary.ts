@@ -10,6 +10,9 @@ import { parseToolResult, type ToolOutcome } from './tool-result.ts';
 // CopilotKit's state of a call, or ours for a call without its result that is not under way (call-progress.ts).
 export type ToolStatus = 'inProgress' | 'executing' | 'complete' | 'waiting' | 'stopped';
 
+// The search of the knowledge base: its line says what it found (core/knowledge/tools.ts).
+const KNOWLEDGE_SEARCH = 'knowledge_search';
+
 export type ToolSummary =
   | { state: 'running'; text: string }
   | { state: 'waiting'; text: string }
@@ -165,6 +168,14 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   if (memory) return memorySummary(memory, status, result);
   if (name === CONVERSATIONS_TOOL) return conversationsSummary(status, result, parameters);
   if (name === WIDGET_TOOL.components) return widgetComponentsSummary(status, result, parameters);
+  // The knowledge base of the organisation (docs/specs/[20.11.2026]-knowledge-base.md, section 7).
+  if (name === KNOWLEDGE_SEARCH) {
+    if (status !== 'complete') return { state: 'running', text: ru.chat.knowledge.searching };
+    const found = parseToolResult(result);
+    if (found.kind === 'failed') return { state: 'failed', text: ru.chat.knowledge.failed, code: found.code ?? null };
+    const n = (found.kind === 'ok' ? (found.value as { found?: unknown } | null)?.found : null) ?? 0;
+    return { state: 'done', text: typeof n === 'number' && n > 0 ? ru.chat.knowledge.found(n) : ru.chat.knowledge.nothing, readOnly: true, count: null, value: found.kind === 'ok' ? found.value : null };
+  }
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];
   // Under way: named by its action (owner, 20.11) — «Запись файла…», «Команда в рабочей папке…».

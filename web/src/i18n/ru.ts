@@ -276,6 +276,13 @@ export const ru = {
     loadFailed: 'Не удалось загрузить список агентов',
   },
   chat: {
+    // The knowledge base (docs/specs/[20.11.2026]-knowledge-base.md).
+    knowledge: {
+      searching: 'База знаний · Ищу…',
+      found: (n: number) => `База знаний · Нашёл фрагментов: ${n}`,
+      nothing: 'База знаний · Ничего не нашёл',
+      failed: 'База знаний · Поиск не удался',
+    },
     newThread: 'Новый разговор',
     threadsEmpty: 'Здесь появятся ваши разговоры с этим агентом',
     threadsTitle: 'Разговоры',
