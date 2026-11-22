@@ -125,8 +125,9 @@ function functionsCalledIn(value: unknown): string[] {
 
 export type ScreenCheck = { ok: true; surfaceId: string; created: boolean } | { ok: false; problems: string[] };
 
-// The screens shown earlier in the run, by their surfaceId: the components and the data each has now. A later call of
-// the same run may change one of them in place; a screen of an earlier answer is not here, and the agent draws a new one.
+// The screens shown earlier in the answer, by their surfaceId: the components and the data each has now. A later call
+// of the same answer may change one of them in place — also after a pause on «Да» or the browser (answer-screens.ts);
+// a screen of an earlier answer is not here, and the agent draws a new one.
 export type ShownScreen = { components: Map<string, Record<string, unknown>>; data: unknown };
 export type ShownScreens = Map<string, ShownScreen>;
 

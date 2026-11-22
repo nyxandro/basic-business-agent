@@ -6,6 +6,7 @@ import { operationsOf, WIDGET_CATALOG_ID, WIDGET_COMPONENTS, WIDGET_TOOL } from 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { checkScreen, componentIndex, componentsGuide, widgetManifest, type ShownScreens } from './catalog.ts';
+import { screensOfAnswer } from './answer-screens.ts';
 import { DESCRIPTION_DROPPED, dropOldDescriptions } from './history.ts';
 import { WIDGETS_OFF } from './prompt.ts';
 import { SHOWN_NOTE } from './tools.ts';
@@ -241,6 +242,66 @@ describe('widgets in a chat', () => {
     expect(resultOf(await run('Сделай 25'))).toMatchObject({ error: true, code: 'APP_WIDGET_INVALID' });
   });
 
+  // Issue #25: an answer that waited for «Да», «Нет» or the browser goes on in another request — the screen it showed
+  // before the pause is still its own and is changed in place, not drawn again.
+  describe('an answer that goes on after a pause', () => {
+    const update = { version: '1.0', updateDataModel: { surfaceId: 'kp', path: '/seats', value: 20 } };
+    const COMPUTER = [{ name: 'computer_folder_list', description: 'Что лежит в папке на компьютере', parameters: { type: 'object', properties: { path: { type: 'string' } } } }];
+    async function send(body: Record<string, unknown>): Promise<AguiEvent[]> {
+      const res = await t.call('POST', '/app/api/copilotkit/agent/sales/run', { cookie: olga, body: { runId: randomUUID(), tools: [], context: [], state: {}, forwardedProps: {}, ...body } });
+      expect(res.status).toBe(200);
+      return (await res.text())
+        .split('\n')
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => JSON.parse(l.slice(5)) as AguiEvent);
+    }
+    const interruptOf = (events: AguiEvent[]) => (events.find((e) => e.type === 'RUN_FINISHED') as unknown as { outcome?: { interrupts?: { id: string }[] } } | undefined)?.outcome?.interrupts?.[0];
+    const resultsOf = (events: AguiEvent[]) => events.filter((e) => e.type === 'TOOL_CALL_RESULT').map((e) => JSON.parse(e.content!) as Record<string, unknown>);
+
+    for (const answer of [{ name: '«Да»', resume: { status: 'resolved', payload: { approved: true } } }, { name: '«Нет»', resume: { status: 'cancelled' } }]) {
+      it(`changes the screen in place after ${answer.name}`, async () => {
+        const threadId = randomUUID();
+        t.model.script(
+          { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: CALCULATOR } }] },
+          { toolCalls: [{ name: 'mail_send', args: { to: 'client@example.com', text: 'КП' } }] },
+          { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [update] } }] },
+          { text: 'Отметил на экране.' },
+        );
+        const first = await send({ threadId, messages: [{ id: randomUUID(), role: 'user', content: 'Посчитай КП и отправь клиенту' }] });
+        const interrupt = interruptOf(first);
+        expect(interrupt).toBeTruthy();
+        const after = await send({ threadId, messages: [], resume: [{ interruptId: interrupt!.id, ...answer.resume }] });
+        expect(resultsOf(after).filter((r) => 'surfaceId' in r || 'code' in r).at(-1)).toEqual({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE });
+      });
+    }
+
+    it('changes the screen in place after the browser answered its tool', async () => {
+      const threadId = randomUUID();
+      t.model.script(
+        { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: CALCULATOR } }] },
+        { toolCalls: [{ name: 'computer_folder_list', args: {} }] },
+        { toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [update] } }] },
+        { text: 'Поправил по смете.' },
+      );
+      const user = { id: randomUUID(), role: 'user', content: 'Посчитай КП по смете из папки' };
+      const first = await send({ threadId, messages: [user], tools: COMPUTER });
+      const call = first.find((e) => e.type === 'TOOL_CALL_START' && e.toolCallName === 'computer_folder_list') as AguiEvent & { parentMessageId?: string };
+      const screenCall = first.find((e) => e.type === 'TOOL_CALL_START' && e.toolCallName === WIDGET_TOOL.render)!;
+      const after = await send({
+        threadId,
+        tools: COMPUTER,
+        messages: [
+          user,
+          { id: randomUUID(), role: 'assistant', content: '', toolCalls: [{ id: screenCall.toolCallId, type: 'function', function: { name: WIDGET_TOOL.render, arguments: JSON.stringify({ operations: CALCULATOR }) } }] },
+          { id: randomUUID(), role: 'tool', toolCallId: screenCall.toolCallId, content: JSON.stringify({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE }) },
+          { id: call.parentMessageId ?? randomUUID(), role: 'assistant', content: '', toolCalls: [{ id: call.toolCallId, type: 'function', function: { name: 'computer_folder_list', arguments: '{}' } }] },
+          { id: randomUUID(), role: 'tool', toolCallId: call.toolCallId, content: JSON.stringify({ folder: 'Тендер', entries: [{ path: 'смета.xlsx', kind: 'file', bytes: 10 }] }) },
+        ],
+      });
+      expect(resultsOf(after).at(-1)).toEqual({ shown: true, surfaceId: 'kp', note: SHOWN_NOTE });
+    }, 30_000);
+  });
+
   it('gives the model the reasons of a screen that fails the check', async () => {
     t.model.script({ toolCalls: [{ name: WIDGET_TOOL.render, args: { operations: [surface([{ id: 'root', component: 'Map' }])] } }] }, { text: 'Отвечу текстом.' });
     const events = await run('Покажи на карте');
@@ -288,6 +349,32 @@ describe('widgets in a chat', () => {
     expect(systemOf()).toContain(JSON.stringify(WIDGETS_OFF).slice(1, -1));
     expect(systemOf()).not.toContain('Данные и сущности показывай виджетом');
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { widgets: true } });
+  });
+});
+
+describe('the screens of the answer the agent goes on with', () => {
+  const call = (id: string, operations: unknown) => ({ role: 'assistant', content: [{ type: 'tool-call', toolCallId: id, toolName: WIDGET_TOOL.render, input: { operations } }] });
+  const result = (id: string, value: unknown) => ({ role: 'tool', content: [{ type: 'tool-result', toolCallId: id, toolName: WIDGET_TOOL.render, output: { type: 'json', value } }] });
+  const user = (text: string) => ({ role: 'user', content: [{ type: 'text', text }] });
+
+  it('are the shown screens after the person’s last message, as the check holds them', () => {
+    const prompt = [
+      user('первый'),
+      call('a', CALCULATOR),
+      result('a', { shown: true, surfaceId: 'kp' }),
+      user('второй'),
+      call('b', [{ version: '1.0', createSurface: { surfaceId: 'total', components: [{ id: 'root', component: 'Text', text: 'Итог' }] } }]),
+      result('b', { shown: true, surfaceId: 'total' }),
+      call('c', [{ version: '1.0', createSurface: { surfaceId: 'bad', components: [{ id: 'root', component: 'Map' }] } }]),
+      result('c', { error: true, code: 'APP_WIDGET_INVALID', message: 'нет' }),
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'm', toolName: 'mail_send', input: {} }] },
+    ];
+    const screens = screensOfAnswer(prompt);
+    expect([...screens.keys()]).toEqual(['total']);
+    expect(screens.get('total')!.components.get('root')).toMatchObject({ component: 'Text', text: 'Итог' });
+    // A result kept as text is read too.
+    const asText = [user('третий'), call('d', CALCULATOR), { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'd', toolName: WIDGET_TOOL.render, output: { type: 'text', value: JSON.stringify({ shown: true, surfaceId: 'kp' }) } }] }];
+    expect(screensOfAnswer(asText).get('kp')?.data).toEqual({ seats: 15 });
   });
 });
 

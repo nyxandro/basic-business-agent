@@ -148,6 +148,9 @@ describe('the operations of a call', () => {
       result('c3', { shown: true, surfaceId: 'kp' }),
     ];
     expect(laterChanges(afterRefused, 'c1', 'kp', 'kp@c1')).toEqual([{ version: '1.0', updateDataModel: { surfaceId: 'kp@c1', path: '/seats', value: 25 } }]);
+    // Issue #25: the answer went on after «Да» (the action's call and result between) — the change is still this screen's.
+    const afterYes = [call('c1', SCREEN), result('c1', { shown: true, surfaceId: 'kp' }), { role: 'assistant', toolCalls: [{ id: 'm1', function: { name: 'mail_send', arguments: '{}' } }] }, result('m1', { sent: true }), call('c2', change(35)), result('c2', { shown: true, surfaceId: 'kp' })];
+    expect(laterChanges(afterYes, 'c1', 'kp', 'kp@c1')).toEqual([{ version: '1.0', updateDataModel: { surfaceId: 'kp@c1', path: '/seats', value: 35 } }]);
   });
 });
 

@@ -2,8 +2,12 @@
 // 8.31): one costs ~7 thousand tokens, and the conversation history goes with every request. Only the outgoing request
 // is changed (`processLLMRequest`): Mastra's history keeps them, and the agent loads them again when it draws next time.
 // The current turn — everything after the person's last message — keeps them: the agent is drawing with them now.
+// Before the first model call of a request the same processor gives the request the screens the answer showed before
+// a pause on «Да», «Нет» or the browser (answer-screens.ts): `render_ui` may change them in place.
 import { WIDGET_TOOL } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
+import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { screensOfAnswer } from './answer-screens.ts';
 
 export const DESCRIPTION_DROPPED = `Описание компонентов убрано из истории. Чтобы нарисовать новый экран, вызови ${WIDGET_TOOL.components} заново.`;
 
@@ -26,7 +30,8 @@ export function dropOldDescriptions<T extends PromptMessage>(prompt: readonly T[
 export function createWidgetHistoryProcessor() {
   return {
     id: 'bba-widget-descriptions',
-    processLLMRequest({ prompt }) {
+    processLLMRequest({ prompt, requestContext }) {
+      if (requestContext && !(requestContext.get(REQUEST_KEYS.widgetScreens) instanceof Map)) requestContext.set(REQUEST_KEYS.widgetScreens, screensOfAnswer(prompt as PromptMessage[]));
       const dropped = dropOldDescriptions(prompt as PromptMessage[]);
       return dropped ? { prompt: dropped as typeof prompt } : undefined;
     },
