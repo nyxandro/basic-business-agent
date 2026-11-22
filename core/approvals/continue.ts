@@ -5,6 +5,10 @@
 import { randomUUID } from 'node:crypto';
 import type { Memory } from '@mastra/memory';
 import { RequestContext } from '@mastra/core/request-context';
+import type { Activity } from '../notifications/activity.ts';
+import { settleSnapshot, takeSnapshot } from '../projects/trash.ts';
+import { projectArea, userArea } from '../storage/areas.ts';
+import type { FileStorage } from '../storage/engine.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 import { holdThreadForServer, releaseThreadForServer } from '../chat/run.ts';
 import type { Db } from '../db/pool.ts';
@@ -34,6 +38,10 @@ export interface ChainContinuationDeps {
   timezone: string;
   gateway: Pick<ModelGateway, 'assertWithinBudget'>;
   skills: Pick<SkillsRuntime, 'skillsFor'>;
+  // As every run (spec, sections 8.20 and 8.23): the folder held, the project's files remembered, the ring of work.
+  storage: Pick<FileStorage, 'hold'>;
+  workspaceRoot: string;
+  activity: Pick<Activity, 'start'>;
 }
 
 async function lineOf(db: Db, row: ChainRow, code: string | null): Promise<string> {
@@ -88,6 +96,20 @@ export function createChainContinuation(deps: ChainContinuationDeps): ChainConti
     rc.set(REQUEST_KEYS.skillPaths, JSON.stringify(skillPaths));
     rc.set(REQUEST_KEYS.abilities, abilitiesValue(abilities));
     const agent = await resolveAgent(deps.editor, row.agent_id, 'published');
+    const release = await deps.storage.hold(project.projectId && project.projectOwnerId ? projectArea(project.projectId, project.projectOwnerId) : userArea(row.user_id), 'write');
+    const idle = deps.activity.start(row.user_id, row.thread_id);
+    const snapshot = project.projectId && project.projectOwnerId ? takeSnapshot(deps.workspaceRoot, { projectId: project.projectId, ownerId: project.projectOwnerId, userId: row.user_id, threadId: row.thread_id }) : null;
+    if (snapshot) rc.set(REQUEST_KEYS.projectSnapshot, snapshot.id);
+    try {
+      await turn(agent, rc, row, result);
+    } finally {
+      if (snapshot) await settleSnapshot(db, deps.workspaceRoot, snapshot).catch((error: unknown) => logEvent('error', 'project_trash_settle_failed', { code: 'APP_INTERNAL', projectId: snapshot.projectId, error }));
+      idle();
+      await release();
+    }
+  }
+
+  async function turn(agent: Awaited<ReturnType<typeof resolveAgent>>, rc: RequestContext, row: ChainRow, result: unknown): Promise<void> {
     const told = `[Итог согласования ${chainNumber(String(row.id))}] Действие «${row.summary}» согласовано и выполнено. Ответ системы: ${JSON.stringify(result).slice(0, 4000)}. Если работа в этом разговоре от этого действия зависела — продолжи её; иначе коротко сообщи итог.`;
     const stream = await agent.stream(told, { memory: { thread: row.thread_id, resource: row.user_id }, requestContext: rc });
     for await (const part of stream.fullStream) if (part.type === 'error') throw (part.payload as { error: unknown }).error;
@@ -98,17 +120,16 @@ export function createChainContinuation(deps: ChainContinuationDeps): ChainConti
     // The conversation was removed: the outcome stays in the notification and «Мои заявки».
     if (!thread || thread.resourceId !== row.user_id) return;
     const chat = !row.thread_id.startsWith('bg:') && !row.thread_id.startsWith('ev:');
-    if (chat && !(await waitForThread(row.thread_id))) {
-      logEvent('warn', 'approval_chain_line_skipped', { chainId: row.id, reason: 'thread_busy' });
-      return;
-    }
+    const held = chat ? await waitForThread(row.thread_id) : true;
     try {
       await memory.saveMessages({
         messages: [{ id: randomUUID(), threadId: row.thread_id, resourceId: row.user_id, role: 'assistant', createdAt: new Date(), content: { format: 2, parts: [{ type: 'text', text: await lineOf(db, row, code) }] } }],
       });
-      if (row.status === 'done') await goOn(row, result);
+      // A conversation busy for half an hour keeps the line only: the agent does not barge into a turn going on.
+      if (row.status === 'done' && held) await goOn(row, result);
+      if (!held) logEvent('warn', 'approval_chain_continuation_skipped', { chainId: row.id, reason: 'thread_busy' });
     } finally {
-      if (chat) releaseThreadForServer(row.thread_id);
+      if (chat && held) releaseThreadForServer(row.thread_id);
     }
   }
 

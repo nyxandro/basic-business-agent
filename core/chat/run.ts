@@ -117,7 +117,9 @@ function releaseThread(threadId: string): void {
 // A turn the server starts itself in a conversation — the continuation after an agreed request of multi-step
 // approvals (core/approvals/continue.ts): it takes the conversation as a person's turn does, or waits.
 export function holdThreadForServer(threadId: string): boolean {
-  if (busyThreads.has(threadId)) return false;
+  // A turn whose browser left goes on (its agent has not ended) though the conversation looks free: waited for too.
+  const live = liveRuns.get(threadId);
+  if (busyThreads.has(threadId) || (live && live.agentStarted && !live.life.ended)) return false;
   busyThreads.add(threadId);
   return true;
 }

@@ -16,7 +16,7 @@ import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { resolveStages } from './approvers.ts';
 import { canSee, chainDto, chainRow, decideChain, withdrawChain, type ChainRow } from './chains.ts';
 import type { ChainContinuation } from './continue.ts';
-import { agentActions } from './describe.ts';
+import { describeTools } from './describe.ts';
 import type { ChainExecutor } from './execute.ts';
 import { deleteRule, listRules, rulesFor, saveRule, setDepartmentHeads } from './rules.ts';
 
@@ -26,8 +26,9 @@ export interface ChainRouteDeps {
   registry: Registry;
   executor: ChainExecutor;
   continuation: ChainContinuation;
-  // The actions of the mailbox and of the connected systems, by their names (the chat's list).
-  extraActions: () => Record<string, ActionDescription & { system?: string }>;
+  // The actions of the mailbox and of the connected systems, by their names: the stored catalogue, not the memory of
+  // the process (empty after a restart until someone works).
+  extraActions: () => Promise<Record<string, ActionDescription & { system?: string }>>;
 }
 
 const previewSchema = z.strictObject({ tool: z.string().min(1).max(200) });
@@ -38,16 +39,17 @@ export function registerChainRoutes(app: Hono<AppEnv>, deps: ChainRouteDeps): vo
   const agents = requirePermission('agents');
   const agentName = (id: string) => deps.registry.get(id)?.passport.name ?? id;
 
-  // Every action that changes data, of every agent, the mailbox and the connected systems.
-  function actions(): ApprovalRulesResponse['actions'] {
+  // Every action that changes data: the agents' own (a sub-agent's are called by its parent, which the execution of a
+  // request cannot be), the mailbox's and the connected systems'.
+  async function actions(): Promise<ApprovalRulesResponse['actions']> {
     const out = new Map<string, ApprovalRulesResponse['actions'][number]>();
-    for (const rt of deps.registry.agents) for (const [target, a] of Object.entries(agentActions(rt))) if (!a.readOnly) out.set(target, { target, title: a.title, system: null });
-    for (const [target, a] of Object.entries(deps.extraActions())) if (!a.readOnly) out.set(target, { target, title: a.title, system: a.system ?? null });
+    for (const rt of deps.registry.agents) for (const [target, a] of Object.entries(describeTools(rt.tools))) if (!a.readOnly) out.set(target, { target, title: a.title, system: null });
+    for (const [target, a] of Object.entries(await deps.extraActions())) if (!a.readOnly) out.set(target, { target, title: a.title, system: a.system ?? null });
     return [...out.values()].sort((a, b) => a.title.localeCompare(b.title, 'ru'));
   }
 
   app.get('/app/api/admin/approval-rules', agents, async (c) => {
-    const known = actions();
+    const known = await actions();
     const rules = (await listRules(db)).map((r) => ({ ...r, id: String(r.id), title: known.find((a) => a.target === r.target)?.title ?? null }));
     return c.json({ rules, actions: known } satisfies ApprovalRulesResponse);
   });
@@ -107,6 +109,8 @@ export function registerChainRoutes(app: Hono<AppEnv>, deps: ChainRouteDeps): vo
     const userId = access(c).userId;
     const { approve, reason } = await parseJson(c, chainDecisionSchema);
     const id = c.req.param('id');
+    // Nobody learns the state of a request that is not theirs to see.
+    await visible(id, userId);
     const last = await decideChain(db, id, userId, approve, reason);
     if (last) deps.executor.wake();
     const row = (await chainRow(db, id))!;
@@ -117,6 +121,7 @@ export function registerChainRoutes(app: Hono<AppEnv>, deps: ChainRouteDeps): vo
 
   app.post('/app/api/approval-chains/:id/withdraw', async (c) => {
     const userId = access(c).userId;
+    await visible(c.req.param('id'), userId);
     await withdrawChain(db, c.req.param('id'), userId);
     return c.json(await chainDto(db, box, (await chainRow(db, c.req.param('id')))!, userId, agentName));
   });
@@ -124,10 +129,18 @@ export function registerChainRoutes(app: Hono<AppEnv>, deps: ChainRouteDeps): vo
   // «Повторить выполнение» of a request agreed but not done: within 72 hours, without new approvals.
   app.post('/app/api/approval-chains/:id/retry', async (c) => {
     const userId = access(c).userId;
-    const { rowCount } = await db.query(
-      `UPDATE app.approval_chains SET status = 'executing', call_started_at = NULL, error_code = NULL, finished_at = NULL WHERE id = $1 AND user_id = $2 AND status = 'failed' AND retry_until > now()`,
-      [c.req.param('id'), userId],
-    );
+    await visible(c.req.param('id'), userId);
+    let rowCount: number | null;
+    try {
+      ({ rowCount } = await db.query(
+        `UPDATE app.approval_chains SET status = 'executing', call_started_at = NULL, error_code = NULL, finished_at = NULL WHERE id = $1 AND user_id = $2 AND status = 'failed' AND retry_until > now()`,
+        [c.req.param('id'), userId],
+      ));
+    } catch (error) {
+      // The same call waits in another request already: one waiting request per call.
+      if ((error as { code?: unknown }).code === '23505') throw appError('APP_APPROVAL_DECIDED', 'the same call waits in another request', { userMessage: 'Такое же действие уже ждёт согласования в другой заявке — повторять эту не нужно.' });
+      throw error;
+    }
     if (!rowCount) throw appError('APP_APPROVAL_DECIDED', `chain ${c.req.param('id')} cannot be retried`, { userMessage: 'Повторить нельзя: заявка не ваша, уже выполнена или прошло 72 часа.' });
     deps.executor.wake();
     return c.json(await chainDto(db, box, (await chainRow(db, c.req.param('id')))!, userId, agentName));

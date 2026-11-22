@@ -179,7 +179,7 @@ async function main(): Promise<void> {
   // The knowledge base reads uploaded documents one at a time (docs/specs/[20.11.2026]-knowledge-base.md).
   const knowledgeIndexer = createKnowledgeIndexer({ db, docText });
   // Multi-step approvals: agreed requests run and end in the employee's conversation (docs/specs/[20.11.2026]-multi-step-approvals.md).
-  const continuation = createChainContinuation({ db, memory, editor, timezone: installation.app.timezone, gateway, skills });
+  const continuation = createChainContinuation({ db, memory, editor, timezone: installation.app.timezone, gateway, skills, storage: files, workspaceRoot: env.APP_WORKSPACE_DIR, activity: notifications.activity });
   const executor = createChainExecutor({ db, box, editor, skills, storage: files, continuation });
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications, approvals: { executor, continuation }, knowledge: { indexer: knowledgeIndexer } });
@@ -193,12 +193,13 @@ async function main(): Promise<void> {
   const stopPreviewPurge = startPreviewPurge(previewCache, 'preview');
   const stopDocTextPurge = startPreviewPurge(docTextCache, 'doctext');
   const stopWebTextPurge = startPreviewPurge(webTextCache, 'webtext');
+  // Requests a stopped server left are settled before any request comes: started ones are «итог неизвестен».
+  await executor.recover();
   const server = serve({ fetch: app.fetch, port: PORT }, (info) => logEvent('info', 'server_started', { port: info.port, agents: [...agentIds] }));
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
   background.start();
   // Requests a stopped server left: started ones are «итог неизвестен», agreed ones run; then every 10 s.
-  await executor.recover();
   executor.start();
   knowledgeIndexer.start();
   // Mail tasks: the mailboxes of their people are checked once a minute (docs/specs/[20.11.2026]-event-tasks.md).

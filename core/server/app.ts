@@ -50,6 +50,7 @@ import type { ChainExecutor } from '../approvals/execute.ts';
 import { createMailTools } from '../mail/tools.ts';
 import type { KnowledgeIndexer } from '../knowledge/indexer.ts';
 import { registerKnowledgeRoutes } from '../knowledge/routes.ts';
+import type { ActionDescription } from '@bba/contracts';
 
 export interface ServerDeps {
   db: Db;
@@ -133,7 +134,14 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
     box: deps.box,
     registry: deps.chat.registry,
     ...deps.approvals,
-    extraActions: () => ({ ...Object.fromEntries(Object.entries(mailActions).map(([k, a]) => [k, { ...a, system: 'Почта' }])), ...deps.connections.actionsSeen() }),
+    extraActions: async () => {
+      const catalog = await deps.connections.mcpCatalog();
+      const mcp: Record<string, ActionDescription & { system?: string }> = {};
+      for (const { actions, prefixes } of catalog.values()) {
+        for (const [name, a] of Object.entries(actions)) mcp[name] = { ...a, system: Object.entries(prefixes).find(([prefix]) => name.startsWith(prefix))?.[1] ?? '' };
+      }
+      return { ...Object.fromEntries(Object.entries(mailActions).map(([k, a]) => [k, { ...a, system: 'Почта' }])), ...deps.connections.actionsSeen(), ...mcp };
+    },
   });
   return app;
 }

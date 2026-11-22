@@ -36,13 +36,15 @@ export function applyApprovalPolicy(tool: AnyTool, opts: { readOnly: boolean; db
       const runKind = (contextValue(ctx, REQUEST_KEYS.runKind) ?? 'chat') as RunKind;
       const chainId = optionalContextValue(ctx?.requestContext, REQUEST_KEYS.chainExecution);
       if (!chainId && (await opts.chains.rulesApply(id))) {
-        if (!userId) throw new Error(`a call of ${id} under an approval rule without a person in the run`);
+        const agentId = contextValue(ctx, REQUEST_KEYS.agentId);
+        const threadId = contextValue(ctx, REQUEST_KEYS.threadId);
+        if (!userId || !agentId || !threadId) throw new Error(`a call of ${id} under an approval rule outside a run of a person (user, agent, conversation)`);
         const toolCallId = ctx?.agent?.toolCallId;
         if (!toolCallId) throw new Error(`a call of ${id} under an approval rule without its call id`);
         return opts.chains.send({
           userId,
-          agentId: contextValue(ctx, REQUEST_KEYS.agentId) ?? '',
-          threadId: contextValue(ctx, REQUEST_KEYS.threadId) ?? '',
+          agentId,
+          threadId,
           projectId: contextValue(ctx, REQUEST_KEYS.projectId),
           runKind: runKind === 'background' ? 'background' : 'chat',
           taskId: contextValue(ctx, REQUEST_KEYS.taskId),
@@ -65,16 +67,18 @@ export function applyApprovalPolicy(tool: AnyTool, opts: { readOnly: boolean; db
         // request, after every stage agreed.
         approvedBy: userId,
       };
+      let output: unknown;
       try {
-        const output = await execute(input, ctx);
-        await writeJournal(opts.db, { ...base, result: 'ok' });
-        return output;
+        output = await execute(input, ctx);
       } catch (error) {
         const errorCode = isAppError(error) ? error.code : 'APP_TOOL_FAILED';
         await writeJournal(opts.db, { ...base, result: 'error', errorCode });
         logEvent('warn', 'tool_failed', { tool: base.tool, agentId: base.agentId, code: errorCode, error });
         throw error;
       }
+      // The action ran: a journal that fails to write it is the server's trouble, never a second run of the action.
+      await writeJournal(opts.db, { ...base, result: 'ok' }).catch((error: unknown) => logEvent('error', 'journal_write_failed', { code: 'APP_INTERNAL', tool: base.tool, error }));
+      return output;
     },
   } as Parameters<typeof createTool>[0]) as AnyTool;
 }

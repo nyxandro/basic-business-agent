@@ -188,4 +188,28 @@ describe('a rule of approvals', () => {
     await t.approvals.executor.idle();
     expect(t.sentMail.map((m) => m.to)).toContain('f@example.com');
   }, 60_000);
+
+  // Review 22.11: a request that cannot run at all (its agent is gone) once stopped every request after it.
+  it('a request that cannot run fails alone; the next agreed one runs', async () => {
+    const stuck = String((await sendForApproval({ to: 'g@example.com', text: 'Застрявшее' })).sent.id);
+    const fine = String((await sendForApproval({ to: 'h@example.com', text: 'Следующее' })).sent.id);
+    await t.db.query(`UPDATE app.approval_chains SET status = 'executing', agent_id = 'ghost' WHERE id = $1`, [stuck]);
+    await t.db.query(`UPDATE app.approval_chains SET status = 'executing' WHERE id = $1`, [fine]);
+    t.model.script({ text: 'Отправил.' });
+    await t.approvals.executor.idle();
+    expect((await json<ChainDto>(await t.call('GET', `/app/api/approval-chains/${stuck}`, { cookie: olga }))).status).toBe('failed');
+    expect((await json<ChainDto>(await t.call('GET', `/app/api/approval-chains/${fine}`, { cookie: olga }))).status).toBe('done');
+    expect(t.sentMail.map((m) => m.to)).toContain('h@example.com');
+  }, 60_000);
+
+  // Section 10: a person met again in a later stage is asked once — the stage is passed, not sent to the admins.
+  it('asks a repeated approver once', async () => {
+    await t.call('PUT', `/app/api/admin/approval-rules/${ruleId}`, { cookie: igor, body: { target: 'mail_send', stages: [[{ kind: 'user', userId: ivanId }], [{ kind: 'user', userId: ivanId }]], enabled: true } });
+    const id = String((await sendForApproval({ to: 'i@example.com', text: 'Иванов дважды' })).sent.id);
+    t.model.script({ text: 'Готово.' });
+    expect((await decide(ivan, id, true)).status).toBe(200);
+    await t.approvals.executor.idle();
+    expect((await json<ChainDto>(await t.call('GET', `/app/api/approval-chains/${id}`, { cookie: olga }))).status).toBe('done');
+    expect((await chainsOf(igor)).forMe).toEqual([]);
+  }, 60_000);
 });

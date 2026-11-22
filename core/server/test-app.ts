@@ -380,7 +380,7 @@ export async function createTestApp(
   // The knowledge base reads uploaded documents one at a time (docs/specs/[20.11.2026]-knowledge-base.md).
   const knowledgeIndexer = createKnowledgeIndexer({ db, docText });
   // Multi-step approvals: agreed requests run and end in the employee's conversation (docs/specs/[20.11.2026]-multi-step-approvals.md).
-  const continuation = createChainContinuation({ db, memory, editor, timezone: 'Europe/Moscow', gateway, skills });
+  const continuation = createChainContinuation({ db, memory, editor, timezone: 'Europe/Moscow', gateway, skills, storage: files, workspaceRoot: workspaceRoot, activity: notifications.activity });
   const executor = createChainExecutor({ db, box, editor, skills, storage: files, continuation });
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;

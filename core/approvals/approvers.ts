@@ -14,6 +14,8 @@ export interface ResolvedStage {
   name: string;
   // The employee was the stage's only approver: passed (F4).
   self: boolean;
+  // Its approvers all agreed in an earlier stage already: passed, they are asked once (section 10).
+  repeated: boolean;
 }
 
 interface Person {
@@ -62,17 +64,22 @@ export async function resolveStages(db: Db, employeeId: string, stages: RuleAppr
       ids.push(...heads);
       names.push(departments.length === 0 ? 'руководитель отдела (отдела нет)' : `руководитель отдела ${departments.map((d) => `«${d.name}»`).join(' или ')}`);
     }
-    let people = (await active(db, [...new Set(ids)])).filter((p) => !asked.has(p.id));
+    const found = await active(db, [...new Set(ids)]);
+    let people = found.filter((p) => !asked.has(p.id));
     for (const p of people) if (!names.some((n) => n === p.name) && stage.some((a) => a.kind === 'user' && a.userId === p.id)) names.push(p.name);
+    if (people.length === 0 && found.length > 0) {
+      out.push({ approvers: [], name: names.join(', '), self: false, repeated: true });
+      continue;
+    }
     if (people.length === 0) {
-      people = (await keepers(db)).filter((p) => p.id !== employeeId);
+      people = (await keepers(db)).filter((p) => p.id !== employeeId && !asked.has(p.id));
       names.splice(0, names.length, 'администратор (у этапа нет согласующего)');
     }
     // Nobody else at all to ask (the employee is the only keeper): the stage is theirs, as F4.
     const self = people.length === 0 || (people.length === 1 && people[0]!.id === employeeId);
     const approvers = self ? [employeeId] : people.map((p) => p.id).filter((id) => id !== employeeId);
     for (const id of approvers) asked.add(id);
-    out.push({ approvers, name: names.join(', '), self });
+    out.push({ approvers, name: names.join(', '), self, repeated: false });
   }
   return out;
 }

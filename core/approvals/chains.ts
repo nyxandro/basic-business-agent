@@ -121,7 +121,7 @@ export function createChainService(deps: { db: Db; box: SecretBox }): ChainServi
       if (waiting.rows[0]) return { status: 'already_waiting', id: String(waiting.rows[0].id), stages: waiting.rows[0].stage_names, note: `Это действие с такими же параметрами уже на согласовании (${chainNumber(String(waiting.rows[0].id))}): новая заявка не нужна.` };
       if (!comment) throw appError('APP_CHAIN_REASON_REQUIRED', `no reason for the request of call ${request.toolCallId}`);
       const resolved = await resolveStages(db, request.userId, rules.flatMap((r) => r.stages));
-      const selfStages = new Set(resolved.flatMap((s, i) => (s.self ? [i + 1] : [])));
+      const selfStages = new Set(resolved.flatMap((s, i) => (s.self || s.repeated ? [i + 1] : [])));
       const stages = resolved.map((s) => s.approvers);
       const first = nextStage(stages, selfStages, 1);
       const sealed = box.seal(JSON.stringify(request.args ?? null));
@@ -134,7 +134,11 @@ export function createChainService(deps: { db: Db; box: SecretBox }): ChainServi
            request.action.title, JSON.stringify(request.action), comment, JSON.stringify(stages), JSON.stringify(resolved.map((s) => s.name)), first || stages.length, first ? 'pending' : 'executing', hoursFromNow(STAGE_HOURS)],
         );
         const chainId = String(rows[0]!.id);
-        for (const n of selfStages) await c.query(`INSERT INTO app.approval_chain_decisions (chain_id, stage, user_id, decision) VALUES ($1, $2, $3, 'self')`, [chainId, n, request.userId]);
+        // A stage of the employee (F4) — theirs; a stage of people asked before — passed without a name of its own.
+        for (const n of selfStages) {
+          const repeated = resolved[n - 1]!.repeated;
+          await c.query(`INSERT INTO app.approval_chain_decisions (chain_id, stage, user_id, decision, reason) VALUES ($1, $2, $3, 'self', $4)`, [chainId, n, repeated ? null : request.userId, repeated ? 'согласующий этого этапа уже согласовал на прошлом' : null]);
+        }
         return chainId;
       });
       await writeJournal(db, { userId: request.userId, agentId: request.agentId, runKind: request.runKind, taskId: request.taskId, event: 'approval_chain_created', tool: request.target, args: request.args, result: 'sent', approvedBy: request.userId });
@@ -187,11 +191,11 @@ export async function withdrawChain(db: Db, chainId: string, userId: string): Pr
   for (const approver of row.stages[row.stage - 1] ?? []) await notify(db, notices.chainWithdrawn({ userId: approver, chainId, action: row.summary }));
 }
 
-// Stages past their 72 hours: the request ends, the employee is told.
-export async function expireChains(db: Db): Promise<number> {
+// Stages past their 72 hours: the request ends, the employee is told (and its line written by the caller).
+export async function expireChains(db: Db): Promise<ChainRow[]> {
   const { rows } = await db.query<ChainRow>(`UPDATE app.approval_chains SET status = 'expired', finished_at = now() WHERE status = 'pending' AND stage_expires_at < now() RETURNING *`);
   for (const row of rows) await notify(db, notices.chainResult({ userId: row.user_id, chainId: row.id, action: row.summary, outcome: 'expired', agentId: row.agent_id, threadId: row.thread_id }));
-  return rows.length;
+  return rows;
 }
 
 export function statusText(status: ChainStatus): string {
