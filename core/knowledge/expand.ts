@@ -6,6 +6,7 @@
 import type pg from 'pg';
 import { correctionsOf } from '../search/match-sql.ts';
 import { normalize, type WordVariants } from '../search/variants.ts';
+import { cyrillicCode, latinCode, normText } from './chunk.ts';
 import { COMMON_SYNONYMS } from './synonyms.ts';
 
 export const VARIANTS_PER_WORD = 8;
@@ -47,18 +48,38 @@ async function synonymsOf(client: pg.PoolClient, words: string[], departmentIds:
   return out;
 }
 
+// A question as the words of the search take it: punctuation off the words («рекламация?», «djpdhfn,» — the word
+// itself), a hyphen kept only inside a word («С-21», «прайс-лист»).
+export function cleanQuestion(question: string): string {
+  return question
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/(^|\s)-+|-+(?=\s|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// A code — letters with digits, «С21», «C-21», «А500С» — in both scripts and without its hyphen: the document may have
+// it typed either way.
+function codeForms(word: string): string[] {
+  if (!/\p{N}/u.test(word) || !/\p{L}/u.test(word)) return [];
+  const joined = word.replaceAll('-', '');
+  return [joined, cyrillicCode(joined), latinCode(joined)];
+}
+
 export async function expandQuery(client: pg.PoolClient, variants: WordVariants[], question: string, departmentIds: string[]): Promise<ExpandedQuery> {
   const corrected = await correctionsOf(client, variants, 'app.kb_words');
   const synonyms = await synonymsOf(client, corrected.map((w) => w.word), departmentIds);
   const terms: string[][] = [];
   let total = 0;
   for (const word of corrected) {
-    // The word, its synonyms and the words it is a typo of first; its other scripts and layout fill what is left.
-    const candidates = [word.word, ...(synonyms.get(word.word) ?? []), ...word.corrections, ...word.direct];
-    const unique = [...new Set(candidates.map(termOf).filter((t): t is string => t !== null))].slice(0, Math.min(VARIANTS_PER_WORD, VARIANTS_PER_QUERY - total));
+    // The word, its code forms, its synonyms and the words it is a typo of first; its other scripts and layout fill what
+    // is left. The word itself always stays, past the limit of the query too.
+    const candidates = [word.word, ...codeForms(word.word), ...(synonyms.get(word.word) ?? []), ...word.corrections, ...word.direct];
+    const unique = [...new Set(candidates.map(termOf).filter((t): t is string => t !== null))].slice(0, Math.max(1, Math.min(VARIANTS_PER_WORD, VARIANTS_PER_QUERY - total)));
     if (unique.length === 0) continue;
     total += unique.length;
     terms.push(unique);
   }
-  return { tsquery: terms.flat().join(' | '), norm: normalize(question).trim(), terms };
+  // The trigrams compare a code joined, as documents mostly have it: «С-21» as «с21».
+  return { tsquery: terms.flat().join(' | '), norm: normText(question.replace(/(\p{L}+)-(\p{N}+)/gu, '$1$2')).trim(), terms };
 }

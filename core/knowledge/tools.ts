@@ -9,6 +9,7 @@ import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { requireContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { runRoot } from '../sandbox/workspace.ts';
+import { logEvent } from '../server/log.ts';
 import { saveInFolder } from '../workspace/layout.ts';
 import { searchKnowledge } from './search.ts';
 import { documentFile } from './store.ts';
@@ -21,7 +22,14 @@ export const WORDS_NOTE = 'Поиск только по словам: если �
 export const OPEN_NOTE = 'Документ скопирован в рабочую папку: читай его скиллами документов.';
 
 type Ctx = { requestContext?: { get(key: string): unknown } } | undefined;
-const failure = (error: unknown) => ({ error: true, code: isAppError(error) ? error.code : 'APP_INTERNAL', message: isAppError(error) ? error.userMessage : 'Поиск в базе знаний не удался.' });
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The model gets the error as text; a failure of the server is also logged here, at the tool's boundary.
+function failure(tool: string, error: unknown) {
+  if (isAppError(error)) return { error: true, code: error.code, message: error.userMessage };
+  logEvent('error', 'knowledge_tool_failed', { code: 'APP_INTERNAL', tool, error });
+  return { error: true, code: 'APP_INTERNAL', message: 'Поиск в базе знаний не удался.' };
+}
 
 export function createKnowledgeTools(deps: { db: Db; workspaceRoot: string }): Record<string, AnyTool> {
   const search = createTool({
@@ -31,12 +39,14 @@ export function createKnowledgeTools(deps: { db: Db; workspaceRoot: string }): R
       WORDS_NOTE,
     inputSchema: z.object({ query: z.string().min(2).max(300).describe('Ключевые слова вопроса'), document: z.string().optional().describe('Номер документа (docId), если искать только в нём') }),
     execute: async ({ query, document }, ctx) => {
+      // A title or a reference instead of the number of a document: the model is told what the parameter takes.
+      if (document !== undefined && !UUID.test(document)) return { error: true, code: 'APP_VALIDATION_FAILED', message: 'document — это docId документа из прошлого результата knowledge_search (вида 0b1c…-…), не название и не ref. Повтори без него или с docId.' };
       try {
         const userId = requireContextValue((ctx as Ctx)?.requestContext, REQUEST_KEYS.userId);
         const fragments = await searchKnowledge(deps.db, userId, query, document ?? null);
         return { found: fragments.length, mode: 'words' as const, fragments, note: WORDS_NOTE };
       } catch (error) {
-        return failure(error);
+        return failure(KNOWLEDGE_TOOLS.search, error);
       }
     },
   });
@@ -52,7 +62,7 @@ export function createKnowledgeTools(deps: { db: Db; workspaceRoot: string }): R
         const saved = saveInFolder(runRoot(deps.workspaceRoot, requestContext), KNOWLEDGE_FOLDER, file.name, new Uint8Array(file.content), { anyType: true });
         return { path: saved.path, note: OPEN_NOTE };
       } catch (error) {
-        return failure(error);
+        return failure(KNOWLEDGE_TOOLS.open, error);
       }
     },
   });

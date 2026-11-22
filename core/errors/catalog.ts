@@ -118,7 +118,7 @@ export const ERROR_CATALOG = {
   APP_KNOWLEDGE_BAD_TEXT: { status: 422, userMessage: 'Текст документа не читается (повреждены шрифты или файл). Пересохраните документ из исходной программы.' },
   APP_KNOWLEDGE_SLOW: { status: 503, userMessage: 'Разбор не уложился во время — сервер был занят. Нажмите «Повторить».' },
   APP_KNOWLEDGE_REPLACED: { status: 409, userMessage: 'Документ заменён новой редакцией — откройте текущую.' },
-  APP_DEPARTMENT_HAS_KNOWLEDGE: { status: 409, userMessage: 'В базе знаний отдела есть документы. Перенесите их в базу организации или удалите, затем удаляйте отдел.' },
+  APP_DEPARTMENT_HAS_KNOWLEDGE: { status: 409, userMessage: 'В базе знаний отдела есть документы. Удалите их в «Базе знаний» (нужные сначала загрузите в базу организации), затем удаляйте отдел.' },
   // Complaints, samples, the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
   APP_SUPPORT_FAILED: { status: 500, userMessage: 'Жалоба не отправилась. Попробуйте ещё раз.' },
   APP_SUPPORT_TOO_LONG: { status: 400, userMessage: 'Жалоба получилась слишком длинной. Сократите текст.' },

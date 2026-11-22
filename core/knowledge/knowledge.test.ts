@@ -2,7 +2,7 @@
 // agent finds the right one by words in full force — forms, synonyms, typos, another script and layout, codes — with its
 // document, section and edition; a department's documents only for its people (F3); the document whole is copied into
 // the conversation's folder. Search by meaning is not built (owner 22.11, F4).
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { KbDocumentsResponse } from '@bba/contracts';
@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { chatRoot } from '../workspace/layout.ts';
 import { chunksOf, SHEET_ROWS } from './chunk.ts';
-import { searchKnowledge } from './search.ts';
+import { FRAGMENT_CHARS, searchKnowledge } from './search.ts';
 
 let t: TestApp;
 let igor: string;
@@ -78,6 +78,29 @@ describe('the fragments of a document', () => {
     const pdf = chunksOf('pdf', '— стр. 1 —\nПервая страница.\n\n— стр. 2: без текста (картинка или скан) —\n\n— стр. 3 —\nТретья.');
     expect(pdf.map((c) => c.page)).toEqual([1, 3]);
   });
+
+  // The independent review of 22.11: no fragment is longer than what the agent is shown.
+  it('cut a long paragraph, a wide sheet and a page without blank lines into pieces the agent sees whole', () => {
+    const long = Array.from({ length: 80 }, (_, i) => `Пункт ${i} регламента о порядке возврата товара покупателем.`).join(' ');
+    const page = Array.from({ length: 90 }, (_, i) => `Строка ${i} страницы прайса без пустых строк`).join('\n');
+    const wide = Array.from({ length: 40 }, (_, i) => `Позиция ${i},${'описание товара очень подробное '.repeat(4)},${i * 10}`).join('\n');
+    for (const chunks of [chunksOf('word', `# Раздел\n\n${long}`), chunksOf('pdf', `— стр. 1 —\n${page}`), chunksOf('sheet', `## Прайс\nНаименование,Описание,Цена\n${wide}`)]) {
+      expect(chunks.length).toBeGreaterThan(1);
+      expect(Math.max(...chunks.map((c) => c.text.length))).toBeLessThanOrEqual(FRAGMENT_CHARS);
+    }
+    expect(chunksOf('sheet', `## Прайс\nНаименование,Описание,Цена\n${wide}`).every((c) => c.text.startsWith('Наименование,Описание,Цена'))).toBe(true);
+  });
+
+  it('follow the slides of a presentation, its number as the page and its notes inside', () => {
+    const deck = '<!-- Slide number: 1 -->\n# Цены\nПрофнастил С21 — 495 ₽\n\n### Notes:\nНе называть скидку\n\n<!-- Slide number: 2 -->\nСроки отгрузки — 3 дня';
+    const chunks = chunksOf('slides', deck);
+    expect(chunks.map((c) => [c.page, c.section])).toEqual([
+      [1, 'Цены'],
+      [2, null],
+    ]);
+    expect(chunks[0]!.text).toContain('Не называть скидку');
+    expect(chunks[1]!.text).not.toContain('Slide number');
+  });
 });
 
 describe('the knowledge base', () => {
@@ -103,7 +126,11 @@ describe('the knowledge base', () => {
     expect((await top('вазврат товара'))?.text).toContain('14 дней');
     expect((await top('vozvrat'))?.text).toContain('14 дней');
     expect((await top('djpdhfn'))?.text).toContain('14 дней');
-    expect((await top('C21 лист'))?.section).toBe('Регламент возвратов › Профнастил С21');
+    expect((await top('C21'))?.section).toBe('Регламент возвратов › Профнастил С21');
+    expect((await top('С-21'))?.section).toBe('Регламент возвратов › Профнастил С21');
+    // A question mark or a comma does not switch off synonyms, typos and the layout of the word.
+    expect((await top('рекламация?'))?.text).toContain('14 дней');
+    expect((await top('djpdhfn,'))?.text).toContain('14 дней');
   });
 
   it('shows a department’s documents only to its people, also to its agent (F3)', async () => {
@@ -138,6 +165,38 @@ describe('the knowledge base', () => {
     expect((await t.call('DELETE', `/app/api/knowledge/documents/${returns}`, { cookie: igor })).status).toBe(200);
     expect(await searchKnowledge(t.db, olgaId, 'срок возврата', null)).toEqual([]);
     expect((await t.db.query(`SELECT 1 FROM app.kb_words WHERE word = 'возврат'`)).rowCount).toBe(0);
+  });
+
+  // The review of 22.11: one document that cannot be read never stops the reading of the others.
+  it('refuses a document that keeps failing and reads the next one', async () => {
+    // Hex does not compress: the word is over the size of an index row of Postgres.
+    const word = randomBytes(1600).toString('hex');
+    const bad = await upload(igor, 'Ключи.txt', `# Ключи\n\n${word}`);
+    const good = await upload(igor, 'Памятка.md', '# Памятка\n\nПропуск выдаёт охрана на первом этаже.');
+    await t.knowledge.indexer.idle();
+    const listed = await json<KbDocumentsResponse>(await t.call('GET', '/app/api/knowledge/documents', { cookie: igor }));
+    expect(listed.documents.find((d) => d.id === good.id)).toMatchObject({ status: 'ready' });
+    expect(listed.documents.find((d) => d.id === bad.id)?.status).not.toBe('pending');
+    expect((await searchKnowledge(t.db, olgaId, 'пропуск охрана', null))[0]?.document).toBe('Памятка');
+  });
+
+  it('gives an earlier version of a file only to the one who keeps the base', async () => {
+    const up = await upload(igor, 'Тарифы.md', '# Тарифы\n\nДоставка по городу — 500 ₽.');
+    await t.knowledge.indexer.idle();
+    const form = new FormData();
+    form.append('file', new File(['# Тарифы\n\nДоставка по городу — 700 ₽.'], 'Тарифы.md'));
+    await t.app.request(`/app/api/knowledge/documents/${up.id}/versions`, { method: 'POST', headers: { cookie: igor }, body: form });
+    await t.knowledge.indexer.idle();
+    expect((await t.call('GET', `/app/api/knowledge/documents/${up.id}/file`, { cookie: olga })).status).toBe(200);
+    expect((await t.call('GET', `/app/api/knowledge/documents/${up.id}/file?version=1`, { cookie: olga })).status).toBe(404);
+    expect(await (await t.call('GET', `/app/api/knowledge/documents/${up.id}/file?version=1`, { cookie: igor })).text()).toContain('500 ₽');
+  });
+
+  it('answers a wrong address with a code, not a server failure', async () => {
+    expect((await t.call('GET', '/app/api/knowledge/documents?department=nope', { cookie: igor })).status).toBe(404);
+    expect((await upload(igor, 'Ничей.md', '# Ничей', randomUUID())).status).toBe(404);
+    expect((await t.call('DELETE', '/app/api/knowledge/synonyms/not-a-uuid', { cookie: igor })).status).toBe(404);
+    expect((await t.call('GET', `/app/api/knowledge/documents/${randomUUID()}/file?version=99999999999`, { cookie: igor })).status).toBe(400);
   });
 
   it('adds synonyms of the company: «отгул» finds «выходной день»', async () => {

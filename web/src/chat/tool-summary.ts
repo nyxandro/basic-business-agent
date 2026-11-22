@@ -170,11 +170,11 @@ export function toolSummary(name: string, status: ToolStatus, result: string | u
   if (name === WIDGET_TOOL.components) return widgetComponentsSummary(status, result, parameters);
   // The knowledge base of the organisation (docs/specs/[20.11.2026]-knowledge-base.md, section 7).
   if (name === KNOWLEDGE_SEARCH) {
-    if (status !== 'complete') return { state: 'running', text: ru.chat.knowledge.searching };
+    if (status !== 'complete') return { state: 'running', text: ru.knowledge.chat.searching };
     const found = parseToolResult(result);
-    if (found.kind === 'failed') return { state: 'failed', text: ru.chat.knowledge.failed, code: found.code ?? null };
+    if (found.kind === 'failed') return { state: 'failed', text: ru.knowledge.chat.failed, code: found.code ?? null };
     const n = (found.kind === 'ok' ? (found.value as { found?: unknown } | null)?.found : null) ?? 0;
-    return { state: 'done', text: typeof n === 'number' && n > 0 ? ru.chat.knowledge.found(n) : ru.chat.knowledge.nothing, readOnly: true, count: null, value: found.kind === 'ok' ? found.value : null };
+    return { state: 'done', text: typeof n === 'number' && n > 0 ? ru.knowledge.chat.found(n) : ru.knowledge.chat.nothing, readOnly: true, count: null, value: found.kind === 'ok' ? found.value : null };
   }
   const system = systemOf(agent.systems, name);
   const action = agent.actions[name];

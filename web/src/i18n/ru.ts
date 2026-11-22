@@ -3,6 +3,8 @@
 import { plural } from '../ui/format.ts';
 import { marksTexts } from './marks.ts';
 import { mcpAdminTexts, mcpEmployeeTexts } from './mcp.ts';
+import { chainsTexts } from './chains.ts';
+import { knowledgeTexts } from './knowledge.ts';
 import { orgTexts } from './org.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
@@ -276,13 +278,6 @@ export const ru = {
     loadFailed: 'Не удалось загрузить список агентов',
   },
   chat: {
-    // The knowledge base (docs/specs/[20.11.2026]-knowledge-base.md).
-    knowledge: {
-      searching: 'База знаний · Ищу…',
-      found: (n: number) => `База знаний · Нашёл фрагментов: ${n}`,
-      nothing: 'База знаний · Ничего не нашёл',
-      failed: 'База знаний · Поиск не удался',
-    },
     newThread: 'Новый разговор',
     threadsEmpty: 'Здесь появятся ваши разговоры с этим агентом',
     threadsTitle: 'Разговоры',
@@ -415,39 +410,7 @@ export const ru = {
     answerAgain: 'Ответить заново',
     actionDoneHint: 'Агент уже выполнил действие в этом ответе — напишите, что делать дальше.',
   },
-  // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md, section 12).
-  chains: {
-    checking: 'Проверяю правила согласования…',
-    checkFailed: 'Не удалось проверить правила согласования. Попробуйте ещё раз.',
-    needed: (stages: string[]) => `Нужно согласование: ${stages.join(' → ')}`,
-    reason: 'Зачем — увидят согласующие',
-    reasonExample: 'Клиент берёт три вагона, конкурент дал 14 %',
-    send: 'Отправить на согласование',
-    title: 'Согласования',
-    forMe: 'Ждут вашего согласования',
-    mine: 'Мои заявки',
-    number: (id: string, stage: number, stages: number) => `Согласование №${id} · этап ${stage} из ${stages}`,
-    requester: (name: string, agent: string, when: string) => `Просит: ${name}, агент «${agent}», ${when}`,
-    why: 'Зачем',
-    approve: 'Согласовать',
-    decline: 'Отклонить',
-    declineReason: 'Причина — её увидит сотрудник',
-    withdraw: 'Отозвать',
-    retry: 'Повторить выполнение',
-    status: {
-      pending: (stage: number, stages: number, who: string) => `На согласовании: этап ${stage} из ${stages} — ${who}`,
-      executing: 'Согласовано, выполняется',
-      done: 'Согласовано и выполнено',
-      failed: (code: string | null) => `Согласовано, но не выполнено${code ? ` · ${code}` : ''}`,
-      declined: 'Отклонено',
-      expired: 'Истекло: согласующий не ответил',
-      withdrawn: 'Отозвано',
-      unknown_outcome: 'Неизвестно, выполнено ли действие — проверьте в системе',
-    },
-    sentRow: (id: string) => `Отправлено на согласование №${id}`,
-    waitingRow: (id: string) => `Уже на согласовании (№${id})`,
-    empty: 'Заявок нет.',
-  },
+  chains: chainsTexts,
   approvals: {
     title: 'Ждёт подтверждения',
     lead: 'Вопросы агентов: из фоновых задач и из разговоров. Без ответа в срок действие не выполнится.',
@@ -820,6 +783,7 @@ export const ru = {
   },
   marks: marksTexts,
   mcp: { admin: mcpAdminTexts, employee: mcpEmployeeTexts },
+  knowledge: knowledgeTexts,
   org: orgTexts,
   clientErrors: {
     APP_PREVIEW_PASSWORD: 'Документ защищён паролем — посмотреть его здесь нельзя. Скачайте его.',

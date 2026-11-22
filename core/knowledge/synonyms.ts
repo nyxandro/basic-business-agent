@@ -3,7 +3,8 @@
 // the base of its level (the organisation or a department). Words are kept as the search compares them: lower case,
 // «ё» as «е».
 import { randomUUID } from 'node:crypto';
-import type { Db } from '../db/pool.ts';
+import { writeAudit } from '../audit/audit.ts';
+import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { normalize } from '../search/variants.ts';
 
@@ -37,19 +38,35 @@ export async function listGroups(db: Db, departmentId: string | null): Promise<S
   return rows;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const groupMissing = (groupId: string) => appError('APP_NOT_FOUND', `synonym group ${groupId} not found`, { userMessage: 'Группа синонимов не найдена. Обновите страницу.' });
+
+// A group is replaced whole, in one transaction: a failed write leaves the group as it was. A group of another base is
+// not found here.
 export async function saveGroup(db: Db, actorUserId: string, departmentId: string | null, groupId: string | null, words: string[]): Promise<SynonymGroup> {
   const clean = [...new Set(words.map((w) => normalize(w).replace(/\s+/g, ' ').trim()).filter((w) => w !== ''))].slice(0, SYNONYM_WORDS_MAX);
   if (clean.length < 2) throw appError('APP_VALIDATION_FAILED', 'a synonym group of one word', { userMessage: 'В группе нужно хотя бы два слова.' });
+  if (groupId !== null && !UUID.test(groupId)) throw groupMissing(groupId);
   const id = groupId ?? randomUUID();
-  await db.query('DELETE FROM app.kb_synonyms WHERE group_id = $1 AND department_id IS NOT DISTINCT FROM $2::uuid', [id, departmentId]);
-  await db.query(
-    `INSERT INTO app.kb_synonyms (group_id, word, scope, department_id, created_by) SELECT $1, w, $2, $3, $4 FROM unnest($5::text[]) AS w`,
-    [id, departmentId ? 'department' : 'org', departmentId, actorUserId, clean],
-  );
+  await inTransaction(db, async (c) => {
+    if (groupId !== null) {
+      const { rowCount } = await c.query('DELETE FROM app.kb_synonyms WHERE group_id = $1 AND department_id IS NOT DISTINCT FROM $2::uuid', [id, departmentId]);
+      if (!rowCount) throw groupMissing(groupId);
+    }
+    await c.query(
+      `INSERT INTO app.kb_synonyms (group_id, word, scope, department_id, created_by) SELECT $1, w, $2, $3, $4 FROM unnest($5::text[]) AS w`,
+      [id, departmentId ? 'department' : 'org', departmentId, actorUserId, clean],
+    );
+    await writeAudit(c, { actorUserId, action: groupId ? 'knowledge.synonyms.update' : 'knowledge.synonyms.add', target: id, details: { departmentId, words: clean } });
+  });
   return { id, words: clean.sort() };
 }
 
-export async function deleteGroup(db: Db, departmentId: string | null, groupId: string): Promise<void> {
-  const { rowCount } = await db.query('DELETE FROM app.kb_synonyms WHERE group_id = $1 AND department_id IS NOT DISTINCT FROM $2::uuid', [groupId, departmentId]);
-  if (!rowCount) throw appError('APP_NOT_FOUND', `synonym group ${groupId} not found`, { userMessage: 'Группа синонимов не найдена. Обновите страницу.' });
+export async function deleteGroup(db: Db, actorUserId: string, departmentId: string | null, groupId: string): Promise<void> {
+  if (!UUID.test(groupId)) throw groupMissing(groupId);
+  await inTransaction(db, async (c) => {
+    const { rowCount } = await c.query('DELETE FROM app.kb_synonyms WHERE group_id = $1 AND department_id IS NOT DISTINCT FROM $2::uuid', [groupId, departmentId]);
+    if (!rowCount) throw groupMissing(groupId);
+    await writeAudit(c, { actorUserId, action: 'knowledge.synonyms.delete', target: groupId, details: { departmentId } });
+  });
 }

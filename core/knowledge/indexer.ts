@@ -13,6 +13,12 @@ import { chunksOf, normText } from './chunk.ts';
 import { forgetWords, rememberWords } from './store.ts';
 
 export const INDEX_SWEEP_MS = 30 * 1000;
+// A version that failed this many times, or found the sandbox busy this many sweeps, is refused: one file never holds
+// the reading of the others (the review of 22.11).
+export const INDEX_FAILURES_MAX = 3;
+export const INDEX_BUSY_MAX = 5;
+// A table as text is cut into rows with its header, as a sheet.
+const TABLE_TEXT = new Set(['.csv', '.tsv']);
 
 export interface KnowledgeIndexer {
   wake(): void;
@@ -27,6 +33,7 @@ interface Waiting {
   version: number;
   file_name: string;
   content: Buffer;
+  attempts: number;
 }
 
 const REFUSALS: Record<string, string> = { password: 'APP_KNOWLEDGE_PASSWORD', scan: 'APP_KNOWLEDGE_NO_TEXT', failed: 'APP_KNOWLEDGE_BAD_TEXT', slow: 'APP_KNOWLEDGE_SLOW' };
@@ -53,7 +60,7 @@ export function createKnowledgeIndexer(deps: { db: Db; docText: Pick<DocTextServ
       await refuse(w, REFUSALS[extracted.state] ?? 'APP_KNOWLEDGE_BAD_TEXT');
       return 'done';
     }
-    const kind: DocKind = docFormatOf(ext)!.kind;
+    const kind: DocKind = TABLE_TEXT.has(ext) ? 'sheet' : docFormatOf(ext)!.kind;
     const chunks = chunksOf(kind, extracted.text);
     if (chunks.length === 0) {
       await refuse(w, 'APP_KNOWLEDGE_NO_TEXT');
@@ -80,19 +87,41 @@ export function createKnowledgeIndexer(deps: { db: Db; docText: Pick<DocTextServ
     return 'done';
   }
 
+  // A failed or busy try counted; past the limit the version is refused with its reason.
+  async function tried(w: Waiting, how: 'failed' | 'busy'): Promise<void> {
+    const attempts = w.attempts + 1;
+    await db.query('UPDATE app.kb_versions SET attempts = $3 WHERE document_id = $1 AND version = $2', [w.document_id, w.version, attempts]);
+    if (attempts >= (how === 'busy' ? INDEX_BUSY_MAX : INDEX_FAILURES_MAX)) await refuse(w, how === 'busy' ? 'APP_KNOWLEDGE_SLOW' : 'APP_KNOWLEDGE_BAD_TEXT');
+  }
+
   async function sweep(): Promise<void> {
+    // The versions tried in this sweep wait for the next one; the others are read meanwhile.
+    const done = new Set<string>();
     for (;;) {
-      const { rows } = await db.query<Waiting>(`SELECT document_id, version, file_name, content FROM app.kb_versions WHERE status = 'pending' ORDER BY created_at LIMIT 1`);
+      const { rows } = await db.query<Waiting>(
+        `SELECT document_id, version, file_name, content, attempts FROM app.kb_versions
+          WHERE status = 'pending' AND NOT ((document_id::text || ':' || version) = ANY($1)) ORDER BY attempts, created_at LIMIT 1`,
+        [[...done]],
+      );
       const next = rows[0];
       if (!next) return;
+      done.add(`${next.document_id}:${next.version}`);
       // A newer version waiting makes an older one pointless: the newest is read.
       const newer = await db.query(`SELECT 1 FROM app.kb_versions WHERE document_id = $1 AND version > $2 AND status = 'pending'`, [next.document_id, next.version]);
       if (newer.rowCount) {
         await db.query(`UPDATE app.kb_versions SET status = 'rejected', error_code = 'APP_KNOWLEDGE_REPLACED' WHERE document_id = $1 AND version = $2`, [next.document_id, next.version]);
         continue;
       }
-      // The sandbox is busy: the next sweep reads it.
-      if ((await readOne(next)) === 'busy') return;
+      let outcome: 'done' | 'busy' | 'failed';
+      try {
+        outcome = await readOne(next);
+      } catch (error) {
+        logEvent('error', 'knowledge_index_failed', { code: 'APP_KNOWLEDGE_BAD_TEXT', documentId: next.document_id, version: next.version, attempt: next.attempts + 1, error });
+        outcome = 'failed';
+      }
+      if (outcome !== 'done') await tried(next, outcome);
+      // The sandbox is busy: the next sweep reads what waits.
+      if (outcome === 'busy') return;
     }
   }
 

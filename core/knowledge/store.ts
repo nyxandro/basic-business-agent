@@ -10,6 +10,7 @@ import type { AccessContext } from '../auth/access.ts';
 import { writeAudit } from '../audit/audit.ts';
 import { docFormatOf } from '../doctext/extract.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
+import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 
 export const KB_FILE_MAX_BYTES = 20 * 1024 * 1024;
@@ -52,6 +53,29 @@ export async function documentBaseForKeeper(db: Db, access: AccessContext, docum
   return base;
 }
 
+// Whether the person keeps the base of a document (a document that is not there — not found).
+export async function keepsDocument(db: Db, access: AccessContext, documentId: string): Promise<boolean> {
+  const base = await baseOf(db, documentId);
+  try {
+    await assertKeeper(db, access, base);
+    return true;
+  } catch (error) {
+    if (isAppError(error) && error.code === 'APP_ADMIN_FORBIDDEN') return false;
+    throw error;
+  }
+}
+
+// Any version of a document, for the one who keeps its base: the current one by default.
+export async function versionFile(db: Db, documentId: string, version: number | null): Promise<{ name: string; content: Buffer }> {
+  const { rows } = await db.query<{ file_name: string; content: Buffer }>(
+    `SELECT v.file_name, v.content FROM app.kb_documents d JOIN app.kb_versions v ON v.document_id = d.id
+      WHERE d.id = $1 AND v.version = coalesce($2::int, d.current_version, (SELECT max(version) FROM app.kb_versions WHERE document_id = d.id))`,
+    [documentId, version],
+  );
+  if (!rows[0]) throw appError('APP_NOT_FOUND', `version ${version ?? 'current'} of ${documentId} not found`, { userMessage: 'Такой версии документа нет.' });
+  return { name: rows[0].file_name, content: rows[0].content };
+}
+
 function assertFile(name: string, bytes: Uint8Array): string {
   if (bytes.byteLength > KB_FILE_MAX_BYTES) throw appError('APP_UPLOAD_TOO_LARGE', `knowledge file of ${bytes.byteLength} bytes`, { userMessage: 'Файл больше 20 МБ. Разделите его на части.' });
   const ext = extname(name).toLowerCase();
@@ -90,7 +114,8 @@ export async function replaceDocument(db: Db, actorUserId: string, documentId: s
     await c.query('SELECT 1 FROM app.kb_documents WHERE id = $1 FOR UPDATE', [documentId]);
     const { rows } = await c.query<{ next: number }>('SELECT coalesce(max(version), 0) + 1 AS next FROM app.kb_versions WHERE document_id = $1', [documentId]);
     await c.query(`INSERT INTO app.kb_versions (document_id, version, file_name, content, size, sha256, status) VALUES ($1, $2, $3, $4, $5, $6, 'pending')`, [documentId, rows[0]!.next, name, Buffer.from(bytes), bytes.byteLength, sha]);
-    await c.query('UPDATE app.kb_documents SET updated_at = now() WHERE id = $1', [documentId]);
+    // «Редакция от» belonged to the file replaced: the keeper sets the new one (a reference must not name an old date).
+    await c.query('UPDATE app.kb_documents SET updated_at = now(), edition_date = NULL WHERE id = $1', [documentId]);
     await writeAudit(c, { actorUserId, action: 'knowledge.replace', target: documentId, details: { name, version: rows[0]!.next } });
   });
 }
@@ -98,6 +123,11 @@ export async function replaceDocument(db: Db, actorUserId: string, documentId: s
 export async function updateDocument(db: Db, actorUserId: string, documentId: string, change: { title?: string; editionDate?: string | null }): Promise<void> {
   const title = change.title === undefined ? null : [...change.title.trim()].slice(0, KB_TITLE_MAX).join('');
   if (title === '') throw appError('APP_VALIDATION_FAILED', 'an empty knowledge document title', { userMessage: 'Название документа не может быть пустым.' });
+  // «2026-02-31» passes the pattern of the form: the date must exist.
+  const edition = change.editionDate ? new Date(`${change.editionDate}T00:00:00Z`) : null;
+  if (change.editionDate && (!edition || Number.isNaN(edition.getTime()) || edition.toISOString().slice(0, 10) !== change.editionDate)) {
+    throw appError('APP_VALIDATION_FAILED', `no such date ${change.editionDate}`, { userMessage: 'Такой даты нет. Проверьте «Редакцию от».' });
+  }
   await db.query(
     `UPDATE app.kb_documents SET title = coalesce($2, title), edition_date = CASE WHEN $3 THEN $4::date ELSE edition_date END, updated_at = now() WHERE id = $1`,
     [documentId, title, change.editionDate !== undefined, change.editionDate ?? null],
@@ -105,26 +135,26 @@ export async function updateDocument(db: Db, actorUserId: string, documentId: st
   await writeAudit(db, { actorUserId, action: 'knowledge.update', target: documentId, details: { ...change } });
 }
 
-// The words of a version's fragments leave the dictionary of typos with them.
+// The words of the dictionary of typos: from 4 letters, no longer than a word can be (a long run of characters — a key, a
+// hash — is not a word, and would not fit an index of Postgres).
+const WORDS_OF_VERSION = `SELECT w, count(DISTINCT c.id)::int AS n FROM app.kb_chunks c CROSS JOIN LATERAL regexp_split_to_table(c.norm_text, '[^[:alnum:]]+') AS w
+                           WHERE c.document_id = $1 AND c.version = $2 AND length(w) BETWEEN 4 AND 64 GROUP BY w`;
+
+// The words of a version's fragments leave the dictionary of typos with them: counted down first, so two removals at
+// once pass through zero instead of below it, then the words nobody has any more are dropped.
 export async function forgetWords(c: Queryable, documentId: string, version: number): Promise<void> {
-  const words = `SELECT w, count(DISTINCT c.id)::int AS n FROM app.kb_chunks c CROSS JOIN LATERAL regexp_split_to_table(c.norm_text, '[^[:alnum:]]+') AS w
-                  WHERE c.document_id = $1 AND c.version = $2 AND length(w) >= 4 GROUP BY w`;
-  await c.query(`WITH gone AS (${words}) DELETE FROM app.kb_words k USING gone g WHERE k.word = g.w AND k.count <= g.n`, [documentId, version]);
-  await c.query(`WITH gone AS (${words}) UPDATE app.kb_words k SET count = k.count - g.n FROM gone g WHERE k.word = g.w`, [documentId, version]);
+  await c.query(`WITH gone AS (${WORDS_OF_VERSION}) UPDATE app.kb_words k SET count = greatest(k.count - g.n, 0) FROM gone g WHERE k.word = g.w`, [documentId, version]);
+  await c.query(`WITH gone AS (${WORDS_OF_VERSION}) DELETE FROM app.kb_words k USING gone g WHERE k.word = g.w AND k.count = 0`, [documentId, version]);
 }
 
 export async function rememberWords(c: Queryable, documentId: string, version: number): Promise<void> {
-  await c.query(
-    `INSERT INTO app.kb_words (word, count)
-     SELECT w, count(DISTINCT c.id)::int FROM app.kb_chunks c CROSS JOIN LATERAL regexp_split_to_table(c.norm_text, '[^[:alnum:]]+') AS w
-      WHERE c.document_id = $1 AND c.version = $2 AND length(w) >= 4 GROUP BY w
-     ON CONFLICT (word) DO UPDATE SET count = app.kb_words.count + EXCLUDED.count`,
-    [documentId, version],
-  );
+  await c.query(`INSERT INTO app.kb_words (word, count) SELECT w, n FROM (${WORDS_OF_VERSION}) x ON CONFLICT (word) DO UPDATE SET count = app.kb_words.count + EXCLUDED.count`, [documentId, version]);
 }
 
 export async function deleteDocument(db: Db, actorUserId: string, documentId: string): Promise<void> {
   await inTransaction(db, async (c) => {
+    // The document is locked first: a reading of its new version finishing meanwhile waits, and its words are counted.
+    await c.query('SELECT 1 FROM app.kb_documents WHERE id = $1 FOR UPDATE', [documentId]);
     const { rows } = await c.query<{ version: number }>('SELECT DISTINCT version FROM app.kb_chunks WHERE document_id = $1', [documentId]);
     for (const { version } of rows) await forgetWords(c, documentId, version);
     await c.query('DELETE FROM app.kb_documents WHERE id = $1', [documentId]);
@@ -134,7 +164,7 @@ export async function deleteDocument(db: Db, actorUserId: string, documentId: st
 
 // «Повторить»: the latest version is read again.
 export async function retryDocument(db: Db, documentId: string): Promise<void> {
-  await db.query(`UPDATE app.kb_versions SET status = 'pending', error_code = NULL, warning = NULL WHERE document_id = $1 AND version = (SELECT max(version) FROM app.kb_versions WHERE document_id = $1) AND status = 'rejected'`, [documentId]);
+  await db.query(`UPDATE app.kb_versions SET status = 'pending', error_code = NULL, warning = NULL, attempts = 0 WHERE document_id = $1 AND version = (SELECT max(version) FROM app.kb_versions WHERE document_id = $1) AND status = 'rejected'`, [documentId]);
 }
 
 export async function listDocuments(db: Db, base: Base): Promise<KbDocumentDto[]> {

@@ -75,27 +75,31 @@ const MAX_CORRECTIONS = 20;
 // its start as long as the typed word (one letter longer: «дговор» → «договору»).
 // `dictionary` — the words of the conversations (Ctrl+K) or of the knowledge base (docs/specs/[20.11.2026]-knowledge-base.md):
 // a typo is corrected towards words of the text it is looked for in.
+// One query after another: a client of pg runs one at a time, and queries queued on it are going away in pg 9.
 export async function correctionsOf(client: pg.PoolClient, words: WordVariants[], dictionary: 'app.search_words' | 'app.kb_words' = 'app.search_words'): Promise<WordVariants[]> {
-  return Promise.all(
-    words.map(async (word) => {
-      if (word.fuzzy.length === 0) return word;
-      const params = new SqlParams();
-      const near = word.fuzzy.map((fuzzy) => {
-        const f = `${params.add(fuzzy)}::text`;
-        const k = `${params.add(allowedEdits(fuzzy))}::int`;
-        const close = ['s.word', `left(s.word, length(${f}))`, `left(s.word, length(${f}) + 1)`].map((w) => `levenshtein_less_equal(${w}, ${f}, ${k}) <= ${k}`).join(' OR ');
-        return { alike: `${f} <% s.word`, close: `(${f} <% s.word AND (${close}))`, f };
-      });
-      const { rows } = await client.query<{ word: string }>(
-        `SELECT s.word FROM ${dictionary} s
-          WHERE (${near.map((n) => n.alike).join(' OR ')}) AND (${near.map((n) => n.close).join(' OR ')})
-          ORDER BY greatest(${near.map((n) => `word_similarity(${n.f}, s.word)`).join(', ')}) DESC, s.word
-          LIMIT ${MAX_CORRECTIONS}`,
-        params.values,
-      );
-      return { ...word, corrections: rows.map((r) => r.word) };
-    }),
-  );
+  const out: WordVariants[] = [];
+  for (const word of words) {
+    if (word.fuzzy.length === 0) {
+      out.push(word);
+      continue;
+    }
+    const params = new SqlParams();
+    const near = word.fuzzy.map((fuzzy) => {
+      const f = `${params.add(fuzzy)}::text`;
+      const k = `${params.add(allowedEdits(fuzzy))}::int`;
+      const close = ['s.word', `left(s.word, length(${f}))`, `left(s.word, length(${f}) + 1)`].map((w) => `levenshtein_less_equal(${w}, ${f}, ${k}) <= ${k}`).join(' OR ');
+      return { alike: `${f} <% s.word`, close: `(${f} <% s.word AND (${close}))`, f };
+    });
+    const { rows } = await client.query<{ word: string }>(
+      `SELECT s.word FROM ${dictionary} s
+        WHERE (${near.map((n) => n.alike).join(' OR ')}) AND (${near.map((n) => n.close).join(' OR ')})
+        ORDER BY greatest(${near.map((n) => `word_similarity(${n.f}, s.word)`).join(', ')}) DESC, s.word
+        LIMIT ${MAX_CORRECTIONS}`,
+      params.values,
+    );
+    out.push({ ...word, corrections: rows.map((r) => r.word) });
+  }
+  return out;
 }
 
 // A search runs read-only with its own likeness threshold for typo candidates.

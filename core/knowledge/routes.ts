@@ -8,19 +8,25 @@ import { appError } from '../errors/catalog.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import type { KnowledgeIndexer } from './indexer.ts';
-import { assertKeeper, deleteDocument, documentBaseForKeeper, documentFile, listDocuments, readableDepartments, replaceDocument, retryDocument, updateDocument, uploadDocument, type Base } from './store.ts';
+import { assertKeeper, deleteDocument, documentBaseForKeeper, documentFile, keepsDocument, listDocuments, readableDepartments, replaceDocument, retryDocument, updateDocument, uploadDocument, versionFile, type Base } from './store.ts';
 import { deleteGroup, listGroups, saveGroup } from './synonyms.ts';
 
 const K = '/app/api/knowledge';
 
-// The base a request names: `?department=<id>` — a department's, none — the organisation's.
-function baseOf(c: Context<AppEnv>): Base {
-  const department = c.req.query('department');
-  return department ? { scope: 'department', departmentId: department } : { scope: 'org', departmentId: null };
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VERSION_MAX = 1_000_000;
+const departmentMissing = (id: string) => appError('APP_NOT_FOUND', `department ${id} not found`, { userMessage: 'Отдел не найден. Обновите страницу.' });
 
 export function registerKnowledgeRoutes(app: Hono<AppEnv>, deps: { db: Db; indexer: KnowledgeIndexer }): void {
   const { db } = deps;
+
+  // The base a request names: `?department=<id>` — a department's (one that exists), none — the organisation's.
+  async function baseOf(c: Context<AppEnv>): Promise<Base> {
+    const department = c.req.query('department');
+    if (!department) return { scope: 'org', departmentId: null };
+    if (!UUID.test(department) || !(await db.query('SELECT 1 FROM app.departments WHERE id = $1', [department])).rowCount) throw departmentMissing(department);
+    return { scope: 'department', departmentId: department };
+  }
 
   app.get(`${K}/bases`, async (c) => {
     const a = access(c);
@@ -32,13 +38,13 @@ export function registerKnowledgeRoutes(app: Hono<AppEnv>, deps: { db: Db; index
   });
 
   app.get(`${K}/documents`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
     return c.json({ documents: await listDocuments(db, base) });
   });
 
   app.post(`${K}/documents`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
     const file = await readUploadedFile(c);
     const id = await uploadDocument(db, access(c).userId, base, 'document', file.name, new Uint8Array(await file.arrayBuffer()));
@@ -73,39 +79,44 @@ export function registerKnowledgeRoutes(app: Hono<AppEnv>, deps: { db: Db; index
     return c.json({ ok: true });
   });
 
-  // The file of a document: the current version, or `?version=N` for its keeper's history.
+  // The file of a document: the current version for whoever reads its base; any version (`?version=N`, the history) and
+  // the current one too for whoever keeps the base — a superadmin keeps a department's base without being in it.
   app.get(`${K}/documents/:id/file`, async (c) => {
     const raw = c.req.query('version');
     const version = raw ? Number(raw) : null;
-    if (version !== null && !Number.isInteger(version)) throw appError('APP_VALIDATION_FAILED', `bad version "${raw}"`);
-    const file = await documentFile(db, access(c).userId, c.req.param('id'), version);
-    return new Response(new Uint8Array(file.content), { headers: { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}` } });
+    if (version !== null && (!Number.isInteger(version) || version < 1 || version > VERSION_MAX)) throw appError('APP_VALIDATION_FAILED', `bad version "${raw}"`);
+    const keeper = await keepsDocument(db, access(c), c.req.param('id'));
+    if (!keeper && version !== null) throw appError('APP_NOT_FOUND', `version ${version} of ${c.req.param('id')} is for its keeper`, { userMessage: 'Документ не найден или недоступен.' });
+    const file = keeper ? await versionFile(db, c.req.param('id'), version) : await documentFile(db, access(c).userId, c.req.param('id'), null);
+    return new Response(new Uint8Array(file.content), {
+      headers: { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`, 'x-content-type-options': 'nosniff' },
+    });
   });
 
   app.get(`${K}/synonyms`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
     return c.json({ groups: await listGroups(db, base.departmentId) });
   });
 
   app.post(`${K}/synonyms`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
     const { words } = await parseJson(c, kbSynonymGroupSchema);
     return c.json(await saveGroup(db, access(c).userId, base.departmentId, null, words), 201);
   });
 
   app.put(`${K}/synonyms/:id`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
     const { words } = await parseJson(c, kbSynonymGroupSchema);
     return c.json(await saveGroup(db, access(c).userId, base.departmentId, c.req.param('id'), words));
   });
 
   app.delete(`${K}/synonyms/:id`, async (c) => {
-    const base = baseOf(c);
+    const base = await baseOf(c);
     await assertKeeper(db, access(c), base);
-    await deleteGroup(db, base.departmentId, c.req.param('id'));
+    await deleteGroup(db, access(c).userId, base.departmentId, c.req.param('id'));
     return c.json({ ok: true });
   });
 }

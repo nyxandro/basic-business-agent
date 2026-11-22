@@ -5,6 +5,7 @@
 import type { KbBasesResponse, KbDocumentDto, KbSynonymGroupDto } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { api, apiForm } from '../api/client.ts';
+import { ru } from '../i18n/ru.ts';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, PageHead, Pill, type Tone } from '../ui/Display.tsx';
@@ -41,22 +42,15 @@ const kb = {
   removeSynonyms: (department: string | null, id: string) => api<{ ok: true }>('DELETE', `${K}/synonyms/${encodeURIComponent(id)}${q(department)}`),
 };
 
-const ERRORS: Record<string, string> = {
-  APP_KNOWLEDGE_FORMAT: 'Этот формат база знаний не читает.',
-  APP_KNOWLEDGE_PASSWORD: 'Документ защищён паролем — сохраните без пароля и загрузите снова.',
-  APP_KNOWLEDGE_NO_TEXT: 'Скан — текст не найден. Загрузите версию с текстом.',
-  APP_KNOWLEDGE_BAD_TEXT: 'Текст документа не читается. Пересохраните документ из исходной программы.',
-  APP_KNOWLEDGE_SLOW: 'Разбор не уложился во время — сервер был занят. Нажмите «Повторить».',
-  APP_KNOWLEDGE_REPLACED: 'Пришла более новая редакция — читается она.',
-};
+const t = ru.knowledge;
 
 function stateOf(d: KbDocumentDto): { tone: Tone; text: string } {
-  if (d.status === 'pending') return { tone: 'neutral', text: d.currentVersion ? 'Разбираю новую редакцию…' : 'Разбираю…' };
+  if (d.status === 'pending') return { tone: 'neutral', text: d.currentVersion ? t.state.readingNew : t.state.reading };
   if (d.status === 'rejected') {
-    const why = ERRORS[d.errorCode ?? ''] ?? 'Ошибка разбора.';
-    return { tone: 'bad', text: d.currentVersion ? `Новая версия не принята: ${why} Агенты отвечают по прежней редакции.` : `${why} Код: ${d.errorCode ?? ''}` };
+    const why = t.errors[d.errorCode ?? ''] ?? t.state.failed;
+    return { tone: 'bad', text: d.currentVersion ? t.state.newRefused(why) : t.state.refused(why, d.errorCode ?? '') };
   }
-  return { tone: d.warning ? 'warn' : 'ok', text: d.warning ?? `Готов · ${d.chunks ?? 0} фрагм.` };
+  return { tone: d.warning ? 'warn' : 'ok', text: d.warning ?? t.state.ready(d.chunks ?? 0) };
 }
 
 function Documents({ department }: { department: string | null }) {
@@ -72,7 +66,7 @@ function Documents({ department }: { department: string | null }) {
     const target = replacing.current;
     replacing.current = null;
     const list = [...files];
-    if (await run(async () => (target ? kb.replace(target, list[0]!) : Promise.all(list.map((f) => kb.upload(department, f)))), target ? 'Новая редакция загружена' : 'Документы загружены')) reload();
+    if (await run(async () => (target ? kb.replace(target, list[0]!) : Promise.all(list.map((f) => kb.upload(department, f)))), target ? t.replaced : t.uploaded)) reload();
   }
   if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
@@ -80,20 +74,20 @@ function Documents({ department }: { department: string | null }) {
   return (
     <>
       <div className={styles.cardHead}>
-        <h2 className={styles.cardTitle}>Документы</h2>
+        <h2 className={styles.cardTitle}>{t.documents}</h2>
         <Button variant="primary" icon="plus" disabled={busy} onClick={() => picker.current?.click()}>
-          Загрузить документы
+          {t.upload}
         </Button>
         <input ref={picker} type="file" multiple hidden accept=".docx,.doc,.odt,.rtf,.pdf,.xlsx,.xls,.ods,.csv,.pptx,.ppt,.odp,.txt,.md,.html" onChange={(e) => void onFiles(e.target.files).finally(() => (e.target.value = ''))} />
       </div>
       <div className={styles.inset}>
         <Feedback error={error} />
-        <p className={section.note}>Документы, по которым агенты отвечают сотрудникам, со ссылкой на документ, раздел и редакцию. Поиск по словам — с формами слов, синонимами, опечатками и кодами; поиск по смыслу пока не подключён.</p>
+        <p className={section.note}>{t.note}</p>
       </div>
       {docs.length === 0 ? (
-        <EmptyState title="В базе пока нет документов" text="Загрузите регламенты, прайсы, условия — агенты будут отвечать по ним со ссылкой на документ." />
+        <EmptyState title={t.empty} text={t.emptyText} />
       ) : (
-        <ul className={styles.phoneList} aria-label="Документы базы знаний">
+        <ul className={styles.phoneList} aria-label={t.listLabel}>
           {docs.map((d) => {
             const st = stateOf(d);
             return (
@@ -102,26 +96,26 @@ function Documents({ department }: { department: string | null }) {
                   <div className={styles.taskName}>{d.title}</div>
                   <div className={section.sub}>
                     {d.fileName}
-                    {d.editionDate ? ` · редакция от ${d.editionDate.split('-').reverse().join('.')}` : ''}
+                    {d.editionDate ? t.editionShort(d.editionDate.split('-').reverse().join('.')) : ''}
                   </div>
                   <Pill tone={st.tone}>{st.text}</Pill>
                   <label className={styles.stageHeadRow}>
-                    Редакция от
+                    {t.edition}
                     <Input
                       type="date"
-                      aria-label={`Редакция от: ${d.title}`}
+                      aria-label={t.editionOf(d.title)}
                       value={edition[d.id] ?? d.editionDate ?? ''}
                       onChange={(e) => setEdition((all) => ({ ...all, [d.id]: e.target.value }))}
                       onBlur={(e) => {
                         const next = e.target.value || null;
-                        if (next !== d.editionDate) void run(() => kb.patch(d.id, { editionDate: next }), 'Сохранено').then((ok) => ok && reload());
+                        if (next !== d.editionDate) void run(() => kb.patch(d.id, { editionDate: next }), t.saved).then((ok) => ok && reload());
                       }}
                     />
                   </label>
                 </div>
                 {d.status === 'rejected' ? (
                   <Button disabled={busy} onClick={() => void run(() => kb.retry(d.id), null).then((ok) => ok && reload())}>
-                    Повторить
+                    {t.retry}
                   </Button>
                 ) : null}
                 <Button
@@ -131,14 +125,14 @@ function Documents({ department }: { department: string | null }) {
                     picker.current?.click();
                   }}
                 >
-                  Заменить
+                  {t.replace}
                 </Button>
                 <IconButton
                   icon="trash"
-                  label={`Удалить: ${d.title}`}
+                  label={t.removeLabel(d.title)}
                   onClick={() =>
-                    void confirm({ title: `Удалить «${d.title}»?`, text: 'Агенты перестанут находить его сразу. Копии, которые агенты уже взяли в разговоры, останутся там.', confirmLabel: 'Удалить', danger: true }).then(async (yes) => {
-                      if (yes && (await run(() => kb.remove(d.id), 'Документ удалён'))) reload();
+                    void confirm({ title: t.removeTitle(d.title), text: t.removeText, confirmLabel: t.remove, danger: true }).then(async (yes) => {
+                      if (yes && (await run(() => kb.remove(d.id), t.removed))) reload();
                     })
                   }
                 />
@@ -161,14 +155,14 @@ function Synonyms({ department }: { department: string | null }) {
   const words = (text: string) => text.split(',').map((w) => w.trim()).filter(Boolean);
   return (
     <div className={styles.inset}>
-      <p className={section.note}>Слова, которые в вашей компании значат одно и то же. Агент найдёт документ, даже если сотрудник спросил другим словом. Общий словарь (возврат — рекламация, договор — контракт…) уже работает.</p>
+      <p className={section.note}>{t.synonymsNote}</p>
       <Feedback error={error} />
-      {state.data.groups.length === 0 ? <p className={section.note}>Свои синонимы пока не добавлены.</p> : null}
-      <ul className={styles.phoneList} aria-label="Синонимы">
+      {state.data.groups.length === 0 ? <p className={section.note}>{t.synonymsEmpty}</p> : null}
+      <ul className={styles.phoneList} aria-label={t.synonyms}>
         {state.data.groups.map((g) => (
           <li key={g.id} className={styles.phoneTask}>
             <div className={styles.phoneMain}>{g.words.join(', ')}</div>
-            <IconButton icon="trash" label={`Удалить группу: ${g.words.join(', ')}`} onClick={() => void run(() => kb.removeSynonyms(department, g.id), 'Удалено').then((ok) => ok && reload())} />
+            <IconButton icon="trash" label={t.synonymsRemove(g.words.join(', '))} onClick={() => void run(() => kb.removeSynonyms(department, g.id), t.synonymsRemoved).then((ok) => ok && reload())} />
           </li>
         ))}
       </ul>
@@ -176,18 +170,18 @@ function Synonyms({ department }: { department: string | null }) {
         className={section.row}
         onSubmit={(e) => {
           e.preventDefault();
-          void run(() => kb.saveSynonyms(department, null, words(draft)), 'Сохранено').then((ok) => {
+          void run(() => kb.saveSynonyms(department, null, words(draft)), t.saved).then((ok) => {
             if (!ok) return;
             setDraft('');
             reload();
           });
         }}
       >
-        <Field label="Добавить группу" hint="Слова через запятую.">
-          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="отгул, выходной день" />
+        <Field label={t.synonymsAdd} hint={t.synonymsHint}>
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.synonymsPlaceholder} />
         </Field>
         <Button type="submit" variant="primary" disabled={busy || words(draft).length < 2}>
-          Добавить группу
+          {t.synonymsAdd}
         </Button>
       </form>
     </div>
@@ -198,28 +192,28 @@ export function KnowledgeSection() {
   const { state, reload } = useLoad(kb.bases, ['knowledge', 'bases']);
   const [base, setBase] = useState<string | null | undefined>(undefined);
   const [tab, setTab] = useState<'documents' | 'synonyms'>('documents');
-  const head = <PageHead title="База знаний" lead="Документы, по которым агенты отвечают сотрудникам. Документы отдела видят только его сотрудники." />;
+  const head = <PageHead title={t.title} lead={t.lead} />;
   if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
-  const bases = [...(state.data.org ? [{ id: null as string | null, name: 'Для всей организации' }] : []), ...state.data.departments.map((d) => ({ id: d.id, name: d.name }))];
+  const bases = [...(state.data.org ? [{ id: null as string | null, name: t.orgBase }] : []), ...state.data.departments.map((d) => ({ id: d.id, name: d.name }))];
   const current = base === undefined ? (bases[0]?.id ?? null) : base;
-  if (bases.length === 0) return <div className={section.stack}>{head}<EmptyState title="Нет баз, которые вы ведёте" text="Вести базу знаний может сотрудник с правом «Документы организации» или «Документы отдела»." /></div>;
+  if (bases.length === 0) return <div className={section.stack}>{head}<EmptyState title={t.noBases} text={t.noBasesText} /></div>;
   return (
     <div className={section.stack}>
       {head}
-      <div role="group" aria-label="База" className={models.chips}>
+      <div role="group" aria-label={t.basesLabel} className={models.chips}>
         {bases.map((b) => (
           <button key={b.id ?? 'org'} type="button" aria-pressed={current === b.id} className={cx(models.chip, current === b.id && models.chipOn)} onClick={() => setBase(b.id)}>
             {b.name}
           </button>
         ))}
       </div>
-      <div role="group" aria-label="Раздел базы" className={models.chips}>
+      <div role="group" aria-label={t.tabsLabel} className={models.chips}>
         <button type="button" aria-pressed={tab === 'documents'} className={cx(models.chip, tab === 'documents' && models.chipOn)} onClick={() => setTab('documents')}>
-          Документы
+          {t.documents}
         </button>
         <button type="button" aria-pressed={tab === 'synonyms'} className={cx(models.chip, tab === 'synonyms' && models.chipOn)} onClick={() => setTab('synonyms')}>
-          Синонимы
+          {t.synonyms}
         </button>
       </div>
       <Card className={`${section.tableCard} rise`}>{tab === 'documents' ? <Documents key={current ?? 'org'} department={current} /> : <Synonyms key={current ?? 'org'} department={current} />}</Card>

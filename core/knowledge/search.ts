@@ -7,7 +7,7 @@ import type { Db } from '../db/pool.ts';
 import { inSearch } from '../search/match-sql.ts';
 import { queryVariants } from '../search/variants.ts';
 import { logEvent } from '../server/log.ts';
-import { expandQuery } from './expand.ts';
+import { cleanQuestion, expandQuery } from './expand.ts';
 import { readableDepartments } from './store.ts';
 
 export const FRAGMENTS_FOUND = 8;
@@ -20,9 +20,10 @@ const TRIGRAM_THRESHOLD = 0.3;
 export async function searchKnowledge(db: Db, userId: string, question: string, documentId: string | null): Promise<KbFragmentDto[]> {
   const started = Date.now();
   const departments = await readableDepartments(db, userId);
-  const variants = await queryVariants(db, question);
+  const clean = cleanQuestion(question);
+  const variants = await queryVariants(db, clean);
   const found = await inSearch(db, async (c) => {
-    const expanded = await expandQuery(c, variants, question, departments);
+    const expanded = await expandQuery(c, variants, clean, departments);
     if (!expanded.tsquery && expanded.norm.length < 3) return [];
     await c.query(`SELECT set_config('pg_trgm.word_similarity_threshold', $1, true)`, [String(TRIGRAM_THRESHOLD)]);
     const { rows } = await c.query<{ id: string; document_id: string; version: number; title: string; section: string | null; page: number | null; edition: string | null; text: string }>(

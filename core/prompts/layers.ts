@@ -129,8 +129,6 @@ export async function employeeLayer(db: Db, userId: string): Promise<string> {
   ])!;
 }
 
-// The other agents the person may open (the superadmin — every one), where the agent sends a question outside its
-// role. None open — no layer: a person unknown to the directory has no department, so no agent either.
 // The knowledge base the person reads: up to PROMPT_KNOWLEDGE_TITLES names of documents and how many more; none — no layer.
 export const PROMPT_KNOWLEDGE_TITLES = 100;
 export async function knowledgeLayer(db: Db, userId: string): Promise<string | null> {
@@ -140,6 +138,8 @@ export async function knowledgeLayer(db: Db, userId: string): Promise<string | n
   return `# База знаний организации\nДокументы, по которым отвечаешь на вопросы о компании (ищи в них инструментом knowledge_search):\n${titles.map((t) => `- ${t}`).join('\n')}${more}`;
 }
 
+// The other agents the person may open (the superadmin — every one), where the agent sends a question outside its
+// role. None open — no layer: a person unknown to the directory has no department, so no agent either.
 export async function otherAgentsLayer(db: Db, userId: string, agentId: string, agents: readonly AgentCard[]): Promise<string | null> {
   const access = await loadAccess(db, userId);
   const open = agents.filter((a) => a.id !== agentId && (access?.isSuperadmin || access?.agentIds.has(a.id)));
