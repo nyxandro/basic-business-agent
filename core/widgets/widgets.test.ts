@@ -269,6 +269,16 @@ describe('widgets in a chat', () => {
     expect(sent).not.toContain('render_ui` to show UI');
   });
 
+  // Owner, 22.11: with widgets on, data and entities are shown as widgets on the agent's own initiative.
+  it('switched on: the agent is told to show data and entities as widgets on its own, not as a wall of text', async () => {
+    t.model.script({ text: 'Готово.' });
+    await run('Покажи мои сделки');
+    const system = systemOf();
+    expect(system).toContain('Данные и сущности показывай виджетом, а не простынёй текста — сам, без просьбы сотрудника');
+    expect(system).toContain('сделки, клиенты, письма, задачи, документы');
+    expect(system).toContain('Попросили ответить текстом — отвечай текстом.');
+  });
+
   it('switched off: no tools, and the agent is told so', async () => {
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { widgets: false } });
     t.model.script({ text: 'Отвечу текстом.' });
@@ -276,6 +286,7 @@ describe('widgets in a chat', () => {
     expect(offered(-1)).not.toContain(WIDGET_TOOL.render);
     expect(offered(-1)).not.toContain(WIDGET_TOOL.components);
     expect(systemOf()).toContain(JSON.stringify(WIDGETS_OFF).slice(1, -1));
+    expect(systemOf()).not.toContain('Данные и сущности показывай виджетом');
     await t.call('PUT', '/app/api/admin/agents/sales/abilities', { cookie: admin, body: { widgets: true } });
   });
 });
