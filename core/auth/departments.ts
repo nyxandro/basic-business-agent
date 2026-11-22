@@ -56,6 +56,9 @@ export async function renameDepartment(db: Db, actorUserId: string, id: string, 
 
 export async function deleteDepartment(db: Db, actorUserId: string, id: string): Promise<void> {
   await assertExists(db, id);
+  // The knowledge base of the department is not lost with it (docs/specs/[20.11.2026]-knowledge-base.md, section 9).
+  const { rows } = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM app.kb_documents WHERE department_id = $1', [id]);
+  if ((rows[0]?.n ?? 0) > 0) throw appError('APP_DEPARTMENT_HAS_KNOWLEDGE', `department ${id} has ${rows[0]!.n} knowledge documents`, { userMessage: `В базе знаний отдела документов: ${rows[0]!.n}. Перенесите их в базу организации или удалите, затем удаляйте отдел.` });
   await db.query('DELETE FROM app.departments WHERE id = $1', [id]);
   await writeAudit(db, { actorUserId, action: 'department.delete', target: id });
 }

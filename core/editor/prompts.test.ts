@@ -90,7 +90,7 @@ beforeAll(async () => {
   const gateway = { modelConfig: () => Promise.resolve({ providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x', headers: {} }) };
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-prompts-'));
   const files = createFileStorage({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), workspaceRoot, keepCopyMs: 0 });
-  mastra = createMastraRuntime({ chains: createChainService({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }), registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot, files, docText: { text: () => Promise.resolve(null) }, orgFilesDir: join(workspaceRoot, 'org-files') });
+  mastra = createMastraRuntime({ chains: createChainService({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }), registry, storage, memory: createMemory(storage), gateway, db, app: { timezone: 'Europe/Moscow' }, workspaceRoot, files, docText: { text: () => Promise.resolve(null), full: () => Promise.resolve(null) }, orgFilesDir: join(workspaceRoot, 'org-files') });
   deps = { db, mastra, registry };
 });
 afterAll(async () => {

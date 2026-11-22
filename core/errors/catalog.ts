@@ -110,6 +110,15 @@ export const ERROR_CATALOG = {
   APP_BACKGROUND_RUN_SKIPPED: { status: 409, userMessage: 'Запуск задачи пропущен: предыдущий запуск ещё ждёт вашего решения.' },
   APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },
   // Background tasks by an event (docs/specs/[20.11.2026]-event-tasks.md).
+  // The knowledge base (docs/specs/[20.11.2026]-knowledge-base.md).
+  APP_KNOWLEDGE_FORMAT: { status: 415, userMessage: 'Этот формат база знаний не читает. Подойдут Word, Excel, PowerPoint, PDF, текст.' },
+  APP_KNOWLEDGE_DUPLICATE: { status: 409, userMessage: 'Этот файл уже есть в базе знаний.' },
+  APP_KNOWLEDGE_PASSWORD: { status: 422, userMessage: 'Документ защищён паролем — сохраните его без пароля и загрузите снова.' },
+  APP_KNOWLEDGE_NO_TEXT: { status: 422, userMessage: 'Скан — текст не найден. Агент не найдёт его поиском; загрузите версию с текстом.' },
+  APP_KNOWLEDGE_BAD_TEXT: { status: 422, userMessage: 'Текст документа не читается (повреждены шрифты или файл). Пересохраните документ из исходной программы.' },
+  APP_KNOWLEDGE_SLOW: { status: 503, userMessage: 'Разбор не уложился во время — сервер был занят. Нажмите «Повторить».' },
+  APP_KNOWLEDGE_REPLACED: { status: 409, userMessage: 'Документ заменён новой редакцией — откройте текущую.' },
+  APP_DEPARTMENT_HAS_KNOWLEDGE: { status: 409, userMessage: 'В базе знаний отдела есть документы. Перенесите их в базу организации или удалите, затем удаляйте отдел.' },
   // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md).
   APP_CHAIN_REASON_REQUIRED: { status: 400, userMessage: 'Напишите, зачем нужно действие, — это увидят согласующие. Без этого заявка не отправляется.' },
   APP_CHAIN_TOOL_GONE: { status: 410, userMessage: 'Согласовано, но не выполнено: этого действия больше нет у агента. Попросите администратора проверить подключение.' },

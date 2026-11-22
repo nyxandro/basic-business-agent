@@ -73,7 +73,9 @@ const MAX_CORRECTIONS = 20;
 
 // The words of the dictionary within the allowed edits of a word with a typo — of the whole word, or of
 // its start as long as the typed word (one letter longer: «дговор» → «договору»).
-export async function correctionsOf(client: pg.PoolClient, words: WordVariants[]): Promise<WordVariants[]> {
+// `dictionary` — the words of the conversations (Ctrl+K) or of the knowledge base (docs/specs/[20.11.2026]-knowledge-base.md):
+// a typo is corrected towards words of the text it is looked for in.
+export async function correctionsOf(client: pg.PoolClient, words: WordVariants[], dictionary: 'app.search_words' | 'app.kb_words' = 'app.search_words'): Promise<WordVariants[]> {
   return Promise.all(
     words.map(async (word) => {
       if (word.fuzzy.length === 0) return word;
@@ -85,7 +87,7 @@ export async function correctionsOf(client: pg.PoolClient, words: WordVariants[]
         return { alike: `${f} <% s.word`, close: `(${f} <% s.word AND (${close}))`, f };
       });
       const { rows } = await client.query<{ word: string }>(
-        `SELECT s.word FROM app.search_words s
+        `SELECT s.word FROM ${dictionary} s
           WHERE (${near.map((n) => n.alike).join(' OR ')}) AND (${near.map((n) => n.close).join(' OR ')})
           ORDER BY greatest(${near.map((n) => `word_similarity(${n.f}, s.word)`).join(', ')}) DESC, s.word
           LIMIT ${MAX_CORRECTIONS}`,

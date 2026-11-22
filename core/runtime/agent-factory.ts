@@ -73,6 +73,8 @@ export interface AgentFactoryDeps {
   memoryTools?: MemoryTools;
   // The person's past conversations (spec, section 8.28): the same — only to the agent the person talks to, in a chat.
   historyTools?: HistoryTools;
+  // The knowledge base of the organisation (docs/specs/[20.11.2026]-knowledge-base.md): search and the document whole.
+  knowledgeTools?: Record<string, AnyTool>;
   // The person's mailbox (spec, section 8.24): its tools, when the person has connected one.
   // `top` — the tools of the agent the person talks to: its list of letters may ask for a widget (issue #32).
   mail?: { toolsFor(userId: string, top: boolean): Promise<Record<string, AnyTool>> };
@@ -134,6 +136,7 @@ function buildAgent(rt: AgentRuntime, deps: AgentFactoryDeps, level: 'top' | 'su
         ...staticTools,
         ...(deps.memoryTools && level === 'top' ? deps.memoryTools.toolsFor(requestContext) : {}),
         ...(deps.historyTools && level === 'top' ? deps.historyTools.toolsFor(requestContext) : {}),
+        ...(deps.knowledgeTools ?? {}),
         ...(deps.mail ? await deps.mail.toolsFor(userId, level === 'top') : {}),
         // Documents need programs (spec, section 8.30); a sub-agent answers its parent, never puts the stamp.
         ...(deps.signing && level === 'top' && abilities.commands ? await deps.signing.toolsFor(userId) : {}),

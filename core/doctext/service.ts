@@ -48,6 +48,9 @@ export interface DocTextDeps {
 export interface DocTextService {
   // The text of `path` in the folder `root` (the run's working folder); null — not a document.
   text(root: string, path: string): Promise<DocText | null>;
+  // The whole text of a document given as bytes, not cut and not kept (the knowledge base reads its documents once,
+  // docs/specs/[20.11.2026]-knowledge-base.md); null — not a document.
+  full(bytes: Uint8Array, ext: string): Promise<Extracted | null>;
 }
 
 // The folders of extraction a stopped server left hold copies of people's documents: removed at the start.
@@ -117,6 +120,26 @@ export function createDocTextService(deps: DocTextDeps): DocTextService {
   }
 
   return {
+    async full(bytes, ext) {
+      const format = docFormatOf(ext.toLowerCase());
+      if (!format) return null;
+      const dir = mkdtempSync(join(deps.workRoot, WORK_PREFIX));
+      try {
+        const source = join(dir, `source${ext.toLowerCase()}`);
+        writeFileSync(source, bytes);
+        if (ZIPPED_OFFICE.has(ext.toLowerCase()) && (await isEncryptedOffice(source))) return { state: 'password', reason: 'ole_container' };
+        const unpacked = ZIPPED_FORMATS.has(ext.toLowerCase()) ? unpackedBytesOf(readFileSync(source)) : null;
+        if (unpacked !== null && unpacked > deps.maxUnpackedBytes) return { state: 'failed', reason: 'unpacked_too_big' };
+        const limiter = needsOffice(ext.toLowerCase()) ? deps.officeLimiter : deps.commandLimiter;
+        return await limiter.run(() => extractText(deps.run, { dir, ext: ext.toLowerCase(), pptxScripts: deps.pptxScripts, timezone: deps.timezone }));
+      } catch (error) {
+        if (isAppError(error) && error.code === 'APP_SANDBOX_BUSY') return { state: 'busy', reason: 'queue' };
+        throw error;
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+
     async text(root, path) {
       const ext = extname(path).toLowerCase();
       const format = docFormatOf(ext);

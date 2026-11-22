@@ -48,6 +48,8 @@ import type { ChainContinuation } from '../approvals/continue.ts';
 import { describeTools } from '../approvals/describe.ts';
 import type { ChainExecutor } from '../approvals/execute.ts';
 import { createMailTools } from '../mail/tools.ts';
+import type { KnowledgeIndexer } from '../knowledge/indexer.ts';
+import { registerKnowledgeRoutes } from '../knowledge/routes.ts';
 
 export interface ServerDeps {
   db: Db;
@@ -77,6 +79,8 @@ export interface ServerDeps {
   notifications: Notifications;
   // Multi-step approvals: who executes agreed requests and writes their outcome (docs/specs/[20.11.2026]-multi-step-approvals.md).
   approvals: { executor: ChainExecutor; continuation: ChainContinuation };
+  // The knowledge base: the reading of uploaded documents (docs/specs/[20.11.2026]-knowledge-base.md).
+  knowledge: { indexer: KnowledgeIndexer };
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -122,6 +126,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerMailRoutes(app, { db: deps.db, mail: deps.chat.mail });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone, box: deps.box, publicUrl: deps.publicUrl });
   registerHookRoutes(app, { db: deps.db, wake: () => deps.background.wake() });
+  registerKnowledgeRoutes(app, { db: deps.db, indexer: deps.knowledge.indexer });
   const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.chat.mail, workspaceRoot: deps.chat.workspaceRoot, listNote: false, chains: deps.chat.chains }));
   registerChainRoutes(app, {
     db: deps.db,

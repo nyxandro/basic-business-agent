@@ -24,6 +24,7 @@ import { loadAccess } from '../auth/access.ts';
 import type { AgentAbilities } from '@bba/contracts';
 import { contextRoot, draftsPath, DRAFTS_KEEP_DAYS, listFiles } from '../workspace/layout.ts';
 import { WIDGETS_OFF, widgetsRules } from '../widgets/prompt.ts';
+import { readableTitles } from '../knowledge/store.ts';
 
 export const BASE_RULES = readFileSync(new URL('./base-rules.md', import.meta.url), 'utf8');
 // What the agent may do (spec, section 8.30): the rules of programs only to the agent that may run them; the
@@ -130,6 +131,15 @@ export async function employeeLayer(db: Db, userId: string): Promise<string> {
 
 // The other agents the person may open (the superadmin — every one), where the agent sends a question outside its
 // role. None open — no layer: a person unknown to the directory has no department, so no agent either.
+// The knowledge base the person reads: up to PROMPT_KNOWLEDGE_TITLES names of documents and how many more; none — no layer.
+export const PROMPT_KNOWLEDGE_TITLES = 100;
+export async function knowledgeLayer(db: Db, userId: string): Promise<string | null> {
+  const { titles, total } = await readableTitles(db, userId, PROMPT_KNOWLEDGE_TITLES);
+  if (total === 0) return null;
+  const more = total > titles.length ? `\nи ещё ${total - titles.length}` : '';
+  return `# База знаний организации\nДокументы, по которым отвечаешь на вопросы о компании (ищи в них инструментом knowledge_search):\n${titles.map((t) => `- ${t}`).join('\n')}${more}`;
+}
+
 export async function otherAgentsLayer(db: Db, userId: string, agentId: string, agents: readonly AgentCard[]): Promise<string | null> {
   const access = await loadAccess(db, userId);
   const open = agents.filter((a) => a.id !== agentId && (access?.isSuperadmin || access?.agentIds.has(a.id)));
@@ -219,7 +229,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         : [null, 0];
       if (threadId && requestContext) keepHiddenNote(requestContext, hiddenMessagesNote(stored, LAST_MESSAGES));
       const conversations = past ? pastConversationsText(past, { currentAgentId: deps.agentId, agentName: deps.agentName, timezone: deps.timezone }) : null;
-      const [org, employee, others, project] = await Promise.all([
+      const [org, employee, others, project, knowledge] = await Promise.all([
         organisationLayer(deps.db),
         employeeLayer(deps.db, userId),
         // A sub-agent answers the agent that called it, not the person: it sends nobody anywhere. Without the core's
@@ -228,6 +238,8 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
         projectId
           ? projectLayer(deps.db, deps.workspaceRoot, userId, requireContextValue(requestContext, REQUEST_KEYS.projectOwnerId), projectId, projectMemory ? projectMemoryText(projectMemory, deps.timezone) : null, conversations)
           : Promise.resolve(lost ? lostProjectLayer(JSON.parse(lost) as { name: string; reason: LostProjectReason }) : null),
+        // The documents of the knowledge base the person reads (docs/specs/[20.11.2026]-knowledge-base.md, section 7).
+        knowledgeLayer(deps.db, userId),
       ]);
       return {
         messages,
@@ -242,6 +254,7 @@ export function createPromptLayersProcessor(deps: LayersDeps) {
           { role: 'system' as const, content: employee },
           ...(others ? [{ role: 'system' as const, content: others }] : []),
           ...(project ? [{ role: 'system' as const, content: project }] : []),
+          ...(knowledge ? [{ role: 'system' as const, content: knowledge }] : []),
           ...(personalMemory ? [{ role: 'system' as const, content: personalMemoryText(personalMemory, deps.timezone) }] : []),
         ],
       };
