@@ -66,6 +66,8 @@
   --ok-soft: #e6f6ef;
   --warn: #975a00;
   --warn-soft: #fff3dc;
+  /* A bright amber for marks with a dark sign on them (layout/ThreadState.tsx). */
+  --warn-mark: #f5a524;
   --bad: #b42318;
   --bad-soft: #fdecea;
   /* «Сведения» of widgets (spec, section 8.31; mockup «Экраны агента»): a status of its own, apart from the accent. */
@@ -120,6 +122,7 @@
   --ok-soft: #0f2a20;
   --warn: #f5b544;
   --warn-soft: #2b2210;
+  --warn-mark: #f5b544;
   --bad: #ff8a80;
   --bad-soft: #2e1414;
   --info: #7fb0ff;

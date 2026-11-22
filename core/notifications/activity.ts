@@ -23,7 +23,7 @@ export function createActivity(changed: (userId: string) => void): Activity {
         const left = (own.get(threadId) ?? 1) - 1;
         if (left > 0) own.set(threadId, left);
         else own.delete(threadId);
-        if (own.size === 0) runs.delete(userId);
+        if (own.size === 0 && runs.get(userId) === own) runs.delete(userId);
         changed(userId);
       };
     },

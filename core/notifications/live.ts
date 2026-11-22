@@ -85,9 +85,14 @@ export function createLiveHub(connectionString: string): LiveHub {
       const own = listeners.get(userId) ?? new Set<() => void>();
       own.add(tell);
       listeners.set(userId, own);
+      // Once, and only for this very set: an old connection of the person ending again later (its keep-alive loop wakes
+      // up after the abort) must not drop the set a newer connection lives in.
+      let gone = false;
       return () => {
+        if (gone) return;
+        gone = true;
         own.delete(tell);
-        if (own.size === 0) listeners.delete(userId);
+        if (own.size === 0 && listeners.get(userId) === own) listeners.delete(userId);
       };
     },
     start: () => connect(),

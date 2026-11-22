@@ -23,7 +23,8 @@
 
 /* A question «Да» waits: amber, a soft halo now and then. */
 .waiting {
-  background: var(--warn);
+  background: var(--warn-mark);
+  color: #2b1a00;
   animation: global(bba-attention) 2.4s ease-out infinite;
 }
 

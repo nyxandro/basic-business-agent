@@ -18,21 +18,18 @@ export async function threadStates(db: Db, activity: Activity, userId: string): 
     const was = states[threadId];
     if (!was || PRECEDENCE[state] > PRECEDENCE[was]) states[threadId] = state;
   };
-  const [waiting, told, unseen] = await Promise.all([
-    db.query<{ thread_id: string }>(
-      `SELECT DISTINCT thread_id FROM app.approval_requests WHERE user_id = $1 AND status = 'pending' AND expires_at > now() AND run_kind <> 'draft'`,
-      [userId],
-    ),
-    db.query<{ thread_id: string; kind: NotificationKind }>(
-      `SELECT thread_id, kind FROM app.notifications
-        WHERE user_id = $1 AND read_at IS NULL AND thread_id IS NOT NULL AND kind = ANY($2) AND created_at > now() - interval '${NOTIFICATION_KEEP_DAYS} days'`,
-      [userId, [...FAILED, ...DONE]],
-    ),
-    db.query<{ id: string }>(`SELECT id FROM mastra.mastra_threads WHERE "resourceId" = $1 AND metadata->>'unread' = 'true'`, [userId]),
-  ]);
-  for (const r of unseen.rows) put(r.id, 'done');
-  for (const r of told.rows) put(r.thread_id, FAILED.includes(r.kind) ? 'failed' : 'done');
-  for (const r of waiting.rows) put(r.thread_id, 'waiting');
+  // One statement, one connection: it runs on every «changed» of every open page.
+  const { rows } = await db.query<{ thread_id: string; state: Exclude<ThreadState, 'running'> }>(
+    `SELECT thread_id, 'waiting' AS state FROM app.approval_requests
+      WHERE user_id = $1 AND status = 'pending' AND expires_at > now() AND run_kind <> 'draft'
+     UNION ALL
+     SELECT thread_id, CASE WHEN kind = ANY($2) THEN 'failed' ELSE 'done' END FROM app.notifications
+      WHERE user_id = $1 AND read_at IS NULL AND thread_id IS NOT NULL AND kind = ANY($3) AND created_at > now() - interval '${NOTIFICATION_KEEP_DAYS} days'
+     UNION ALL
+     SELECT id, 'done' FROM mastra.mastra_threads WHERE "resourceId" = $1 AND metadata->>'unread' = 'true'`,
+    [userId, FAILED, [...FAILED, ...DONE]],
+  );
+  for (const r of rows) put(r.thread_id, r.state);
   for (const threadId of activity.running(userId)) put(threadId, 'running');
   return states;
 }

@@ -54,6 +54,22 @@ describe('the instant channel', () => {
     }
   });
 
+  // A page loading in React's development mode opens and closes a first connection at once; that connection's own end
+  // comes again later (the keep-alive loop wakes up) — it must not drop the connection open now.
+  it('keeps telling the open connection when an old connection of the person ends a second time', async () => {
+    let told = 0;
+    const stopOld = t.notifications.live.subscribe(olgaId, () => undefined);
+    stopOld();
+    const stop = t.notifications.live.subscribe(olgaId, () => told++);
+    stopOld();
+    try {
+      await notify(t.db, notices.taskResult({ userId: olgaId, runId: 'live-stale', taskId: 'task-1', taskTitle: 'Сводка', agentId: 'sales' }));
+      expect(await eventually(() => Promise.resolve(told), (n) => n > 0)).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('streams «changed» to the open page of the person', async () => {
     const res = await t.call('GET', '/app/api/me/events', { cookie: olga });
     expect(res.headers.get('content-type')).toContain('text/event-stream');

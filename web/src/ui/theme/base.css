@@ -200,11 +200,11 @@ p {
 /* A conversation waiting for the person's decision (layout/ThreadState.tsx): a soft halo grows and fades now and then. */
 @keyframes bba-attention {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn-mark) 60%, transparent);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--warn) 0%, transparent);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--warn-mark) 0%, transparent);
   }
 }
 
