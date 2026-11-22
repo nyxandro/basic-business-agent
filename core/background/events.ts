@@ -3,6 +3,7 @@
 // transaction, so an accepted event is never lost between the two. One key — one run in the task: a letter's Message-ID
 // or a system's own event id for good, the fingerprint of a body without an id for a day. Over 100 events an hour (a
 // task's messages, a mailbox's letters — owner 21.11, F2) the rest are «Пропущено: лавина»; the admins hear of it once.
+import { holdersOf } from '../auth/holders.ts';
 import type { TaskEventOutcome } from '@bba/contracts';
 import type pg from 'pg';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -54,17 +55,9 @@ async function mayRun(db: Db | pg.PoolClient, userId: string, agentId: string): 
   return rows[0]?.ok === true;
 }
 
-// The admins who keep tasks: the superadmins and the holders of «Агенты».
-async function taskKeepers(db: Db): Promise<string[]> {
-  const { rows } = await db.query<{ user_id: string }>(
-    `SELECT DISTINCT ur.user_id FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id LEFT JOIN app.user_profiles p ON p.user_id = ur.user_id
-      WHERE (r.builtin = 'superadmin' OR r.permissions ? 'agents') AND p.blocked_at IS NULL AND p.deletion_started_at IS NULL`,
-  );
-  return rows.map((r) => r.user_id);
-}
-
 async function tellKeepers(db: Db, task: TaskRow, trouble: 'flood' | 'executor' | 'employee', at: Date): Promise<void> {
-  for (const userId of await taskKeepers(db)) await notify(db, notices.taskTrouble({ userId, taskId: task.id, taskTitle: task.title, trouble, at }));
+  // The admins who keep tasks: the superadmins and the holders of «Агенты».
+  for (const userId of await holdersOf(db, 'agents')) await notify(db, notices.taskTrouble({ userId, taskId: task.id, taskTitle: task.title, trouble, at }));
 }
 
 export async function recordEvent(db: Db, input: NewEvent): Promise<Recorded> {

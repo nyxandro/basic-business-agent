@@ -29,6 +29,8 @@ export const PUSH_DELIVERY: Record<NotificationKind, { ttlSeconds: number; urgen
   task_trouble: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   chain_waiting: { ttlSeconds: 12 * 3600, urgency: 'high' },
   chain_result: { ttlSeconds: 12 * 3600, urgency: 'normal' },
+  support_new: { ttlSeconds: 12 * 3600, urgency: 'normal' },
+  support_reply: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   project_shared: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_near: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_exhausted: { ttlSeconds: 12 * 3600, urgency: 'normal' },
@@ -213,6 +215,37 @@ export const notices = {
       link: '/approvals',
       dedupKey: `chain_withdrawn:${input.chainId}:${input.userId}`,
       subjectRef: `chain:${input.chainId}`,
+      threadId: null,
+    });
+  },
+
+  // A complaint about an answer, to the people with «Агенты» (feedback-and-value.md, F5): only its number and agent —
+  // the comment and the conversation stay inside the ticket.
+  // `appendedAt` — the employee added to the complaint: a case of its own.
+  supportNew(input: { userId: string; ticketId: string; agentName: string; appendedAt: Date | null }): Notice {
+    return notice({
+      userId: input.userId,
+      kind: 'support_new',
+      title: input.appendedAt ? `Жалоба №${input.ticketId} дополнена` : `Новая жалоба №${input.ticketId}`,
+      body: `Агент «${input.agentName}». Разберите её в «Поддержке».`,
+      link: `/admin/support/${encodeURIComponent(input.ticketId)}`,
+      dedupKey: input.appendedAt ? `support_new:${input.ticketId}:${input.appendedAt.getTime()}` : `support_new:${input.ticketId}`,
+      subjectRef: `ticket:${input.ticketId}`,
+      threadId: null,
+    });
+  },
+
+  // The answer to the employee, or a change of the state: each change is its own case.
+  supportReply(input: { userId: string; ticketId: string; status: 'new' | 'in_progress' | 'resolved' | 'rejected'; changedAt: Date }): Notice {
+    const states = { new: 'снова открыто', in_progress: 'в работе', resolved: 'решено', rejected: 'отклонено' } as const;
+    return notice({
+      userId: input.userId,
+      kind: 'support_reply',
+      title: `Ответ на обращение №${input.ticketId}`,
+      body: `Обращение ${states[input.status]}. Ответ — в «Настройках» → «Мои обращения».`,
+      link: '/settings/requests',
+      dedupKey: `support_reply:${input.ticketId}:${input.changedAt.getTime()}`,
+      subjectRef: `ticket:${input.ticketId}`,
       threadId: null,
     });
   },

@@ -12,6 +12,9 @@ export const NOTIFICATION_KINDS = [
   // Multi-step approvals: a request waits for the reader's decision; the employee hears how their request ended.
   'chain_waiting',
   'chain_result',
+  // Complaints (feedback-and-value.md): a new complaint to the people with «Агенты»; the answer to the employee.
+  'support_new',
+  'support_reply',
   'project_shared',
   'limit_near',
   'limit_exhausted',

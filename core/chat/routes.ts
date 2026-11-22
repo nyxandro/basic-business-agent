@@ -1,6 +1,6 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // and attachments.
-import { basename, relative } from 'node:path';
+import { basename } from 'node:path';
 import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, MARKS_FOLDER, MODEL_PICTURE_MAX_BYTES, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { AppError } from '../errors/app-error.ts';
@@ -10,17 +10,17 @@ import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
 import { agentMarks, chatMark, DEFAULT_MARK } from '../interface-settings/agent-marks.ts';
-import { threadProjectState, type ThreadProjectState } from '../projects/access.ts';
 import { listThreadPage, THREAD_PAGE_MAX } from '../projects/projects.ts';
 import { readUploadedFile } from '../projects/routes.ts';
 import { fileResponse } from '../workspace/download.ts';
 import { pdfResponse } from '../preview/response.ts';
 import type { PreviewService } from '../preview/service.ts';
-import { areaOf, filesPrefix, type Area } from '../storage/areas.ts';
-import { chatPath, chatRoot, conversationRoot, filesRoot, pruneOlderThan, putInFolder, resolveInside, saveFile, saveInFolder } from '../workspace/layout.ts';
+import { filesPrefix, type Area } from '../storage/areas.ts';
+import { pruneOlderThan, putInFolder, saveFile, saveInFolder } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { startNaming } from './naming.ts';
+import { inThreadFolder, threadFoldersOf } from './thread-folder.ts';
 import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, noteStopped, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
@@ -249,40 +249,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     return c.json({ ok: true });
   });
 
-  // The project of a conversation and where its files are (spec, sections 8.9 and 8.20): the project's
-  // folder — with its creator — when the person sees the project, otherwise the person's own. Only the
-  // person's own conversation or their draft check of a prompt; a conversation not saved yet (a file
-  // attached before the first message) is their own.
-  async function threadFolders(userId: string, threadId: string): Promise<{ state: ThreadProjectState; area: Area; folder: () => string; inArea: (path: string) => string }> {
-    const thread = await deps.memory.getThreadById({ threadId });
-    if (thread && thread.resourceId !== userId && thread.resourceId !== draftResourceId(userId)) {
-      throw new AppError({ code: 'APP_NOT_FOUND', message: 'foreign thread', userMessage: 'Разговор не найден.', status: 404 });
-    }
-    const state = await threadProjectState(deps.db, userId, threadId);
-    const area = areaOf(userId, state.state === 'active' ? state.project : null);
-    // The project's folder, or the conversation's own (spec, section 8.33).
-    const project = state.state === 'active' ? { id: state.project.id, ownerId: state.project.user_id } : null;
-    const files = project ? filesRoot(deps.workspaceRoot, project.ownerId, project.id) : chatRoot(deps.workspaceRoot, userId, threadId);
-    const inFiles = project ? filesPrefix(area) : `${chatPath(threadId)}/`;
-    return {
-      state,
-      area,
-      // Made on first use, so only while the area is held.
-      folder: () => conversationRoot(deps.workspaceRoot, { userId, threadId, project }),
-      // A path from the conversation's folder as the path of the area (core/storage).
-      inArea: (path: string) => `${inFiles}${relative(files, resolveInside(files, path))}`,
-    };
-  }
-
-  // The folder is on the disk while `work` runs (an S3 bucket keeps the files, spec section 8.23).
-  async function inFolder<T>(found: { area: Area; folder: () => string }, how: 'read' | 'write', work: (folder: string) => T | Promise<T>): Promise<T> {
-    const release = await deps.storage.hold(found.area, how);
-    try {
-      return await work(found.folder());
-    } finally {
-      await release();
-    }
-  }
+  const threadFolders = (userId: string, threadId: string) => threadFoldersOf(deps, userId, threadId);
+  const inFolder = <T,>(found: { area: Area; folder: () => string }, how: 'read' | 'write', work: (folder: string) => T | Promise<T>) => inThreadFolder(deps.storage, found, how, work);
 
   // An attachment goes where the agent of the conversation works: a project gone for the person
   // leaves them their own folder.

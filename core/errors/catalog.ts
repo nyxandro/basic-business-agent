@@ -119,6 +119,13 @@ export const ERROR_CATALOG = {
   APP_KNOWLEDGE_SLOW: { status: 503, userMessage: 'Разбор не уложился во время — сервер был занят. Нажмите «Повторить».' },
   APP_KNOWLEDGE_REPLACED: { status: 409, userMessage: 'Документ заменён новой редакцией — откройте текущую.' },
   APP_DEPARTMENT_HAS_KNOWLEDGE: { status: 409, userMessage: 'В базе знаний отдела есть документы. Перенесите их в базу организации или удалите, затем удаляйте отдел.' },
+  // Complaints, samples, the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
+  APP_SUPPORT_FAILED: { status: 500, userMessage: 'Жалоба не отправилась. Попробуйте ещё раз.' },
+  APP_SUPPORT_TOO_LONG: { status: 400, userMessage: 'Жалоба получилась слишком длинной. Сократите текст.' },
+  APP_SUPPORT_STATE: { status: 409, userMessage: 'Такой переход состояния у обращения невозможен. Обновите страницу.' },
+  APP_EXAMPLE_NOT_MADE: { status: 409, userMessage: 'Образцом можно отметить только документ, который сделал агент.' },
+  APP_EXAMPLE_NO_BASE: { status: 403, userMessage: 'Образец некуда сохранить: вы не состоите ни в одном отделе. Попросите администратора добавить вас в отдел.' },
+  APP_EXAMPLE_SAVED: { status: 409, userMessage: 'Этот документ уже сохранён как образец.' },
   // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md).
   APP_CHAIN_REASON_REQUIRED: { status: 400, userMessage: 'Напишите, зачем нужно действие, — это увидят согласующие. Без этого заявка не отправляется.' },
   APP_CHAIN_TOOL_GONE: { status: 410, userMessage: 'Согласовано, но не выполнено: этого действия больше нет у агента. Попросите администратора проверить подключение.' },

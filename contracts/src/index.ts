@@ -21,3 +21,4 @@ export * from './connections.ts';
 export * from './org.ts';
 export * from './approval-chains.ts';
 export * from './knowledge.ts';
+export * from './support.ts';
