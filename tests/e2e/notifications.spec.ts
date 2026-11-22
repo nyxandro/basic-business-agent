@@ -26,7 +26,7 @@ test('a question of a conversation waits under the bell and leads to its card', 
   await page.getByRole('button', { name: /^Уведомления:.*вопрос/ }).click();
   const panel = page.getByRole('dialog', { name: 'Уведомления' });
   await panel.getByRole('radio', { name: /^Ждут решения/ }).click();
-  const card = panel.getByRole('article').filter({ hasText: /^Из разговора/ });
+  const card = panel.getByRole('article').filter({ hasText: 'Из разговора «Напиши письмо клиенту о встрече»' });
   await expect(card).toContainText('Отправить письмо клиенту');
   await card.getByRole('link', { name: 'Открыть разговор' }).click();
   await expect(panel).toHaveCount(0);

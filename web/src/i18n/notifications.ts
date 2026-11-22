@@ -6,7 +6,7 @@ export const notificationTexts = {
   bellCount: (waiting: number, unread: number) =>
     [waiting > 0 ? `${waiting} ${plural(waiting, ['вопрос ждёт', 'вопроса ждут', 'вопросов ждут'])} решения` : null, unread > 0 ? `${unread} ${plural(unread, ['новое уведомление', 'новых уведомления', 'новых уведомлений'])}` : null]
       .filter(Boolean)
-      .join(', ') || 'Нет новых уведомлений',
+      .join(', '),
   tabWaiting: 'Ждут решения',
   tabNotifications: 'Уведомления',
   waitingEmpty: 'Ничего не ждёт вашего решения',

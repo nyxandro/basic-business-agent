@@ -75,7 +75,7 @@ describe('the bell', () => {
     const s = server();
     renderApp('/agents/sales?thread=t1');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: /^Уведомления:/ }));
+    await user.click(await screen.findByRole('button', { name: /^Уведомления/ }));
     await user.click(await screen.findByRole('button', { name: /Вам открыли проект «Тендер»/ }));
     await waitFor(() => expect(s.calls.find((c) => c.path === '/app/api/me/notifications/read')?.body).toEqual({ id: 'n2' }));
     expect(screen.queryByRole('dialog', { name: 'Уведомления' })).not.toBeInTheDocument();
@@ -87,7 +87,7 @@ describe('the bell', () => {
     renderApp('/settings/memory');
     // Not a conversation on this screen.
     await waitFor(() => expect(s.pings[0]?.body).toMatchObject({ visible: true, threadId: null }));
-    const header = (await screen.findByRole('button', { name: 'Уведомления: Нет новых уведомлений' })).closest('header')!;
+    const header = (await screen.findByRole('button', { name: 'Уведомления' })).closest('header')!;
     expect(within(header).getByText('Моя память')).toBeInTheDocument();
   });
 
@@ -106,7 +106,7 @@ describe('the bell', () => {
     try {
       const s = server({ pendingApprovals: 0, unread: 2, latest: { ...SHARED, id: 'n3', read: false, createdAt: '2026-11-21T07:00:00.000Z' } });
       renderApp('/agents/sales?thread=t1');
-      await screen.findByRole('button', { name: /^Уведомления:/ });
+      await screen.findByRole('button', { name: /^Уведомления/ });
       s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 1, latest: READY } });
       await act(() => vi.advanceTimersByTimeAsync(30_000));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Уведомления: 1 новое уведомление' })).toBeInTheDocument());
@@ -121,7 +121,7 @@ describe('the bell', () => {
     try {
       const s = server({ pendingApprovals: 0, unread: 0, latest: null });
       renderApp('/agents/sales?thread=t1');
-      await screen.findByRole('button', { name: /^Уведомления:/ });
+      await screen.findByRole('button', { name: /^Уведомления/ });
       expect(screen.queryByText(/Готово: Утренняя сводка/)).not.toBeInTheDocument();
       s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 1, latest: READY } });
       await act(() => vi.advanceTimersByTimeAsync(30_000));

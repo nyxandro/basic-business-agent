@@ -25,7 +25,8 @@ function Bell() {
   const waiting = counts?.pendingApprovals ?? 0;
   const unread = counts?.unread ?? 0;
   const total = waiting + unread;
-  const label = `${notificationTexts.bell}: ${notificationTexts.bellCount(waiting, unread)}`;
+  // Nothing new — just «Уведомления»: a word like «Нет» in the name would also answer to the search of a «Нет» button.
+  const label = total > 0 ? `${notificationTexts.bell}: ${notificationTexts.bellCount(waiting, unread)}` : notificationTexts.bell;
   const button = (
     <button
       type="button"

@@ -27,7 +27,8 @@ test('the question of a background task is answered on the approvals screen', as
 
   await openAgent(page, 'Продажи');
   const task = page.getByRole('link', { name: /Задача: Утренняя сводка/ });
-  await expect(task).toContainText('новое');
+  // The result not opened yet: the green tick of its conversation (it replaced «новое», owner 22.11).
+  await expect(task.getByRole('img', { name: 'Ответ готов' })).toBeVisible();
   await task.click();
   await expect(page.getByText('Письмо отправлено.')).toBeVisible();
 });
