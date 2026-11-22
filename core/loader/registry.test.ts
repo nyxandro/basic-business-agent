@@ -13,6 +13,10 @@ import { createChainService } from '../approvals/chains.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
+// A read-only tool waits for «Да» only while an approval rule is on it (docs/specs/[20.11.2026]-multi-step-approvals.md):
+// its `requireApproval` asks the rules at the call (the registry has no database here), any other always asks.
+const asksYes = (tool: { requireApproval?: unknown }): Promise<unknown> => Promise.resolve(typeof tool.requireApproval === 'function' ? 'by rule' : tool.requireApproval);
+
 const CACHE = fileURLToPath(new URL('../../node_modules/.cache', import.meta.url));
 let root: string | undefined;
 let model: FakeModel;
@@ -64,9 +68,9 @@ describe('buildRegistry', () => {
     const reg = await registryOf(installation());
     const sales = reg.get('sales')!;
     expect(Object.keys(sales.tools).sort()).toEqual(['notes_add', 'notes_list', 'sales_report']);
-    expect(sales.tools.notes_list!.requireApproval).toBe(false);
-    expect(sales.tools.notes_add!.requireApproval).toBe(true);
-    expect(sales.tools.sales_report!.requireApproval).toBe(true);
+    expect(await asksYes(sales.tools.notes_list!)).toBe('by rule');
+    expect(await asksYes(sales.tools.notes_add!)).toBe(true);
+    expect(await asksYes(sales.tools.sales_report!)).toBe(true);
     expect(Object.keys(reg.get('helper')!.tools)).toEqual([]);
     // The chat names the system a tool works in: «Ищу в Заметки…».
     expect(sales.toolSystems).toEqual({ notes_list: 'Заметки', notes_add: 'Заметки' });
@@ -94,7 +98,7 @@ describe('buildRegistry', () => {
         'agents/sales/agent.ts': `export default { id: 'sales', name: 'Продажи', description: 'Отдел продаж', plugins: ['notes'], readOnly: ['sales_report'], starters: [] };`,
       }),
     );
-    expect(reg.get('sales')!.tools.sales_report!.requireApproval).toBe(false);
+    expect(await asksYes(reg.get('sales')!.tools.sales_report!)).toBe('by rule');
   });
 
   it('collects sub-agents from the agent folder', async () => {

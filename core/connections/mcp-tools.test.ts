@@ -9,6 +9,10 @@ import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { startTestMcpServer, type TestMcpServer } from './test/servers.ts';
 
+// A read-only tool waits for «Да» only while an approval rule is on it (docs/specs/[20.11.2026]-multi-step-approvals.md):
+// its `requireApproval` asks the rules; without a rule it does not ask.
+const asksYes = async (tool: { requireApproval?: unknown }): Promise<unknown> => (typeof tool.requireApproval === 'function' ? await (tool.requireApproval as () => Promise<boolean>)() : tool.requireApproval);
+
 const BASE = '/app/api/admin/mcp-servers';
 let t: TestApp;
 let crm: TestMcpServer;
@@ -85,7 +89,7 @@ describe('an agent of an employee', () => {
     expect((await call('POST', `/app/api/me/connections/mcp/${server.id}/use`, olga.cookie, { on: true })).status).toBe(200);
     const tools = await toolsOf(olga.id);
     expect(Object.keys(tools)).toEqual([`${server.slug}_deals_search`]);
-    expect(tools[`${server.slug}_deals_search`]!.requireApproval).toBe(false);
+    expect(await asksYes(tools[`${server.slug}_deals_search`]!)).toBe(false);
     // The server's answer as MCP gives it: the text the model reads.
     const answer = (await tools[`${server.slug}_deals_search`]!.execute!({}, ctx(olga.id))) as { content: { text: string }[] };
     expect(JSON.parse(answer.content[0]!.text)).toEqual({ deals: 12 });
@@ -93,7 +97,7 @@ describe('an agent of an employee', () => {
 
     await call('PATCH', `${BASE}/${server.id}`, admin, { actions: [{ name: 'deal_create', enabled: true, readOnly: false, title: 'Новая сделка', check: false }] });
     const both = await toolsOf(olga.id);
-    expect(both[`${server.slug}_deal_create`]!.requireApproval).toBe(true);
+    expect(await asksYes(both[`${server.slug}_deal_create`]!)).toBe(true);
     expect(t.connections.actionsSeen()[`${server.slug}_deal_create`]).toMatchObject({ title: 'Новая сделка', readOnly: false });
 
     await call('POST', `/app/api/me/connections/mcp/${server.id}/use`, olga.cookie, { on: false });

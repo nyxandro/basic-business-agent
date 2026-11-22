@@ -10,6 +10,10 @@ import type { ConnectorRuntime } from './manager.ts';
 import { accessToken, MCP_CALLBACK_PATH, pluginTarget } from './mcp-auth.ts';
 import { startTestMcpServer, startTestOAuthServer, type TestMcpServer, type TestOAuthServer } from './test/servers.ts';
 
+// A read-only tool waits for «Да» only while an approval rule is on it (docs/specs/[20.11.2026]-multi-step-approvals.md):
+// its `requireApproval` asks the rules; without a rule it does not ask.
+const asksYes = async (tool: { requireApproval?: unknown }): Promise<unknown> => (typeof tool.requireApproval === 'function' ? await (tool.requireApproval as () => Promise<boolean>)() : tool.requireApproval);
+
 let t: TestApp;
 let crm: TestMcpServer;
 let shared: TestMcpServer;
@@ -75,8 +79,8 @@ describe('personal access with a key', () => {
   it('asks for "Да" on server tools that are not read-only', async () => {
     const olga = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'olga@example.com'`)).rows[0]!.id;
     const tools = await t.connections.toolsFor(olga, { agentId: 'sales', connectorIds: ['crm'] });
-    expect(tools.crm_deals_search!.requireApproval).toBe(false);
-    expect(tools.crm_deal_create!.requireApproval).toBe(true);
+    expect(await asksYes(tools.crm_deals_search!)).toBe(false);
+    expect(await asksYes(tools.crm_deal_create!)).toBe(true);
   });
 
   it('tells an employee without a connection to connect, with a link to the settings', async () => {
