@@ -9,18 +9,20 @@ export interface Department {
   name: string;
   userIds: string[];
   agentIds: string[];
+  headIds: string[];
 }
 
 const UNIQUE_VIOLATION = '23505';
 
 export async function listDepartments(db: Db): Promise<Department[]> {
-  const { rows } = await db.query<{ id: string; name: string; user_ids: string[] | null; agent_ids: string[] | null }>(
+  const { rows } = await db.query<{ id: string; name: string; user_ids: string[] | null; agent_ids: string[] | null; head_ids: string[] | null }>(
     `SELECT d.id, d.name,
             (SELECT array_agg(user_id ORDER BY user_id) FROM app.department_members WHERE department_id = d.id) AS user_ids,
-            (SELECT array_agg(agent_id ORDER BY agent_id) FROM app.department_agents WHERE department_id = d.id) AS agent_ids
+            (SELECT array_agg(agent_id ORDER BY agent_id) FROM app.department_agents WHERE department_id = d.id) AS agent_ids,
+            (SELECT array_agg(user_id ORDER BY user_id) FROM app.department_heads WHERE department_id = d.id) AS head_ids
        FROM app.departments d ORDER BY d.name`,
   );
-  return rows.map((r) => ({ id: r.id, name: r.name, userIds: r.user_ids ?? [], agentIds: r.agent_ids ?? [] }));
+  return rows.map((r) => ({ id: r.id, name: r.name, userIds: r.user_ids ?? [], agentIds: r.agent_ids ?? [], headIds: r.head_ids ?? [] }));
 }
 
 async function assertExists(db: Db, id: string): Promise<void> {

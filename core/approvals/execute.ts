@@ -108,8 +108,8 @@ export function createChainExecutor(deps: ChainExecutorDeps): ChainExecutor {
       await finish(row, 'failed', undefined, 'APP_CHAIN_TOOL_GONE');
       return;
     }
-    const projectId = rc.get(REQUEST_KEYS.projectId) as string | undefined;
-    const ownerId = rc.get(REQUEST_KEYS.projectOwnerId) as string | undefined;
+    const projectId = rc.get<string, string | undefined>(REQUEST_KEYS.projectId);
+    const ownerId = rc.get<string, string | undefined>(REQUEST_KEYS.projectOwnerId);
     const release = await deps.storage.hold(projectId && ownerId ? projectArea(projectId, ownerId) : userArea(row.user_id), 'write');
     try {
       const output = await tool.execute(openArgs(deps.box, row), { requestContext: rc, agent: { agentId: row.agent_id, toolCallId: `chain-${row.id}`, messages: [] } });

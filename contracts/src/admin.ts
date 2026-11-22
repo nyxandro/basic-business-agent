@@ -83,6 +83,8 @@ export interface AdminDepartment {
   name: string;
   userIds: string[];
   agentIds: string[];
+  // «Руководители» (docs/specs/[20.11.2026]-multi-step-approvals.md, F1): they approve at a stage «руководитель отдела».
+  headIds: string[];
 }
 
 export interface AdminInvite {

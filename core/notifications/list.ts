@@ -32,7 +32,9 @@ export const WAITING_QUESTION = `status = 'pending' AND expires_at > now() AND r
 export async function notificationCounts(db: Db, activity: Activity, userId: string): Promise<NotificationsResponse> {
   // One after another on one connection: it runs on every «changed» and every presence ping of every open page.
   const counts = await db.query<{ approvals: number; unread: number }>(
-    `SELECT (SELECT count(*)::int FROM app.approval_requests WHERE user_id = $1 AND ${WAITING_QUESTION}) AS approvals,
+    // Requests of multi-step approvals waiting for the person's decision count too (multi-step-approvals.md, section 17).
+    `SELECT (SELECT count(*)::int FROM app.approval_requests WHERE user_id = $1 AND ${WAITING_QUESTION})
+          + (SELECT count(*)::int FROM app.approval_chains WHERE status = 'pending' AND user_id <> $1 AND stages -> (stage - 1) ? $1) AS approvals,
             (SELECT count(*)::int FROM app.notifications n WHERE n.user_id = $1 AND n.read_at IS NULL AND ${KEPT} AND NOT (n.kind = ANY($2))) AS unread`,
     [userId, APPROVAL_NOTIFICATION_KINDS],
   );

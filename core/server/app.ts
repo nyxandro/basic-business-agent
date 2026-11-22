@@ -43,6 +43,11 @@ import { registerOrgDocsRoutes, type OrgDocsRouteDeps } from '../org-docs/routes
 import type { SkillsDeps } from '../skills-admin/store.ts';
 import { requireSession } from './guards.ts';
 import { errorJson, handleError, type AppEnv } from './http.ts';
+import { registerChainRoutes } from '../approvals/chain-routes.ts';
+import type { ChainContinuation } from '../approvals/continue.ts';
+import { describeTools } from '../approvals/describe.ts';
+import type { ChainExecutor } from '../approvals/execute.ts';
+import { createMailTools } from '../mail/tools.ts';
 
 export interface ServerDeps {
   db: Db;
@@ -70,6 +75,8 @@ export interface ServerDeps {
   org: Omit<OrgDocsRouteDeps, 'db'>;
   // Notifications in the browser (docs/specs/[20.11.2026]-notifications.md).
   notifications: Notifications;
+  // Multi-step approvals: who executes agreed requests and writes their outcome (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  approvals: { executor: ChainExecutor; continuation: ChainContinuation };
 }
 
 export function createApp(deps: ServerDeps): Hono<AppEnv> {
@@ -115,5 +122,13 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerMailRoutes(app, { db: deps.db, mail: deps.chat.mail });
   registerTaskRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, timezone: deps.timezone, box: deps.box, publicUrl: deps.publicUrl });
   registerHookRoutes(app, { db: deps.db, wake: () => deps.background.wake() });
+  const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.chat.mail, workspaceRoot: deps.chat.workspaceRoot, listNote: false, chains: deps.chat.chains }));
+  registerChainRoutes(app, {
+    db: deps.db,
+    box: deps.box,
+    registry: deps.chat.registry,
+    ...deps.approvals,
+    extraActions: () => ({ ...Object.fromEntries(Object.entries(mailActions).map(([k, a]) => [k, { ...a, system: 'Почта' }])), ...deps.connections.actionsSeen() }),
+  });
   return app;
 }

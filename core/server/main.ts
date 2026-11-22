@@ -57,6 +57,8 @@ import { createMailTrigger, POLL_INTERVAL_MS } from '../background/mail-trigger.
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
 import { createChainService } from '../approvals/chains.ts';
+import { createChainContinuation } from '../approvals/continue.ts';
+import { createChainExecutor } from '../approvals/execute.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = 3000;
@@ -173,8 +175,11 @@ async function main(): Promise<void> {
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files, activity: notifications.activity });
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
+  // Multi-step approvals: agreed requests run and end in the employee's conversation (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  const continuation = createChainContinuation({ db, memory, editor, timezone: installation.app.timezone, gateway, skills });
+  const executor = createChainExecutor({ db, box, editor, skills, storage: files, continuation });
   const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
-  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications });
+  const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications, approvals: { executor, continuation } });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.
   await recoverProjectFolders(db, env.APP_WORKSPACE_DIR);
@@ -189,6 +194,9 @@ async function main(): Promise<void> {
   // Schedules fire only where Mastra's workers run (step 0, V5); missed fires get one catch-up run.
   await mastra.startWorkers();
   background.start();
+  // Requests a stopped server left: started ones are «итог неизвестен», agreed ones run; then every 10 s.
+  await executor.recover();
+  executor.start();
   // Mail tasks: the mailboxes of their people are checked once a minute (docs/specs/[20.11.2026]-event-tasks.md).
   const mailTrigger = createMailTrigger({ db, mail, wake: () => background.wake(), intervalMs: POLL_INTERVAL_MS });
   mailTrigger.start();
@@ -206,6 +214,7 @@ async function main(): Promise<void> {
     for (const { trigger } of registry.triggers) await Promise.resolve(trigger.stop());
     background.stop();
     mailTrigger.stop();
+    executor.stop();
     await notifications.delivery.stop();
     await notifications.live.stop();
     stopTrashPurge();

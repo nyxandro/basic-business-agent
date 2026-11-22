@@ -71,6 +71,9 @@ import type { WebSearcher } from '../web/search.ts';
 import type { AppEnv } from './http.ts';
 import type { TasksDeps } from '../background/tasks.ts';
 import { createChainService, type ChainService } from '../approvals/chains.ts';
+import { createChainContinuation } from '../approvals/continue.ts';
+import { createChainExecutor } from '../approvals/execute.ts';
+import type { ChainExecutor } from '../approvals/execute.ts';
 
 export const TEST_PUBLIC_URL = 'http://localhost:8080';
 export const TEST_PASSWORD = 'correct-horse-battery';
@@ -113,6 +116,8 @@ export interface TestApp {
   notifications: Notifications;
   // What «Режимы работы» works with in this installation (core/background/tasks.ts).
   tasks: TasksDeps;
+  // Multi-step approvals: tests take agreed requests themselves (`executor.idle()`).
+  approvals: { executor: ChainExecutor };
   createUser(input: { email: string; name?: string; roleIds?: string[]; departmentIds?: string[]; password?: string }): Promise<string>;
   signIn(email: string, password?: string, ip?: string): Promise<string>;
   call(method: string, path: string, opts?: { cookie?: string; body?: unknown; ip?: string }): Promise<Response>;
@@ -368,6 +373,9 @@ export async function createTestApp(
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
+  // Multi-step approvals: agreed requests run and end in the employee's conversation (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  const continuation = createChainContinuation({ db, memory, editor, timezone: 'Europe/Moscow', gateway, skills });
+  const executor = createChainExecutor({ db, box, editor, skills, storage: files, continuation });
   const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
@@ -395,7 +403,7 @@ export async function createTestApp(
     filesDir: orgFilesDir,
     blank: { run: opts.sandbox ? sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }) : (opts.orgRun ?? noProgram), limiter: officeLimiter, workRoot: previewRoot },
   };
-  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview, org, notifications });
+  const app = createApp({ db, auth, publicUrl: TEST_PUBLIC_URL, knownAgentIds: () => (opts.registry ? registry.ids() : known), gateway, models, accounts, skills: skillsDeps, ledgerSecret, connections, box, mcpRunner: opts.mcpRunner ?? null, chat, background, timezone: 'Europe/Moscow', storage: files, preview, org, notifications, approvals: { executor, continuation } });
 
   const call: TestApp['call'] = (method, path, o = {}) =>
     Promise.resolve(
@@ -439,6 +447,7 @@ export async function createTestApp(
     sentMail,
     notifications,
     tasks: { db, registry, background, timezone: 'Europe/Moscow', box, publicUrl: TEST_PUBLIC_URL },
+    approvals: { executor },
     call,
     roleId,
     async createUser({ email, name, roleIds, departmentIds, password }) {
