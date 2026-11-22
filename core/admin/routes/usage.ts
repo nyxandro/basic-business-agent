@@ -1,12 +1,14 @@
 // «Мои расходы» for every employee and «Расходы» for admins with the "usage" right.
+import { valueNormsSchema } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
 import type { Registry } from '../../loader/registry.ts';
 import { requirePermission } from '../../server/guards.ts';
-import { access, type AppEnv } from '../../server/http.ts';
+import { access, parseJson, type AppEnv } from '../../server/http.ts';
 import { dailyUsage, employeeUsage, usageReport } from '../usage.ts';
+import { saveNorms, valueCsv, valueReport } from '../value-report.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_RANGE_MAX_DAYS = 366;
@@ -34,5 +36,20 @@ export function registerUsageReportRoutes(app: Hono<AppEnv>, deps: { db: Db; reg
     if (!parsed.success) throw appError('APP_VALIDATION_FAILED', 'from, to (YYYY-MM-DD) and groupBy are required');
     const agentNames = new Map(deps.registry.agents.map((a) => [a.passport.id, a.passport.name]));
     return c.json(await usageReport(deps.db, { from: parsed.data.from, to: parsed.data.to, timezone: deps.timezone, groupBy: parsed.data.groupBy, agentNames }));
+  });
+
+  // «Польза от агентов» (docs/specs/[20.11.2026]-feedback-and-value.md): with «Расходы», as the spend it stands beside.
+  const valueOf = (c: { req: { query(name: string): string | undefined } }) =>
+    valueReport(deps.db, { from: c.req.query('from') ?? '', to: c.req.query('to') ?? '', timezone: deps.timezone, agentName: (id) => deps.registry.get(id)?.passport.name ?? id });
+  app.get('/app/api/admin/value', requirePermission('usage'), async (c) => c.json(await valueOf(c)));
+  app.get('/app/api/admin/value.csv', requirePermission('usage'), async (c) => {
+    const report = await valueOf(c);
+    return new Response(valueCsv(report), {
+      headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`Польза от агентов ${report.from} — ${report.to}.csv`)}`, 'x-content-type-options': 'nosniff' },
+    });
+  });
+  app.put('/app/api/admin/value-norms', requirePermission('usage'), async (c) => {
+    await saveNorms(deps.db, access(c).userId, await parseJson(c, valueNormsSchema));
+    return c.json({ ok: true });
   });
 }
