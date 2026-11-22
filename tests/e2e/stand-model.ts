@@ -172,6 +172,9 @@ function standModel(req: FakeRequest): FakeTurn {
     return name ? call(name, { text: 'остатки на складе' }) : { text: '1С мне не подключена.' };
   }
   if (text.includes('почтальон') && req.tools?.some((x) => x.function.name === 'agent-mailer')) return call('agent-mailer', { prompt: 'Отправь письмо клиенту client@example.com' });
+  // The outcome of an agreed request (core/approvals/continue.ts) names the action — «…письмо…»: the agent reports it,
+  // never sends again.
+  if (text.includes('[итог согласования')) return { text: 'Готово: письмо ушло после согласования.' };
   if (text.includes('письм')) return call('mail_send', { to: 'client@example.com', text: 'Добрый день! Напоминаю о встрече.' });
   if (text.includes('сделк')) return call('crm_search', { q: 'без движения' });
   return { text: `Вы написали: «${text.slice(0, 200)}». Попробуйте слова «таблица», «график», «карточка», «выбор», «форма», «калькулятор», «письмо» или «сделки».`, chunkSize: 6, delayMs: 300 };

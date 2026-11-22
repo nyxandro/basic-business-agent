@@ -15,10 +15,12 @@ test('a message to the address of a task starts the agent on behalf of its execu
   await dialog.getByLabel('От чьего имени работает агент').selectOption({ label: 'Ольга' });
   await dialog.getByLabel('Что сделать агенту').fill('Напиши письмо клиенту по новой сделке');
   await dialog.getByRole('button', { name: 'Создать задачу' }).click();
-  const address = (await dialog.locator('code').textContent())!;
+  // Made, the window is named by the task and shows its address.
+  const made = admin.getByRole('dialog', { name: 'Новая сделка' });
+  const address = (await made.locator('code').textContent())!;
   expect(address).toMatch(/\/app\/api\/hooks\/[\w-]+$/);
-  await expect(dialog.getByRole('button', { name: 'Скопировать' })).toBeVisible();
-  await dialog.getByRole('button', { name: 'Отмена' }).click();
+  await expect(made.getByRole('button', { name: 'Скопировать' })).toBeVisible();
+  await made.getByRole('button', { name: 'Отмена' }).click();
   await expect(admin.getByRole('cell', { name: 'По событию · сообщения' })).toBeVisible();
 
   // Another system sends a form, as Bitrix24 does.
@@ -57,4 +59,9 @@ test('a letter in the employee’s mailbox starts a mail task in a conversation 
   await expect(olga.getByRole('link', { name: /^Письмо от / })).toBeVisible();
   await olga.goto('/settings/connections');
   await expect(olga.getByText(/Ваши новые письма разбирает задача «Разбор заказов»/)).toBeVisible();
+  // The stand's agent answers a letter with a letter: its question «Да» is declined — nothing waits for the scenarios after.
+  await olga.goto('/approvals');
+  const question = olga.getByRole('article').filter({ hasText: 'Разбор заказов' });
+  await question.getByRole('button', { name: 'Нет' }).click();
+  await expect(question.getByText('Отклонено')).toBeVisible();
 });

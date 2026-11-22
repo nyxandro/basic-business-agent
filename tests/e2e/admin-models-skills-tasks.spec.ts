@@ -39,8 +39,9 @@ test('«Скиллы» lists the system skills of documents without a switch, th
   const page = await pageAs(browser, 'igor@example.com');
   await page.goto('/admin/skills');
   // System skills of the core (spec, section 8.18): built in, always on, nothing to change.
-  for (const title of ['Документы Word', 'Презентации PowerPoint', 'Таблицы Excel', 'PDF']) await expect(page.getByText(title, { exact: true })).toBeVisible();
-  await expect(page.getByText('Системный')).toHaveCount(4);
+  // …and the letterhead of the organisation (docs/specs/[20.11.2026]-org-letterhead.md).
+  for (const title of ['Документы Word', 'Презентации PowerPoint', 'Таблицы Excel', 'PDF', 'Бланк организации']) await expect(page.getByText(title, { exact: true })).toBeVisible();
+  await expect(page.getByText('Системный')).toHaveCount(5);
   await expect(page.getByRole('switch')).toHaveCount(1);
   await expect(page.getByText('note-taking')).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Заметки сотрудника' })).toHaveAttribute('aria-checked', 'true');
