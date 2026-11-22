@@ -60,7 +60,7 @@ function ComplainForm({ threadId, turn, onClose }: { threadId: string; turn: num
     >
       <h2 className={styles.title}>{t.title}</h2>
       {before.ticket ? <p className={styles.note}>{t.already(before.ticket.id)}</p> : null}
-      <Field label={t.title} error={empty ? t.empty : null}>
+      <Field label={t.field} error={empty ? t.empty : null}>
         <TextArea
           autoFocus
           rows={4}
