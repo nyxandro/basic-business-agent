@@ -9,6 +9,9 @@ import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { buildRegistry } from './registry.ts';
+import { createChainService } from '../approvals/chains.ts';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
 const CACHE = fileURLToPath(new URL('../../node_modules/.cache', import.meta.url));
 let root: string | undefined;
@@ -53,7 +56,7 @@ function installation(overrides: Record<string, string> = {}): string {
 
 async function registryOf(dir: string) {
   const inst = await loadInstallation(dir, {});
-  return buildRegistry({ root: dir, installation: inst, env: {}, db: {} as Db });
+  return buildRegistry({ root: dir, installation: inst, env: {}, db: {} as Db, chains: createChainService({ db: {} as Db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }) });
 }
 
 describe('buildRegistry', () => {

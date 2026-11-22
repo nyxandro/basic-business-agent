@@ -14,7 +14,7 @@ const EXPECTED_TABLES = [
   'org_profile', 'user_profiles', 'invites', 'password_resets', 'limit_settings', 'user_limits',
   'model_keys', 'connector_credentials', 'usage_events', 'background_tasks', 'approval_requests',
   'action_journal', 'agent_overrides', 'admin_audit', 'masking_settings', 'masking_map', 'schema_migrations', 'oauth_states',
-  'projects', 'thread_projects', 'project_shares', 'project_places', 'project_trash', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs', 'task_events', 'task_event_rejects',
+  'projects', 'thread_projects', 'project_shares', 'project_places', 'project_trash', 'models', 'model_provider_keys', 'model_settings', 'skills', 'skill_scope', 'task_scope', 'background_task_runs', 'task_events', 'task_event_rejects', 'department_heads', 'approval_rules', 'approval_chain_reasons', 'approval_chains', 'approval_chain_decisions',
   'chatgpt_accounts', 'chatgpt_logins', 'account_events', 'interface_settings', 'agent_abilities',
   'agent_marks', 'message_texts', 'search_words',
   'storage_settings', 'storage_objects', 'mail_accounts', 'mail_trigger_cursors', 'mail_oauth_apps', 'mail_oauth_states', 'memory_entries', 'memory_counters',
@@ -44,7 +44,7 @@ describe('migrate', () => {
 
   it('creates every table of the installation and is idempotent', async () => {
     expect(await migrate(db.url)).toEqual(['0001_initial.sql', '0002_builtin_roles.sql', '0003_agent_overrides_drafts.sql', '0004_oauth_states.sql', '0005_background_runs.sql', '0006_projects.sql', '0007_models.sql', '0008_skills.sql', '0009_task_scope.sql', '0010_org_name_starters.sql', '0011_chatgpt_accounts.sql', '0012_interface_settings.sql', '0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql', '0021_search.sql', '0022_search_typos.sql', '0023_message_texts.sql', '0024_search_words_letters.sql', '0025_file_storage.sql', '0026_mail.sql', '0027_memory_entries.sql', '0028_search_visible_blocks.sql', '0029_agent_abilities.sql', '0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
     const rows = await query<{ table_name: string }>(db.url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'app'");
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
     const schemas = await query<{ schema_name: string }>(db.url, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('mastra', 'litellm')");
@@ -100,7 +100,7 @@ describe('migrate', () => {
         await query(stage.url, `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope) VALUES ('${name}', 't', 'd', '\\x00', '${'a'.repeat(64)}', 1, '[]', false, 'org')`);
       }
       expect(await migrate(stage.url)).toEqual(['0013_drop_read_documents.sql', '0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql', '0021_search.sql', '0022_search_typos.sql', '0023_message_texts.sql', '0024_search_words_letters.sql', '0025_file_storage.sql', '0026_mail.sql', '0027_memory_entries.sql', '0028_search_visible_blocks.sql', '0029_agent_abilities.sql', '0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
       expect(await query(stage.url, 'SELECT name FROM app.skills')).toEqual([{ name: 'note-taking' }]);
       expect(await query(stage.url, `SELECT actor_user_id, action, target FROM app.admin_audit`)).toEqual([{ actor_user_id: null, action: 'skill.delete', target: 'read-documents' }]);
     } finally {
@@ -123,7 +123,7 @@ describe('migrate', () => {
       );
       await query(stage.url, `INSERT INTO app.models (id, kind, label, connection, provider_model, vision) VALUES ('m-sub', 'chat', 'GPT', 'chatgpt', 'chatgpt/gpt-5.4', true)`);
       expect(await migrate(stage.url)).toEqual(['0014_model_output_limit.sql', '0015_project_order.sql', '0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql', '0021_search.sql', '0022_search_typos.sql', '0023_message_texts.sql', '0024_search_words_letters.sql', '0025_file_storage.sql', '0026_mail.sql', '0027_memory_entries.sql', '0028_search_visible_blocks.sql', '0029_agent_abilities.sql', '0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
       expect(await query(stage.url, 'SELECT id, max_output_tokens FROM app.models ORDER BY id')).toEqual([
         { id: 'm-onkey', max_output_tokens: null },
         { id: 'm-sub', max_output_tokens: null },
@@ -180,7 +180,7 @@ describe('migrate', () => {
       );
       await query(stage.url, `INSERT INTO app.thread_projects (thread_id, user_id, project_id) VALUES ('t1', 'u1', '00000000-0000-4000-8000-000000000001')`);
       expect(await migrate(stage.url)).toEqual(['0016_project_access.sql', '0017_approval_project.sql', '0018_project_trash.sql', '0019_trash_overlap.sql', '0020_agent_marks.sql', '0021_search.sql', '0022_search_typos.sql', '0023_message_texts.sql', '0024_search_words_letters.sql', '0025_file_storage.sql', '0026_mail.sql', '0027_memory_entries.sql', '0028_search_visible_blocks.sql', '0029_agent_abilities.sql', '0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
       expect(await query(stage.url, 'SELECT name, access, archived_at FROM app.projects ORDER BY name')).toEqual([
         { name: 'Альфа', access: 'private', archived_at: null },
         { name: 'Бета', access: 'private', archived_at: null },
@@ -214,7 +214,7 @@ describe('migrate', () => {
         await query(stage.url, `INSERT INTO app.agent_overrides (agent_id, starters) VALUES ('assistant', '{Привет}')`);
         await setup(stage.url);
         expect(await migrate(stage.url)).toEqual(['0020_agent_marks.sql', '0021_search.sql', '0022_search_typos.sql', '0023_message_texts.sql', '0024_search_words_letters.sql', '0025_file_storage.sql', '0026_mail.sql', '0027_memory_entries.sql', '0028_search_visible_blocks.sql', '0029_agent_abilities.sql', '0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
         await check(stage.url);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -273,7 +273,7 @@ describe('migrate', () => {
       await migrate(stage.url, before);
       await query(stage.url, `INSERT INTO app.agent_abilities (agent_id, web, commands) VALUES ('sales', false, true)`);
       expect(await migrate(stage.url)).toEqual(['0030_agent_widgets.sql', '0031_search_widgets.sql', '0032_mcp_servers.sql',
-      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql']);
+      '0033_oauth_state_purpose.sql', '0034_org_assets.sql', '0035_org_sign_pending.sql', '0036_org_without_stamp.sql', '0037_notifications.sql', '0038_live_signals.sql', '0039_event_tasks.sql', '0040_approval_chains.sql']);
       expect(await query(stage.url, 'SELECT agent_id, web, commands, widgets FROM app.agent_abilities')).toEqual([{ agent_id: 'sales', web: false, commands: true, widgets: true }]);
       await expect(query(stage.url, `INSERT INTO app.agent_abilities (agent_id, web, commands) VALUES ('ghost', true, true)`)).rejects.toThrow(/widgets/);
     } finally {

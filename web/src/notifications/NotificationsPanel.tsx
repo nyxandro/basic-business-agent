@@ -31,6 +31,8 @@ const KIND_ICON: Record<NotificationKind, IconName> = {
   task_result: 'check',
   task_failed: 'alert',
   task_trouble: 'alert',
+  chain_waiting: 'inbox',
+  chain_result: 'check',
   project_shared: 'folderShared',
   limit_near: 'wallet',
   limit_exhausted: 'wallet',

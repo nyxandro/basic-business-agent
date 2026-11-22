@@ -13,6 +13,7 @@ import type { Db } from '../db/pool.ts';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { ConnectorRuntime } from '../connections/manager.ts';
 import type { AnyTool, McpDefinition, PluginContext, PluginTrigger } from '../plugins/public/index.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 // Names of the core's tools of the internet (core/web): no plugin or agent tool may take them.
 const WEB_TOOL_IDS: readonly string[] = [WEB_RESEARCH_TOOL, 'web_search', 'web_fetch'];
@@ -62,6 +63,8 @@ export interface RegistryDeps {
   env: Record<string, string | undefined>;
   db: Db;
   runner?: AgentRunner;
+  // Multi-step approvals: an action under a rule becomes a request after «Да» (core/approvals/policy.ts).
+  chains: ChainService;
 }
 
 // Stage 1 read skills from these folders; a copy updated since would silently lose them.
@@ -161,7 +164,7 @@ export async function buildRegistry(deps: RegistryDeps): Promise<Registry> {
     for (const id of passport.readOnly) {
       if (!tools[id]) problems.push({ file, field: 'readOnly', message: `the agent has no tool "${id}"` });
     }
-    const wrapped = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, applyApprovalPolicy(tool, { readOnly: readOnly.has(id), db })]));
+    const wrapped = Object.fromEntries(Object.entries(tools).map(([id, tool]) => [id, applyApprovalPolicy(tool, { readOnly: readOnly.has(id), db, chains: deps.chains })]));
     problems.push(...leftoverSkills(dir, file));
     const connectorIds = passport.plugins.filter((p) => connectors.some((c) => c.id === p));
     return { passport, dir, instructions, tools: wrapped, readOnly, subagents: await loadSubagents(dir, file), connectorIds, toolSystems };

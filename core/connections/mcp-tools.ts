@@ -23,6 +23,7 @@ import { programSpecOf, programUrl, requireRunner, signedFetch, type RunnerAcces
 import { accessOf, markProgramCrashed, markSharedKeyRefused, mcpConnectorId, serversForRun, type RunServer } from './servers.ts';
 import { CONNECT_TIMEOUT_MS, definitionForCalls, describeAction } from './snapshot.ts';
 import { assertPlainHttpAllowed } from './probe.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 // Section 8: a call waits for the system 60 s at most.
 const CALL_TIMEOUT_MS = 60_000;
@@ -34,6 +35,7 @@ export interface McpToolsDeps {
   publicUrl: string;
   // The container of program servers; null — the installation has none.
   runner: RunnerAccess | null;
+  chains: ChainService;
 }
 
 // mcp-runner answers 503 only for a program that fell three times in ten minutes (a container that is down answers
@@ -213,7 +215,7 @@ export function createMcpTools(deps: McpToolsDeps): McpTools {
           for (const action of server.actions) {
             const tool = await client.toolFromDefinition({ serverName: server.slug, definition: definitionForCalls(action) });
             // The model calls it by the name the snapshot gave; the journal and «Да» know it by the same name.
-            out[action.modelName] = applyApprovalPolicy(guarded(server, userId, tool as AnyTool, action.modelName), { readOnly: action.readOnly, db });
+            out[action.modelName] = applyApprovalPolicy(guarded(server, userId, tool as AnyTool, action.modelName), { readOnly: action.readOnly, db, chains: deps.chains });
             seen.set(action.modelName, describeAction(action));
           }
         } catch (error) {

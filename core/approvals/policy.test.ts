@@ -12,6 +12,9 @@ import { summariseArgs } from '../journal/journal.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
 import { REQUEST_KEYS } from '../runtime/request-keys.ts';
 import { applyApprovalPolicy } from './policy.ts';
+import { createChainService } from './chains.ts';
+import { createSecretBox } from '../crypto/secret-box.ts';
+import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
 let database: TestDatabase;
 let db: Db;
@@ -47,9 +50,9 @@ beforeAll(async () => {
   model = await startFakeModel();
   const t = tools();
   const wrapped = {
-    crm_search: applyApprovalPolicy(t.crm_search, { readOnly: true, db }),
-    mail_send: applyApprovalPolicy(t.mail_send, { readOnly: false, db }),
-    crm_update: applyApprovalPolicy(t.crm_update, { readOnly: false, db }),
+    crm_search: applyApprovalPolicy(t.crm_search, { readOnly: true, db, chains: createChainService({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }) }),
+    mail_send: applyApprovalPolicy(t.mail_send, { readOnly: false, db, chains: createChainService({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }) }),
+    crm_update: applyApprovalPolicy(t.crm_update, { readOnly: false, db, chains: createChainService({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS) }) }),
   };
   agent = new Agent({ id: 'sales', name: 'sales', instructions: 'x', model: { providerId: 'fake', modelId: 'fake', url: model.url, apiKey: 'x' }, tools: wrapped });
   new Mastra({ agents: { sales: agent }, storage: new PostgresStore({ id: 't', connectionString: database.url, schemaName: 'mastra' }), logger: false });

@@ -110,6 +110,10 @@ export const ERROR_CATALOG = {
   APP_BACKGROUND_RUN_SKIPPED: { status: 409, userMessage: 'Запуск задачи пропущен: предыдущий запуск ещё ждёт вашего решения.' },
   APP_BACKGROUND_RUN_FAILED: { status: 500, userMessage: 'Задача не выполнилась. Можно запустить её снова.' },
   // Background tasks by an event (docs/specs/[20.11.2026]-event-tasks.md).
+  // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  APP_CHAIN_REASON_REQUIRED: { status: 400, userMessage: 'Напишите, зачем нужно действие, — это увидят согласующие. Без этого заявка не отправляется.' },
+  APP_CHAIN_TOOL_GONE: { status: 410, userMessage: 'Согласовано, но не выполнено: этого действия больше нет у агента. Попросите администратора проверить подключение.' },
+  APP_CHAIN_UNKNOWN_OUTCOME: { status: 409, userMessage: 'Неизвестно, выполнено ли действие: сервер перезапустился во время выполнения. Проверьте в системе.' },
   APP_TASK_EVENT_GONE: { status: 410, userMessage: 'Событие задачи больше недоступно: запуск не выполнен.' },
   APP_TASK_EVENT_TOO_LARGE: { status: 413, userMessage: 'Сообщение больше 64 КБ — задача его не принимает.' },
   APP_TASK_EVENT_BAD_FORMAT: { status: 415, userMessage: 'Сообщение не в формате JSON и не форма — задача его не принимает.' },

@@ -56,6 +56,7 @@ import { createMailService } from '../mail/service.ts';
 import { createMailTrigger, POLL_INTERVAL_MS } from '../background/mail-trigger.ts';
 import { createApp } from './app.ts';
 import { logEvent } from './log.ts';
+import { createChainService } from '../approvals/chains.ts';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const PORT = 3000;
@@ -65,10 +66,13 @@ async function main(): Promise<void> {
   const env = readCoreEnv(process.env);
   const installation = await loadInstallation(ROOT, process.env);
   const db = createPool(env.DATABASE_URL);
+  const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
+  // Multi-step approvals: every tool's «Да» may make a request (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  const chains = createChainService({ db, box });
   // The registry and the Mastra workflow need the background service, which itself needs them.
   const backgroundRef: { current?: BackgroundService } = {};
   const runner = { startAgentRun: (input: Parameters<BackgroundService['startAgentRun']>[0]) => backgroundRef.current!.startAgentRun(input) };
-  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, runner });
+  const registry = await buildRegistry({ root: ROOT, installation, env: process.env, db, runner, chains });
   await migrate(env.DATABASE_URL, undefined, registry.pluginMigrations);
   const auth = createAuth({ db, authPool: createAuthPool(env.DATABASE_URL), secret: env.BETTER_AUTH_SECRET, publicUrl: env.APP_PUBLIC_URL });
   const agentIds = registry.ids();
@@ -78,7 +82,6 @@ async function main(): Promise<void> {
   await ensureOrgName(db, installation.app.name);
   // «Что агенту можно» (spec, section 8.30): every agent of the installation has its row from the start.
   await ensureAgentAbilities(db, agentIds);
-  const box = createSecretBox(env.APP_ENCRYPTION_KEYS);
   // Notifications in the browser: the VAPID keys are made at the first start (docs/specs/[20.11.2026]-notifications.md).
   const notifications = await createNotifications({ db, box, timezone: installation.app.timezone, databaseUrl: env.DATABASE_URL });
   const litellm = createLiteLLMClient(env.LITELLM_URL, env.LITELLM_MASTER_KEY);
@@ -106,7 +109,7 @@ async function main(): Promise<void> {
   const memory = createMemory(storage);
   // Program servers only with the container mcp-runner (docs/specs/[20.11.2026]-mcp-connections.md, F1).
   const mcpRunner = env.MCP_RUNNER_SOCKET && env.MCP_RUNNER_SECRET ? { socketPath: env.MCP_RUNNER_SOCKET, secret: env.MCP_RUNNER_SECRET } : null;
-  const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors, runner: mcpRunner });
+  const connections = createConnectionManager({ db, box, publicUrl: env.APP_PUBLIC_URL, connectors: registry.connectors, runner: mcpRunner , chains });
   // The commands of the sandbox and LibreOffice's runs: each its own queue for the whole installation (8.7, 8.27).
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
   const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
@@ -165,12 +168,12 @@ async function main(): Promise<void> {
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const web = { searcher: createGatewaySearcher(gateway), reader: createPageReader({ docText: webText, timeoutMs: FETCH_MAX_MS }), translateError: (error: unknown, userId: string) => gateway.translateError(error, userId) };
-  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, signing: { run: org.blank.run, limiter: commandLimiter, workRoot: tmpdir() }, connections, sandbox, mail, web, workflows: { [workflow.id]: workflow } });
+  const mastra = createMastraRuntime({ registry, storage, memory, gateway, db, app: installation.app, workspaceRoot: env.APP_WORKSPACE_DIR, files, docText, orgFilesDir, signing: { run: org.blank.run, limiter: commandLimiter, workRoot: tmpdir(), chains }, connections, sandbox, mail, web, chains, workflows: { [workflow.id]: workflow } });
   const editor = { db, mastra, registry };
   const background = createBackgroundService({ db, memory, registry, gateway, editor, timezone: installation.app.timezone, skills, workspaceRoot: env.APP_WORKSPACE_DIR, storage: files, activity: notifications.activity });
   backgroundRef.current = background;
   const naming = { db, memory, modelConfig: (modelId: string, userId: string, agentId: string) => gateway.modelConfig(modelId, userId, agentId), waitAtEndMs: TITLE_WAIT_AT_END_MS, maxMs: NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot: env.APP_WORKSPACE_DIR, timezone: installation.app.timezone, skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
   const app = createApp({ db, auth, publicUrl: env.APP_PUBLIC_URL, knownAgentIds: () => agentIds, gateway, models, accounts, skills: skillsDeps, ledgerSecret: env.LITELLM_CALLBACK_SECRET, connections, box, mcpRunner, chat, background, timezone: installation.app.timezone, storage: files, preview, org, notifications });
   await background.syncSchedules();
   // Answers a stopped server left in projects are settled into the trash; folders of gone projects go.

@@ -9,6 +9,9 @@ export const NOTIFICATION_KINDS = [
   'task_failed',
   // To the admins who keep tasks: an event task skips events — a flood, a blocked executor (event-tasks.md).
   'task_trouble',
+  // Multi-step approvals: a request waits for the reader's decision; the employee hears how their request ended.
+  'chain_waiting',
+  'chain_result',
   'project_shared',
   'limit_near',
   'limit_exhausted',

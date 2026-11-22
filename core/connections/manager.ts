@@ -24,6 +24,7 @@ import { createMcpTools, type McpTools } from './mcp-tools.ts';
 import type { RunnerAccess } from './programs.ts';
 import { serversOfAgents } from './servers.ts';
 import { describeAction } from './snapshot.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 export interface ConnectorRuntime {
   id: string;
@@ -80,7 +81,7 @@ function statusTool(c: ConnectorRuntime, error: () => Error): AnyTool {
   }) as AnyTool;
 }
 
-export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUrl: string; connectors: ConnectorRuntime[]; runner: RunnerAccess | null }): ConnectionManager {
+export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUrl: string; connectors: ConnectorRuntime[]; runner: RunnerAccess | null; chains: ChainService }): ConnectionManager {
   const { db, box } = deps;
   const connectors = new Map(deps.connectors.map((c) => [c.id, c]));
   const clients = new Map<string, { client: MCPClient; timer: NodeJS.Timeout }>();
@@ -190,7 +191,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
 
   // Tool definitions of a system do not depend on the employee: the last listing is kept.
   const seen = new Map<string, ActionDescription>();
-  const mcp = createMcpTools({ ...authDeps, runner: deps.runner });
+  const mcp = createMcpTools({ ...authDeps, runner: deps.runner, chains: deps.chains });
 
   return {
     connectors,
@@ -220,7 +221,7 @@ export function createConnectionManager(deps: { db: Db; box: SecretBox; publicUr
           for (const [name, tool] of Object.entries(tools)) {
             const raw = name.startsWith(prefix) ? name.slice(prefix.length) : name;
             const guarded = c.mode === 'personal' ? wrapPersonal(c, userId, tool) : tool;
-            out[name] = applyApprovalPolicy(guarded, { readOnly: c.readOnly.has(raw), db });
+            out[name] = applyApprovalPolicy(guarded, { readOnly: c.readOnly.has(raw), db, chains: deps.chains });
             seen.set(name, describeTool(out[name]));
           }
         } catch (error) {

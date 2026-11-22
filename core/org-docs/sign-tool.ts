@@ -29,6 +29,7 @@ import { ORG_SCRIPTS_DIR, ORG_WORK_PREFIX } from './blank.ts';
 import { sealGapsOf, sealMissingWords, SIGN_MARK, SIGN_TOOL, type SealGap } from './prompt.ts';
 import { assertUnpackable, fingerprintOf, hasMark, readSignable, rememberAsked, takeAsked } from './sign-document.ts';
 import { isSigner } from './signers.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 export const DOCUMENT_KINDS = ['letter', 'commercial_offer', 'minutes', 'certificate', 'contract', 'act', 'waybill', 'invoice_factura', 'upd', 'power_of_attorney', 'other'] as const;
 type DocumentKind = (typeof DOCUMENT_KINDS)[number];
@@ -60,6 +61,7 @@ const GAP_NAMES: Record<SealGap, string> = { stamp: 'stamp', signature: 'signatu
 
 export interface SignDeps {
   db: Db;
+  chains: ChainService;
   workspaceRoot: string;
   // A runner of the one-off sandbox that reads ORG_SCRIPTS_DIR.
   run: RunCommand;
@@ -232,7 +234,7 @@ function signTool(deps: SignDeps): AnyTool {
       return { path, placed: true, kind, note: NOTE };
     },
   });
-  return applyApprovalPolicy(tool as AnyTool, { readOnly: false, db: deps.db });
+  return applyApprovalPolicy(tool as AnyTool, { readOnly: false, db: deps.db, chains: deps.chains });
 }
 
 export interface SignTools {

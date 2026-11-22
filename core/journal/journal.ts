@@ -8,8 +8,9 @@ import type { RunKind } from '../runtime/request-keys.ts';
 
 type Queryable = Pick<pg.Pool | pg.PoolClient, 'query'>;
 
-export type JournalEvent = 'tool_call' | 'tool_declined' | 'approval_expired' | 'background_started' | 'background_finished' | 'background_skipped';
-export type JournalResult = 'ok' | 'error' | 'declined' | 'expired' | 'skipped' | 'started';
+// `approval_chain_created`, `approval_stage` — multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md).
+export type JournalEvent = 'tool_call' | 'tool_declined' | 'approval_expired' | 'background_started' | 'background_finished' | 'background_skipped' | 'approval_chain_created' | 'approval_stage';
+export type JournalResult = 'ok' | 'error' | 'declined' | 'expired' | 'skipped' | 'started' | 'sent' | 'approved' | 'unknown';
 
 export interface JournalEntry {
   userId: string | null;

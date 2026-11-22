@@ -70,6 +70,7 @@ import type { PageReader } from '../web/fetch.ts';
 import type { WebSearcher } from '../web/search.ts';
 import type { AppEnv } from './http.ts';
 import type { TasksDeps } from '../background/tasks.ts';
+import { createChainService, type ChainService } from '../approvals/chains.ts';
 
 export const TEST_PUBLIC_URL = 'http://localhost:8080';
 export const TEST_PASSWORD = 'correct-horse-battery';
@@ -178,7 +179,7 @@ export async function createTestApp(
     assistantSubagent?: boolean;
     // A real installation instead of the test agents (e.g. the demo of the repository); its plugin
     // migrations are applied to the test database.
-    registry?: (db: Db) => Promise<Registry>;
+    registry?: (db: Db, chains: ChainService) => Promise<Registry>;
     // A test of an empty installation: no models in the catalog.
     noModels?: boolean;
     // Shortens the wait for the primary model's first chunk before the fallback answers.
@@ -237,6 +238,7 @@ export async function createTestApp(
   const teamId = `test-${database.url.split('/').pop()}`;
   const litellm = createLiteLLMClient(requireEnv('LITELLM_TEST_URL'), requireEnv('LITELLM_TEST_MASTER_KEY'), teamId);
   const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+  const chains = createChainService({ db, box });
   const noPush: PushTransport = () => Promise.reject(new Error('this test app has no push service (createTestApp({ push }))'));
   const notifications = await createNotifications({
     db,
@@ -251,7 +253,7 @@ export async function createTestApp(
   await gateway.syncOrgBudget();
   if (!opts.noModels) await seedTestModels(db);
   const ledgerSecret = requireEnv('LITELLM_TEST_CALLBACK_SECRET');
-  const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [], runner: opts.mcpRunner ?? null });
+  const connections = createConnectionManager({ db, box: createSecretBox(TEST_ENCRYPTION_KEYS), publicUrl: TEST_PUBLIC_URL, connectors: opts.connectors ?? [], runner: opts.mcpRunner ?? null, chains });
   await ensureMaskingSettings(db, []);
   await ensureOrgName(db, 'Альфа-Строй');
   const model = await startFakeModel({ ...(opts.modelFallback ? { fallback: opts.modelFallback } : {}), ...(opts.namingFallback ? { naming: opts.namingFallback } : {}) });
@@ -259,7 +261,7 @@ export async function createTestApp(
   const salesTools = {
     crm_search: applyApprovalPolicy(
       createTool({ id: 'crm_search', description: 'Найти сделки', inputSchema: z.object({ q: z.string() }), execute: () => Promise.resolve({ deals: 12 }) }),
-      { readOnly: true, db },
+      { readOnly: true, db, chains },
     ),
     mail_send: applyApprovalPolicy(
       createTool({
@@ -268,14 +270,14 @@ export async function createTestApp(
         inputSchema: z.object({ to: z.string().describe('Кому'), text: z.string().describe('Текст письма') }),
         execute: (input) => (sentMail.push(input), Promise.resolve({ sent: true })),
       }),
-      { readOnly: false, db },
+      { readOnly: false, db, chains },
     ),
   };
   const assistant = testAgent('assistant', 'Помощник', {});
   if (opts.assistantSubagent) assistant.subagents = [testAgent('mailer', 'Почтальон', { mail_send: salesTools.mail_send })];
   const agents = [testAgent('sales', 'Продажи', salesTools), assistant].filter((a) => known.has(a.passport.id));
   const registry: Registry = opts.registry
-    ? await opts.registry(db)
+    ? await opts.registry(db, chains)
     : {
         agents,
         get: (id) => agents.find((a) => a.passport.id === id),
@@ -333,6 +335,7 @@ export async function createTestApp(
     maxUnpackedBytes: PREVIEW_MAX_UNPACKED_BYTES,
   });
   const mastra = createMastraRuntime({
+    chains,
     registry,
     storage,
     memory,
@@ -356,7 +359,7 @@ export async function createTestApp(
     ...(opts.sandbox
       ? {
           sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir }, isolation: assertIsolationAvailable() },
-          signing: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: commandLimiter, workRoot: previewRoot },
+          signing: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: commandLimiter, workRoot: previewRoot, chains },
         }
       : {}),
   });
@@ -365,7 +368,7 @@ export async function createTestApp(
   backgroundRef.current = background;
   // The naming call goes to the same model as the test agents.
   const naming = { db, memory, modelConfig: fakeGateway.modelConfig, waitAtEndMs: opts.titleWaitMs ?? TITLE_WAIT_AT_END_MS, maxMs: opts.namingMaxMs ?? NAMING_MAX_MS };
-  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, copilot: createCopilotHandler({ editor }) };
+  const chat = { db, memory, registry, gateway, editor, workspaceRoot, timezone: 'Europe/Moscow', skills, connections, naming, storage: files, mail, presence: notifications.presence, activity: notifications.activity, chains, copilot: createCopilotHandler({ editor }) };
   const agentName = (id: string) => registry.get(id)?.passport.name ?? id;
   // The mock models' deployments are in the test LiteLLM's file: the copying leaves them alone.
   const writer = createGatewayWriter({ db, box, client: litellm, owner: teamId, fileModelIds: TEST_MODEL_IDS, timeouts: opts.gatewayTimeouts ?? GATEWAY_TIMEOUTS });

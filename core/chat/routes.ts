@@ -65,7 +65,7 @@ const startsLikeJpeg = (data: Uint8Array): boolean => data[0] === 0xff && data[1
 
 export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot: CopilotHandler; preview: PreviewService }): void {
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
-  const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false }));
+  const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false, chains: deps.chains }));
   const mailSystems = Object.fromEntries(MAIL_TOOL_NAMES.map((name) => [name, MAIL_SYSTEM]));
   // The tools of the browser for a folder of the person's computer (spec, section 8.25): read-only.
   const computerActions = Object.fromEntries(Object.entries(COMPUTER_ACTION_TITLES).map(([name, title]) => [name, { title, fields: {}, readOnly: true }]));

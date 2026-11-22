@@ -31,6 +31,7 @@ import type { NamingDeps } from './naming.ts';
 import type { Presence } from '../notifications/presence.ts';
 import type { Activity } from '../notifications/activity.ts';
 import { newRunLife, tellAfterLeaving, type RunLife } from './after-leaving.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 export interface ChatDeps {
   db: Db;
@@ -50,6 +51,8 @@ export interface ChatDeps {
   storage: FileStorage;
   // The mailboxes of employees: the chat names their actions (spec, section 8.24).
   mail: MailService;
+  // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md): the mail actions' descriptions need the tools.
+  chains: ChainService;
   // Which conversation is on the screen of the person's visible tabs (docs/specs/[20.11.2026]-notifications.md).
   presence: Pick<Presence, 'isWatching'>;
   // Where agents work now: the blue ring of the conversation in the lists (decision of the owner 22.11).
@@ -110,6 +113,16 @@ const NO_PROJECT: RunProject = { projectId: null, projectOwnerId: null, lostProj
 function releaseThread(threadId: string): void {
   busyThreads.delete(threadId);
 }
+
+// A turn the server starts itself in a conversation — the continuation after an agreed request of multi-step
+// approvals (core/approvals/continue.ts): it takes the conversation as a person's turn does, or waits.
+export function holdThreadForServer(threadId: string): boolean {
+  if (busyThreads.has(threadId)) return false;
+  busyThreads.add(threadId);
+  return true;
+}
+
+export const releaseThreadForServer = releaseThread;
 
 // What the answer removed from its project goes into the trash (spec, section 8.20) — once, when the
 // agent itself has ended: finished, stopped by «Стоп» or failed. A failure of the trash is the

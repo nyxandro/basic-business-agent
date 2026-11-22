@@ -29,7 +29,7 @@ async function run(threadId: string, text: string | null, resume?: unknown): Pro
 
 beforeAll(async () => {
   const installation = await loadInstallation(ROOT, process.env);
-  t = await createTestApp({ registry: (db) => buildRegistry({ root: ROOT, installation, env: process.env, db }) });
+  t = await createTestApp({ registry: (db, chains) => buildRegistry({ root: ROOT, installation, env: process.env, db, chains }) });
   const olga = await t.createUser({ email: 'olga@example.com', name: 'Ольга' });
   const dep = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Офис') RETURNING id`)).rows[0]!.id;
   await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [dep, olga]);

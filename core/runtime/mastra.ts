@@ -29,6 +29,7 @@ import { createWidgetHistoryProcessor } from '../widgets/history.ts';
 import { createOrgDocsPromptProcessor } from '../org-docs/prompt.ts';
 import { createSignTools, signActionsFor, type SignDeps } from '../org-docs/sign-tool.ts';
 import { SIGN_TOOL } from '../org-docs/prompt.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 export interface MastraRuntimeDeps {
   registry: Registry;
@@ -53,6 +54,8 @@ export interface MastraRuntimeDeps {
   orgFilesDir: string;
   // The one-off sandbox that puts the stamp and the signature; without it nobody has the signing tool.
   signing?: Omit<SignDeps, 'db' | 'workspaceRoot'>;
+  // Multi-step approvals: the mailbox's tools make requests too (docs/specs/[20.11.2026]-multi-step-approvals.md).
+  chains: ChainService;
   // The mailboxes of employees (spec, section 8.24).
   mail?: MailService;
   // The internet of agents (spec, section 8.30): the search, the reader of pages and the translation of a failed
@@ -86,8 +89,8 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
     : null;
   // The mail tools do not depend on the person (they read who runs from the request): made once.
   // Two sets: the agent the person talks to may be asked to show a list of letters as a widget; a sub-agent has none.
-  const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: true }) : null;
-  const subMailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false }) : null;
+  const mailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: true, chains: deps.chains }) : null;
+  const subMailTools = deps.mail ? createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false, chains: deps.chains }) : null;
   const mail = deps.mail && mailTools && subMailTools ? { toolsFor: async (userId: string, top: boolean) => ((await deps.mail!.connected(userId)).length > 0 ? (top ? mailTools : subMailTools) : {}) } : null;
   const mailActions = mailTools ? describeTools(mailTools) : {};
   const signTools = deps.signing ? createSignTools({ db: deps.db, workspaceRoot: deps.workspaceRoot, ...deps.signing }) : null;

@@ -34,6 +34,9 @@ export const REQUEST_KEYS = {
   // before the first model call of a request by core/widgets/history.ts — with the screens shown before a pause on
   // «Да» or the browser — or by `render_ui` itself when it runs before any (core/widgets/answer-screens.ts).
   widgetScreens: 'bba.widgetScreens',
+  // The execution of an agreed request of multi-step approvals (core/approvals/execute.ts): the tool runs the call
+  // instead of making a request again.
+  chainExecution: 'bba.chainExecution',
 } as const;
 
 export type RunKind = 'chat' | 'background' | 'draft';

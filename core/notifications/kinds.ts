@@ -27,6 +27,8 @@ export const PUSH_DELIVERY: Record<NotificationKind, { ttlSeconds: number; urgen
   task_result: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   task_failed: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   task_trouble: { ttlSeconds: 12 * 3600, urgency: 'normal' },
+  chain_waiting: { ttlSeconds: 12 * 3600, urgency: 'high' },
+  chain_result: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   project_shared: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_near: { ttlSeconds: 12 * 3600, urgency: 'normal' },
   limit_exhausted: { ttlSeconds: 12 * 3600, urgency: 'normal' },
@@ -158,6 +160,48 @@ export const notices = {
       link: '/admin/modes',
       dedupKey: `task_trouble:${input.taskId}:${input.trouble}:${hour}`,
       subjectRef: `task:${input.taskId}`,
+      threadId: null,
+    });
+  },
+
+  // Multi-step approvals (docs/specs/[20.11.2026]-multi-step-approvals.md): a request waits for the reader at a stage.
+  chainWaiting(input: { userId: string; chainId: string; action: string; requester: string; stage: number; stages: number }): Notice {
+    return notice({
+      userId: input.userId,
+      kind: 'chain_waiting',
+      title: `Ждёт вашего согласования: ${input.action}`,
+      body: `Заявка №${input.chainId} · этап ${input.stage} из ${input.stages} · просит ${input.requester}`,
+      link: '/approvals',
+      dedupKey: `chain_waiting:${input.chainId}:${input.stage}`,
+      subjectRef: `chain:${input.chainId}`,
+      threadId: null,
+    });
+  },
+
+  // How the employee's request ended: done, not done, declined, expired, unknown.
+  chainResult(input: { userId: string; chainId: string; action: string; outcome: 'done' | 'failed' | 'declined' | 'expired' | 'unknown_outcome'; agentId: string; threadId: string }): Notice {
+    const titles = { done: 'Согласовано и выполнено', failed: 'Согласовано, но не выполнено', declined: 'Заявка отклонена', expired: 'Заявка истекла', unknown_outcome: 'Неизвестно, выполнено ли действие' } as const;
+    return notice({
+      userId: input.userId,
+      kind: 'chain_result',
+      title: `${titles[input.outcome]}: ${input.action}`,
+      body: `Заявка №${input.chainId}. Подробности — в «Ждёт подтверждения» → «Мои заявки» и в разговоре.`,
+      link: '/approvals',
+      dedupKey: `chain_result:${input.chainId}:${input.outcome}`,
+      subjectRef: `chain:${input.chainId}`,
+      threadId: input.threadId.startsWith('bg:') ? null : input.threadId,
+    });
+  },
+
+  chainWithdrawn(input: { userId: string; chainId: string; action: string }): Notice {
+    return notice({
+      userId: input.userId,
+      kind: 'chain_result',
+      title: `Заявка отозвана: ${input.action}`,
+      body: `Заявка №${input.chainId} больше не ждёт вашего решения.`,
+      link: '/approvals',
+      dedupKey: `chain_withdrawn:${input.chainId}:${input.userId}`,
+      subjectRef: `chain:${input.chainId}`,
       threadId: null,
     });
   },

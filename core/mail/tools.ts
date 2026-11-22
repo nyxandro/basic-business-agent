@@ -22,6 +22,7 @@ import type { MailAccount } from './accounts.ts';
 import { mailError, smtpTransport, withImap } from './client.ts';
 import { pickAccount, type MailService } from './service.ts';
 import { listNote } from '../widgets/prompt.ts';
+import type { ChainService } from '../approvals/chains.ts';
 
 export const MAIL_TOOL_NAMES = ['mailbox_folders', 'mailbox_list', 'mailbox_search', 'mailbox_read', 'mailbox_save_attachment', 'mailbox_send'] as const;
 // How the chat names the system of these actions.
@@ -113,6 +114,7 @@ export interface MailToolsDeps {
   workspaceRoot: string;
   // The agent the person talks to (it alone has widgets): a list of three and more letters asks for a widget (#32).
   listNote: boolean;
+  chains: ChainService;
 }
 
 // Runs an action with the person's mailbox; a refused way in marks the mailbox «Ошибка доступа».
@@ -235,7 +237,7 @@ function readTools(deps: MailToolsDeps): Record<string, AnyTool> {
         return { path: saved.path, bytes: saved.bytes };
       }),
   });
-  return Object.fromEntries([folders, list, search, read, save].map((t) => [t.id, applyApprovalPolicy(t as AnyTool, { readOnly: true, db: deps.db })]));
+  return Object.fromEntries([folders, list, search, read, save].map((t) => [t.id, applyApprovalPolicy(t as AnyTool, { readOnly: true, db: deps.db, chains: deps.chains })]));
 }
 
 function readAttachment(root: string, path: string): { filename: string; content: Buffer } {
@@ -337,7 +339,7 @@ function sendTool(deps: MailToolsDeps): AnyTool {
       };
     },
   });
-  return applyApprovalPolicy(tool as AnyTool, { readOnly: false, db: deps.db });
+  return applyApprovalPolicy(tool as AnyTool, { readOnly: false, db: deps.db, chains: deps.chains });
 }
 
 export function createMailTools(deps: MailToolsDeps): Record<string, AnyTool> {
