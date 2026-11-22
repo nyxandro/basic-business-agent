@@ -46,7 +46,7 @@ export function DraftCheckPage() {
       />
       <Card className={styles.checkChat}>
         <CopilotKit {...COPILOT_OPTIONS} generativeUI={WIDGETS_CONFIG} headers={DRAFT_HEADERS}>
-          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, mark: chatMarkOf(agent.mark), actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} />
+          <ChatPanel agent={{ id: agent.id, name: agent.name, description: agent.description, starters: agent.starters, mark: chatMarkOf(agent.mark), actions: {}, systems: NO_SYSTEMS }} threadId={threadId} onRunFinished={noop} onThreadTitled={noop} draft />
         </CopilotKit>
       </Card>
     </div>

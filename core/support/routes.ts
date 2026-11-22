@@ -20,7 +20,7 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
   app.get('/app/api/me/support/turn', async (c) => {
     const threadId = c.req.query('threadId');
     const turn = Number(c.req.query('turn'));
-    if (!threadId || !Number.isInteger(turn) || turn < 1) throw appError('APP_VALIDATION_FAILED', 'threadId and turn are required');
+    if (!threadId || !Number.isInteger(turn) || turn < 1 || turn > 1_000_000) throw appError('APP_VALIDATION_FAILED', 'threadId and turn are required');
     return c.json({ ticket: await existingComplaint(deps.db, access(c).userId, threadId, turn) } satisfies ComplaintStateResponse);
   });
 
@@ -37,7 +37,7 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
 
   app.get(`${S}/:id/files/:ord`, agents, async (c) => {
     const ord = Number(c.req.param('ord'));
-    if (!Number.isInteger(ord) || ord < 0) throw appError('APP_VALIDATION_FAILED', `bad file number "${c.req.param('ord')}"`);
+    if (!Number.isInteger(ord) || ord < 0 || ord > 100_000) throw appError('APP_VALIDATION_FAILED', `bad file number "${c.req.param('ord')}"`);
     const file = await ticketFile(deps.db, c.req.param('id'), ord);
     return new Response(new Uint8Array(file.content), {
       headers: { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`, 'x-content-type-options': 'nosniff' },

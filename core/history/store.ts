@@ -159,6 +159,12 @@ export async function conversationMessages(db: Db, userId: string, threadId: str
   };
 }
 
+// When the latest message of the person in a conversation was stored (ms): the start of the turn going on; null — none.
+export async function turnStartedAt(db: Db, threadId: string): Promise<number | null> {
+  const { rows } = await db.query<{ at: Date | null }>(`SELECT max(COALESCE("createdAtZ", "createdAt" AT TIME ZONE 'UTC')) AS at FROM mastra.mastra_messages WHERE thread_id = $1 AND role = 'user'`, [threadId]);
+  return rows[0]?.at ? rows[0].at.getTime() : null;
+}
+
 // How many messages of a conversation are stored: Mastra gives the model only the last LAST_MESSAGES.
 export async function storedMessageCount(db: Db, threadId: string): Promise<number> {
   const { rows } = await db.query<{ n: string }>('SELECT count(*) AS n FROM mastra.mastra_messages WHERE thread_id = $1', [threadId]);

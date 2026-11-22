@@ -36,6 +36,7 @@ import type { Activity } from '../notifications/activity.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { createRunQueue, enqueueFire, finishRun, recoverRuns, type QueuedRun, type RunQueue } from './queue.ts';
 import { recordFact } from '../work-facts/facts.ts';
+import { turnStartedAt } from '../history/store.ts';
 import { fireTimeOf } from './schedule.ts';
 import { membersOf } from './scope.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
@@ -149,7 +150,8 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
     rc.set(REQUEST_KEYS.threadId, threadId);
     rc.set(REQUEST_KEYS.agentId, row.agent_id);
     rc.set(REQUEST_KEYS.runKind, 'background');
-    rc.set(REQUEST_KEYS.runStartedAt, String(Date.now()));
+    // A run going on after «Да» started with the task's message, not now (docs/specs/[20.11.2026]-feedback-and-value.md).
+    rc.set(REQUEST_KEYS.runStartedAt, String((waiting ? await turnStartedAt(db, threadId) : null) ?? Date.now()));
     if (row.id) rc.set(REQUEST_KEYS.taskId, row.id);
     rc.set(REQUEST_KEYS.modelId, models.primary);
     if (models.fallback) rc.set(REQUEST_KEYS.fallbackModelId, models.fallback);
@@ -298,13 +300,14 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function closeRun(approval: ApprovalRequest, outcome: 'done' | 'failed', code: string | null): Promise<void> {
     if (!approval.taskId) return;
     const eventId = eventOfThread(approval.threadId);
-    await db.query(
+    const { rowCount: closed } = await db.query(
       `UPDATE app.background_task_runs SET outcome = $3, reason_code = $4, finished_at = now()
         WHERE task_id = $1 AND user_id = $2 AND outcome = 'awaiting-approval' AND event_id IS NOT DISTINCT FROM $5::bigint`,
       [approval.taskId, approval.userId, outcome, code, eventId],
     );
     if (eventId) await settleEvent(db, eventId, outcome, code);
-    if (outcome === 'done') await recordFact(db, 'background_run', { userId: approval.userId, agentId: approval.agentId });
+    // Counted once: a run with two questions is closed by the first answer only.
+    if (outcome === 'done' && closed) await recordFact(db, 'background_run', { userId: approval.userId, agentId: approval.agentId });
   }
 
   async function finishApproval(approval: ApprovalRequest, approved: boolean, reason?: string): Promise<void> {

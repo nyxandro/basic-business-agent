@@ -123,6 +123,7 @@ export const ERROR_CATALOG = {
   APP_SUPPORT_FAILED: { status: 500, userMessage: 'Жалоба не отправилась. Попробуйте ещё раз.' },
   APP_SUPPORT_TOO_LONG: { status: 400, userMessage: 'Жалоба получилась слишком длинной. Сократите текст.' },
   APP_SUPPORT_STATE: { status: 409, userMessage: 'Такой переход состояния у обращения невозможен. Обновите страницу.' },
+  APP_SUPPORT_STALE: { status: 409, userMessage: 'Обращение изменил коллега, пока вы его читали. Обновите страницу и посмотрите его ответ.' },
   APP_EXAMPLE_NOT_MADE: { status: 409, userMessage: 'Образцом можно отметить только документ, который сделал агент.' },
   APP_EXAMPLE_NO_BASE: { status: 403, userMessage: 'Образец некуда сохранить: вы не состоите ни в одном отделе. Попросите администратора добавить вас в отдел.' },
   APP_EXAMPLE_SAVED: { status: 409, userMessage: 'Этот документ уже сохранён как образец.' },

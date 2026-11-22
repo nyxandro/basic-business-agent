@@ -4,7 +4,6 @@
 // person (or of the organisation, for the one who keeps it), without a keeper's confirmation. Agents find samples first
 // when they make a document of the same kind; the keeper of the base removes a bad one.
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
 import { extname } from 'node:path';
 import { exampleSaveSchema, GENUI_TOOL, type ExampleSaveResponse, type ExampleStateResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
@@ -18,9 +17,9 @@ import { conversationMessages } from '../history/store.ts';
 import { access, parseJson, type AppEnv } from '../server/http.ts';
 import { logEvent } from '../server/log.ts';
 import type { FileStorage } from '../storage/engine.ts';
-import { existingInside } from '../workspace/layout.ts';
+import { readFileInside } from '../workspace/layout.ts';
 import type { KnowledgeIndexer } from './indexer.ts';
-import { uploadDocument, type Base } from './store.ts';
+import { KB_FILE_MAX_BYTES, uploadDocument, type Base } from './store.ts';
 
 export interface ExampleDeps {
   db: Db;
@@ -78,10 +77,10 @@ async function madeName(db: Db, userId: string, threadId: string, path: string):
 
 async function fileBytes(deps: ExampleDeps, userId: string, threadId: string, path: string): Promise<Buffer> {
   const found = await threadFoldersOf(deps, userId, threadId);
-  const bytes = await inThreadFolder(deps.storage, found, 'read', (folder) => {
-    const real = existingInside(folder, path);
-    return real && statSync(real).isFile() ? readFileSync(real) : null;
-  });
+  // Read from the checked descriptor: the agent may swap the file for a link out of the folder or a pipe at any moment.
+  const read = await inThreadFolder(deps.storage, found, 'read', (folder) => readFileInside(folder, path, KB_FILE_MAX_BYTES));
+  if (read && !read.bytes) throw appError('APP_UPLOAD_TOO_LARGE', `${path} of ${read.size} bytes for a sample`, { userMessage: 'Файл больше 20 МБ — базой знаний он не читается.' });
+  const bytes = read?.bytes;
   if (!bytes) throw appError('APP_NOT_FOUND', `${path} of ${threadId} is gone`, { userMessage: 'Файла уже нет в папке разговора — сохранить его образцом нельзя.' });
   return bytes;
 }

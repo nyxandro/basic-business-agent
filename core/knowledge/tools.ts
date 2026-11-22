@@ -54,8 +54,10 @@ export function createKnowledgeTools(deps: { db: Db; workspaceRoot: string }): R
       try {
         const userId = requireContextValue((ctx as Ctx)?.requestContext, REQUEST_KEYS.userId);
         const fragments = await searchKnowledge(deps.db, userId, query, document ?? null, kind ?? 'any');
-        // An answer by the base is a fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
-        if (fragments.length > 0) await recordFact(deps.db, 'knowledge_answer', { userId, agentId: optionalContextValue((ctx as Ctx)?.requestContext, REQUEST_KEYS.agentId) });
+        // An answer by the base is a fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md); looking
+        // for samples before a document is part of making it, not an answer.
+        const rc = (ctx as Ctx)?.requestContext;
+        if (fragments.length > 0 && kind !== 'example') await recordFact(deps.db, 'knowledge_answer', { userId, agentId: optionalContextValue(rc, REQUEST_KEYS.agentId), runKind: optionalContextValue(rc, REQUEST_KEYS.runKind) });
         return { found: fragments.length, mode: 'words' as const, fragments, note: fragments.some((f) => f.example) ? `${EXAMPLES_NOTE} ${WORDS_NOTE}` : WORDS_NOTE };
       } catch (error) {
         return failure(KNOWLEDGE_TOOLS.search, error);

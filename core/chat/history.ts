@@ -1,4 +1,5 @@
 import type { Memory } from '@mastra/memory';
+import { isServiceTurn } from './service-turns.ts';
 
 // A conversation as the chat screen shows it after a reload: text and tool calls with results.
 export interface HistoryToolCall {
@@ -50,7 +51,8 @@ const partsOf = (m: StoredMessage): StoredPart[] =>
 export function readHistory(messages: StoredMessage[]): { history: HistoryMessage[]; broken: BrokenAnswer[] } {
   const out: HistoryMessage[] = [];
   const broken: BrokenAnswer[] = [];
-  const said = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+  // A turn the server started on the person's behalf (core/chat/service-turns.ts) is not their message.
+  const said = messages.filter((m) => m.role === 'assistant' || (m.role === 'user' && !isServiceTurn(textOfStored(m))));
   for (const m of said) {
     const role = m.role as 'user' | 'assistant';
     const createdAt = new Date(m.createdAt).toISOString();

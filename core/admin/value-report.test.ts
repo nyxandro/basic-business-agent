@@ -5,7 +5,7 @@ import { WORK_KINDS, type ValueReport, type WorkKind } from '@bba/contracts';
 import fc from 'fast-check';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
-import { minutesOf } from './value-report.ts';
+import { csvCell, minutesOf } from './value-report.ts';
 
 let t: TestApp;
 let admin: string;
@@ -60,13 +60,24 @@ describe('the report of value', () => {
     expect(r.total.minutes).toBe(48);
     expect(r.spendRub).toBe(120.5);
     expect(r.subscriptionCalls).toBe(1);
-    expect(r.agents.map((a) => [a.name, a.minutes])).toEqual([['Продажи', 43], ['lawyer', 5]]);
+    // «lawyer» was used by one person: its numbers are his — not shown alone, and «Другие агенты» of one person neither.
+    expect(r.agents.map((a) => [a.name, a.minutes])).toEqual([['Продажи', 43]]);
+    expect(r.otherAgents).toBeNull();
+    expect(r.hidden).toBe(true);
   });
 
-  it('shows a department under 3 people only inside «Другие отделы»', async () => {
+  it('shows a department under 3 people only inside «Другие отделы», and those only when 3 people worked there', async () => {
     const r = await report('2025-11', '2025-11');
     expect(r.departments.map((d) => [d.name, d.facts.document, d.facts.action])).toEqual([['Продажи', 2, 1]]);
-    expect(r.otherDepartments).toMatchObject({ facts: { action: 1, email: 1 }, people: 1 });
+    // «Юристы» — Анна and Лев: two people, so «Другие отделы» would show them.
+    expect(r.otherDepartments).toBeNull();
+  });
+
+  it('keeps a formula out of the cells of the file', () => {
+    expect(csvCell('=HYPERLINK("http://x")')).toBe(`"'=HYPERLINK(""http://x"")"`);
+    expect(csvCell('+7 900')).toBe(`'+7 900`);
+    expect(csvCell('Склад;Логистика')).toBe('"Склад;Логистика"');
+    expect(csvCell(-5)).toBe('-5');
   });
 
   it('takes new norms and the cost of an hour, and only from «Расходы»', async () => {

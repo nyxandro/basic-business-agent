@@ -20,9 +20,11 @@ export function ChatPanel({
   onThreadTitled,
   composerExtra,
   composerNotice,
+  draft = false,
 }: {
   agent: AgentSummary;
   threadId: string;
+  draft?: boolean;
   onRunFinished: () => void;
   onThreadTitled: () => void;
   composerExtra?: ReactNode;
@@ -53,6 +55,7 @@ export function ChatPanel({
       agent,
       agentId: agent.id,
       threadId,
+      draft,
       attachments,
       addAttachment: (file) => setAttachments((prev) => [...prev, file]),
       removeAttachment: (path) => setAttachments((prev) => prev.filter((f) => f.path !== path)),
@@ -70,7 +73,7 @@ export function ChatPanel({
       composerExtra,
       composerNotice,
     }),
-    [agent, threadId, attachments, onRunFinished, onThreadTitled, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra, composerNotice],
+    [agent, threadId, draft, attachments, onRunFinished, onThreadTitled, interrupt, failure, interruptedIds, onTurnsFailed, composerExtra, composerNotice],
   );
 
   return (

@@ -121,7 +121,7 @@ export function createWebResearchTool(deps: WebResearchDeps): AnyTool {
           return fail(`помощник не дошёл до ответа за ${RESEARCH_MAX_STEPS} шагов.`, trail, started);
         }
         // A search with sources is a fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
-        if (found.length > 0) await recordFact(deps.db, 'web_research', { userId: optionalContextValue(rc, REQUEST_KEYS.userId), agentId: optionalContextValue(rc, REQUEST_KEYS.agentId) });
+        if (found.length > 0) await recordFact(deps.db, 'web_research', { userId: optionalContextValue(rc, REQUEST_KEYS.userId), agentId: optionalContextValue(rc, REQUEST_KEYS.agentId), runKind: optionalContextValue(rc, REQUEST_KEYS.runKind) });
         return { answer: result.text, sources: found, steps: trail.steps(), ms: Date.now() - started };
       } catch (error) {
         // «Стоп» of the person stops the run itself, not only this call.

@@ -9,13 +9,21 @@ import { logEvent } from '../server/log.ts';
 
 export type FactKind = WorkKind | 'conversation' | 'message';
 
+// `runKind` — the kind of the run the work was done in: the check of a prompt's draft is the admin's, not work of value.
+export interface Who {
+  userId: string | null;
+  agentId: string | null;
+  runKind?: string | null;
+}
+
 export interface WorkFacts {
-  record(kind: FactKind, who: { userId: string | null; agentId: string | null }): Promise<void>;
+  record(kind: FactKind, who: Who): Promise<void>;
 }
 
 export function createWorkFacts(db: Db): WorkFacts {
   return {
-    async record(kind, { userId, agentId }) {
+    async record(kind, { userId, agentId, runKind }) {
+      if (runKind === 'draft') return;
       try {
         // The person's departments at the time: the report by departments does not move when people move.
         await db.query(
@@ -30,7 +38,7 @@ export function createWorkFacts(db: Db): WorkFacts {
   };
 }
 
-export const recordFact = (db: Db, kind: FactKind, who: { userId: string | null; agentId: string | null }): Promise<void> => createWorkFacts(db).record(kind, who);
+export const recordFact = (db: Db, kind: FactKind, who: Who): Promise<void> => createWorkFacts(db).record(kind, who);
 
 // Office documents and PDF: what counts as a document the agent made.
 const DOCUMENT_EXTENSIONS = new Set(['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.odt', '.ods', '.odp', '.rtf']);

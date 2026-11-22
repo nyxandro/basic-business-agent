@@ -5,7 +5,7 @@
 //                                                    of each in `.work/<threadId>/`
 // A conversation's sandbox root is its own folder, or its project's: the agent works freely inside it, cannot
 // see the others, and cannot remove the root itself (it is the sandbox mount point).
-import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { inFolderOf, walkRegularFiles } from './held-folder.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -282,6 +282,27 @@ export function openFileInside(dir: string, path: string): { fd: number; size: n
   if (stat.isFile()) return { fd, size: stat.size };
   closeSync(fd);
   return null;
+}
+
+// The bytes of a regular file of `dir`, read from the descriptor that was checked (the agent may swap the file for a link
+// or a pipe at any moment): `bytes: null` when it is bigger than `maxBytes`; null — no regular file. At most the size seen
+// is read: a file growing meanwhile does not grow the read.
+export function readFileInside(dir: string, path: string, maxBytes: number): { size: number; bytes: Buffer | null } | null {
+  const file = openFileInside(dir, path);
+  if (!file) return null;
+  try {
+    if (file.size > maxBytes) return { size: file.size, bytes: null };
+    const bytes = Buffer.alloc(file.size);
+    let at = 0;
+    while (at < file.size) {
+      const n = readSync(file.fd, bytes, at, file.size - at, at);
+      if (n === 0) break;
+      at += n;
+    }
+    return { size: file.size, bytes: bytes.subarray(0, at) };
+  } finally {
+    closeSync(file.fd);
+  }
 }
 
 // Moves a regular file of `dir` to `dest` (outside it, on the same disk) — into the project's trash

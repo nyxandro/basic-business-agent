@@ -10,7 +10,7 @@
 // (processLLMRequest), so the stored history never holds it.
 import { readFileSync } from 'node:fs';
 import type { Processor } from '@mastra/core/processors';
-import type { LostProjectReason } from '@bba/contracts';
+import { cleanDocType, type LostProjectReason } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 import { hiddenMessagesNote, hiddenNoteOf, keepHiddenNote, pastConversationsText, PROMPT_CONVERSATIONS } from '../history/prompt.ts';
 import { listConversations, storedMessageCount } from '../history/store.ts';
@@ -137,7 +137,8 @@ export async function knowledgeLayer(db: Db, userId: string): Promise<string | n
   const more = total > titles.length ? `\nи ещё ${total - titles.length}` : '';
   const documents = total > 0 ? `\nДокументы, по которым отвечаешь на вопросы о компании (ищи в них инструментом knowledge_search):\n${titles.map((t) => `- ${t}`).join('\n')}${more}` : '';
   // Samples of good documents (docs/specs/[20.11.2026]-feedback-and-value.md): their kinds, for the rule «сначала образцы».
-  const samples = examples.length > 0 ? `\nОбразцы документов (knowledge_search с kind: 'example'): ${examples.map((e) => `${e.docType} — ${e.count}`).join(', ')}` : '';
+  // The kind was written by an employee: one line of words (cleanDocType), here too.
+  const samples = examples.length > 0 ? `\nОбразцы документов (knowledge_search с kind: 'example'): ${examples.map((e) => `${cleanDocType(e.docType)} — ${e.count}`).join(', ')}` : '';
   return `# База знаний организации${documents}${samples}`;
 }
 

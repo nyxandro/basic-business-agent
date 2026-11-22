@@ -44,7 +44,8 @@ function releaseWaitingQuestions(agent: { pendingInterrupts: unknown[] }): void 
 // A turn of the agent is every assistant message between two messages of the person. Its row is named by the message
 // of the person it answers: the row of an answer that has shown nothing yet (its mark and «Работаю», decision of the
 // owner 21.11) is the same row once its first words or actions come — the mark stays where it is.
-type Row = { kind: 'user'; message: Message } | { kind: 'agent'; key: string; turn: AgentMessage[] };
+// `number` — the answer's turn: how many messages of the person came before it (the same live and after a reload).
+type Row = { kind: 'user'; message: Message } | { kind: 'agent'; key: string; turn: AgentMessage[]; number: number };
 
 const answerKey = (rows: readonly Row[]): string => {
   const asked = rows.findLast((r) => r.kind === 'user');
@@ -53,12 +54,16 @@ const answerKey = (rows: readonly Row[]): string => {
 
 function rowsOf(messages: Message[]): Row[] {
   const rows: Row[] = [];
+  let asked = 0;
   for (const m of messages) {
-    if (m.role === 'user') rows.push({ kind: 'user', message: m });
+    if (m.role === 'user') {
+      rows.push({ kind: 'user', message: m });
+      asked += 1;
+    }
     if (m.role !== 'assistant') continue;
     const last = rows.at(-1);
     if (last?.kind === 'agent') last.turn.push(m);
-    else rows.push({ kind: 'agent', key: answerKey(rows), turn: [m] });
+    else rows.push({ kind: 'agent', key: answerKey(rows), turn: [m], number: asked });
   }
   return rows;
 }
@@ -92,13 +97,11 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
   const rows = rowsOf(messages);
   // The answer has shown nothing yet: its row is its mark and the live line; broken before its first words — the mark,
   // «Ответ прервался» and «Ответить заново».
-  if (rows.at(-1)?.kind !== 'agent' && (live || lastBroken)) rows.push({ kind: 'agent', key: answerKey(rows), turn: [] });
+  if (rows.at(-1)?.kind !== 'agent' && (live || lastBroken)) rows.push({ kind: 'agent', key: answerKey(rows), turn: [], number: rows.filter((r) => r.kind === 'user').length });
   return (
     <>
       {rows.map((row, i) => {
         if (row.kind === 'user') return <UserMessage key={row.message.id} content={row.message.content} />;
-        // The answer's turn: the number of the person's messages up to it — the same live and after a reload.
-        const turnNumber = rows.slice(0, i).filter((r) => r.kind === 'user').length;
         const isLast = i === rows.length - 1;
         const broken = (isLast && lastBroken) || row.turn.some((m) => failures.interrupted.has(m.id));
         return (
@@ -112,7 +115,7 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
             interrupted={broken}
             live={isLast ? live : null}
             {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
-            turnNumber={turnNumber}
+            turnNumber={row.number}
           />
         );
       })}

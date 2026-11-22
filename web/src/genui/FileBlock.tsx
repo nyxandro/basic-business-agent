@@ -117,7 +117,8 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks
   );
 }
 
-export function FileCall({ call, threadId }: { call: CallProps; threadId: string }) {
+// `samples` — «Хороший образец» is offered (not in the check of a prompt's draft).
+export function FileCall({ call, threadId, samples = true }: { call: CallProps; threadId: string; samples?: boolean }) {
   // A browser tool runs here and answers itself; a call of the server may end without its result.
   if (call.status !== 'complete') return <Preparing ofCall={call.status === 'inProgress'} />;
   const outcome = parseToolResult(call.result);
@@ -134,7 +135,7 @@ export function FileCall({ call, threadId }: { call: CallProps; threadId: string
       checkFile={() => fetchThreadFileStatus(threadId, path)}
       marks={{ threadId, path }}
       // A document the agent made in this answer may become a sample; an attachment of the person never.
-      {...(parsed.data.made && isExampleName(parsed.data.name) ? { under: <ExampleButton threadId={threadId} path={path} /> } : {})}
+      {...(samples && parsed.data.made && isExampleName(parsed.data.name) ? { under: <ExampleButton threadId={threadId} path={path} /> } : {})}
     />
   );
 }

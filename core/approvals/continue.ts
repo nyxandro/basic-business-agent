@@ -11,6 +11,7 @@ import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 import { holdThreadForServer, releaseThreadForServer } from '../chat/run.ts';
+import { CHAIN_OUTCOME_PREFIX } from '../chat/service-turns.ts';
 import type { Db } from '../db/pool.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import type { ModelGateway } from '../models/gateway.ts';
@@ -111,7 +112,7 @@ export function createChainContinuation(deps: ChainContinuationDeps): ChainConti
   }
 
   async function turn(agent: Awaited<ReturnType<typeof resolveAgent>>, rc: RequestContext, row: ChainRow, result: unknown): Promise<void> {
-    const told = `[Итог согласования ${chainNumber(String(row.id))}] Действие «${row.summary}» согласовано и выполнено. Ответ системы: ${JSON.stringify(result).slice(0, 4000)}. Если работа в этом разговоре от этого действия зависела — продолжи её; иначе коротко сообщи итог.`;
+    const told = `${CHAIN_OUTCOME_PREFIX}${chainNumber(String(row.id))}] Действие «${row.summary}» согласовано и выполнено. Ответ системы: ${JSON.stringify(result).slice(0, 4000)}. Если работа в этом разговоре от этого действия зависела — продолжи её; иначе коротко сообщи итог.`;
     const stream = await agent.stream(told, { memory: { thread: row.thread_id, resource: row.user_id }, requestContext: rc });
     for await (const part of stream.fullStream) if (part.type === 'error') throw (part.payload as { error: unknown }).error;
   }

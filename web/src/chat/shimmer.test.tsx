@@ -94,6 +94,7 @@ describe('the light in a turn of the agent', () => {
     agent: { id: 'sales', name: 'Продажи', description: '', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
     agentId: 'sales',
     threadId: 't1',
+    draft: false,
     attachments: [],
     addAttachment: vi.fn(),
     removeAttachment: vi.fn(),

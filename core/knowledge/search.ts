@@ -15,8 +15,9 @@ export const FRAGMENT_CHARS = 1500;
 const LIST_SIZE = 30;
 const RRF_K = 60;
 // What a sample gets over a document found as well (docs/specs/[20.11.2026]-feedback-and-value.md): less than one place of
-// a list (1/60 − 1/61 ≈ 0.00027 at the top), so a sample wins a tie and never a clearly better match.
-const EXAMPLE_BONUS = 0.0002;
+// a list anywhere in it (1/(60+p) − 1/(61+p) ≥ 1/91² ≈ 0.00012 for the 30 places of a list), so a sample wins a tie and
+// never a better match.
+const EXAMPLE_BONUS = 0.00005;
 // The likeness of trigrams a fragment needs to the question (as Ctrl+K starts, core/search/match-sql.ts).
 const TRIGRAM_THRESHOLD = 0.3;
 

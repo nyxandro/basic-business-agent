@@ -2,7 +2,7 @@
 // the employee's comment with a copy of the conversation and its files becomes a ticket of «Поддержка», read by the
 // people with «Агенты»; the answer and the state go back to the employee as a notification and «Мои обращения».
 // A second complaint about the same turn adds to the first.
-import type { AdminTicketDto, AdminTicketRow, ComplaintResponse, MyTicketDto, SupportFileDto, SupportSnapshotMessage, SupportStatus } from '@bba/contracts';
+import { SUPPORT_NEXT, type AdminTicketDto, type AdminTicketRow, type ComplaintResponse, type MyTicketDto, type SupportFileDto, type SupportSnapshotMessage, type SupportStatus } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
 import { writeAudit } from '../audit/audit.ts';
 import { holdersOf } from '../auth/holders.ts';
@@ -171,24 +171,18 @@ export async function ticketDetail(deps: Pick<SupportDeps, 'db' | 'agentName'>, 
   };
 }
 
-// The states a ticket goes to from each (section 17): a closed one only opens again («Открыть снова»).
-const NEXT: Record<SupportStatus, readonly SupportStatus[]> = {
-  new: ['new', 'in_progress', 'resolved', 'rejected'],
-  in_progress: ['in_progress', 'resolved', 'rejected'],
-  resolved: ['resolved', 'in_progress'],
-  rejected: ['rejected', 'in_progress'],
-};
-
-export async function updateTicket(deps: Pick<SupportDeps, 'db' | 'agentName'>, actorUserId: string, id: string, change: { status: SupportStatus; reply: string | null }): Promise<AdminTicketDto> {
+export async function updateTicket(deps: Pick<SupportDeps, 'db' | 'agentName'>, actorUserId: string, id: string, change: { status: SupportStatus; reply: string | null; seen: string }): Promise<AdminTicketDto> {
   const { db } = deps;
   const before = await ticketRow(db, id);
-  if (!NEXT[before.status].includes(change.status)) throw appError('APP_SUPPORT_STATE', `ticket ${id}: ${before.status} → ${change.status}`);
+  if (before.updated_at.getTime() !== new Date(change.seen).getTime()) throw appError('APP_SUPPORT_STALE', `ticket ${id} changed since ${change.seen}`);
+  if (!SUPPORT_NEXT[before.status].includes(change.status)) throw appError('APP_SUPPORT_STATE', `ticket ${id}: ${before.status} → ${change.status}`);
   const reply = change.reply === '' ? null : change.reply;
   const at = new Date();
   await inTransaction(db, async (c) => {
-    // Only the state the page showed is changed: two admins answering at once do not overwrite each other silently.
-    const { rowCount } = await c.query('UPDATE app.support_tickets SET status = $2, reply = $3, handled_by = $4, updated_at = $5 WHERE id = $1 AND status = $6', [id, change.status, reply, actorUserId, at, before.status]);
-    if (!rowCount) throw appError('APP_SUPPORT_STATE', `ticket ${id} changed meanwhile`);
+    // Only the version the page showed is changed: two admins answering at once do not overwrite each other silently. The
+    // time is compared to the millisecond, as the page got it.
+    const { rowCount } = await c.query("UPDATE app.support_tickets SET status = $2, reply = $3, handled_by = $4, updated_at = $5 WHERE id = $1 AND date_trunc('milliseconds', updated_at) = $6", [id, change.status, reply, actorUserId, at, before.updated_at]);
+    if (!rowCount) throw appError('APP_SUPPORT_STALE', `ticket ${id} changed meanwhile`);
     await writeAudit(c, { actorUserId, action: 'support.update', target: id, details: { from: before.status, to: change.status, replied: reply !== null } });
   });
   const changed = before.status !== change.status || before.reply !== reply;

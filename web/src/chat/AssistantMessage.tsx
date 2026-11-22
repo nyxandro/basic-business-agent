@@ -107,7 +107,7 @@ export function AssistantTurn({
   turnNumber?: number;
 }) {
   const renderToolCall = useRenderToolCall();
-  const { agent, threadId } = useChatExtras();
+  const { agent, threadId, draft } = useChatExtras();
   const items = turnItems(turn, messages, underWay);
   // A broken answer stays even when it showed nothing: its mark and «Ответить заново» are its row; so does one being
   // written: its mark and its live line.
@@ -153,7 +153,7 @@ export function AssistantTurn({
           streaming={streaming}
           interrupted={interrupted}
           {...(onAnswerAgain ? { onAnswerAgain } : {})}
-          {...(turnNumber > 0 && !interrupted && !asking && items.length > 0 ? { complaint: { threadId, turn: turnNumber } } : {})}
+          {...(!draft && turnNumber > 0 && !interrupted && !asking && items.length > 0 ? { complaint: { threadId, turn: turnNumber } } : {})}
         />
       </div>
     </div>

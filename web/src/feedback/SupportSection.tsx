@@ -3,7 +3,7 @@
 // conversation as it was with the answer complained about marked, its files, the agent, the models and the version of the
 // instructions, the answer and the state, which go back to the employee as a notification.
 import type { AdminTicketDto, SupportStatus } from '@bba/contracts';
-import { SUPPORT_STATUSES } from '@bba/contracts';
+import { SUPPORT_NEXT, SUPPORT_STATUSES } from '@bba/contracts';
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button, ButtonLink, cx } from '../ui/Button.tsx';
@@ -90,7 +90,7 @@ function Answer({ data, onSaved }: { data: AdminTicketDto; onSaved: (next: Admin
       className={styles.section}
       onSubmit={(e) => {
         e.preventDefault();
-        void run(async () => onSaved(await updateTicket(data.id, { status, reply: reply.trim() || null })), t.saved);
+        void run(async () => onSaved(await updateTicket(data.id, { status, reply: reply.trim() || null, seen: data.updatedAt })), t.saved);
       }}
     >
       <h2 className={styles.sectionTitle}>{t.reply}</h2>
@@ -99,7 +99,8 @@ function Answer({ data, onSaved }: { data: AdminTicketDto; onSaved: (next: Admin
       </Field>
       <Field label={t.state}>
         <Select value={status} onChange={(e) => setStatus(e.target.value as SupportStatus)}>
-          {SUPPORT_STATUSES.map((s) => (
+          {/* Only where the ticket can go from its state: a closed one opens again. */}
+          {SUPPORT_NEXT[data.status].map((s) => (
             <option key={s} value={s}>
               {t.status[s]}
             </option>

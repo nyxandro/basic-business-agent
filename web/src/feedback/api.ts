@@ -14,7 +14,7 @@ export const saveExample = (body: { threadId: string; path: string; docType: str
 const S = '/app/api/admin/support';
 export const tickets = (status: SupportStatus | null) => api<AdminTicketsResponse>('GET', status ? `${S}?${q({ status })}` : S);
 export const ticket = (id: string) => api<AdminTicketDto>('GET', `${S}/${encodeURIComponent(id)}`);
-export const updateTicket = (id: string, body: { status: SupportStatus; reply: string | null }) => api<AdminTicketDto>('PATCH', `${S}/${encodeURIComponent(id)}`, body);
+export const updateTicket = (id: string, body: { status: SupportStatus; reply: string | null; seen: string }) => api<AdminTicketDto>('PATCH', `${S}/${encodeURIComponent(id)}`, body);
 export const ticketFileUrl = (id: string, ord: number) => `${S}/${encodeURIComponent(id)}/files/${ord}`;
 
 export const valueReport = (from: string, to: string) => api<ValueReport>('GET', `/app/api/admin/value?${q({ from, to })}`);

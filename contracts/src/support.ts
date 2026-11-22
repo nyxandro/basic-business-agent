@@ -11,7 +11,7 @@ export const COMPLAINT_MAX = 4000;
 // conversation — the same live and after a reload.
 export const complaintSchema = z.strictObject({
   threadId: z.string().min(1).max(300),
-  turn: z.number().int().min(1),
+  turn: z.number().int().min(1).max(1_000_000),
   comment: z.string().trim().min(1).max(COMPLAINT_MAX),
 });
 
@@ -86,17 +86,32 @@ export interface AdminTicketDto extends AdminTicketRow {
   handledBy: string | null;
 }
 
+// The states a ticket goes to from each (section 17): a closed one only opens again («Открыть снова»).
+export const SUPPORT_NEXT: Record<SupportStatus, readonly SupportStatus[]> = {
+  new: ['new', 'in_progress', 'resolved', 'rejected'],
+  in_progress: ['in_progress', 'resolved', 'rejected'],
+  resolved: ['resolved', 'in_progress'],
+  rejected: ['rejected', 'in_progress'],
+};
+
+// `seen` — when the ticket the page shows was last changed: a colleague's answer given meanwhile is never overwritten.
 export const ticketUpdateSchema = z.strictObject({
   status: z.enum(SUPPORT_STATUSES),
   reply: z.string().trim().max(COMPLAINT_MAX).nullable(),
+  seen: z.iso.datetime(),
 });
 
 // A sample (F4): a document the agent made in a conversation goes into the knowledge base of a department of the person
 // (or of the organisation, for the one who keeps it).
+// The kind of a sample goes into the prompt of every agent of the base's readers: one line of words, nothing else — no
+// line breaks, no marks of Markdown, no control characters.
+export const cleanDocType = (text: string) =>
+  [...text.replace(/[^\p{L}\p{N} .,()«»"'\-–—]+/gu, ' ').replace(/\s+/g, ' ').trim()].slice(0, 100).join('');
+
 export const exampleSaveSchema = z.strictObject({
   threadId: z.string().min(1).max(300),
   path: z.string().min(1).max(1000),
-  docType: z.string().trim().min(1).max(100),
+  docType: z.string().max(200).transform(cleanDocType).pipe(z.string().min(1)),
   base: z.discriminatedUnion('scope', [z.strictObject({ scope: z.literal('org') }), z.strictObject({ scope: z.literal('department'), departmentId: z.uuid() })]),
 });
 
@@ -137,14 +152,18 @@ export interface ValueReport {
   hourRub: number | null;
   total: ValueCounts;
   departments: ({ id: string; name: string } & ValueCounts)[];
-  // The departments under 3 people together.
+  // The departments under 3 people together; null when there are none or fewer than 3 people did anything in them.
   otherDepartments: ValueCounts | null;
+  // Agents used by 3 people or more; the others together, under the same rule.
   agents: ({ id: string; name: string } & ValueCounts)[];
+  otherAgents: ValueCounts | null;
+  // Some work is in no row shown: a group of fewer than 3 people.
+  hidden: boolean;
   spendRub: number;
   subscriptionCalls: number;
 }
 
 export const valueNormsSchema = z.strictObject({
   norms: z.strictObject(Object.fromEntries(WORK_KINDS.map((k) => [k, z.number().int().min(0).max(600)])) as Record<WorkKind, z.ZodNumber>),
-  hourRub: z.number().positive().max(1_000_000).nullable(),
+  hourRub: z.number().min(0.01).max(1_000_000).nullable(),
 });

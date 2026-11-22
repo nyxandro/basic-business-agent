@@ -30,6 +30,7 @@ function extras(mark: AgentMark, interrupt: ReactElement | null): ChatExtras {
     agent: { ...AGENT, mark },
     agentId: 'sales',
     threadId: 't1',
+    draft: false,
     attachments: [],
     addAttachment: vi.fn(),
     removeAttachment: vi.fn(),

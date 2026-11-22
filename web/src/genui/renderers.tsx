@@ -56,7 +56,8 @@ function Form({ call }: { call: CallProps }) {
 
 // The file block needs the conversation: «Скачать» takes the file from its folder.
 function FileOfCall({ call }: { call: CallProps }) {
-  return <FileCall call={call} threadId={useChatExtras().threadId} />;
+  const { threadId, draft } = useChatExtras();
+  return <FileCall call={call} threadId={threadId} samples={!draft} />;
 }
 
 export function useGenuiRenderers(agent: AgentSummary): void {

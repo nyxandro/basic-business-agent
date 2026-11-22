@@ -37,6 +37,7 @@ function extras(interrupt: ChatExtras['interrupt'] = null): ChatExtras {
     agent: AGENT,
     agentId: 'sales',
     threadId: 't1',
+    draft: false,
     attachments: [],
     addAttachment: vi.fn(),
     removeAttachment: vi.fn(),

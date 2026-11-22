@@ -146,7 +146,8 @@ function Report({ report, onNorms }: { report: ValueReport; onNorms: () => void 
         )}
       </Card>
       <Breakdown title={t.departments} rows={[...report.departments, ...(report.otherDepartments ? [{ id: 'other', name: t.other, ...report.otherDepartments }] : [])]} {...(report.otherDepartments ? { hint: t.otherHint } : {})} />
-      <Breakdown title={t.agents} rows={report.agents} />
+      <Breakdown title={t.agents} rows={[...report.agents, ...(report.otherAgents ? [{ id: 'other', name: t.otherAgents, ...report.otherAgents }] : [])]} />
+      {report.hidden ? <p className={styles.note}>{t.hiddenNote}</p> : null}
       <Card className="rise">
         <Norms key={JSON.stringify([report.norms, report.hourRub])} report={report} onSaved={onNorms} />
       </Card>

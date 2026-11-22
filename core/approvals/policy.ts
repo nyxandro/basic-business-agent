@@ -84,7 +84,7 @@ export function applyApprovalPolicy(tool: AnyTool, opts: { readOnly: boolean; db
       await writeJournal(opts.db, { ...base, result: 'ok' }).catch((error: unknown) => logEvent('error', 'journal_write_failed', { code: 'APP_INTERNAL', tool: base.tool, error }));
       // A fact of the report of value (docs/specs/[20.11.2026]-feedback-and-value.md): a letter sent is a letter, any
       // other change an action; an answer that is an error object did nothing.
-      if (!opts.readOnly && !refusedOutput(output)) await recordFact(opts.db, id === MAIL_SEND_TOOL ? 'email' : 'action', { userId, agentId: base.agentId });
+      if (!opts.readOnly && !refusedOutput(output)) await recordFact(opts.db, id === MAIL_SEND_TOOL ? 'email' : 'action', { userId, agentId: base.agentId, runKind: contextValue(ctx, REQUEST_KEYS.runKind) });
       return output;
     },
   } as Parameters<typeof createTool>[0]) as AnyTool;

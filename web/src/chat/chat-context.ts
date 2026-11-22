@@ -8,6 +8,8 @@ export interface ChatExtras {
   agent: AgentSummary;
   agentId: string;
   threadId: string;
+  // The check of a prompt's draft in the admin panel: no complaint, no sample — its conversation is not an employee's.
+  draft: boolean;
   attachments: UploadedFile[];
   addAttachment: (file: UploadedFile) => void;
   removeAttachment: (path: string) => void;

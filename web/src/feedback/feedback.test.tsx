@@ -140,7 +140,7 @@ describe('«Поддержка»', () => {
     await user.selectOptions(screen.getByLabelText('Состояние'), 'resolved');
     await user.click(screen.getByRole('button', { name: 'Сохранить' }));
     expect(await screen.findByText('Ответ отправлен')).toBeInTheDocument();
-    expect(s.calls.find((c) => c.method === 'PATCH')?.body).toEqual({ status: 'resolved', reply: 'Обновили прайс' });
+    expect(s.calls.find((c) => c.method === 'PATCH')?.body).toEqual({ status: 'resolved', reply: 'Обновили прайс', seen: '2026-11-22T06:00:00Z' });
   });
 
   it('is not in the panel without «Агенты»', async () => {
@@ -178,6 +178,8 @@ describe('«Польза от агентов»', () => {
           departments: [{ id: 'd1', name: 'Продажи', people: 3, conversations: 7, facts: { ...zero, document: 6 }, minutes: 120 }],
           otherDepartments: { people: 1, conversations: 2, facts: { ...zero, email: 3 }, minutes: 15 },
           agents: [{ id: 'sales', name: 'Продажи', people: 4, conversations: 9, facts: { ...zero, document: 6, email: 3 }, minutes: 135 }],
+          otherAgents: null,
+          hidden: true,
           spendRub: 4830,
           subscriptionCalls: 1920,
         },
@@ -189,6 +191,7 @@ describe('«Польза от агентов»', () => {
     expect(screen.getByText(/1 920 обращений/)).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'По отделам' })).toHaveTextContent('Другие отделы');
     expect(screen.getByText(/Оценка эквивалентной работы по нормам/)).toBeInTheDocument();
+    expect(screen.getByText(/Группы, где работали меньше 3 человек/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Скачать отчёт' })).toHaveAttribute('href', '/app/api/admin/value.csv?from=2026-11&to=2026-11');
   });
 });

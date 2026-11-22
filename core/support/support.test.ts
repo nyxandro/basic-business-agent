@@ -2,7 +2,8 @@
 // conversation as the person saw it and its files; a second complaint about the same turn adds to the first; only the
 // person's own conversation; «Поддержка» only with «Агенты»; the answer goes back as a notification and «Мои обращения».
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminTicketDto, AdminTicketsResponse, ComplaintResponse, ComplaintStateResponse, MyTicketsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -105,6 +106,30 @@ describe('complaints', () => {
     expect(ticket.comment).toMatch(/^Старая цена\n\nДописано \d\d\.\d\d, \d\d:\d\d: Сейчас 495 ₽$/);
   });
 
+  // The browser counts only what the person wrote: a turn the server started on their behalf (the outcome of an agreed
+  // request) is not a turn of the complaint, and the chat does not show it.
+  it('numbers the turns by the person’s own messages only', async () => {
+    const threadId = await conversation(olgaId, [
+      ['user', [text('Отправь письмо клиенту')]],
+      ['assistant', [text('Отправлено на согласование №3')]],
+      ['user', [text('[Итог согласования №3] Действие «Письмо» согласовано и выполнено.')]],
+      ['assistant', [text('Письмо ушло.')]],
+      ['user', [text('Спасибо')]],
+      ['assistant', [text('Пожалуйста')]],
+    ]);
+    const { id } = await json<ComplaintResponse>(await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 2, comment: 'Не то' } }));
+    const ticket = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }));
+    expect(ticket.snapshot.map((m) => [m.text, m.turn])).toEqual([
+      ['Отправь письмо клиенту', 1],
+      ['Отправлено на согласование №3', 1],
+      ['Письмо ушло.', 1],
+      ['Спасибо', 2],
+      ['Пожалуйста', 2],
+    ]);
+    const history = (await (await t.call('GET', `/app/api/threads/${threadId}/messages`, { cookie: olga })).json()) as { messages: { role: string; text: string }[] };
+    expect(history.messages.filter((m) => m.role === 'user').map((m) => m.text)).toEqual(['Отправь письмо клиенту', 'Спасибо']);
+  });
+
   it('takes only the person’s own conversation and a turn it has', async () => {
     const threadId = await conversation(olgaId, [['user', [text('Привет')]], ['assistant', [text('Здравствуйте')]]]);
     expect((await t.call('POST', '/app/api/me/support', { cookie: petr, body: { threadId, turn: 1, comment: 'Плохо' } })).status).toBe(404);
@@ -115,7 +140,7 @@ describe('complaints', () => {
   it('opens «Поддержка» only with «Агенты»', async () => {
     expect((await t.call('GET', '/app/api/admin/support', { cookie: olga })).status).toBe(403);
     expect((await t.call('GET', '/app/api/admin/support/1', { cookie: olga })).status).toBe(403);
-    expect((await t.call('PATCH', '/app/api/admin/support/1', { cookie: olga, body: { status: 'resolved', reply: null } })).status).toBe(403);
+    expect((await t.call('PATCH', '/app/api/admin/support/1', { cookie: olga, body: { status: 'resolved', reply: null, seen: new Date().toISOString() } })).status).toBe(403);
   });
 
   it('sends the answer and the state to the employee, who sees only their own requests', async () => {
@@ -124,7 +149,12 @@ describe('complaints', () => {
     const list = await json<AdminTicketsResponse>(await t.call('GET', '/app/api/admin/support?status=new', { cookie: igor }));
     expect(list.tickets.map((x) => x.id)).toContain(id);
 
-    const done = await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'resolved', reply: 'Обновили сроки в базе знаний' } }));
+    const opened = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }));
+    const done = await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'resolved', reply: 'Обновили сроки в базе знаний', seen: opened.updatedAt } }));
+    // A page opened before this answer does not overwrite it.
+    const stale = await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'in_progress', reply: 'Другой ответ', seen: opened.updatedAt } });
+    expect(stale.status).toBe(409);
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe('APP_SUPPORT_STALE');
     expect(done).toMatchObject({ status: 'resolved', reply: 'Обновили сроки в базе знаний', handledBy: 'Игорь' });
     const told = await t.db.query<{ title: string }>(`SELECT title FROM app.notifications WHERE user_id = $1 AND kind = 'support_reply'`, [olgaId]);
     expect(told.rows.map((r) => r.title)).toContain(`Ответ на обращение №${id}`);
@@ -134,8 +164,8 @@ describe('complaints', () => {
     expect((await json<MyTicketsResponse>(await t.call('GET', '/app/api/me/support', { cookie: petr }))).tickets).toEqual([]);
 
     // A closed ticket only opens again.
-    expect((await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'rejected', reply: null } })).status).toBe(409);
-    expect((await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'in_progress', reply: 'Смотрим ещё' } }))).status).toBe('in_progress');
+    expect((await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'rejected', reply: null, seen: done.updatedAt } })).status).toBe(409);
+    expect((await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'in_progress', reply: 'Смотрим ещё', seen: done.updatedAt } }))).status).toBe('in_progress');
   });
 
   it('copies files while they fit in the limit and names the rest', () => {
@@ -143,12 +173,22 @@ describe('complaints', () => {
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, 'big.pdf'), 'x'.repeat(30));
     writeFileSync(join(folder, 'small.txt'), 'y'.repeat(10));
-    const copied = copyFiles(folder, [{ name: 'big.pdf', path: 'big.pdf' }, { name: 'small.txt', path: 'small.txt' }, { name: 'gone.docx', path: 'gone.docx' }, { name: 'out', path: '../../etc/passwd' }], 20);
+    // What the agent may put in place of a file: a pipe (reading it would hang the server) and a link out of the folder.
+    execFileSync('mkfifo', [join(folder, 'pipe.docx')]);
+    writeFileSync(join(t.workspaceRoot, 'colleague.docx'), 'чужое');
+    symlinkSync(join(t.workspaceRoot, 'colleague.docx'), join(folder, 'link.docx'));
+    const copied = copyFiles(
+      folder,
+      [{ name: 'big.pdf', path: 'big.pdf' }, { name: 'small.txt', path: 'small.txt' }, { name: 'gone.docx', path: 'gone.docx' }, { name: 'out', path: '../../etc/passwd' }, { name: 'pipe.docx', path: 'pipe.docx' }, { name: 'link.docx', path: 'link.docx' }],
+      20,
+    );
     expect(copied.map((f) => [f.name, f.state, f.size])).toEqual([
       ['big.pdf', 'too_large', 30],
       ['small.txt', 'copied', 10],
       ['gone.docx', 'gone', null],
       ['out', 'gone', null],
+      ['pipe.docx', 'gone', null],
+      ['link.docx', 'gone', null],
     ]);
   });
 });
