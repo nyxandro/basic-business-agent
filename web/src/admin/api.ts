@@ -1,5 +1,8 @@
 // Calls of the admin panel (spec, section 17.5: admin/*). Each section needs its role right.
 import type {
+  MailReachResponse,
+  TaskAccess,
+  TaskEventsResponse,
   ApprovalSettingsDto,
   OrgAssetKind,
   OrgAssetsState,
@@ -130,6 +133,9 @@ export const adminApi = {
   setTaskStatus: (id: string, status: 'active' | 'paused') => api<AdminTask>('PUT', `${A}/tasks/${enc(id)}/status`, { status }),
   deleteTask: (id: string) => api<Ok>('DELETE', `${A}/tasks/${enc(id)}`),
   taskRuns: (id: string) => api<TaskRunsResponse>('GET', `${A}/tasks/${enc(id)}/runs`),
+  taskEvents: (id: string) => api<TaskEventsResponse>('GET', `${A}/tasks/${enc(id)}/events`),
+  renewHook: (id: string) => api<AdminTask>('POST', `${A}/tasks/${enc(id)}/hook`, {}),
+  mailReach: (agentId: string, access: TaskAccess) => api<MailReachResponse>('POST', `${A}/tasks/mail-reach`, { agentId, access }),
 
   models: () => api<ModelsResponse>('GET', `${A}/models`),
   createModel: (input: ModelCreate) => api<ModelDto>('POST', `${A}/models`, input),

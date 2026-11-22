@@ -30,6 +30,7 @@ const KIND_ICON: Record<NotificationKind, IconName> = {
   connection_broken: 'plug',
   task_result: 'check',
   task_failed: 'alert',
+  task_trouble: 'alert',
   project_shared: 'folderShared',
   limit_near: 'wallet',
   limit_exhausted: 'wallet',

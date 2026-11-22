@@ -1,7 +1,8 @@
-// A background task (spec, scenario 4): its name, the agent, the area — the organisation,
-// departments or employees, each runs it on their own behalf — the schedule as a preset in the
-// installation's time and what the agent is asked to do.
-import type { AdminAgent, AdminDepartment, AdminTask, AdminPerson, TaskAccess, TaskSchedule } from '@bba/contracts';
+// A background task (spec, scenario 4): its name, the agent, how it starts — by a schedule as a preset in the
+// installation's time, on a letter in an employee's mailbox or on a message of another system
+// (docs/specs/[20.11.2026]-event-tasks.md) — the area or the executor, and what the agent is asked to do. The kind of
+// start is chosen once: a saved task keeps it.
+import type { AdminAgent, AdminDepartment, AdminTask, AdminPerson, TaskAccess, TaskSchedule, TaskTrigger } from '@bba/contracts';
 import { useState } from 'react';
 import { Button, cx } from '../ui/Button.tsx';
 import { Field, Input, Select, TextArea } from '../ui/Field.tsx';
@@ -11,7 +12,8 @@ import { adminApi } from './api.ts';
 import models from './models.module.css';
 import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
-import { scheduleText, WEEKDAYS } from './tasks-text.ts';
+import { ExecutorField, HookAddress, MailFilterFields, MailReach } from './TaskEventFields.tsx';
+import { listOf, scheduleText, WEEKDAYS } from './tasks-text.ts';
 
 type Kind = TaskSchedule['kind'];
 const KINDS: { value: Kind; label: string }[] = [
@@ -21,6 +23,14 @@ const KINDS: { value: Kind; label: string }[] = [
   { value: 'monthly', label: 'Раз в месяц' },
 ];
 const MONTH_DAYS = Array.from({ length: 28 }, (_, i) => i + 1);
+const STARTS: { value: 'schedule' | 'event'; label: string }[] = [
+  { value: 'schedule', label: 'По расписанию' },
+  { value: 'event', label: 'По событию' },
+];
+const SOURCES: { value: Exclude<TaskTrigger, 'schedule'>; label: string }[] = [
+  { value: 'mail', label: 'Письмо в почте сотрудника' },
+  { value: 'webhook', label: 'Сообщение от другой системы' },
+];
 const DEFAULT_TIME = '09:00';
 
 function scheduleOf(kind: Kind, time: string, weekday: number, monthDay: number): TaskSchedule {
@@ -29,8 +39,12 @@ function scheduleOf(kind: Kind, time: string, weekday: number, monthDay: number)
   return { kind, time };
 }
 
-function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
+function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: (saved: AdminTask, stay: boolean) => void }) {
   const s = task?.schedule ?? null;
+  const [trigger, setTrigger] = useState<TaskTrigger>(task?.trigger ?? 'schedule');
+  const [from, setFrom] = useState(task?.mailFilter?.from.join(', ') ?? '');
+  const [subject, setSubject] = useState(task?.mailFilter?.subject.join(', ') ?? '');
+  const [executorId, setExecutorId] = useState(task?.executor?.id ?? '');
   const [title, setTitle] = useState(task?.title ?? '');
   const [agentId, setAgentId] = useState(task?.agentId ?? agents[0]?.id ?? '');
   const [access, setAccess] = useState<TaskAccess>(task?.access ?? { scope: 'org', departmentIds: [], userIds: [] });
@@ -49,10 +63,22 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
 
   async function save() {
     const schedule = scheduleOf(kind, time, weekday, monthDay);
-    const input = { title: title.trim(), agentId, access, prompt: prompt.trim() };
-    const ok = task ? await run(() => adminApi.updateTask(task.id, scheduleTouched ? { ...input, schedule } : input)) : await run(() => adminApi.createTask({ ...input, schedule }), 'Задача создана');
-    if (ok) onSaved();
+    const mailFilter = { from: listOf(from), subject: listOf(subject) };
+    const base = { title: title.trim(), agentId, prompt: prompt.trim() };
+    let saved: AdminTask | null = null;
+    const ok = task
+      ? await run(async () => {
+          const change = trigger === 'schedule' ? { ...base, access, ...(scheduleTouched ? { schedule } : {}) } : trigger === 'mail' ? { ...base, access, mailFilter } : { ...base, executorId };
+          saved = await adminApi.updateTask(task.id, change);
+        })
+      : await run(async () => {
+          const input = trigger === 'schedule' ? { ...base, trigger, access, schedule } : trigger === 'mail' ? { ...base, trigger, access, mailFilter } : { ...base, trigger, executorId };
+          saved = await adminApi.createTask(input);
+        }, 'Задача создана');
+    // A new webhook task stays open: its address is what the admin needs next.
+    if (ok && saved) onSaved(saved, task === null && trigger === 'webhook');
   }
+  const start = trigger === 'schedule' ? 'schedule' : 'event';
 
   return (
     <form
@@ -78,8 +104,48 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
           </Select>
         </Field>
       </div>
-      <AccessPicker legend="Область" value={access} onChange={setAccess} departments={departments} users={users} />
-      <p className={section.note}>Задача выполняется у каждого сотрудника области от его имени, с его доступами и лимитами; каждое действие наружу ждёт его «Да».</p>
+      <fieldset className={models.prices}>
+        <legend className={models.legend}>Когда запускать</legend>
+        {task ? <p className={section.note}>Вид запуска у созданной задачи не меняется.</p> : null}
+        <div role="group" aria-label="Когда запускать" className={models.chips}>
+          {STARTS.map((k) => (
+            <button key={k.value} type="button" disabled={task !== null} aria-pressed={start === k.value} className={cx(models.chip, start === k.value && models.chipOn)} onClick={() => setTrigger(k.value === 'schedule' ? 'schedule' : 'mail')}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+        {start === 'event' ? (
+          <div role="group" aria-label="Источник события" className={models.chips}>
+            {SOURCES.map((k) => (
+              <button key={k.value} type="button" disabled={task !== null} aria-pressed={trigger === k.value} className={cx(models.chip, trigger === k.value && models.chipOn)} onClick={() => setTrigger(k.value)}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </fieldset>
+      {trigger === 'webhook' ? (
+        <>
+          <ExecutorField value={executorId} users={users} onChange={setExecutorId} />
+          {task ? <HookAddress task={task} onRenewed={(renewed) => onSaved(renewed, true)} /> : <p className={section.note}>Адрес для другой системы появится после сохранения. Интернета в запусках по событию у агента нет.</p>}
+        </>
+      ) : (
+        <>
+          <AccessPicker legend="Область" value={access} onChange={setAccess} departments={departments} users={users} />
+          <p className={section.note}>
+            {trigger === 'mail'
+              ? 'Задача разбирает новые письма каждого сотрудника области, у кого подключена почта, — его доступом; ответ уходит только после его «Да». Письма, пришедшие до включения и старше суток, не трогаются; интернета в таких запусках нет.'
+              : 'Задача выполняется у каждого сотрудника области от его имени, с его доступами и лимитами; каждое действие наружу ждёт его «Да».'}
+          </p>
+          {trigger === 'mail' ? (
+            <>
+              <MailFilterFields from={from} subject={subject} onFrom={setFrom} onSubject={setSubject} />
+              <MailReach agentId={agentId} access={access} />
+            </>
+          ) : null}
+        </>
+      )}
+      {trigger === 'schedule' ? (
       <fieldset className={models.prices}>
         <legend className={models.legend}>Расписание</legend>
         {!scheduleTouched && task ? <p className={section.note}>Сейчас: {scheduleText(null, task.cron)}. Выберите вариант ниже, чтобы заменить его.</p> : null}
@@ -118,12 +184,13 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
           </Field>
         </div>
       </fieldset>
+      ) : null}
       <Field label="Что сделать агенту">
-        <TextArea required rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Собери сделки без движения за неделю и пришли сводку руководителю отдела." />
+        <TextArea required rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={trigger === 'schedule' ? 'Собери сделки без движения за неделю и пришли сводку руководителю отдела.' : trigger === 'mail' ? 'Разбери письмо: если это заказ — найди клиента в Битрикс24 и подготовь ответ с ценой и сроком; ответ отправь только после «Да».' : 'Найди сделку по номеру из события, оцени, насколько она горячая, и поставь ответственному задачу позвонить сегодня.'} />
       </Field>
       <div className={section.formActions}>
         <Button onClick={onClose}>Отмена</Button>
-        <Button type="submit" variant="primary" disabled={busy || !title.trim() || !prompt.trim() || !agentId || accessIsEmpty(access)}>
+        <Button type="submit" variant="primary" disabled={busy || !title.trim() || !prompt.trim() || !agentId || (trigger === 'webhook' ? !executorId : accessIsEmpty(access))}>
           {task ? 'Сохранить' : 'Создать задачу'}
         </Button>
       </div>
@@ -131,7 +198,8 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
   );
 }
 
-export function TaskForm(props: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
+// `onSaved` gets the saved task and whether the form stays open on it (a new webhook task shows its address).
+export function TaskForm(props: { task: AdminTask | null; agents: AdminAgent[]; departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: (saved: AdminTask, stay: boolean) => void }) {
   return (
     <Modal open onClose={props.onClose} label={props.task ? props.task.title : 'Новая задача'}>
       <TaskFormBody {...props} />

@@ -587,3 +587,10 @@
   border: 1px solid var(--border);
   background: var(--surface);
 }
+
+/* The conversations of a background task's events, opened under its row (event-tasks.md). */
+.taskThreads {
+  display: flex;
+  flex-direction: column;
+  padding-left: 14px;
+}

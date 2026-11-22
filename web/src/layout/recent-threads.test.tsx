@@ -28,13 +28,26 @@ const list = (refreshKey: number, onShowAll = () => undefined) => (
 );
 
 describe('«Недавние» in the panel', () => {
+  // docs/specs/[20.11.2026]-event-tasks.md: the conversations of a task's events are one row, opened to the list.
+  it('shows the conversations of a task’s events as one row with the new ones counted, and opens them', async () => {
+    const row = (id: string, title: string, unread: boolean) => ({ id, title, kind: 'background', unread, updatedAt: '2026-11-22T06:00:00Z', agentId: 'sales', projectId: null });
+    const s = mockServer({ 'GET /app/api/threads': { body: { threads: [{ ...row('bg:t1:u:3', 'Письмо от ООО «Вектор»', true), group: { taskId: 't1', taskTitle: 'Разбор входящих', total: 3, fresh: 2 } }], next: null } } });
+    render(list(0));
+    const group = await screen.findByRole('button', { name: 'Разбор входящих · 2 новых' });
+    s.set('GET /app/api/threads', { body: { threads: [row('bg:t1:u:3', 'Письмо от ООО «Вектор»', true), row('bg:t1:u:2', 'Письмо от ИП Ковалёв', true), row('bg:t1:u:1', 'Письмо от АО «Сибстрой»', false)], next: null } });
+    await userEvent.setup().click(group);
+    expect(await screen.findAllByRole('link', { name: /^Письмо от/ })).toHaveLength(3);
+    expect(s.calls.filter((c) => c.path === '/app/api/threads').at(-1)?.query).toEqual({ limit: '20', task: 't1' });
+  });
+
+
   it('shows the seven newest and «Ещё» that opens all of them', async () => {
     const threads = Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, title: `Тема ${i}`, kind: 'chat', unread: false, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId: null }));
     const s = mockServer({ 'GET /app/api/threads': { body: { threads, next: 'cursor-7' } } });
     const onShowAll = vi.fn();
     render(list(0, onShowAll));
     expect(await screen.findAllByRole('link', { name: /^Тема/ })).toHaveLength(7);
-    expect(s.calls.find((c) => c.path === '/app/api/threads')?.query).toEqual({ limit: '7' });
+    expect(s.calls.find((c) => c.path === '/app/api/threads')?.query).toEqual({ limit: '7', group: 'tasks' });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Ещё' }));
     expect(onShowAll).toHaveBeenCalledOnce();
   });

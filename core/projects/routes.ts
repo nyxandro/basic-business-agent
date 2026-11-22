@@ -28,6 +28,9 @@ const listSchema = z.object({
   agentId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(THREAD_PAGE_MAX).optional(),
   before: z.string().optional(),
+  // The conversations of the events of one task; `group=tasks` — those of each task as one row (the panel's «Недавние»).
+  task: z.string().optional(),
+  group: z.enum(['tasks']).optional(),
 });
 
 export async function readUploadedFile(c: Context<AppEnv>): Promise<File> {

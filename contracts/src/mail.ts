@@ -147,6 +147,8 @@ export interface MailAccountsResponse {
   accounts: MailAccountDto[];
   // Services whose sign-in on their site the admin has set up.
   oauth: MailOAuthProvider[];
+  // The mail tasks that handle the person's new letters (docs/specs/[20.11.2026]-event-tasks.md, scenario 1).
+  readBy: { title: string; author: string | null }[];
 }
 
 // «Подключения → Почта» of the admin panel: the apps of the services' sign-in. Secrets never leave the server.

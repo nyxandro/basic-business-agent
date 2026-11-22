@@ -1,12 +1,12 @@
 // Words of «Режимы работы» (spec, section 13): the schedule, the last fire and a person's run.
-import type { RunOutcomeName, TaskFireSummary, TaskRunDto, TaskSchedule } from '@bba/contracts';
+import type { AdminTask, RunOutcomeName, TaskEventDto, TaskEventOutcome, TaskFireSummary, TaskRunDto, TaskSchedule } from '@bba/contracts';
 import { plural } from '../ui/format.ts';
 
 export const WEEKDAYS = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 const WEEKDAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
-export function scheduleText(schedule: TaskSchedule | null, cron: string): string {
-  if (!schedule) return `по расписанию ${cron}`;
+export function scheduleText(schedule: TaskSchedule | null, cron: string | null): string {
+  if (!schedule) return `по расписанию ${cron ?? ''}`;
   switch (schedule.kind) {
     case 'daily':
       return `Каждый день в ${schedule.time}`;
@@ -57,3 +57,34 @@ export function runText(run: TaskRunDto): string {
 }
 
 export const tasksCount = (n: number) => `${n} ${plural(n, ['задача', 'задачи', 'задач'])}`;
+
+// How a task starts (docs/specs/[20.11.2026]-event-tasks.md, section 12).
+export function whenText(task: AdminTask): string {
+  if (task.trigger === 'mail') return 'По событию · письма';
+  if (task.trigger === 'webhook') return 'По событию · сообщения';
+  return scheduleText(task.schedule, task.cron);
+}
+
+// «Сработала 14 раз за сутки · пропущено 2».
+export function eventsText(events: { fired: number; skipped: number }): string {
+  const fired = `Сработала ${events.fired} ${plural(events.fired, ['раз', 'раза', 'раз'])} за сутки`;
+  return events.skipped > 0 ? `${fired} · пропущено ${events.skipped}` : fired;
+}
+
+const EVENT_OUTCOMES: Record<TaskEventOutcome, string> = {
+  queued: 'В очереди',
+  skipped_flood: 'Пропущено: лавина',
+  skipped_paused: 'Пропущено: пауза',
+  skipped_executor: 'Пропущено: исполнитель недоступен',
+  done: 'Выполнено',
+  'awaiting-approval': 'Ждёт решения',
+  failed: 'Ошибка',
+};
+
+export function eventText(event: TaskEventDto): string {
+  const base = EVENT_OUTCOMES[event.outcome];
+  return event.outcome === 'failed' && event.reasonCode ? `${base} · ${event.reasonCode}` : base;
+}
+
+// The words of a filter as the admin types them: separated by commas.
+export const listOf = (text: string): string[] => text.split(',').map((item) => item.trim()).filter((item) => item !== '');

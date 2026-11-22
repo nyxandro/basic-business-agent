@@ -5,12 +5,13 @@
 // Each conversation can be renamed or deleted from its three dots. A new `refreshKey` (after an answer or a new
 // name) loads the list again in place: the old list stays until the new one comes, a name being typed
 // stays.
-import type { ThreadState } from '@bba/contracts';
-import { useCallback, useState } from 'react';
+import type { ThreadState, ThreadSummaryDto } from '@bba/contracts';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { fetchThreadPage } from '../chat/api.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
+import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import styles from './shell.module.css';
@@ -41,7 +42,8 @@ export function RecentThreads({
   onRenamed: (threadId: string, title: string) => void;
   onDeleted: () => void;
 }) {
-  const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN }), []);
+  // The conversations of each background task's events come as one row (docs/specs/[20.11.2026]-event-tasks.md).
+  const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN, group: 'tasks' }), []);
   const { state, reload } = useLoad(first, ['threads', 'recent']);
   const navigate = useNavigate();
   const [seenKey, setSeenKey] = useState(refreshKey);
@@ -57,22 +59,25 @@ export function RecentThreads({
   if (threads.length === 0) return <p className={styles.empty}>{ru.shell.recentEmpty}</p>;
   return (
     <>
-      {threads.map((t) => (
-        <ThreadRow
-          key={t.id}
-          thread={t}
-          state={states[t.id]}
-          current={t.id === currentThreadId}
-          onNavigate={onNavigate}
-          onRenamed={(title) => onRenamed(t.id, title)}
-          onDeleted={() => {
-            // The open conversation is gone: a new one with the same agent takes its place.
-            if (t.id === currentThreadId) void navigate(threadPath({ agentId: t.agentId, id: crypto.randomUUID() }), { replace: true });
-            reload();
-            onDeleted();
-          }}
-        />
-      ))}
+      {threads.map((t) => {
+        const row = (thread: ThreadSummaryDto) => (
+          <ThreadRow
+            key={thread.id}
+            thread={thread}
+            state={states[thread.id]}
+            current={thread.id === currentThreadId}
+            onNavigate={onNavigate}
+            onRenamed={(title) => onRenamed(thread.id, title)}
+            onDeleted={() => {
+              // The open conversation is gone: a new one with the same agent takes its place.
+              if (thread.id === currentThreadId) void navigate(threadPath({ agentId: thread.agentId, id: crypto.randomUUID() }), { replace: true });
+              reload();
+              onDeleted();
+            }}
+          />
+        );
+        return t.group ? <TaskGroup key={`task-${t.group.taskId}`} group={t.group} names={names} row={row} /> : row(t);
+      })}
       {state.data.next ? (
         <button type="button" className={styles.more} onClick={onShowAll}>
           {ru.shell.moreThreads}
@@ -81,3 +86,32 @@ export function RecentThreads({
     </>
   );
 }
+
+// One row for the conversations of a task's events: «Разбор входящих · 3 новых»; opened, the conversations of the task.
+function TaskGroup({ group, names, row }: { group: NonNullable<ThreadSummaryDto['group']>; names: Readonly<Record<string, string>>; row: (thread: ThreadSummaryDto) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className={styles.item} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name="bolt" size={15} />
+        <span className={styles.itemText}>{ru.shell.taskGroup(group.taskTitle, group.total, group.fresh)}</span>
+      </button>
+      {open ? <TaskThreads taskId={group.taskId} title={group.taskTitle} names={names} row={row} /> : null}
+    </>
+  );
+}
+
+function TaskThreads({ taskId, title, names, row }: { taskId: string; title: string; names: Readonly<Record<string, string>>; row: (thread: ThreadSummaryDto) => ReactNode }) {
+  const load = useCallback(() => fetchThreadPage({ limit: TASK_THREADS_SHOWN, task: taskId }), [taskId]);
+  const { state, reload } = useLoad(load);
+  if (state.status === 'loading') return <DelayedBar />;
+  if (state.status === 'error') return <ErrorBanner title={ru.shell.recentFailed} error={state.error} onRetry={reload} />;
+  return (
+    <div role="group" aria-label={ru.shell.taskGroupOpen(title)} className={styles.taskThreads}>
+      {state.data.threads.map((t) => row({ ...t, title: names[t.id] ?? t.title }))}
+    </div>
+  );
+}
+
+// How many conversations of a task's events the opened group shows; the rest are in «Ещё».
+const TASK_THREADS_SHOWN = 20;

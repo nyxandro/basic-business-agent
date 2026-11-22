@@ -12,6 +12,11 @@ const TASK = {
   id: 't1',
   title: 'Утренняя сводка',
   agentId: 'sales',
+  trigger: 'schedule',
+  mailFilter: null,
+  executor: null,
+  hookUrl: null,
+  events: null,
   access: { scope: 'departments', departmentIds: [SALES_DEP], userIds: [] },
   schedule: { kind: 'weekdays', time: '09:00' },
   cron: '0 9 * * 1-5',
@@ -97,10 +102,46 @@ describe('«Режимы работы»', () => {
     expect(s.calls.find((c) => c.method === 'POST')?.body).toEqual({
       title: 'Утренняя сводка',
       agentId: 'sales',
+      trigger: 'schedule',
       access: { scope: 'departments', departmentIds: [SALES_DEP], userIds: [] },
       schedule: { kind: 'weekly', time: '09:00', weekday: 5 },
       prompt: 'Сводка по сделкам',
     });
+  });
+
+  // docs/specs/[20.11.2026]-event-tasks.md: a task on a message of another system — its executor, then its address.
+  it('creates a task on a message of another system and shows its address to copy', async () => {
+    const s = server([]);
+    const HOOK = { ...TASK, id: 't2', title: 'Новая сделка', trigger: 'webhook', schedule: null, cron: null, access: { scope: 'users', departmentIds: [], userIds: ['u-olga'] }, executor: { id: 'u-olga', name: 'Ольга' }, hookUrl: 'http://localhost:8080/app/api/hooks/s3cret', events: { fired: 0, skipped: 0 }, lastFire: null };
+    s.set('POST /app/api/admin/tasks', { status: 201, body: HOOK });
+    s.set('GET /app/api/admin/people', { body: { people: [{ id: 'u-olga', name: 'Ольга' }] } });
+    renderApp('/admin/modes');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Новая задача' }));
+    const dialog = screen.getByRole('dialog', { name: 'Новая задача' });
+    await user.type(within(dialog).getByLabelText('Название'), 'Новая сделка');
+    await user.click(within(dialog).getByRole('button', { name: 'По событию' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Сообщение от другой системы' }));
+    await user.selectOptions(within(dialog).getByLabelText('От чьего имени работает агент'), 'Ольга');
+    await user.type(within(dialog).getByLabelText('Что сделать агенту'), 'Оцени сделку');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать задачу' }));
+    expect(s.calls.find((c) => c.method === 'POST' && c.path === '/app/api/admin/tasks')?.body).toEqual({ title: 'Новая сделка', agentId: 'sales', trigger: 'webhook', executorId: 'u-olga', prompt: 'Оцени сделку' });
+    expect(await screen.findByText('http://localhost:8080/app/api/hooks/s3cret')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скопировать' })).toBeInTheDocument();
+    expect(screen.getByText(/уйдёт по сети открытым текстом/)).toBeInTheDocument();
+  });
+
+  it('shows an event task by its events, and its latest events without the senders of letters', async () => {
+    const MAIL = { ...TASK, id: 't3', title: 'Разбор входящих', trigger: 'mail', schedule: null, cron: null, mailFilter: { from: [], subject: ['заказ'] }, events: { fired: 14, skipped: 2 }, lastFire: null };
+    const s = server([MAIL]);
+    s.set('GET /app/api/admin/tasks/t3/events', { body: { events: [{ id: '1', receivedAt: '2026-11-22T06:00:00Z', summary: null, user: 'Ольга', outcome: 'done', reasonCode: null }], rejected: { tooLarge: 0, badFormat: 0 } } });
+    renderApp('/admin/modes');
+    const user = userEvent.setup();
+    expect((await screen.findAllByText('По событию · письма')).length).toBeGreaterThan(0);
+    await user.click(screen.getAllByRole('button', { name: 'Сработала 14 раз за сутки · пропущено 2' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: 'Последние события: Разбор входящих' });
+    expect(within(dialog).getByText('Ольга')).toBeInTheDocument();
+    expect(within(dialog).getByText('Выполнено')).toBeInTheDocument();
   });
 
   it('pauses a task with its switch and removes one after the question', async () => {

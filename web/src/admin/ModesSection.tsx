@@ -20,9 +20,10 @@ import { adminApi } from './api.ts';
 import { Feedback, useAction } from './parts.tsx';
 import section from './section.module.css';
 import { TaskForm } from './TaskForm.tsx';
+import { TaskEvents } from './TaskEvents.tsx';
 import { TaskRuns } from './TaskRuns.tsx';
 import styles from './tasks.module.css';
-import { lastFireText, pausedText, scheduleText } from './tasks-text.ts';
+import { eventsText, lastFireText, pausedText, whenText } from './tasks-text.ts';
 
 const RULES = [
   { name: 'Каждое действие наружу через «Да»', sub: 'В чате и в фоновых задачах. Постоянных разрешений нет.' },
@@ -30,11 +31,11 @@ const RULES = [
   { name: 'Песочница без сети', sub: 'Скрипты скиллов работают в своей папке сотрудника.' },
 ];
 
-function Modes({ agents, tasks }: { agents: number; tasks: number }) {
+function Modes({ agents, scheduled, onEvent }: { agents: number; scheduled: number; onEvent: number }) {
   const modes: { name: string; icon: IconName; count: number; desc: string }[] = [
     { name: 'В чате', icon: 'chat', count: agents, desc: 'Сотрудник пишет агенту, ответ текстом, таблицами, графиками и формами.' },
-    { name: 'По расписанию', icon: 'clock', count: tasks, desc: 'Запуск в заданное время без чата, результат в разговоре задачи у каждого сотрудника.' },
-    { name: 'По событию', icon: 'bolt', count: 0, desc: 'Запуск, когда плагин сообщает о событии, например о новом письме. Плагинов с событиями в установке пока нет.' },
+    { name: 'По расписанию', icon: 'clock', count: scheduled, desc: 'Запуск в заданное время без чата, результат в разговоре задачи у каждого сотрудника.' },
+    { name: 'По событию', icon: 'bolt', count: onEvent, desc: 'Запуск, когда в почту сотрудника пришло подходящее письмо или другая система прислала сообщение на адрес задачи. Без интернета.' },
   ];
   return (
     <div className={`${styles.modes} rise`}>
@@ -53,6 +54,7 @@ function Modes({ agents, tasks }: { agents: number; tasks: number }) {
 }
 
 function TaskMenu({ task, onEdit, onRuns, onChanged }: { task: AdminTask; onEdit: () => void; onRuns: () => void; onChanged: () => void }) {
+  const byEvent = task.trigger !== 'schedule';
   const [open, setOpen] = useState(false);
   const confirm = useConfirm();
   const { error, run } = useAction();
@@ -64,8 +66,8 @@ function TaskMenu({ task, onEdit, onRuns, onChanged }: { task: AdminTask; onEdit
         <MenuItem icon="edit" onSelect={() => (setOpen(false), onEdit())}>
           Изменить
         </MenuItem>
-        <MenuItem icon="users" onSelect={() => (setOpen(false), onRuns())}>
-          Разбивка по людям
+        <MenuItem icon={byEvent ? 'bolt' : 'users'} onSelect={() => (setOpen(false), onRuns())}>
+          {byEvent ? 'Последние события' : 'Разбивка по людям'}
         </MenuItem>
         <MenuSeparator />
         <MenuItem
@@ -103,11 +105,13 @@ export function ModesSection() {
   const [editing, setEditing] = useState<AdminTask | 'new' | null>(null);
   const [runsOf, setRunsOf] = useState<AdminTask | null>(null);
   const { error, run } = useAction();
-  const head = <PageHead title="Режимы работы" lead="Агент отвечает в чате и работает по расписанию: у каждого сотрудника области — от его имени, с его доступами." />;
+  const head = <PageHead title="Режимы работы" lead="Агент отвечает в чате, работает по расписанию и по событию: письму в почте или сообщению другой системы — от имени сотрудника, с его доступами." />;
   if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
   const { tasks, agents, departments, users } = state.data;
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
+  // A webhook task works on behalf of its executor; the others — of everyone in their area.
+  const whoText = (t: AdminTask) => (t.trigger === 'webhook' ? `от имени: ${t.executor?.name ?? 'исполнитель не выбран'}` : accessText(t.access, departments, users));
   const toggle = async (t: AdminTask, on: boolean) => {
     if (await run(() => adminApi.setTaskStatus(t.id, on ? 'active' : 'paused'), on ? 'Задача включена' : 'Задача на паузе')) reload();
   };
@@ -115,7 +119,7 @@ export function ModesSection() {
   return (
     <div className={section.stack}>
       {head}
-      <Modes agents={agents.length} tasks={tasks.length} />
+      <Modes agents={agents.length} scheduled={tasks.filter((t) => t.trigger === 'schedule').length} onEvent={tasks.filter((t) => t.trigger !== 'schedule').length} />
       <Card className={`${section.tableCard} rise`}>
         <div className={styles.cardHead}>
           <h2 className={styles.cardTitle}>Фоновые задачи</h2>
@@ -137,10 +141,10 @@ export function ModesSection() {
                   <div className={styles.phoneMain}>
                     <div className={styles.taskName}>{t.title}</div>
                     <div className={section.sub}>
-                      {scheduleText(t.schedule, t.cron)} · {accessText(t.access, departments, users)}
+                      {whenText(t)} · {whoText(t)}
                     </div>
                     <button type="button" className={styles.last} onClick={() => setRunsOf(t)}>
-                      {lastFireText(t.lastFire)}
+                      {t.events ? eventsText(t.events) : lastFireText(t.lastFire)}
                     </button>
                     {paused ? <Pill tone="warn">{paused}</Pill> : null}
                   </div>
@@ -181,14 +185,14 @@ export function ModesSection() {
                     <td>{agentName(t.agentId)}</td>
                     <td>
                       <span className={styles.when}>
-                        <Icon name="clock" size={15} />
-                        {scheduleText(t.schedule, t.cron)}
+                        <Icon name={t.trigger === 'schedule' ? 'clock' : 'bolt'} size={15} />
+                        {whenText(t)}
                       </span>
                     </td>
-                    <td className={styles.who}>{accessText(t.access, departments, users)}</td>
+                    <td className={styles.who}>{whoText(t)}</td>
                     <td>
                       <button type="button" className={styles.last} onClick={() => setRunsOf(t)}>
-                        {lastFireText(t.lastFire)}
+                        {t.events ? eventsText(t.events) : lastFireText(t.lastFire)}
                       </button>
                     </td>
                     <td>
@@ -223,13 +227,14 @@ export function ModesSection() {
           departments={departments}
           users={users}
           onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
+          onSaved={(saved, stay) => {
+            setEditing(stay ? saved : null);
             reload();
           }}
         />
       ) : null}
-      {runsOf ? <TaskRuns task={runsOf} onClose={() => setRunsOf(null)} /> : null}
+      {runsOf && runsOf.trigger !== 'schedule' ? <TaskEvents task={runsOf} onClose={() => setRunsOf(null)} /> : null}
+      {runsOf && runsOf.trigger === 'schedule' ? <TaskRuns task={runsOf} onClose={() => setRunsOf(null)} /> : null}
     </div>
   );
 }

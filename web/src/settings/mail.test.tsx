@@ -17,6 +17,7 @@ const YANDEX: MailDiscovery = {
   password: { help: 'Яндекс ID → Безопасность → Пароли приложений.', url: 'https://id.yandex.ru/security/app-passwords' },
 };
 const CONNECTED: MailAccountsResponse = {
+  readBy: [],
   accounts: [{ id: 'a1', email: 'olga@yandex.ru', provider: 'yandex', title: 'Яндекс Почта', auth: 'password', status: 'connected', checkedAt: '2026-11-17T02:00:00.000Z', servers: YANDEX.servers! }],
   oauth: [],
 };
@@ -133,7 +134,7 @@ describe('«Почта» in «Подключения»', () => {
   });
 
   it('a broken mailbox offers to connect it again; coming back from a sign-in says how it went', async () => {
-    server({ 'GET /app/api/me/mail': { body: { accounts: [{ ...CONNECTED.accounts[0], status: 'auth_error' }], oauth: [] } } });
+    server({ 'GET /app/api/me/mail': { body: { accounts: [{ ...CONNECTED.accounts[0], status: 'auth_error' }], oauth: [], readBy: [] } } });
     renderApp('/settings/connections?mailError=APP_MAIL_AUTH_FAILED');
     expect(await screen.findByText('Ошибка доступа')).toBeInTheDocument();
     expect(screen.getByText(/Почтовый сервер не принял вход: на сайте сервиса выбран другой аккаунт/)).toBeInTheDocument();

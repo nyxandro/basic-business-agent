@@ -339,7 +339,7 @@ function cursorOf(t: ThreadSummaryDto): string {
 
 // Conversations of all the person's agents, newest first; `before` continues after a cursor. A
 // conversation whose project the person no longer sees is shown without one.
-export async function listThreadPage(deps: ProjectsDeps, userId: string, query: { projectId?: string | null; agentId?: string; limit?: number; before?: string }): Promise<ThreadPage> {
+export async function listThreadPage(deps: ProjectsDeps, userId: string, query: { projectId?: string | null; agentId?: string; limit?: number; before?: string; task?: string; group?: 'tasks' }): Promise<ThreadPage> {
   const limit = Math.min(Math.max(query.limit ?? THREAD_PAGE_DEFAULT, 1), THREAD_PAGE_MAX);
   // The page of an archived project lists its creator's conversations in it too.
   if (query.projectId) await visibleProject(deps.db, userId, query.projectId, 'owner');
@@ -352,10 +352,45 @@ export async function listThreadPage(deps: ProjectsDeps, userId: string, query: 
       const linked = links.get(t.id) ?? null;
       return { ...t, projectId: linked && seen.has(linked) ? linked : null };
     })
-    .filter((t) => (!query.projectId || t.projectId === query.projectId) && (!query.agentId || t.agentId === query.agentId));
-  const start = query.before ? all.findIndex((t) => cursorOf(t) === query.before) + 1 : 0;
-  if (query.before && start === 0) throw appError('APP_VALIDATION_FAILED', `unknown cursor ${query.before}`, { userMessage: 'Список разговоров изменился. Обновите страницу.' });
+    .filter((t) => (!query.projectId || t.projectId === query.projectId) && (!query.agentId || t.agentId === query.agentId) && (!query.task || t.taskId === query.task));
+  const listed = query.group === 'tasks' ? await groupByTask(deps.db, all) : all.map(({ taskId: _taskId, ...t }) => t);
+  return pageOf(listed, query.before, limit);
+}
+
+function pageOf(all: ThreadSummaryDto[], before: string | undefined, limit: number): ThreadPage {
+  const start = before ? all.findIndex((t) => cursorOf(t) === before) + 1 : 0;
+  if (before && start === 0) throw appError('APP_VALIDATION_FAILED', `unknown cursor ${before}`, { userMessage: 'Список разговоров изменился. Обновите страницу.' });
   const page = all.slice(start, start + limit);
   const more = start + limit < all.length;
   return { threads: page, next: more && page.length > 0 ? cursorOf(page.at(-1)!) : null };
 }
+
+// The conversations of the events of one task as one row: the newest, with the task's name and counts.
+async function groupByTask(db: Db, threads: (ThreadSummaryDto & { taskId: string | null })[]): Promise<ThreadSummaryDto[]> {
+  const taskIds = [...new Set(threads.map((t) => t.taskId).filter((id): id is string => id !== null))];
+  if (taskIds.length === 0) return threads.map(({ taskId: _taskId, ...t }) => t);
+  const titles = new Map((await db.query<{ id: string; title: string }>('SELECT id, title FROM app.background_tasks WHERE id = ANY($1)', [taskIds])).rows.map((r) => [r.id, r.title]));
+  const counts = new Map<string, { total: number; fresh: number }>();
+  for (const t of threads) {
+    if (!t.taskId) continue;
+    const c = counts.get(t.taskId) ?? { total: 0, fresh: 0 };
+    c.total++;
+    if (t.unread) c.fresh++;
+    counts.set(t.taskId, c);
+  }
+  const out: ThreadSummaryDto[] = [];
+  const shown = new Set<string>();
+  for (const { taskId, ...t } of threads) {
+    if (!taskId) {
+      out.push(t);
+      continue;
+    }
+    if (shown.has(taskId)) continue;
+    shown.add(taskId);
+    out.push({ ...t, group: { taskId, taskTitle: titles.get(taskId) ?? TASK_GONE_TITLE, ...counts.get(taskId)! } });
+  }
+  return out;
+}
+
+// The name of a group whose task the admin removed (a label: the conversations stay).
+const TASK_GONE_TITLE = 'Удалённая задача';

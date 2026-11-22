@@ -57,7 +57,7 @@ export function createMailService(deps: MailDeps): MailService {
   const check = deps.check ?? checkMailbox;
 
   async function accounts(userId: string): Promise<MailAccountsResponse> {
-    return { accounts: (await listAccounts(deps.db, userId)).map(accountDto), oauth: [...(await ready())] };
+    return { accounts: (await listAccounts(deps.db, userId)).map(accountDto), oauth: [...(await ready())], readBy: await mailTasksOf(deps.db, userId) };
   }
 
   return {
@@ -146,3 +146,17 @@ export async function pickAccount(mail: Pick<MailService, 'connected'>, userId: 
   return found;
 }
 
+
+// The active mail tasks whose area includes the person: their letters are handled by them (event-tasks.md).
+async function mailTasksOf(db: Db, userId: string): Promise<{ title: string; author: string | null }[]> {
+  const { rows } = await db.query<{ title: string; author: string | null }>(
+    `SELECT t.title, u."name" AS author FROM app.background_tasks t LEFT JOIN app."user" u ON u."id" = t.created_by
+      WHERE t.trigger = 'mail' AND t.status = 'active'
+        AND (t.scope = 'org'
+             OR EXISTS (SELECT 1 FROM app.task_scope s WHERE s.task_id = t.id AND s.user_id = $1)
+             OR EXISTS (SELECT 1 FROM app.task_scope s JOIN app.department_members dm ON dm.department_id = s.department_id WHERE s.task_id = t.id AND dm.user_id = $1))
+      ORDER BY t.title`,
+    [userId],
+  );
+  return rows;
+}

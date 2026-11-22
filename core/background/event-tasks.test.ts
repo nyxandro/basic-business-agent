@@ -115,6 +115,13 @@ describe('tasks by an event', () => {
     expect((await post(pathOf(task), body, 'application/json')).status).toBe(200);
     await t.background.idle();
     expect((await eventsOf(task.id)).events).toHaveLength(2);
+    // «Недавние»: the conversations of the task's events are one row with the task's name; the task lists them all.
+    const grouped = await json<{ threads: { id: string; group?: { taskId: string; taskTitle: string; total: number } }[] }>(await t.call('GET', '/app/api/threads?limit=50&group=tasks', { cookie: olga }));
+    const rows = grouped.threads.filter((x) => x.group?.taskId === task.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.group).toMatchObject({ taskTitle: 'Заявки с сайта', total: 2 });
+    const listed = await json<{ threads: unknown[] }>(await t.call('GET', `/app/api/threads?limit=50&task=${task.id}`, { cookie: olga }));
+    expect(listed.threads).toHaveLength(2);
     expect((await post(pathOf(task), JSON.stringify({ text: 'я'.repeat(40_000) }), 'application/json')).status).toBe(413);
     expect((await post(pathOf(task), 'plain words', 'text/plain')).status).toBe(415);
     expect((await post(`${HOOK_PATH}not-a-secret`, body, 'application/json')).status).toBe(404);

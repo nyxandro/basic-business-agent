@@ -104,6 +104,13 @@ export function MailConnections({ params }: { params: URLSearchParams }) {
           ))}
         </ul>
       ) : null}
+      {accounts.length > 0 && state.status === 'ready'
+        ? state.data.readBy.map((task) => (
+            <p key={task.title} className={styles.readBy}>
+              {t.readBy(task.title, task.author)}
+            </p>
+          ))
+        : null}
       <MailConnectDialog
         open={dialog !== null}
         initialEmail={dialog?.email ?? ''}

@@ -173,6 +173,9 @@ export interface ThreadSummaryDto {
   updatedAt: string;
   agentId: string;
   projectId: string | null;
+  // «Недавние» (docs/specs/[20.11.2026]-event-tasks.md): the conversations of the events of one task are one row — the
+  // newest of them, with the task's name, how many there are and how many are new.
+  group?: { taskId: string; taskTitle: string; total: number; fresh: number };
 }
 
 // GET /app/api/threads: conversations of all the person's agents, newest first; `next` is the

@@ -72,6 +72,9 @@ export const ru = {
     recent: 'Недавние',
     recentEmpty: 'Разговоров пока нет',
     moreThreads: 'Ещё',
+    // A background task's conversations of events, one row (docs/specs/[20.11.2026]-event-tasks.md).
+    taskGroup: (title: string, total: number, fresh: number) => (fresh > 0 ? `${title} · ${fresh} ${fresh % 10 === 1 && fresh % 100 !== 11 ? 'новое' : 'новых'}` : `${title} · ${total}`),
+    taskGroupOpen: (title: string) => `Разговоры задачи «${title}»`,
     recentFailed: 'Не удалось загрузить разговоры',
     approvals: 'Ждёт подтверждения',
     approvalsHint: (n: number) => `${n} ${plural(n, ['действие ждёт', 'действия ждут', 'действий ждут'])} решения`,
@@ -507,6 +510,8 @@ export const ru = {
       empty: 'Почта не подключена.',
       connect: 'Подключить почту',
       connectMore: 'Подключить ещё ящик',
+      // A mail task of the admin handles the person's new letters (docs/specs/[20.11.2026]-event-tasks.md).
+      readBy: (title: string, author: string | null) => `Ваши новые письма разбирает задача «${title}»${author ? ` (завёл ${author})` : ''}. Поставить её на паузу может администратор.`,
       disconnect: 'Отключить',
       reconnect: 'Подключить заново',
       viaOAuth: 'вход через сайт',

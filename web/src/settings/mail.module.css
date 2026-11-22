@@ -158,3 +158,10 @@
     grid-column: 1 / -1;
   }
 }
+
+/* A mail task of the admin handles the person's letters (event-tasks.md). */
+.readBy {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
