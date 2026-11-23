@@ -165,6 +165,19 @@ describe('checkArchitecture: zones', () => {
     expect(lines(await checkArchitecture(r))).toEqual(['contracts-self-contained: contracts/src/index.ts -> core/auth/public/index.ts']);
   });
 
+  it('stops on a local import that leads to no file: no rule could check where it goes', async () => {
+    const r = repo({ 'web/src/App.tsx': "import '../../core/auth/gone.ts';\nimport { x } from './ok.ts';\nexport const a = x;\n", 'web/src/ok.ts': OK });
+    expect(lines(await checkArchitecture(r))).toEqual(['unresolved-local-import: web/src/App.tsx -> ../../core/auth/gone.ts']);
+  });
+
+  it('still checks imports into the skills of Anthropic kept as published', async () => {
+    const r = repo({
+      'plugins/mail/send.ts': "import '../../core/system-skills/docx/scripts/x.js';\n",
+      'core/system-skills/docx/scripts/x.js': "import './missing-helper.js';\nexport const x = 1;\n",
+    });
+    expect(lines(await checkArchitecture(r))).toEqual(['plugins-core-public-only: plugins/mail/send.ts -> core/system-skills/docx/scripts/x.js']);
+  });
+
   it('ignores node_modules, inbox, tooling and files at the root', async () => {
     const r = repo({
       'core/node_modules/x/a.ts': "import '../../../plugins/p.ts';\n",
@@ -202,6 +215,17 @@ describe('checkArchitecture: circular imports', () => {
       expect(v.rule).toBe('no-circular');
       expect(v.detail?.split(' -> ').sort()).toEqual(['web/src/a/A.tsx', 'web/src/b/B.tsx', 'web/src/c/C.tsx']);
     }
+  });
+
+  it('finds a circle of run-time imports even when the files also take types from each other the other way', async () => {
+    const r = repo({
+      'core/chat/a.ts': "import { b } from './b.ts';\nimport type { C } from './c.ts';\nexport type A = C;\nexport const a = () => b;\n",
+      'core/chat/b.ts': "import { c } from './c.ts';\nimport type { A } from './a.ts';\nexport type B = A;\nexport const b = () => c;\n",
+      'core/chat/c.ts': "import { a } from './a.ts';\nimport type { B } from './b.ts';\nexport type C = B;\nexport const c = () => a;\n",
+    });
+    expect(await checkArchitecture(r)).toEqual([
+      { rule: 'no-circular', from: 'core/chat/a.ts', to: 'core/chat/b.ts', detail: 'core/chat/b.ts -> core/chat/c.ts -> core/chat/a.ts' },
+    ]);
   });
 
   it('lets two files share only types both ways: types disappear at run time', async () => {

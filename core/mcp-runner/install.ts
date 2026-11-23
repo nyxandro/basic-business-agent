@@ -43,6 +43,7 @@ async function installNpm(spec: ProgramSpec, root: string, cache: string): Promi
   await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--prefix', root, spec.package], {
     timeout: INSTALL_TIMEOUT_MS,
     maxBuffer: OUTPUT_LIMIT,
+    // eslint-disable-next-line no-restricted-properties -- npm gets the environment of the runner as it is, plus its cache: nothing is read from it here
     env: { ...process.env, npm_config_cache: cache, npm_config_update_notifier: 'false' },
   });
   const name = nameOf(spec);

@@ -1,7 +1,7 @@
 // The document viewer (spec, section 8.27; decisions of the owner 18.11): the Word document the agent made
 // opens in place — LibreOffice of the stand's real sandbox turns it into PDF, PDF.js draws its pages — with
 // the scale, «По ширине», «Скачать» beside «Закрыть»; on a phone «Назад» closes it and leaves the chat.
-import { type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, newConversation, openAgent, pageAs, say, test } from './helpers.ts';
 import { STAND_DOCUMENT } from './stand-model.ts';
 

@@ -14,7 +14,10 @@ const TEST_FILE = '\\.test\\.tsx?$';
 export const FOUNDATION_MODULES = ['audit', 'config', 'crypto', 'db', 'errors', 'log', 'net', 'run-context', 'workspace'];
 const FOUNDATION = `^core/(${FOUNDATION_MODULES.join('|')})/`;
 
-const forbid = (name: string, comment: string, from: IRegularForbiddenRuleType['from'], to: IRegularForbiddenRuleType['to']): IRegularForbiddenRuleType => ({
+// Every rule of ours has a name and says why: the CLI prints both next to a violation.
+export type ArchitectureRule = IRegularForbiddenRuleType & { name: string; comment: string };
+
+const forbid = (name: string, comment: string, from: ArchitectureRule['from'], to: ArchitectureRule['to']): ArchitectureRule => ({
   name,
   comment,
   severity: 'error',
@@ -30,7 +33,7 @@ function declaredDependencies(root: string, plugin: string): string[] {
   return [...list.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]!);
 }
 
-function pluginRules(root: string): IRegularForbiddenRuleType[] {
+function pluginRules(root: string): ArchitectureRule[] {
   const dir = join(root, 'plugins');
   if (!existsSync(dir)) return [];
   const plugins = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
@@ -46,15 +49,8 @@ function pluginRules(root: string): IRegularForbiddenRuleType[] {
   });
 }
 
-export function architectureRules(root: string): IRegularForbiddenRuleType[] {
+export function architectureRules(root: string): ArchitectureRule[] {
   return [
-    forbid(
-      'no-circular',
-      'Files import each other in a circle: the value read first may still be empty when the server or the page starts, ' +
-        'and no file of the circle can be changed alone. Move what both need into a third file. Imports of types only do not count.',
-      {},
-      { circular: true, viaOnly: { dependencyTypesNot: ['type-only'] } },
-    ),
     forbid(
       'core-not-into-zones',
       'core/ is shared by every installation: it must not import plugins/, the installation zone (agents, config, custom, workflows, skills) or web/.',
@@ -116,7 +112,15 @@ export function architectureRules(root: string): IRegularForbiddenRuleType[] {
   ];
 }
 
-export const MUTUAL_MODULES_RULE = 'core-no-mutual-modules';
-export const MUTUAL_MODULES_COMMENT =
-  'Two core modules import each other at run time: neither can be understood or changed alone, and the circle of modules tightens. ' +
-  'Move what both need into a third module, or let only one of them know the other. Imports of types only and tests do not count.';
+// Rules dependency-cruiser cannot express; tooling/architecture/check.ts computes them over its graph.
+// Run-time imports only: an `import type` disappears when the code runs and makes no circle.
+export const COMPUTED_RULES = {
+  'no-circular':
+    'Files import each other in a circle at run time: the value read first may still be empty when the server or the page starts, ' +
+    'and no file of the circle can be changed alone. Move what both need into a third file. Imports of types only do not count.',
+  'core-no-mutual-modules':
+    'Two core modules import each other at run time: neither can be understood or changed alone, and the circle of modules tightens. ' +
+    'Move what both need into a third module, or let only one of them know the other. Imports of types only and tests do not count.',
+  'unresolved-local-import':
+    'A local import leads to no file, so no rule can check where it goes. Fix the path (with its extension) or remove the import.',
+} as const;

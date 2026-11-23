@@ -1,13 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { checkArchitecture } from './check.ts';
-import { architectureRules, MUTUAL_MODULES_COMMENT, MUTUAL_MODULES_RULE } from './rules.ts';
+import { architectureRules, COMPUTED_RULES } from './rules.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const violations = await checkArchitecture(root);
 
 if (violations.length > 0) {
-  const why = new Map(architectureRules(root).map((r) => [r.name, r.comment]));
-  why.set(MUTUAL_MODULES_RULE, MUTUAL_MODULES_COMMENT);
+  const why = new Map<string, string>([...architectureRules(root).map((r) => [r.name, r.comment] as const), ...Object.entries(COMPUTED_RULES)]);
   for (const v of violations) console.error(`${v.rule}: ${v.from} -> ${v.to}${v.detail ? `\n    ${v.detail}` : ''}`);
   console.error('\nWhy and what to do:');
   for (const rule of new Set(violations.map((v) => v.rule))) console.error(`- ${rule}: ${why.get(rule) ?? ''}`);
