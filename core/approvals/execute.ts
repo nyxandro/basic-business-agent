@@ -4,7 +4,7 @@
 // - the request is taken by one row change that also writes «вызов начат» (`call_started_at`);
 // - a request found at the start with «вызов начат» and no result is «итог неизвестен», not run again;
 // - one found agreed but not started runs then.
-// The agent goes on in the employee's conversation after a done request (continue.ts, owner 21.11, F3).
+// The agent goes on in the employee's conversation after a done request (core/chat/chain-continuation.ts, owner 21.11, F3).
 import type { RequestContext } from '@mastra/core/request-context';
 import { RequestContext as Context } from '@mastra/core/request-context';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
