@@ -12,9 +12,9 @@ import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS, type Workspa
 import { z } from 'zod';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../runtime/request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../run-context/request-keys.ts';
 import { keepBeforeWrite } from '../projects/trash.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import { conversationRoot, draftsPath, existingInside, openFileInside } from '../workspace/layout.ts';

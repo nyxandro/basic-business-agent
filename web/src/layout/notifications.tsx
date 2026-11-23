@@ -3,7 +3,7 @@
 // counters back; a hidden one says so at once, and the server pushes to the browser instead. A notification that comes
 // while the person is in the app is shown as a hint inside the page. On a phone the panel is a sheet from below.
 import type { NotificationsResponse, ThreadState } from '@bba/contracts';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { fetchCounts, markRead } from '../notifications/api.ts';
@@ -12,19 +12,9 @@ import { NotificationsPanel, type PanelTab } from '../notifications/Notification
 import { keepOwnSubscription, OPEN_MESSAGE } from '../notifications/push.ts';
 import { Sheet } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
+import { NotificationsContext } from './notifications-context.ts';
 import { useMedia, WIDE_QUERY } from './use-media.ts';
 
-interface NotificationsValue {
-  counts: NotificationsResponse | null;
-  // The marks of the person's conversations in the lists (layout/ThreadState.tsx).
-  threadStates: Readonly<Record<string, ThreadState>>;
-  refresh: () => void;
-  panel: { open: boolean; tab: PanelTab };
-  openPanel: (tab?: PanelTab) => void;
-  closePanel: () => void;
-}
-
-const NotificationsContext = createContext<NotificationsValue | null>(null);
 const NO_STATES: Readonly<Record<string, ThreadState>> = {};
 const LIVE_PATH = '/app/api/me/events';
 
@@ -134,10 +124,4 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       )}
     </NotificationsContext>
   );
-}
-
-export function useNotifications(): NotificationsValue {
-  const value = useContext(NotificationsContext);
-  if (!value) throw new Error('useNotifications must be used inside NotificationsProvider');
-  return value;
 }

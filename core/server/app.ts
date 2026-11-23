@@ -12,6 +12,7 @@ import type { Auth } from '../auth/auth.ts';
 import { registerBackgroundRoutes } from '../background/routes.ts';
 import type { BackgroundService } from '../background/service.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
+import { registerMeRoutes } from '../me/routes.ts';
 import type { CopilotHandler } from '../chat/copilot.ts';
 import { registerChatRoutes } from '../chat/routes.ts';
 import type { ChatDeps } from '../chat/run.ts';
@@ -39,12 +40,13 @@ import { registerMailRoutes } from '../mail/routes.ts';
 import type { Notifications } from '../notifications/service.ts';
 import { registerNotificationRoutes } from '../notifications/routes.ts';
 import { registerMemoryRoutes } from '../memory/routes.ts';
+import { registerProjectMemoryRoutes } from '../projects/memory-routes.ts';
 import { registerOrgDocsRoutes, type OrgDocsRouteDeps } from '../org-docs/routes.ts';
 import type { SkillsDeps } from '../skills-admin/store.ts';
-import { requireSession } from './guards.ts';
-import { errorJson, handleError, type AppEnv } from './http.ts';
+import { requireSession } from '../auth/guards.ts';
+import { errorJson, handleError, type AppEnv } from '../http/http.ts';
 import { registerChainRoutes } from '../approvals/chain-routes.ts';
-import type { ChainContinuation } from '../approvals/continue.ts';
+import type { ChainContinuation } from '../chat/chain-continuation.ts';
 import { describeTools } from '../approvals/describe.ts';
 import type { ChainExecutor } from '../approvals/execute.ts';
 import { createMailTools } from '../mail/tools.ts';
@@ -100,6 +102,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   });
 
   registerAuthRoutes(app, deps);
+  registerMeRoutes(app, deps);
   registerPeopleRoutes(app, {
     db: deps.db,
     publicUrl: deps.publicUrl,
@@ -113,6 +116,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerChatRoutes(app, { ...deps.chat, preview: deps.preview });
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
   registerProjectRoutes(app, { ...projects, preview: deps.preview });
+  registerProjectMemoryRoutes(app, { db: deps.db });
   registerMemoryRoutes(app, { db: deps.db });
   registerSearchRoutes(app, projects);
   registerFileSearchRoutes(app, { ...projects, preview: deps.preview });

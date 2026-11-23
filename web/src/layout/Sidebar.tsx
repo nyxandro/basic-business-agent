@@ -14,7 +14,7 @@ import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { MenuAnchor } from '../ui/Menu.tsx';
 import { LimitMeter } from './LimitMeter.tsx';
-import { useNotifications } from './notifications.tsx';
+import { useNotifications } from './notifications-context.ts';
 import { ProjectList } from '../projects/ProjectList.tsx';
 import { RecentThreads } from './RecentThreads.tsx';
 import { SettingsMenu } from './SettingsMenu.tsx';

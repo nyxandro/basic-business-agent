@@ -3,7 +3,7 @@
 // app; without it nothing starts.
 import { existsSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { installProgram } from './install.ts';
 import { createRunner } from './runner.ts';
 

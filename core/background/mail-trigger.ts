@@ -11,7 +11,7 @@ import { isAppError } from '../errors/app-error.ts';
 import type { MailAccount } from '../mail/accounts.ts';
 import { withImap } from '../mail/client.ts';
 import type { MailService } from '../mail/service.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { LETTER_TEXT_MAX, recordEvent } from './events.ts';
 import { membersOf } from './scope.ts';
 import type { TaskRow } from './service.ts';

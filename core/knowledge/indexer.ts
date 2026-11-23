@@ -8,7 +8,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import type { DocTextService } from '../doctext/service.ts';
 import type { DocKind } from '../doctext/extract.ts';
 import { docFormatOf } from '../doctext/extract.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { chunksOf, normText } from './chunk.ts';
 import { forgetWords, rememberWords } from './store.ts';
 

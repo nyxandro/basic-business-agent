@@ -9,8 +9,8 @@ import { grantsOf } from '../../auth/roles.ts';
 import { createInvite, createPasswordReset, listUsers, revokeInvite, setUserBlocked, setUserRoles } from '../../auth/users.ts';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
-import { assertCanGrant, requireAnyPermission, requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { assertCanGrant, requireAnyPermission, requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
 // Managing someone (reset link, roles, block) needs at least the rights that person has:
 // otherwise an admin could take over a stronger account through a reset link.

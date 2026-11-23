@@ -11,7 +11,7 @@ import { markThreadRead } from '../notifications/list.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { ERROR_CATALOG } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { readHistory, type BrokenAnswer, type HistoryMessage, type StoredMessage } from './history.ts';
 import { lastBrokenTurn, verdictOf } from './retry.ts';
 import type { TranslatedError } from './stream.ts';

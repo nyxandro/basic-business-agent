@@ -12,8 +12,8 @@ import {
 import { createRole, deleteRole, listRoles, updateRole } from '../../auth/roles.ts';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
-import { assertCanGrant, requireAnyPermission, requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { assertCanGrant, requireAnyPermission, requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
 export function registerRoleRoutes(app: Hono<AppEnv>, deps: { db: Db; knownAgentIds: () => ReadonlySet<string> }): void {
   const { db } = deps;

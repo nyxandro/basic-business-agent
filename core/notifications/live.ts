@@ -5,7 +5,7 @@
 // signal lost while the connection was being made again costs at most that.
 import pg from 'pg';
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 export const LIVE_CHANNEL = 'bba_live';
 // Signals for one person closer than this become one.

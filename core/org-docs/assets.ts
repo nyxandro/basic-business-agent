@@ -22,7 +22,6 @@ import { imageSizeOf } from '../interface-settings/image-size.ts';
 import { imageTypeOf } from '../interface-settings/image.ts';
 import type { PreparedBlank } from './blank.ts';
 import { listSigners } from './signers.ts';
-import { signatureOutdated } from './prompt.ts';
 
 export type OrgPictureKind = Exclude<OrgAssetKind, 'blank'>;
 
@@ -91,6 +90,10 @@ interface AssetRow {
 }
 
 const picture = (r: AssetRow): OrgPictureState => ({ width: r.width!, height: r.height!, updatedAt: r.updated_at.toISOString(), version: versionOf(r.sha256) });
+
+// The signature was uploaded for another full name than the director's now (a signature uploaded before any name — for
+// whoever is named later).
+export const signatureOutdated = (uploadedFor: string | null, fullName: string): boolean => Boolean(uploadedFor && fullName && uploadedFor !== fullName);
 
 // The organisation works without a stamp: the signature is put alone (decision of the owner 21.11).
 export async function readWithoutStamp(db: Queryable): Promise<boolean> {

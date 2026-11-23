@@ -6,8 +6,8 @@ import type { Context, Hono } from 'hono';
 import { writeAudit } from '../audit/audit.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { requirePermission } from '../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { requirePermission } from '../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import type { FileStorage } from './engine.ts';
 
 function requireSuperadmin(c: Context<AppEnv>): string {

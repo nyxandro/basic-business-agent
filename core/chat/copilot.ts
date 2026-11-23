@@ -10,7 +10,7 @@ import { CHAT_EVENTS } from '@bba/contracts';
 import { filter, finalize, Observable, Subject, tap } from 'rxjs';
 import type { WebProgress } from '../web/trail.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { requestContextFor, type PreparedRun } from './run.ts';
 import { newRunLife } from './after-leaving.ts';
 

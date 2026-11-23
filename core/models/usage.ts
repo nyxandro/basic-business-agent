@@ -2,7 +2,7 @@
 // to POST /app/api/internal/usage; reports read app.usage_events, not LiteLLM's own tables.
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 export const AGENT_HEADER = 'x-bba-agent-id';
 // A service call of the core, not a step of the agent: its value names the call (spec, section 8.16).

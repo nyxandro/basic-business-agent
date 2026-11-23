@@ -4,8 +4,8 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import { appError } from '../errors/catalog.ts';
 import type { ProjectsDeps } from '../projects/projects.ts';
-import { logEvent } from '../server/log.ts';
-import { access, type AppEnv } from '../server/http.ts';
+import { logEvent } from '../log/log.ts';
+import { access, type AppEnv } from '../http/http.ts';
 import { search } from './search.ts';
 
 const SLOW_SEARCH_MS = 300;

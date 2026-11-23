@@ -7,7 +7,7 @@ import type { Db } from '../db/pool.ts';
 import { summariseArgs, writeJournal } from '../journal/journal.ts';
 import { notices, type QuestionOrigin } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
-import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS, type RunKind } from '../run-context/request-keys.ts';
 import { getApprovalSettings, ttlHoursFor } from './settings.ts';
 
 const HOUR_MS = 60 * 60 * 1000;

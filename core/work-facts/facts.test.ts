@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { applyApprovalPolicy } from '../approvals/policy.ts';
 import type { ChainService } from '../approvals/chains.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createShowFileTool } from '../sandbox/show-file.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { chatRoot } from '../workspace/layout.ts';

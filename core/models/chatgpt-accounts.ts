@@ -12,7 +12,7 @@ import { writeAudit } from '../audit/audit.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import type { AccountFailure } from './account-events.ts';
 import { identityOf, jwtClaims, type ChatGptAuthClient, type ChatGptAuthFile } from './chatgpt-login.ts';
 import type { GatewayWriter } from './gateway-writer.ts';

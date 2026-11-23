@@ -6,7 +6,7 @@ import type { KbFragmentDto } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 import { inSearch } from '../search/match-sql.ts';
 import { queryVariants } from '../search/variants.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { cleanQuestion, expandQuery } from './expand.ts';
 import { readableDepartments } from './store.ts';
 

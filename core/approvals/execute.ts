@@ -16,13 +16,13 @@ import { isAppError } from '../errors/app-error.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
 import { runProjectOfWaitingAnswer } from '../projects/access.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
-import { logEvent } from '../server/log.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
+import { logEvent } from '../log/log.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { expireChains, openArgs, RETRY_HOURS, type ChainRow } from './chains.ts';
-import type { ChainContinuation } from './continue.ts';
+import type { ChainContinuation } from '../chat/chain-continuation.ts';
 
 export const SWEEP_MS = 10 * 1000;
 // A call that does not end in this time is not waited for: its outcome is unknown (a plugin's tool has no timeout).

@@ -5,7 +5,7 @@ import type { ChainDto } from '@bba/contracts';
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { useNotifications } from '../layout/notifications.tsx';
+import { useNotifications } from '../layout/notifications-context.ts';
 import { Button, cx } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { TextArea } from '../ui/Field.tsx';

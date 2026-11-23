@@ -2,7 +2,7 @@
 import type { Tool } from '@mastra/core/tools';
 import type { z } from 'zod';
 import type { Db } from '../../db/pool.ts';
-import { REQUEST_KEYS } from '../../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../../run-context/request-keys.ts';
 
 export interface PluginContext<TSettings> {
   name: string;

@@ -4,8 +4,8 @@
 import { complaintSchema, SUPPORT_STATUSES, ticketUpdateSchema, type AdminTicketsResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportStatus } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { appError } from '../errors/catalog.ts';
-import { requirePermission } from '../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { requirePermission } from '../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { complain, existingComplaint, listTickets, myTickets, ticketDetail, ticketFile, updateTicket, type SupportDeps } from './tickets.ts';
 
 const S = '/app/api/admin/support';

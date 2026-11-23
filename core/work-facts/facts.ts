@@ -5,7 +5,7 @@
 // months. The work matters more than its fact: a failure here is logged, never thrown into the work.
 import type { WorkKind } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 export type FactKind = WorkKind | 'conversation' | 'message';
 

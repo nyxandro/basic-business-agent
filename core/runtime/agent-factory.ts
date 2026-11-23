@@ -14,8 +14,8 @@ import { createAgentWorkspace, createViewImageTool, type SandboxDeps, VIEW_IMAGE
 import type { ModelGateway } from '../models/gateway.ts';
 import type { MemoryTools } from '../memory/tools.ts';
 import type { HistoryTools } from '../history/tool.ts';
-import { logEvent } from '../server/log.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from './request-keys.ts';
+import { logEvent } from '../log/log.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../run-context/request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import { createStreamRetry, dropShownWords, isGatewayStreamFailure } from './stream-retry.ts';
 import { createWidgetTools } from '../widgets/tools.ts';

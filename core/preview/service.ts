@@ -19,7 +19,7 @@ import { CONVERTED_KINDS, previewKindOf, PREVIEW_MAX_BYTES, type PreviewKind } f
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Limiter } from '../sandbox/limiter.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { areaKey, type Area } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { previewKey, type PreviewCache } from './cache.ts';
@@ -79,7 +79,7 @@ export function createPreviewService(deps: PreviewDeps): PreviewService {
       logEvent('info', 'preview_converted', { ext, kind, bytes, ms: Date.now() - started, wholeSheets: plan?.singlePage ?? null });
       return pdf;
     } catch (error) {
-      // What a person's file brings is expected; failures of the server the boundary logs (core/server/http.ts).
+      // What a person's file brings is expected; failures of the server the boundary logs (core/http/http.ts).
       if (isAppError(error) && error.status < 500) {
         logEvent('info', 'preview_failed', { code: error.code, ext, bytes, ms: Date.now() - started, reason: error.details?.reason ?? null });
       }

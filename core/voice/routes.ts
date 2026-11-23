@@ -4,7 +4,7 @@ import type { Hono } from 'hono';
 import { assertAgentOpen } from '../chat/run.ts';
 import type { Registry } from '../loader/registry.ts';
 import { readUploadedFile } from '../projects/routes.ts';
-import { access, type AppEnv } from '../server/http.ts';
+import { access, type AppEnv } from '../http/http.ts';
 import { appError } from '../errors/catalog.ts';
 import { transcribe, type VoiceDeps } from './transcribe.ts';
 

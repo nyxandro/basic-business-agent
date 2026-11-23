@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { inFolderOf, inFolderOfAsync, openRegular, walkRegularFiles } from '../workspace/held-folder.ts';
 import { areaDir, areaKey, filesPrefix, isWorkingPath, markerPath, type Area } from './areas.ts';
 import { forgetStored, rememberStored, storedRows, type StoredRow } from './manifest.ts';

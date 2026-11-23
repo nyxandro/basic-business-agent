@@ -10,7 +10,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { listOwnThreads } from '../memory/memory.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { PROJECT_COLUMNS, requireActive, requireOwner, SEES, SHARED, visibleProject, type ProjectRole, type ProjectRow } from './access.ts';

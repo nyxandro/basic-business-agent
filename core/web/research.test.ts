@@ -6,7 +6,7 @@ import { WEB_RESEARCH_TOOL, webResearchResultSchema } from '@bba/contracts';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FakeRequest } from '../models/fake-openai.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { setMaskingKinds } from '../masking/settings.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import type { FetchedPage, PageReader } from './fetch.ts';

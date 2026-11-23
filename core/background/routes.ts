@@ -9,7 +9,7 @@ import { toolCallArgsOf } from '../chat/history.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import type { Registry } from '../loader/registry.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import type { BackgroundService } from './service.ts';
 
 const decisionBody = z.object({ approved: z.boolean() });

@@ -4,8 +4,8 @@ import { chatgptLoginStartSchema, modelCreateSchema, modelKeyCreateSchema, model
 import type { Hono } from 'hono';
 import type { ModelCatalog } from '../../models/catalog.ts';
 import type { ChatGptAccounts } from '../../models/chatgpt-accounts.ts';
-import { requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
 export function registerModelRoutes(app: Hono<AppEnv>, catalog: ModelCatalog, accounts: ChatGptAccounts): void {
   const models = requirePermission('models');

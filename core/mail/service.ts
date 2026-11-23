@@ -6,7 +6,7 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { accountCounts, accountDto, deleteAccount, deleteApp, listAccounts, listApps, markMailboxBroken, saveAccount, saveApp, type MailAccount } from './accounts.ts';
 import { checkMailbox, type MailLogin, type MailTransportOptions } from './client.ts';
 import { discoverMail, type DiscoverDeps } from './discover.ts';

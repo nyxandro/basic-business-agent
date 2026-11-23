@@ -7,8 +7,8 @@ import { operationsOf, renderUiArgsSchema, WIDGET_COMPONENTS, WIDGET_TOOL, type 
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { logEvent } from '../server/log.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { logEvent } from '../log/log.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { screensOfStoredAnswer } from './answer-screens.ts';
 import { checkScreen, componentsGuide, unknownComponents, type ShownScreen, type ShownScreens } from './catalog.ts';
 

@@ -11,7 +11,7 @@ import { isEncryptedOffice, unpackedBytesOf, ZIPPED_FORMATS, ZIPPED_OFFICE } fro
 import type { RunCommand } from '../preview/convert.ts';
 import { PREVIEW_MAX_BYTES } from '@bba/contracts';
 import type { Limiter } from '../sandbox/limiter.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { copyOpened } from '../workspace/held-folder.ts';
 import { openFileInside } from '../workspace/layout.ts';
 import { docFormatOf, extractText, needsOffice, type DocKind, type Extracted } from './extract.ts';

@@ -13,7 +13,7 @@ import { getMaskingKinds } from '../masking/settings.ts';
 import { awaitsName, setAutoTitle } from '../memory/titles.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { CALL_HEADER, NAMING_CALL } from '../models/usage.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { textOfStored, type StoredMessage } from './history.ts';
 import type { PreparedRun } from './run.ts';
 

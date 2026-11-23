@@ -19,7 +19,7 @@ import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 import { createFileStorage } from '../storage/engine.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
 import { createMastraRuntime } from '../runtime/mastra.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { contextRoot, saveFile } from '../workspace/layout.ts';
 import { getPromptState, publishDraft, resolveAgent, revertToFile, saveDraft, type EditorDeps } from './prompts.ts';
 import { createChainService } from '../approvals/chains.ts';

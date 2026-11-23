@@ -24,8 +24,8 @@ import type { Registry } from '../../loader/registry.ts';
 import { getMaskingKinds, setMaskingKinds } from '../../masking/settings.ts';
 import type { ModelGateway } from '../../models/gateway.ts';
 import { getLimitSettings } from '../../models/limits.ts';
-import { requireAnyPermission, requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { requireAnyPermission, requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
 const JOURNAL_PAGE_SIZE = 100;
 

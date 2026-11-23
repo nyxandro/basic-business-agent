@@ -12,7 +12,7 @@ import { appError } from '../errors/catalog.ts';
 import { conversationMessages, conversationsByIds } from '../history/store.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { copyFiles, filesOfConversation, snapshotOf } from './snapshot.ts';
 

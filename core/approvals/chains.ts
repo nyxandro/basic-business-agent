@@ -11,7 +11,7 @@ import { appError } from '../errors/catalog.ts';
 import { writeJournal } from '../journal/journal.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { resolveStages } from './approvers.ts';
 import { rulesFor } from './rules.ts';
 

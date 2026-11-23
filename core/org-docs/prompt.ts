@@ -6,8 +6,8 @@
 import type { Processor } from '@mastra/core/processors';
 import type { Db } from '../db/pool.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
-import { requireContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
-import { readDirector, readWithoutStamp } from './assets.ts';
+import { requireContextValue, REQUEST_KEYS } from '../run-context/request-keys.ts';
+import { readDirector, readWithoutStamp, signatureOutdated } from './assets.ts';
 import { orgFilePaths, type OrgFilePaths } from './files.ts';
 import { isSigner } from './signers.ts';
 
@@ -79,10 +79,6 @@ export function orgDocsText(facts: OrgDocsFacts): string | null {
   }
   return lines.length > 0 ? `# Бланк, печать и подпись\n${lines.join('\n')}` : null;
 }
-
-// The signature was uploaded for another full name than the director's now (a signature uploaded before any name — for
-// whoever is named later).
-export const signatureOutdated = (uploadedFor: string | null, fullName: string): boolean => Boolean(uploadedFor && fullName && uploadedFor !== fullName);
 
 // What a responsible person lacks to sign now; null — not a responsible person.
 export async function sealGapsOf(db: Db, userId: string): Promise<SealGap[] | null> {

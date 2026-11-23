@@ -10,7 +10,7 @@ import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
 import { existingInside } from '../workspace/layout.ts';
 import { runRoot } from './workspace.ts';
-import { optionalContextValue, REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { isDocumentName, type WorkFacts } from '../work-facts/facts.ts';
 
 const HINT = 'Сохрани файл в рабочую папку и вызови show_file с путём к нему.';

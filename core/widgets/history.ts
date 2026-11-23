@@ -6,7 +6,7 @@
 // a pause on «Да», «Нет» or the browser (answer-screens.ts): `render_ui` may change them in place.
 import { WIDGET_TOOL } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { screensOfAnswer } from './answer-screens.ts';
 
 export const DESCRIPTION_DROPPED = `Описание компонентов убрано из истории. Чтобы нарисовать новый экран, вызови ${WIDGET_TOOL.components} заново.`;

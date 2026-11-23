@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { readUploadedFile } from '../projects/routes.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import type { KnowledgeIndexer } from './indexer.ts';
 import { assertKeeper, deleteDocument, documentBaseForKeeper, documentFile, keepsDocument, listDocuments, readableDepartments, replaceDocument, retryDocument, updateDocument, uploadDocument, versionFile, type Base } from './store.ts';
 import { deleteGroup, listGroups, saveGroup } from './synonyms.ts';

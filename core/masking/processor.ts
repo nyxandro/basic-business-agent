@@ -8,7 +8,7 @@ import { WIDGET_TOOL } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS, requireContextValue } from '../run-context/request-keys.ts';
 import { createThreadMasker, isPlaceholderPrefix, type ThreadMasker } from './masker.ts';
 import { getMaskingKinds } from './settings.ts';
 

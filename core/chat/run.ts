@@ -17,14 +17,14 @@ import { recordFact } from '../work-facts/facts.ts';
 import { turnStartedAt } from '../history/store.ts';
 import { runProjectOf, runProjectOfWaitingAnswer, type RunProject } from '../projects/access.ts';
 import { markSeen } from '../projects/projects.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { settleSnapshot, takeSnapshot, type ProjectSnapshot } from '../projects/trash.ts';
 import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage, Release } from '../storage/engine.ts';
 import type { MailService } from '../mail/service.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels, type ModelChoice } from '../models/resolve.ts';
-import { REQUEST_KEYS, type RunKind } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS, type RunKind } from '../run-context/request-keys.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
 import type { AgentAbilities } from '@bba/contracts';
@@ -120,7 +120,7 @@ function releaseThread(threadId: string): void {
 }
 
 // A turn the server starts itself in a conversation — the continuation after an agreed request of multi-step
-// approvals (core/approvals/continue.ts): it takes the conversation as a person's turn does, or waits.
+// approvals (core/chat/chain-continuation.ts): it takes the conversation as a person's turn does, or waits.
 export function holdThreadForServer(threadId: string): boolean {
   // A turn whose browser left goes on (its agent has not ended) though the conversation looks free: waited for too.
   const live = liveRuns.get(threadId);

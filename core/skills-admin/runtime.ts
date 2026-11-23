@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import { writeAudit } from '../audit/audit.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { readSkillArchive, writeSkillFiles } from './archive.ts';
 import { removeSkillCopies, skillDir, type SkillsDeps } from './store.ts';
 

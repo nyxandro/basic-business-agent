@@ -10,7 +10,7 @@ import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import { summariseArgs } from '../journal/journal.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { applyApprovalPolicy } from './policy.ts';
 import { createChainService } from './chains.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';

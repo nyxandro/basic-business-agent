@@ -2,7 +2,7 @@
 // (normally or because the browser left), turns raw run errors into our codes and texts, tells
 // the chat which shown messages a repeated model call dropped and the name the conversation got.
 import { CHAT_EVENTS } from '@bba/contracts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { createDiscardTracker } from './discards.ts';
 
 export interface TranslatedError {

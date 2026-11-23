@@ -5,8 +5,8 @@ import type { Hono } from 'hono';
 import { getApprovalSettings, setApprovalSettings } from '../../approvals/settings.ts';
 import { writeAudit } from '../../audit/audit.ts';
 import { createTask, listTasks, mailReach, removeTask, renewHook, setTaskStatus, taskEvents, taskRuns, updateTask, type TasksDeps } from '../../background/tasks.ts';
-import { requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
 export function registerTaskRoutes(app: Hono<AppEnv>, deps: TasksDeps): void {
   const agents = requirePermission('agents');

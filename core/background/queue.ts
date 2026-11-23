@@ -3,7 +3,7 @@
 // so two takers never get the same one. After a restart only rows without a result go on; a row
 // whose fire is more than a day old is skipped instead.
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import type { Member } from './scope.ts';
 
 export const MAX_CONCURRENT_RUNS = 3;

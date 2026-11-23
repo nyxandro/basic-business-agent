@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import type { FakeRequest } from '../models/fake-openai.ts';
 import { createPromptLayersProcessor } from '../prompts/layers.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 let t: TestApp;

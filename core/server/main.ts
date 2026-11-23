@@ -55,9 +55,9 @@ import { realEndpoints } from '../mail/oauth.ts';
 import { createMailService } from '../mail/service.ts';
 import { createMailTrigger, POLL_INTERVAL_MS } from '../background/mail-trigger.ts';
 import { createApp } from './app.ts';
-import { logEvent } from './log.ts';
+import { logEvent } from '../log/log.ts';
 import { createChainService } from '../approvals/chains.ts';
-import { createChainContinuation } from '../approvals/continue.ts';
+import { createChainContinuation } from '../chat/chain-continuation.ts';
 import { createChainExecutor } from '../approvals/execute.ts';
 import { createKnowledgeIndexer } from '../knowledge/indexer.ts';
 

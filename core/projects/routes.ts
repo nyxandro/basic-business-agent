@@ -6,7 +6,7 @@ import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.ts';
 import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { fileResponse } from '../workspace/download.ts';
 import { contextRoot, filesRoot, resolveInside, saveFile } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';

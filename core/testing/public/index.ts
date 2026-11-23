@@ -1,6 +1,6 @@
 // Test helpers for plugins and installation code: a fresh database and a tool context of an employee.
 import { RequestContext } from '@mastra/core/request-context';
-import { REQUEST_KEYS } from '../../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../../run-context/request-keys.ts';
 
 export { migrate } from '../../db/migrate.ts';
 export { createPool, type Db } from '../../db/pool.ts';

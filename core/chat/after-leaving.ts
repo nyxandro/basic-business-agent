@@ -7,7 +7,7 @@ import { notifyQuestion, pendingForThread } from '../approvals/requests.ts';
 import type { Db } from '../db/pool.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 // What became of one turn of the chat, filled while it goes.
 export interface RunLife {

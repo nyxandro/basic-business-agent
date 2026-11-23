@@ -18,7 +18,7 @@ import type { PreviewService } from '../preview/service.ts';
 import { filesPrefix, type Area } from '../storage/areas.ts';
 import { pruneOlderThan, putInFolder, saveFile, saveInFolder } from '../workspace/layout.ts';
 import { trashedAt } from '../projects/trash.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { startNaming } from './naming.ts';
 import { inThreadFolder, threadFoldersOf } from './thread-folder.ts';
 import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, noteStopped, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';

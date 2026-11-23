@@ -5,8 +5,8 @@ import { z } from 'zod';
 import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
 import type { Registry } from '../../loader/registry.ts';
-import { requirePermission } from '../../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../../server/http.ts';
+import { requirePermission } from '../../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../../http/http.ts';
 import { dailyUsage, employeeUsage, usageReport } from '../usage.ts';
 import { saveNorms, valueCsv, valueReport } from '../value-report.ts';
 

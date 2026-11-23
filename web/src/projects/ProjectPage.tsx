@@ -15,7 +15,7 @@ import { ChatHeaderBar } from '../layout/ChatHeader.tsx';
 import { useShell } from '../layout/AppShell.tsx';
 import { threadPath } from '../layout/ThreadRow.tsx';
 import { ThreadStateMark } from '../layout/ThreadState.tsx';
-import { useNotifications } from '../layout/notifications.tsx';
+import { useNotifications } from '../layout/notifications-context.ts';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';

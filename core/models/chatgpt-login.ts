@@ -3,7 +3,7 @@
 // opens OpenAI's page, enters the code there, and the server exchanges the result for the tokens.
 // The server only asks; the person's page polls it every `interval` seconds, so no timer runs here.
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 export const OPENAI_AUTH_BASE = 'https://auth.openai.com';
 // The public client of the Codex CLI, which LiteLLM also uses for ChatGPT subscriptions.

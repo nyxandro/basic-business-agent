@@ -4,7 +4,7 @@
 // is dropped; a passing failure gets one more attempt a minute later; after that the notification stays in the list.
 import type { PushPayload, NotificationKind } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { PUSH_DELIVERY } from './kinds.ts';
 import type { Presence } from './presence.ts';
 import type { PushResult, PushSender } from './push.ts';

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { writeAudit } from '../audit/audit.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { projectRoot } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';

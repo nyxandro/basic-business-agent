@@ -8,8 +8,8 @@ import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
-import { logEvent } from '../server/log.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../run-context/request-keys.ts';
+import { logEvent } from '../log/log.ts';
 import { applyAgentOperations, listEntries, MEMORY_ENTRY_MAX_CHARS, MEMORY_OPERATIONS_MAX, type MemoryOperation, type MemoryScope, type SeenVersions } from './entries.ts';
 import { memorySeenOf } from './prompt.ts';
 

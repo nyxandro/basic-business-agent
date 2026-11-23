@@ -5,7 +5,7 @@ import type { z } from 'zod';
 import type { AccessContext } from '../auth/access.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from './log.ts';
+import { logEvent } from '../log/log.ts';
 
 export interface AppEnv {
   Variables: { access: AccessContext };

@@ -11,7 +11,7 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { checkFailure } from './check-failure.ts';
 import type { ChatGptAccounts } from './chatgpt-accounts.ts';
 import { answerParams, pendingModels, type SyncModel, type SyncResult } from './gateway-sync.ts';

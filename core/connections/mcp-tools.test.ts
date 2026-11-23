@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { McpServerInput, McpServerView } from '@bba/contracts';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { startTestMcpServer, type TestMcpServer } from './test/servers.ts';
 

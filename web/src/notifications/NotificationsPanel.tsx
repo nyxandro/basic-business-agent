@@ -10,7 +10,7 @@ import { fetchApprovals } from '../approvals/api.ts';
 import { ApprovalLists } from '../approvals/ApprovalCards.tsx';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
-import { useNotifications } from '../layout/notifications.tsx';
+import { useNotifications } from '../layout/notifications-context.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { whenLabel } from '../ui/format.ts';

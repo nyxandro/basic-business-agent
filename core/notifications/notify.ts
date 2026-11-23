@@ -5,7 +5,7 @@
 // thrown into the code that called.
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../db/pool.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import type { Notice } from './kinds.ts';
 
 // A person blocked or being removed gets no notifications (section 10).

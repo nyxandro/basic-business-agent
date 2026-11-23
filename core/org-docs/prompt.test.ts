@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createLimiter } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable, createAgentWorkspace } from '../sandbox/workspace.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';

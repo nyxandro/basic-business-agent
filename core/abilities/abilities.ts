@@ -5,7 +5,7 @@ import type { AgentAbilities } from '@bba/contracts';
 import { writeAudit } from '../audit/audit.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 
 // A new agent may do everything; the admin switches off what it does not need (decision of the owner 19.11).
 export const AGENT_ABILITY_DEFAULTS: AgentAbilities = { web: true, commands: true, widgets: true };

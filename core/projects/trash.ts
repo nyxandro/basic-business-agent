@@ -13,7 +13,7 @@ import { basename, dirname, extname, join, relative } from 'node:path';
 import type { TrashBatchDto, TrashRestore } from '@bba/contracts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { copyOpened, inFolderOf, openRegular, sameContent, walkRegularFiles } from '../workspace/held-folder.ts';
 import { contextRoot, freeName, moveFileOutOf, projectRoot, removeFileInside, resolveInside } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';

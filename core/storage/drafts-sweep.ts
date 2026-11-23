@@ -1,6 +1,6 @@
 // Once a day the agent's drafts not changed for a month are removed (spec, section 8.33; owner's decision 20.11:
 // «вдруг человек через неделю вернётся… чтобы скрипты сборки документов хотя бы там подольше жили»).
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { DRAFTS_KEEP_DAYS } from '../workspace/layout.ts';
 import type { FileStorage } from './engine.ts';
 

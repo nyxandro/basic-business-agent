@@ -14,7 +14,7 @@ import { transferProjects } from '../projects/transfer.ts';
 import { deleteUserWorkspace } from '../workspace/layout.ts';
 import { userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 const SUPERADMIN_LOCK_KEY = 74_010_002;
 

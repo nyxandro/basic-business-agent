@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createTestApp, TEST_ENCRYPTION_KEYS, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
 import { loadCredential, saveCredential } from './credentials.ts';
 import { IDENTITY_HEADER, verifyIdentity } from './identity.ts';

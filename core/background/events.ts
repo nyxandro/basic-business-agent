@@ -9,7 +9,7 @@ import type pg from 'pg';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { PRIORITY } from './queue.ts';
 import type { TaskRow } from './service.ts';
 

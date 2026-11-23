@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 // Changes when the way a PDF is made changes: the old ones are not used and age out.
 export const PREVIEW_FORMAT_VERSION = 1;

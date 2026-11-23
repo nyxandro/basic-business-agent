@@ -4,8 +4,8 @@
 // model. The repeated answer goes out as a new message and the chat is told which message to take
 // off the screen; Mastra itself rolls the broken step back in the history.
 import { defaultStabilityErrorProcessors, StreamErrorRetryProcessor, type ErrorProcessor, type ProcessAPIErrorArgs } from '@mastra/core/processors';
-import { logEvent } from '../server/log.ts';
-import { optionalContextValue, REQUEST_KEYS } from './request-keys.ts';
+import { logEvent } from '../log/log.ts';
+import { optionalContextValue, REQUEST_KEYS } from '../run-context/request-keys.ts';
 
 const RETRY_PROCESSOR_ID = 'stream-error-retry-processor';
 

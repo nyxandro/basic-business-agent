@@ -7,7 +7,7 @@ import { loadInstallation } from '../config/load.ts';
 import type { Db } from '../db/pool.ts';
 import { startFakeModel, type FakeModel } from '../models/fake-openai.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { buildRegistry } from './registry.ts';
 import { createChainService } from '../approvals/chains.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';

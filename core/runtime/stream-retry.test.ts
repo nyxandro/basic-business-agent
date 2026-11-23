@@ -14,7 +14,7 @@ import type { AgentRuntime } from '../loader/registry.ts';
 import { createMemory } from '../memory/memory.ts';
 import { startFakeModel, type FakeModel, type FakeTurn, type GatewayStreamError } from '../models/fake-openai.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from './agent-factory.ts';
-import { REQUEST_KEYS } from './request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 
 const ANSWER = 'Привет! Чем помочь?';
 // What LiteLLM sent when Groq closed the connection after «Пр» (dev conversation of 15.11).

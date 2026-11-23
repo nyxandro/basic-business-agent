@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { ADDRESS_MAX_CHARS, fetchFailureMessage, type PageReader } from './fetch.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
 import { pageStepId, trailIn } from './trail.ts';

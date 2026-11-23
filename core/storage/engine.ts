@@ -11,7 +11,7 @@ import type { StorageConnectInput, StorageKeysInput, StorageStatus } from '@bba/
 import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
 import { existingInside, isDraftPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, removeFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';

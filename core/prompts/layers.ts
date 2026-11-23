@@ -18,7 +18,7 @@ import { listEntries } from '../memory/entries.ts';
 import { LAST_MESSAGES } from '../memory/memory.ts';
 import { keepMemorySeen, personalMemoryText, projectMemoryText, seenVersions } from '../memory/prompt.ts';
 import { SHARED } from '../projects/access.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../run-context/request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import { loadAccess } from '../auth/access.ts';
 import type { AgentAbilities } from '@bba/contracts';

@@ -12,7 +12,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PackageFailed } from '../mcp-runner/install.ts';
 import { createRunner } from '../mcp-runner/runner.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
 const BASE = '/app/api/admin/mcp-servers';

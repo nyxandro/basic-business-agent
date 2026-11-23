@@ -10,17 +10,17 @@ import { settleSnapshot, takeSnapshot } from '../projects/trash.ts';
 import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { abilitiesValue, readAbilities } from '../abilities/abilities.ts';
-import { holdThreadForServer, releaseThreadForServer } from '../chat/run.ts';
-import { CHAIN_OUTCOME_PREFIX } from '../chat/service-turns.ts';
+import { holdThreadForServer, releaseThreadForServer } from './run.ts';
+import { CHAIN_OUTCOME_PREFIX } from './service-turns.ts';
 import type { Db } from '../db/pool.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { chooseModels } from '../models/resolve.ts';
 import { runProjectOfWaitingAnswer } from '../projects/access.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
-import { logEvent } from '../server/log.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
+import { logEvent } from '../log/log.ts';
 import type { SkillsRuntime } from '../skills-admin/runtime.ts';
-import { chainNumber, statusText, type ChainRow } from './chains.ts';
+import { chainNumber, statusText, type ChainRow } from '../approvals/chains.ts';
 
 const WAIT_STEP_MS = 2000;
 // A conversation busy longer than this keeps its line only: the continuation is not worth starting late.

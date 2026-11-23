@@ -8,7 +8,7 @@ import { attachmentsOf, type AttachedFile } from '@bba/contracts';
 import type { Processor } from '@mastra/core/processors';
 import { extname } from 'node:path';
 import { sliceWhole } from '../history/read.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { runRoot } from '../sandbox/workspace.ts';
 import { docFormatOf, type DocKind } from './extract.ts';
 import type { DocText, DocTextService } from './service.ts';

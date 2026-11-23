@@ -6,7 +6,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { access, type AppEnv } from '../server/http.ts';
+import { access, type AppEnv } from '../http/http.ts';
 
 export const COLLEAGUES_MIN_QUERY = 2;
 export const COLLEAGUES_MAX = 20;

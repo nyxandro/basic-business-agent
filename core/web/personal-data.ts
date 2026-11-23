@@ -7,7 +7,7 @@ import type { MaskingKind } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
 import { detect } from '../masking/detect.ts';
 import { getMaskingKinds } from '../masking/settings.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 
 const DOCUMENTS: readonly MaskingKind[] = ['passport', 'snils', 'card'];
 

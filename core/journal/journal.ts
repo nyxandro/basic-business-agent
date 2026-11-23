@@ -4,7 +4,7 @@
 import type pg from 'pg';
 import { MASKING_KINDS, type MaskingKind } from '../config/schemas.ts';
 import { detect, PLACEHOLDER_NAMES } from '../masking/detect.ts';
-import type { RunKind } from '../runtime/request-keys.ts';
+import type { RunKind } from '../run-context/request-keys.ts';
 
 type Queryable = Pick<pg.Pool | pg.PoolClient, 'query'>;
 

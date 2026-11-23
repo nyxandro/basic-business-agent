@@ -1,11 +1,11 @@
 // Default-deny session check for /app/api and rights checks for admin sections.
 import type { AdminSection, Permission } from '@bba/contracts';
 import type { MiddlewareHandler } from 'hono';
-import { loadAccess, type AccessContext } from '../auth/access.ts';
-import type { Auth } from '../auth/auth.ts';
+import { loadAccess, type AccessContext } from './access.ts';
+import type { Auth } from './auth.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import type { AppEnv } from './http.ts';
+import type { AppEnv } from '../http/http.ts';
 
 // The only addresses under /app/api that work without a session.
 // The client document of the installation is read by the systems MCP servers sign in with (static, no data). The address

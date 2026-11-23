@@ -7,8 +7,8 @@ import { ARCHIVE_MAX_BYTES } from './archive.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { MULTIPART_OVERHEAD_BYTES } from '../projects/routes.ts';
-import { requirePermission } from '../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { requirePermission } from '../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { createSkill, deleteSkill, listSkills, previewSkill, replaceSkill, updateSkill, type SkillsDeps } from './store.ts';
 
 async function upload(c: Context<AppEnv>): Promise<{ archive: Uint8Array; fields: Record<string, unknown> }> {

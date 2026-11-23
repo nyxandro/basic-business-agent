@@ -9,7 +9,7 @@ import { DOCUMENT_EXTENSIONS, type ProjectDto, type SearchFile, type SearchFiles
 import type pg from 'pg';
 import { draftResourceId } from '../memory/memory.ts';
 import type { ProjectsDeps } from '../projects/projects.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { setImmediate as pause } from 'node:timers/promises';
 import { projectArea, userArea } from '../storage/areas.ts';
 import { CHATS } from '../workspace/layout.ts';

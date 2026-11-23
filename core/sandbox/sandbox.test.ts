@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentRuntime } from '../loader/registry.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
 import { createMastraAgent, FALLBACK_FIRST_CHUNK_MS, MODEL_CALL_MAX_MS } from '../runtime/agent-factory.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter } from './limiter.ts';
 import { contextRoot, conversationRoot } from '../workspace/layout.ts';

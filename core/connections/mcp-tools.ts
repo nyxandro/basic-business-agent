@@ -13,7 +13,7 @@ import type { SecretBox } from '../crypto/secret-box.ts';
 import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { logEvent } from '../server/log.ts';
+import { logEvent } from '../log/log.ts';
 import { classifyCall } from './call-errors.ts';
 import { loadCredential, markCredentialBroken } from './credentials.ts';
 import { accessLost, forbidden, keyRefused, notConnected, unavailable, unknownOutcome } from './errors.ts';

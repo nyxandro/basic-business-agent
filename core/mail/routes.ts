@@ -6,9 +6,9 @@ import { writeAudit } from '../audit/audit.ts';
 import type { Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
-import { requirePermission } from '../server/guards.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
-import { logEvent } from '../server/log.ts';
+import { requirePermission } from '../auth/guards.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
+import { logEvent } from '../log/log.ts';
 import type { MailService } from './service.ts';
 
 const SETTINGS_PAGE = '/settings/connections';

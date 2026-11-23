@@ -1,14 +1,11 @@
-// The memory of a project on its page and «Моя память» (spec, section 8.26). The memory of a project is
-// reached only through the rule of core/projects/access.ts: whoever sees the project reads and changes it
-// (decision of the owner 17.11, F16-A); an archived one only its creator reads. The personal memory is the
-// employee's own.
+// «Моя память» (spec, section 8.26): the personal memory is the employee's own. The memory of a project has its
+// routes in core/projects/memory-routes.ts, next to the rule of who sees the project; both use the handlers here.
 import { memoryEntryChangeSchema, memoryEntryInputSchema, type MemoryEntryDto, type MemoryListDto } from '@bba/contracts';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
-import { requireActive, visibleProject } from '../projects/access.ts';
-import { access, parseJson, type AppEnv } from '../server/http.ts';
+import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { addEntry, changeEntry, forgetPersonal, listEntries, removeEntry, type MemoryEntry, type MemoryScope } from './entries.ts';
 import { forgetLegacyWorkingMemory } from './memory.ts';
 
@@ -36,46 +33,34 @@ function entryIdOf(c: Context<AppEnv>): string {
   return parsed.data;
 }
 
+// Reading and changing the entries of one memory — of a project or of a person — over HTTP.
+export function memoryEntryHandlers(db: Db) {
+  const actorOf = (c: Context<AppEnv>) => ({ userId: access(c).userId, byAgent: false });
+  return {
+    list: async (c: Context<AppEnv>, scope: MemoryScope, readOnly: boolean): Promise<Response> => {
+      const memory = await listEntries(db, scope);
+      const body: MemoryListDto = { entries: memory.entries.map((e) => entryDto(e, access(c).userId)), usedChars: memory.usedChars, maxChars: memory.maxChars, readOnly };
+      return c.json(body);
+    },
+    add: async (c: Context<AppEnv>, scope: MemoryScope): Promise<Response> => {
+      const { text } = await parseJson(c, memoryEntryInputSchema);
+      return c.json(entryDto(await addEntry(db, scope, actorOf(c), text), access(c).userId));
+    },
+    change: async (c: Context<AppEnv>, scope: MemoryScope): Promise<Response> => {
+      const id = entryIdOf(c);
+      const { text, version } = await parseJson(c, memoryEntryChangeSchema);
+      return c.json(entryDto(await changeEntry(db, scope, actorOf(c), id, text, version), access(c).userId));
+    },
+    remove: async (c: Context<AppEnv>, scope: MemoryScope): Promise<Response> => {
+      return c.json(entryDto(await removeEntry(db, scope, entryIdOf(c)), access(c).userId));
+    },
+  };
+}
+
 export function registerMemoryRoutes(app: Hono<AppEnv>, deps: MemoryRoutesDeps): void {
   const { db } = deps;
-
-  async function projectScope(c: Context<AppEnv>, write: boolean): Promise<{ scope: MemoryScope; readOnly: boolean }> {
-    const found = await visibleProject(db, access(c).userId, c.req.param('id') ?? '', 'owner');
-    if (write) requireActive(found);
-    return { scope: { kind: 'project', projectId: found.project.id }, readOnly: found.project.archived_at !== null };
-  }
-
+  const { list, add, change, remove } = memoryEntryHandlers(db);
   const personalScope = (c: Context<AppEnv>): MemoryScope => ({ kind: 'personal', userId: access(c).userId });
-  const actorOf = (c: Context<AppEnv>) => ({ userId: access(c).userId, byAgent: false });
-
-  async function list(c: Context<AppEnv>, scope: MemoryScope, readOnly: boolean): Promise<Response> {
-    const memory = await listEntries(db, scope);
-    const body: MemoryListDto = { entries: memory.entries.map((e) => entryDto(e, access(c).userId)), usedChars: memory.usedChars, maxChars: memory.maxChars, readOnly };
-    return c.json(body);
-  }
-
-  async function add(c: Context<AppEnv>, scope: MemoryScope): Promise<Response> {
-    const { text } = await parseJson(c, memoryEntryInputSchema);
-    return c.json(entryDto(await addEntry(db, scope, actorOf(c), text), access(c).userId));
-  }
-
-  async function change(c: Context<AppEnv>, scope: MemoryScope): Promise<Response> {
-    const id = entryIdOf(c);
-    const { text, version } = await parseJson(c, memoryEntryChangeSchema);
-    return c.json(entryDto(await changeEntry(db, scope, actorOf(c), id, text, version), access(c).userId));
-  }
-
-  async function remove(c: Context<AppEnv>, scope: MemoryScope): Promise<Response> {
-    return c.json(entryDto(await removeEntry(db, scope, entryIdOf(c)), access(c).userId));
-  }
-
-  app.get('/app/api/projects/:id/memory', async (c) => {
-    const { scope, readOnly } = await projectScope(c, false);
-    return list(c, scope, readOnly);
-  });
-  app.post('/app/api/projects/:id/memory', async (c) => add(c, (await projectScope(c, true)).scope));
-  app.put('/app/api/projects/:id/memory/:entryId', async (c) => change(c, (await projectScope(c, true)).scope));
-  app.delete('/app/api/projects/:id/memory/:entryId', async (c) => remove(c, (await projectScope(c, true)).scope));
 
   app.get('/app/api/me/memory', async (c) => list(c, personalScope(c), false));
   app.post('/app/api/me/memory', async (c) => add(c, personalScope(c)));

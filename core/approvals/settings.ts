@@ -5,7 +5,7 @@
 import type { ApprovalSettingsDto } from '@bba/contracts';
 import type { AppConfig } from '../config/schemas.ts';
 import type { Db } from '../db/pool.ts';
-import type { RunKind } from '../runtime/request-keys.ts';
+import type { RunKind } from '../run-context/request-keys.ts';
 
 export type ApprovalSettings = ApprovalSettingsDto;
 

@@ -10,7 +10,7 @@ import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
-import { useNotifications } from './notifications.tsx';
+import { useNotifications } from './notifications-context.ts';
 import { useMedia, WIDE_QUERY } from './use-media.ts';
 import styles from './shell.module.css';
 

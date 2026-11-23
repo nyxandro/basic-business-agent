@@ -10,7 +10,7 @@ import { migrate } from '../db/migrate.ts';
 import { createPool, type Db } from '../db/pool.ts';
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts';
 import { startFakeModel, type FakeModel, type FakeRequest } from '../models/fake-openai.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createMaskingProcessor } from './processor.ts';
 import { ensureMaskingSettings } from './settings.ts';
 

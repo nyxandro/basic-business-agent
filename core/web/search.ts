@@ -9,8 +9,8 @@ import { appError } from '../errors/catalog.ts';
 import type { ModelGateway } from '../models/gateway.ts';
 import { SEARCH_TOOL_NAME } from '../models/litellm-config.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { REQUEST_KEYS, requireContextValue } from '../runtime/request-keys.ts';
-import { logEvent } from '../server/log.ts';
+import { REQUEST_KEYS, requireContextValue } from '../run-context/request-keys.ts';
+import { logEvent } from '../log/log.ts';
 import { PERSONAL_DATA_MESSAGE, personalDocumentIn } from './personal-data.ts';
 import { stepId, trailIn } from './trail.ts';
 

@@ -5,7 +5,7 @@ import type { McpServerInput, McpServerView } from '@bba/contracts';
 import { RequestContext } from '@mastra/core/request-context';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
-import { REQUEST_KEYS } from '../runtime/request-keys.ts';
+import { REQUEST_KEYS } from '../run-context/request-keys.ts';
 import { createTestApp, TEST_ENCRYPTION_KEYS, type TestApp } from '../server/test-app.ts';
 import { loadCredential } from './credentials.ts';
 import { mcpConnectorId } from './servers.ts';
