@@ -32,6 +32,7 @@ export interface CopilotHandler {
 // set; it reads the switch at each event. Employees' activity of a closed installation stays
 // inside, so the switch is set in code before the runtime exists, not left to deployment settings.
 function disableCopilotTelemetry(): void {
+  // eslint-disable-next-line no-restricted-properties -- not a setting read from the deployment: a switch the library reads itself, set here on purpose
   process.env.COPILOTKIT_TELEMETRY_DISABLED = 'true';
 }
 

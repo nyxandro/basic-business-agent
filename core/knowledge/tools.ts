@@ -67,7 +67,7 @@ export function createKnowledgeTools(deps: { db: Db; workspaceRoot: string }): R
   const open = createTool({
     id: KNOWLEDGE_TOOLS.open,
     description: 'Взять документ базы знаний целиком: копия в рабочую папку разговора, чтобы дочитать его скиллами документов.',
-    inputSchema: z.object({ docId: z.string().uuid().describe('Номер документа из knowledge_search') }),
+    inputSchema: z.object({ docId: z.uuid().describe('Номер документа из knowledge_search') }),
     execute: async ({ docId }, ctx) => {
       try {
         const requestContext = (ctx as Ctx)?.requestContext;

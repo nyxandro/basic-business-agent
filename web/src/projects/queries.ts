@@ -20,12 +20,13 @@ export function usePrefetchProject(): (id: string) => void {
   const memory = useQueryClient();
   return useCallback(
     (id: string) => {
-      // A failure here is not shown: the page asks again when opened and shows its own.
+      // A failure here is only noted in the console: the page asks again when opened and shows its own.
       const staleTime = LOADED_RECENTLY_MS;
-      void memory.prefetchQuery({ queryKey: projectKeys.project(id), queryFn: () => fetchProject(id), staleTime });
-      void memory.prefetchQuery({ queryKey: projectKeys.threads(id), queryFn: () => fetchProjectThreads(id), staleTime });
-      void memory.prefetchQuery({ queryKey: projectKeys.files(id), queryFn: () => fetchProjectFiles(id), staleTime });
-      void memory.prefetchQuery({ queryKey: projectKeys.trash(id), queryFn: () => fetchTrash(id), staleTime });
+      const noted = (error: unknown) => console.warn('project not loaded ahead', error);
+      memory.query({ queryKey: projectKeys.project(id), queryFn: () => fetchProject(id), staleTime }).catch(noted);
+      memory.query({ queryKey: projectKeys.threads(id), queryFn: () => fetchProjectThreads(id), staleTime }).catch(noted);
+      memory.query({ queryKey: projectKeys.files(id), queryFn: () => fetchProjectFiles(id), staleTime }).catch(noted);
+      memory.query({ queryKey: projectKeys.trash(id), queryFn: () => fetchTrash(id), staleTime }).catch(noted);
     },
     [memory],
   );
