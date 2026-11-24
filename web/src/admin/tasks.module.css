@@ -56,6 +56,42 @@
   padding: 0 18px 12px;
 }
 
+/* «Добавить группу» under the synonyms of the knowledge base: the field takes the row and the button stands level with the
+   input, not with the label above it, the hint under the input. The field gives its label, input and hint to this grid
+   (display: contents), so the button lines up with the input whatever the size of the label's text. */
+.synonymForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.synonymField {
+  display: contents;
+}
+
+.synonymForm label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.synonymForm input {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+/* The hint and an error: under the input, rows of their own. */
+.synonymField > span {
+  grid-column: 1;
+}
+
+.synonymForm > button {
+  grid-column: 2;
+  grid-row: 2;
+}
+
 .taskName {
   font-weight: 500;
 }

@@ -162,11 +162,17 @@ function Synonyms({ department }: { department: string | null }) {
   if (state.status === 'loading') return <DelayedBar />;
   if (state.status === 'error') return <ErrorBanner error={state.error} onRetry={reload} />;
   const words = (text: string) => text.split(',').map((w) => w.trim()).filter(Boolean);
+  // Laid out as the tabs of documents: a head, the note, the list edge to edge, then the form.
   return (
-    <div className={styles.inset}>
-      <p className={section.note}>{t.synonymsNote}</p>
-      <Feedback error={error} />
-      {state.data.groups.length === 0 ? <p className={section.note}>{t.synonymsEmpty}</p> : null}
+    <>
+      <div className={styles.cardHead}>
+        <h2 className={styles.cardTitle}>{t.synonyms}</h2>
+      </div>
+      <div className={styles.inset}>
+        <p className={section.note}>{t.synonymsNote}</p>
+        <Feedback error={error} />
+        {state.data.groups.length === 0 ? <p className={section.note}>{t.synonymsEmpty}</p> : null}
+      </div>
       <ul className={styles.phoneList} aria-label={t.synonyms}>
         {state.data.groups.map((g) => (
           <li key={g.id} className={styles.phoneTask}>
@@ -176,7 +182,7 @@ function Synonyms({ department }: { department: string | null }) {
         ))}
       </ul>
       <form
-        className={section.row}
+        className={styles.synonymForm}
         onSubmit={(e) => {
           e.preventDefault();
           void run(() => kb.saveSynonyms(department, null, words(draft)), t.saved).then((ok) => {
@@ -186,14 +192,14 @@ function Synonyms({ department }: { department: string | null }) {
           });
         }}
       >
-        <Field label={t.synonymsAdd} hint={t.synonymsHint}>
+        <Field label={t.synonymsAdd} hint={t.synonymsHint} className={styles.synonymField}>
           <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t.synonymsPlaceholder} />
         </Field>
         <Button type="submit" variant="primary" disabled={busy || words(draft).length < 2}>
           {t.synonymsAdd}
         </Button>
       </form>
-    </div>
+    </>
   );
 }
 
