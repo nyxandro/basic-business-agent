@@ -1,6 +1,7 @@
 // «Параметры» of «Нейросеть» (spec, section 8.1; mockup): the organisation's main model, the one
 // to switch to on a failure, the speech recognition model and whether agents may take their own
-// model from the catalog. A change saves at once; a refused one goes back and says why.
+// model from the catalog. A change saves at once; a refused one goes back and says why. The main model
+// is never left empty by hand: the server puts a model that can answer there (owner's decision 25.11).
 import type { ModelDto, ModelSettings } from '@bba/contracts';
 import { useState } from 'react';
 import { Card } from '../ui/Display.tsx';
@@ -16,6 +17,8 @@ export function ModelParams({ models, settings, onSaved }: { models: ModelDto[];
   const { busy, error, run } = useAction();
   const chat = models.filter((m) => m.kind === 'chat' && m.enabled);
   const speech = models.filter((m) => m.kind === 'transcription' && m.enabled);
+  // The server fills an empty primary while a model can answer (owner's decision 25.11): «Не выбрана» is a state, not a choice.
+  const noPrimary = !chat.some((m) => m.id === shown.primaryModelId);
 
   async function change(next: ModelSettings) {
     const before = shown;
@@ -30,7 +33,7 @@ export function ModelParams({ models, settings, onSaved }: { models: ModelDto[];
       <Feedback error={error} />
       <Field label="Основная модель">
         <Select value={shown.primaryModelId ?? ''} disabled={busy} onChange={(e) => void change({ ...shown, primaryModelId: e.target.value || null })}>
-          <option value="">Не выбрана — агенты не отвечают</option>
+          {noPrimary ? <option value="">Не выбрана — агенты не отвечают</option> : null}
           {chat.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}

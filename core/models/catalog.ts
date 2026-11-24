@@ -12,6 +12,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../log/log.ts';
+import { fillPrimaryModel } from './auto-primary.ts';
 import { checkFailure } from './check-failure.ts';
 import type { ChatGptAccounts } from './chatgpt-accounts.ts';
 import { answerParams, pendingModels, type SyncModel, type SyncResult } from './gateway-sync.ts';
@@ -50,7 +51,7 @@ export interface ModelCatalog {
   removeKey(actorUserId: string, modelId: string, keyId: string): Promise<void>;
   updateSettings(actorUserId: string, input: ModelSettings): Promise<ModelSettings>;
   // The full copy into LiteLLM, at the start of the server; models without a limit of an answer get
-  // it from the gateway's model map first (section 8.19).
+  // it from the gateway's model map first (section 8.19), an empty «Основная модель» — a model that can answer.
   sync(): Promise<SyncResult>;
 }
 
@@ -247,6 +248,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         actorUserId,
       ]);
       await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: model.kind, providerModel, maxOutputTokens, keyLast4: key.slice(-KEY_TAIL) } });
+      await fillPrimaryModel(c, actorUserId);
     });
     return dtoOf(model.id);
   }
@@ -268,6 +270,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         actorUserId,
       ]);
       await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: 'chat', providerModel, connection: 'chatgpt' } });
+      await fillPrimaryModel(c, actorUserId);
     });
     return dtoOf(model.id);
   }
@@ -348,6 +351,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
             [modelId, label, vision, enabled, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, apiBase],
           );
           await writeAudit(c, { actorUserId, action: 'model.update', target: modelId, details: { ...change, ...(change.apiBase !== undefined ? { apiBase } : {}) } });
+          await fillPrimaryModel(c, actorUserId);
         });
         return dtoOf(modelId);
       }),
@@ -369,6 +373,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         await inTransaction(db, async (c) => {
           await c.query('DELETE FROM app.models WHERE id = $1', [modelId]);
           await writeAudit(c, { actorUserId, action: 'model.delete', target: modelId });
+          await fillPrimaryModel(c, actorUserId);
         });
       }),
 
@@ -427,13 +432,17 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
             [input.primaryModelId, input.fallbackModelId, input.transcriptionModelId, input.agentsChooseModel, actorUserId],
           );
           await writeAudit(c, { actorUserId, action: 'model.settings', target: null, details: { ...input } });
+          await fillPrimaryModel(c, actorUserId);
         });
-        return input;
+        // «Не выбрана» does not stay while a model can answer: the saved choice may differ from the input.
+        const saved = await settingsRow();
+        return { primaryModelId: saved.primary_model_id, fallbackModelId: saved.fallback_model_id, transcriptionModelId: saved.transcription_model_id, agentsChooseModel: saved.agents_choose_model };
       }),
 
     sync: () =>
       serial(async () => {
         await fillOutputLimits();
+        await fillPrimaryModel(db, null);
         return apply(await syncState());
       }),
   };

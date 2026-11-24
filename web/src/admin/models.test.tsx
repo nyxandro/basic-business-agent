@@ -10,10 +10,10 @@ const GIGA = { id: 'gigachat', kind: 'chat', label: 'GigaChat 2 Max', connection
 const TEXT_ONLY = { ...GIGA, id: 'yagpt', label: 'YandexGPT 5 Pro', providerModel: 'yandex/yandexgpt-5-pro', vision: false, keys: [{ id: 'k-00000002', last4: 'c3d4', createdAt: '2026-11-10T08:00:00Z' }] };
 const SETTINGS = { primaryModelId: 'gigachat', fallbackModelId: null, transcriptionModelId: null, agentsChooseModel: false };
 
-function server(models: object[] = [GIGA, TEXT_ONLY], me: object = ADMIN) {
+function server(models: object[] = [GIGA, TEXT_ONLY], me: object = ADMIN, settings: object = SETTINGS) {
   return mockServer({
     'GET /app/api/me': { body: me },
-    'GET /app/api/admin/models': { body: { models, settings: SETTINGS, accounts: [], gateway: { reachable: true, checkedAt: '2026-11-14T08:00:00Z', pendingModelIds: [] } } },
+    'GET /app/api/admin/models': { body: { models, settings, accounts: [], gateway: { reachable: true, checkedAt: '2026-11-14T08:00:00Z', pendingModelIds: [] } } },
   });
 }
 
@@ -171,6 +171,20 @@ describe('«Нейросеть»', () => {
     expect(await screen.findByText(/нужна модель, которая видит картинки/)).toBeInTheDocument();
     expect(primary).toHaveValue('gigachat');
     expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ ...SETTINGS, primaryModelId: 'yagpt' });
+  });
+
+  it('offers «Не выбрана» as the main model only while none answers: the server fills it otherwise', async () => {
+    server();
+    const view = renderApp('/admin/models');
+    const primary = await screen.findByRole('combobox', { name: 'Основная модель' });
+    expect(within(primary).queryByRole('option', { name: 'Не выбрана — агенты не отвечают' })).not.toBeInTheDocument();
+    view.unmount();
+
+    server([{ ...GIGA, enabled: false }, TEXT_ONLY]);
+    renderApp('/admin/models');
+    const empty = await screen.findByRole('combobox', { name: 'Основная модель' });
+    expect(within(empty).getByRole('option', { name: 'Не выбрана — агенты не отвечают' })).toBeInTheDocument();
+    expect(empty).toHaveValue('');
   });
 
   it('adds a key of a model and says why the last one cannot go', async () => {

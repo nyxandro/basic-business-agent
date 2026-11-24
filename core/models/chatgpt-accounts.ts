@@ -14,6 +14,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../log/log.ts';
 import type { AccountFailure } from './account-events.ts';
+import { fillPrimaryModel } from './auto-primary.ts';
 import { identityOf, jwtClaims, type ChatGptAuthClient, type ChatGptAuthFile } from './chatgpt-login.ts';
 import type { GatewayWriter } from './gateway-writer.ts';
 import { COOLDOWN_SECONDS } from './litellm-config.ts';
@@ -254,6 +255,8 @@ export function createChatGptAccounts(deps: ChatGptAccountsDeps): ChatGptAccount
             );
           }
           await writeAudit(c, { actorUserId, action: login.account_id ? 'chatgpt.relogin' : 'chatgpt.connect', target: accountId, details: { email: who.email } });
+          // A subscription model becomes a candidate for «Основная модель» with its first active account.
+          await fillPrimaryModel(c, actorUserId);
         });
       }
     });
