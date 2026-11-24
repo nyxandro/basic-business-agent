@@ -1,11 +1,14 @@
 // Routes of complaints (docs/specs/[20.11.2026]-feedback-and-value.md, section 17): the employee's complaint about an
-// answer, the complaint already made about a turn, «Мои обращения»; «Поддержка» of the admin panel — the list, a ticket,
-// its state and answer, its files — for the people with «Агенты» (owner 21.11, F5).
-import { complaintSchema, SUPPORT_STATUSES, ticketUpdateSchema, type AdminTicketsResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportStatus } from '@bba/contracts';
+// answer, the complaint already made about a turn, a request straight to the support (F7), «Мои обращения»; «Поддержка»
+// of the admin panel — the list, a ticket, its state and answer, its files — for the people with «Агенты» (owner 21.11, F5).
+import { complaintSchema, SUPPORT_FILES_MAX_BYTES, SUPPORT_STATUSES, supportRequestSchema, ticketUpdateSchema, type AdminTicketsResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportStatus } from '@bba/contracts';
 import type { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { appError } from '../errors/catalog.ts';
 import { requirePermission } from '../auth/guards.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
+import { MULTIPART_OVERHEAD_BYTES } from '../projects/routes.ts';
+import { createRequest } from './requests.ts';
 import { complain, existingComplaint, listTickets, myTickets, ticketDetail, ticketFile, updateTicket, type SupportDeps } from './tickets.ts';
 
 const S = '/app/api/admin/support';
@@ -14,6 +17,27 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
   const agents = requirePermission('agents');
 
   app.post('/app/api/me/support', async (c) => c.json(await complain(deps, access(c).userId, await parseJson(c, complaintSchema)), 201));
+
+  app.post(
+    '/app/api/me/support/requests',
+    // Counts the bytes even without Content-Length, before the form is read into memory.
+    bodyLimit({
+      maxSize: SUPPORT_FILES_MAX_BYTES + MULTIPART_OVERHEAD_BYTES,
+      onError: () => {
+        throw appError('APP_SUPPORT_FILES_TOO_LARGE', 'support request form over the limit');
+      },
+    }),
+    async (c) => {
+      const body = await c.req.parseBody({ all: true });
+      const fields = supportRequestSchema.safeParse({ subject: body.subject, text: body.text });
+      if (!fields.success) throw appError('APP_VALIDATION_FAILED', `bad support request: ${fields.error.message}`, { userMessage: 'Заполните тему (до 200 знаков) и описание (до 4000 знаков).' });
+      // One file comes as a value, several as a list (Hono, `all: true`).
+      const files = body.files === undefined ? [] : [body.files].flat();
+      if (files.some((f) => !(f instanceof File))) throw appError('APP_VALIDATION_FAILED', 'files field is not a file', { userMessage: 'Файл не получен. Приложите его ещё раз.' });
+      const attached = (files as File[]).map((f) => ({ name: f.name, size: f.size, read: async () => new Uint8Array(await f.arrayBuffer()) }));
+      return c.json(await createRequest(deps.db, access(c).userId, fields.data, attached), 201);
+    },
+  );
 
   app.get('/app/api/me/support', async (c) => c.json({ tickets: await myTickets(deps, access(c).userId) } satisfies MyTicketsResponse));
 

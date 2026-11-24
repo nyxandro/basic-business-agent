@@ -9,6 +9,8 @@ export interface MockCall {
   body: unknown;
   // Fields of a multipart body: text as it is, a file by its name.
   form?: Record<string, string>;
+  // The names of all files of a multipart body, in their order (`form` keeps one value a field).
+  files?: string[];
 }
 
 export type Reply = { status?: number; body?: unknown; raw?: string };
@@ -54,7 +56,8 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
       const method = (init?.method ?? 'GET').toUpperCase();
       const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
       const form = init?.body instanceof FormData ? Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : v.name])) : undefined;
-      const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, ...(form ? { form } : {}) };
+      const files = init?.body instanceof FormData ? [...init.body.values()].filter((v) => typeof v !== 'string').map((v) => v.name) : [];
+      const call = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, ...(form ? { form } : {}), ...(files.length > 0 ? { files } : {}) };
       (method === 'POST' && url.pathname === PRESENCE_PATH ? pings : calls).push(call);
       const route = table.get(`${method} ${url.pathname}`);
       if (!route) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'APP_NOT_FOUND', message: 'нет такого адреса в тесте' } }), { status: 404 }));

@@ -228,6 +228,8 @@ describe('the heart of samples', () => {
 const TICKET = {
   id: '14',
   author: 'Ольга Смирнова',
+  kind: 'complaint',
+  subject: null,
   agentId: 'sales',
   agentName: 'Продажи',
   status: 'new',
@@ -286,7 +288,7 @@ describe('«Поддержка»', () => {
 
 describe('«Мои обращения»', () => {
   it('shows the person’s complaints and the answer of the support', async () => {
-    mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/support': { body: { tickets: [{ id: '14', agentName: 'Продажи', status: 'resolved', comment: 'Цена старая', reply: 'Обновили прайс', createdAt: '2026-11-22T06:00:00Z', updatedAt: '2026-11-22T07:00:00Z' }] } } });
+    mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/support': { body: { tickets: [{ id: '14', kind: 'complaint', subject: null, agentName: 'Продажи', status: 'resolved', comment: 'Цена старая', files: [], reply: 'Обновили прайс', createdAt: '2026-11-22T06:00:00Z', updatedAt: '2026-11-22T07:00:00Z' }] } } });
     renderApp('/settings/requests');
     expect(await screen.findByText('Обновили прайс')).toBeInTheDocument();
     expect(screen.getByText('Решена')).toBeInTheDocument();

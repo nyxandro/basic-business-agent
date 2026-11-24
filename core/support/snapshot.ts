@@ -2,14 +2,13 @@
 // of each message — the words, the blocks, the files, the outcomes of «Да» (core/history/transcript.ts), nothing of the
 // service — and the files of the conversation copied up to 50 MB a complaint. The copy does not depend on what is done
 // with the conversation later: removing it or its files leaves the ticket whole.
-import type { SupportSnapshotMessage } from '@bba/contracts';
+import { SUPPORT_FILES_MAX_BYTES, type SupportSnapshotMessage } from '@bba/contracts';
 import { isAppError } from '../errors/app-error.ts';
 import type { StoredMessage } from '../history/store.ts';
 import { isServiceTurn } from '../chat/service-turns.ts';
 import { shownFilesOf, visibleOf, type ApprovalOutcome } from '../history/transcript.ts';
 import { readFileInside } from '../workspace/layout.ts';
 
-export const SUPPORT_FILES_MAX_BYTES = 50 * 1024 * 1024;
 const TURN_TAIL_MS = 60_000;
 
 export interface Snapshot {

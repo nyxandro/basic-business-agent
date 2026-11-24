@@ -1,8 +1,9 @@
 // Complaints about answers (docs/specs/[20.11.2026]-feedback-and-value.md, scenarios 1 and 2; owner 21.11, F1 and F5):
 // the employee's comment with a copy of the conversation and its files becomes a ticket of «Поддержка», read by the
 // people with «Агенты»; the answer and the state go back to the employee as a notification and «Мои обращения».
-// A second complaint about the same turn adds to the first.
-import { SUPPORT_NEXT, type AdminTicketDto, type AdminTicketRow, type ComplaintResponse, type MyTicketDto, type SupportFileDto, type SupportSnapshotMessage, type SupportStatus } from '@bba/contracts';
+// A second complaint about the same turn adds to the first. A request written straight to the support (F7, requests.ts)
+// is a ticket too: the list, the ticket, its answer and «Мои обращения» here serve both.
+import { SUPPORT_NEXT, type AdminTicketDto, type AdminTicketRow, type ComplaintResponse, type MyTicketDto, type SupportFileDto, type SupportKind, type SupportSnapshotMessage, type SupportStatus } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
 import { writeAudit } from '../audit/audit.ts';
 import { holdersOf } from '../auth/holders.ts';
@@ -35,9 +36,12 @@ interface TicketRow {
   id: string;
   user_id: string | null;
   author: string | null;
-  agent_id: string;
-  thread_id: string;
-  turn_key: number;
+  kind: SupportKind;
+  subject: string | null;
+  // A request has no agent, conversation or turn.
+  agent_id: string | null;
+  thread_id: string | null;
+  turn_key: number | null;
   task_id: string | null;
   comment: string;
   snapshot: SupportSnapshotMessage[];
@@ -100,8 +104,8 @@ export async function complain(deps: SupportDeps, userId: string, input: { threa
 
   const id = await inTransaction(db, async (c) => {
     const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO app.support_tickets (user_id, agent_id, thread_id, turn_key, task_id, comment, snapshot, models, instructions_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new')
+      `INSERT INTO app.support_tickets (user_id, kind, agent_id, thread_id, turn_key, task_id, comment, snapshot, models, instructions_at, status)
+       VALUES ($1, 'complaint', $2, $3, $4, $5, $6, $7, $8, $9, 'new')
        ON CONFLICT (user_id, thread_id, turn_key) WHERE user_id IS NOT NULL DO NOTHING RETURNING id::text`,
       [userId, conversation.agentId, input.threadId, input.turn, taskOfThread(input.threadId), input.comment, JSON.stringify(snapshot.messages), models.rows.map((r) => r.model), instructions.rows[0]?.published_at ?? null],
     );
@@ -123,15 +127,17 @@ export async function complain(deps: SupportDeps, userId: string, input: { threa
   return { id, appended: false };
 }
 
-const ROW_SQL = `SELECT t.id::text, t.user_id, u."name" AS author, t.agent_id, t.thread_id, t.turn_key, t.task_id, t.comment, t.snapshot, t.models,
+const ROW_SQL = `SELECT t.id::text, t.user_id, u."name" AS author, t.kind, t.subject, t.agent_id, t.thread_id, t.turn_key, t.task_id, t.comment, t.snapshot, t.models,
                         t.instructions_at, t.status, t.reply, h."name" AS handler, t.created_at, t.updated_at
                    FROM app.support_tickets t LEFT JOIN app."user" u ON u."id" = t.user_id LEFT JOIN app."user" h ON h."id" = t.handled_by`;
 
 const rowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): AdminTicketRow => ({
   id: r.id,
   author: r.author,
+  kind: r.kind,
+  subject: r.subject,
   agentId: r.agent_id,
-  agentName: deps.agentName(r.agent_id),
+  agentName: r.agent_id === null ? null : deps.agentName(r.agent_id),
   status: r.status,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
@@ -139,7 +145,24 @@ const rowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): AdminTicketR
 
 export async function myTickets(deps: Pick<SupportDeps, 'db' | 'agentName'>, userId: string): Promise<MyTicketDto[]> {
   const { rows } = await deps.db.query<TicketRow>(`${ROW_SQL} WHERE t.user_id = $1 ORDER BY t.created_at DESC LIMIT ${TICKETS_SHOWN}`, [userId]);
-  return rows.map((r) => ({ id: r.id, agentName: deps.agentName(r.agent_id), status: r.status, comment: r.comment, reply: r.reply, createdAt: r.created_at.toISOString(), updatedAt: r.updated_at.toISOString() }));
+  // The files a person attached to a request; those of a conversation copied with a complaint are not theirs to list.
+  const kept = await deps.db.query<{ ticket_id: string; names: string[] }>(
+    `SELECT ticket_id::text, array_agg(name ORDER BY ord) AS names FROM app.support_files WHERE ticket_id = ANY($1::bigint[]) AND state = 'copied' GROUP BY ticket_id`,
+    [rows.filter((r) => r.kind === 'request').map((r) => r.id)],
+  );
+  const files = new Map(kept.rows.map((f) => [f.ticket_id, f.names]));
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    subject: r.subject,
+    agentName: r.agent_id === null ? null : deps.agentName(r.agent_id),
+    status: r.status,
+    comment: r.comment,
+    files: files.get(r.id) ?? [],
+    reply: r.reply,
+    createdAt: r.created_at.toISOString(),
+    updatedAt: r.updated_at.toISOString(),
+  }));
 }
 
 export async function listTickets(deps: Pick<SupportDeps, 'db' | 'agentName'>, status: SupportStatus | null): Promise<AdminTicketRow[]> {

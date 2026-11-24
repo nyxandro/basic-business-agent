@@ -235,6 +235,20 @@ export const notices = {
     });
   },
 
+  // A request written straight to the support (F7): its subject and text stay inside the ticket, as a complaint's do.
+  supportRequest(input: { userId: string; ticketId: string }): Notice {
+    return notice({
+      userId: input.userId,
+      kind: 'support_new',
+      title: `Новое обращение №${input.ticketId}`,
+      body: 'Сотрудник написал в поддержку. Разберите обращение в «Поддержке».',
+      link: `/admin/support/${encodeURIComponent(input.ticketId)}`,
+      dedupKey: `support_new:${input.ticketId}`,
+      subjectRef: `ticket:${input.ticketId}`,
+      threadId: null,
+    });
+  },
+
   // The answer to the employee, or a change of the state: each change is its own case.
   supportReply(input: { userId: string; ticketId: string; status: 'new' | 'in_progress' | 'resolved' | 'rejected'; changedAt: Date }): Notice {
     const states = { new: 'снова открыто', in_progress: 'в работе', resolved: 'решено', rejected: 'отклонено' } as const;

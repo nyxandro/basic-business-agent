@@ -32,6 +32,45 @@
   gap: 8px;
 }
 
+/* «Новое обращение» (RequestDialog.tsx, F7): «Прикрепить файлы» with its limits, the files attached, what was refused. */
+.attachRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.attached {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attachedItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.attachedName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileError {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bad);
+}
+
 /* The copy of the conversation in a ticket: the person's words to the right, the agent's to the left, as in the chat. */
 .thread {
   display: flex;
@@ -104,8 +143,10 @@
   min-width: 0;
 }
 
+/* A subject or a file name the employee typed may be one long word (a link): it wraps instead of widening the page. */
 .rowTitle {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .rowSub {
@@ -135,6 +176,7 @@
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .pre {

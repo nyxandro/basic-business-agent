@@ -1,8 +1,9 @@
 // «Поддержка» (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 2; owner 21.11, F5): the complaints of employees
-// about answers, for the people with «Агенты» — a list with its state filter, and a ticket: the employee's comment, the
-// conversation as it was with the answer complained about marked, its files, the agent, the models and the version of the
-// instructions, the answer and the state, which go back to the employee as a notification.
-import type { AdminTicketDto, SupportStatus } from '@bba/contracts';
+// about answers and their requests written straight (F7), for the people with «Агенты» — a list with its state filter,
+// and a ticket. A complaint: the employee's comment, the conversation as it was with the answer complained about marked,
+// its files, the agent, the models and the version of the instructions. A request: its subject, text and the files the
+// employee attached. Both: the answer and the state, which go back to the employee as a notification.
+import type { AdminTicketDto, AdminTicketRow, SupportStatus } from '@bba/contracts';
 import { SUPPORT_NEXT, SUPPORT_STATUSES } from '@bba/contracts';
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -21,6 +22,10 @@ import styles from './feedback.module.css';
 
 const t = ru.feedback.support;
 export const STATUS_TONE: Record<SupportStatus, Tone> = { new: 'accent', in_progress: 'warn', resolved: 'ok', rejected: 'neutral' };
+
+// A request is named by its subject, a complaint by its agent.
+const titleOf = (x: AdminTicketRow) => (x.kind === 'request' ? t.numberWithSubject(x.id, x.subject ?? '') : t.number(x.id));
+const lineOf = (x: AdminTicketRow) => (x.kind === 'request' ? t.requestRow(x.author ?? t.formerEmployee, dateTime(x.createdAt)) : t.row(x.author ?? t.formerEmployee, x.agentName ?? '', dateTime(x.createdAt)));
 
 export function SupportSection() {
   const [status, setStatus] = useState<SupportStatus | null>(null);
@@ -45,8 +50,8 @@ export function SupportSection() {
             {state.data.tickets.map((x) => (
               <li key={x.id} className={styles.row}>
                 <Link to={`/admin/support/${encodeURIComponent(x.id)}`} className={cx(styles.rowMain, styles.rowLink)}>
-                  <div className={styles.rowTitle}>{t.number(x.id)}</div>
-                  <div className={styles.rowSub}>{t.row(x.author ?? t.formerEmployee, x.agentName, dateTime(x.createdAt))}</div>
+                  <div className={styles.rowTitle}>{titleOf(x)}</div>
+                  <div className={styles.rowSub}>{lineOf(x)}</div>
                 </Link>
                 <Pill tone={STATUS_TONE[x.status]}>{t.status[x.status]}</Pill>
               </li>
@@ -117,6 +122,74 @@ function Answer({ data, onSaved }: { data: AdminTicketDto; onSaved: (next: Admin
   );
 }
 
+function Files({ data, title, none }: { data: AdminTicketDto; title: string; none: string }) {
+  return (
+    <Card className="rise">
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+        {data.files.length === 0 ? <p className={styles.note}>{none}</p> : null}
+        <ul className={styles.list}>
+          {data.files.map((f) => (
+            <li key={f.ord} className={styles.row}>
+              <div className={styles.rowMain}>
+                <div className={styles.rowTitle}>{f.name}</div>
+                <div className={styles.rowSub}>{f.state === 'copied' ? fileSize(f.size ?? 0) : f.state === 'too_large' ? t.fileTooLarge(fileSize(f.size ?? 0)) : t.fileGone}</div>
+              </div>
+              {f.state === 'copied' ? (
+                <ButtonLink href={ticketFileUrl(data.id, f.ord)} download={f.name} icon="download" size="sm">
+                  {t.download}
+                </ButtonLink>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
+  );
+}
+
+function ComplaintBody({ data }: { data: AdminTicketDto }) {
+  return (
+    <>
+      <Card className="rise">
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>{t.comment}</h2>
+          <p className={styles.pre}>{data.comment}</p>
+        </div>
+      </Card>
+      <Card className="rise">
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>{t.trace}</h2>
+          <p className={styles.note}>
+            {t.traceLine(data.agentName ?? '', data.models.length > 0 ? data.models.join(', ') : t.noModel, data.instructionsAt ? t.instructionsOf(fullDate(data.instructionsAt)) : t.instructionsFile)}
+            {data.taskId ? ` · ${t.task}` : ''}
+          </p>
+        </div>
+      </Card>
+      <Card className="rise">
+        <h2 className={cx(styles.sectionTitle, styles.section)}>{t.conversation}</h2>
+        <Conversation data={data} />
+      </Card>
+      <Files data={data} title={t.files} none={t.noFiles} />
+    </>
+  );
+}
+
+// A request: its subject as the heading of its text, and the files the employee attached — nothing of a conversation.
+function RequestBody({ data }: { data: AdminTicketDto }) {
+  return (
+    <>
+      <Card className="rise">
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>{data.subject}</h2>
+          <p className={styles.pre}>{data.comment}</p>
+        </div>
+      </Card>
+      <Files data={data} title={t.requestFiles} none={t.noRequestFiles} />
+    </>
+  );
+}
+
 export function TicketPage() {
   const { ticketId = '' } = useParams();
   const load = useCallback(() => ticket(ticketId), [ticketId]);
@@ -132,47 +205,8 @@ export function TicketPage() {
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {data ? (
         <>
-          <PageHead title={`${t.title} ${t.number(data.id)}`} lead={t.row(data.author ?? t.formerEmployee, data.agentName, dateTime(data.createdAt))} actions={<Pill tone={STATUS_TONE[data.status]}>{t.status[data.status]}</Pill>} />
-          <Card className="rise">
-            <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>{t.comment}</h2>
-              <p className={styles.pre}>{data.comment}</p>
-            </div>
-          </Card>
-          <Card className="rise">
-            <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>{t.trace}</h2>
-              <p className={styles.note}>
-                {t.traceLine(data.agentName, data.models.length > 0 ? data.models.join(', ') : t.noModel, data.instructionsAt ? t.instructionsOf(fullDate(data.instructionsAt)) : t.instructionsFile)}
-                {data.taskId ? ` · ${t.task}` : ''}
-              </p>
-            </div>
-          </Card>
-          <Card className="rise">
-            <h2 className={cx(styles.sectionTitle, styles.section)}>{t.conversation}</h2>
-            <Conversation data={data} />
-          </Card>
-          <Card className="rise">
-            <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>{t.files}</h2>
-              {data.files.length === 0 ? <p className={styles.note}>{t.noFiles}</p> : null}
-              <ul className={styles.list}>
-                {data.files.map((f) => (
-                  <li key={f.ord} className={styles.row}>
-                    <div className={styles.rowMain}>
-                      <div className={styles.rowTitle}>{f.name}</div>
-                      <div className={styles.rowSub}>{f.state === 'copied' ? fileSize(f.size ?? 0) : f.state === 'too_large' ? t.fileTooLarge(fileSize(f.size ?? 0)) : t.fileGone}</div>
-                    </div>
-                    {f.state === 'copied' ? (
-                      <ButtonLink href={ticketFileUrl(data.id, f.ord)} download={f.name} icon="download" size="sm">
-                        {t.download}
-                      </ButtonLink>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </Card>
+          <PageHead title={`${t.title} ${t.number(data.id)}`} lead={lineOf(data)} actions={<Pill tone={STATUS_TONE[data.status]}>{t.status[data.status]}</Pill>} />
+          {data.kind === 'request' ? <RequestBody data={data} /> : <ComplaintBody data={data} />}
           <Card className="rise">
             <Answer key={`${data.id}:${data.status}:${data.reply ?? ''}`} data={data} onSaved={setFresh} />
           </Card>

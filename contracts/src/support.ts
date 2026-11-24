@@ -5,6 +5,9 @@ import { z } from 'zod';
 export const SUPPORT_STATUSES = ['new', 'in_progress', 'resolved', 'rejected'] as const;
 export type SupportStatus = (typeof SUPPORT_STATUSES)[number];
 
+// A complaint about an answer, or a request written straight from «Мои обращения» (F7, owner 24.11).
+export type SupportKind = 'complaint' | 'request';
+
 export const COMPLAINT_MAX = 4000;
 
 // The turn complained about: the number of the person's message it answers among the person's messages of the
@@ -14,6 +17,30 @@ export const complaintSchema = z.strictObject({
   turn: z.number().int().min(1).max(1_000_000),
   comment: z.string().trim().min(1).max(COMPLAINT_MAX),
 });
+
+// The files of a ticket, all of them together: those of a conversation copied with a complaint, or those the employee
+// attached to a request.
+export const SUPPORT_FILES_MAX_BYTES = 50 * 1024 * 1024;
+export const SUPPORT_REQUEST_FILES_MAX = 10;
+export const SUPPORT_SUBJECT_MAX = 200;
+
+// A field of a form with files: the browser sends each line break as «\r\n», which the text box counted as one character —
+// brought back to «\n» before it is measured. A zero character Postgres cannot keep is refused.
+const formText = (max: number) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' ? value.replace(/\r\n/g, '\n') : value),
+    z.string().trim().min(1).max(max).refine((v) => !v.includes('\0'), 'zero character'),
+  );
+
+// POST /app/api/me/support/requests: the text fields of the form; the files go as `files`.
+export const supportRequestSchema = z.strictObject({
+  subject: formText(SUPPORT_SUBJECT_MAX),
+  text: formText(COMPLAINT_MAX),
+});
+
+export interface SupportRequestResponse {
+  id: string;
+}
 
 export interface ComplaintResponse {
   id: string;
@@ -40,15 +67,22 @@ export interface SupportFileDto {
   ord: number;
   name: string;
   size: number | null;
-  // Copied; not copied — over 50 MB a complaint; the file was removed before the complaint.
+  // Copied (and every file attached to a request); not copied — over 50 MB a complaint; the file was removed before the
+  // complaint.
   state: 'copied' | 'too_large' | 'gone';
 }
 
 export interface MyTicketDto {
   id: string;
-  agentName: string;
+  kind: SupportKind;
+  // The subject of a request; null — a complaint.
+  subject: string | null;
+  // The agent complained about; null — a request.
+  agentName: string | null;
   status: SupportStatus;
   comment: string;
+  // The names of the files the person attached to a request; a complaint — none.
+  files: string[];
   reply: string | null;
   createdAt: string;
   updatedAt: string;
@@ -62,8 +96,12 @@ export interface AdminTicketRow {
   id: string;
   // Null — the person was removed: «бывший сотрудник».
   author: string | null;
-  agentId: string;
-  agentName: string;
+  kind: SupportKind;
+  // The subject of a request; null — a complaint.
+  subject: string | null;
+  // The agent complained about; null — a request.
+  agentId: string | null;
+  agentName: string | null;
   status: SupportStatus;
   createdAt: string;
   updatedAt: string;
@@ -73,9 +111,10 @@ export interface AdminTicketsResponse {
   tickets: AdminTicketRow[];
 }
 
+// A request has no turn, copy of a conversation, models, instructions or task.
 export interface AdminTicketDto extends AdminTicketRow {
   comment: string;
-  turn: number;
+  turn: number | null;
   snapshot: SupportSnapshotMessage[];
   files: SupportFileDto[];
   models: string[];
