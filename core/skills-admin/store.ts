@@ -157,7 +157,8 @@ function checkAgents(deps: SkillsDeps, agentIds: readonly string[]): string[] {
 // Agents the installation no longer has keep their link: it comes back with the agent.
 async function writeSkillAgents(c: pg.PoolClient, deps: SkillsDeps, name: string, agentIds: readonly string[]): Promise<void> {
   await c.query('DELETE FROM app.agent_skills WHERE skill_name = $1 AND agent_id = ANY($2::text[])', [name, [...deps.agentIds]]);
-  await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT unnest($1::text[]), $2', [agentIds, name]);
+  // The same link may be saved meanwhile from the agent's page: the second save keeps it, without a failure.
+  await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT unnest($1::text[]), $2 ON CONFLICT DO NOTHING', [agentIds, name]);
 }
 
 // A new skill is with no agent unless the admin ticked some at the upload (owner's decision 24.11).
@@ -224,7 +225,7 @@ export async function setAgentSkills(deps: SkillsDeps, actorUserId: string, agen
     const { rowCount } = await c.query('SELECT 1 FROM app.skills WHERE name = ANY($1::text[])', [names]);
     if (rowCount !== names.length) throw appError('APP_VALIDATION_FAILED', `unknown skills for agent ${agentId}`, { userMessage: 'Некоторых скиллов уже нет. Обновите страницу.' });
     await c.query('DELETE FROM app.agent_skills WHERE agent_id = $1', [agentId]);
-    await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT $1, unnest($2::text[])', [agentId, names]);
+    await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING', [agentId, names]);
     await writeAudit(c, { actorUserId, action: 'agent.skills', target: agentId, details: { skillNames: names } });
   });
   return names;

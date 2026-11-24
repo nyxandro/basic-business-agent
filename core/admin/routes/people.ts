@@ -35,8 +35,8 @@ export function registerPeopleRoutes(
     const counts = await projectCountsOf(db, users.map((u) => u.id));
     return c.json({ users: users.map((u) => ({ ...u, projects: counts.get(u.id)! })) });
   });
-  // Names only, to pick whom a skill or a background task is for: no e-mails, roles or blocking.
-  app.get('/app/api/admin/people', requireAnyPermission('users', 'departments', 'limits', 'skills', 'agents'), async (c) => {
+  // Names only, to pick whom a background task or an agent is for: no e-mails, roles or blocking.
+  app.get('/app/api/admin/people', requireAnyPermission('users', 'departments', 'limits', 'agents'), async (c) => {
     const { rows } = await db.query<{ id: string; name: string }>('SELECT "id", "name" FROM app."user" ORDER BY "name", "id"');
     const body: AdminPeopleResponse = { people: rows };
     return c.json(body);

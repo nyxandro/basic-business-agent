@@ -10,6 +10,7 @@ import { Button } from '../ui/Button.tsx';
 import { Card, CardHead } from '../ui/Display.tsx';
 import { Checklist, Feedback, useAction } from '../ui/form-parts.tsx';
 import { adminApi } from './api.ts';
+import { hasRight } from './sections.ts';
 import styles from './agents.module.css';
 import section from './section.module.css';
 
@@ -25,7 +26,7 @@ export function AgentSkills({ agent, skills, onChanged }: { agent: AdminAgent; s
   const uploaded = skills.filter((s) => !s.system);
   const dirty = !sameList(chosen, agent.skillNames);
   const systemNames = system.map((s) => `«${s.title}»`).join(', ');
-  const canOpenSkills = me.isSuperadmin || me.permissions.includes('skills');
+  const canOpenSkills = hasRight(me, 'skills');
 
   async function save() {
     if (await run(() => adminApi.setAgentSkills(agent.id, chosen), t.saved)) onChanged();

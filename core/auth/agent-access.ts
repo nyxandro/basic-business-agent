@@ -44,10 +44,6 @@ export async function listAgentAccess(db: Db): Promise<Map<string, AgentAccess>>
   return out;
 }
 
-export async function agentAccessOf(db: Db, agentId: string): Promise<AgentAccess> {
-  return (await listAgentAccess(db)).get(agentId) ?? NOBODY;
-}
-
 // «Вся организация» makes the lists needless: they are cleared, as the page shows them.
 export async function setAgentAccess(db: Db, agentId: string, raw: AgentAccess, actorUserId: string): Promise<AgentAccess> {
   const access: AgentAccess = raw.org ? { org: true, departmentIds: [], userIds: [] } : { org: false, departmentIds: [...new Set(raw.departmentIds)], userIds: [...new Set(raw.userIds)] };
@@ -60,9 +56,10 @@ export async function setAgentAccess(db: Db, agentId: string, raw: AgentAccess, 
     await c.query('DELETE FROM app.agent_org_access WHERE agent_id = $1', [agentId]);
     await c.query('DELETE FROM app.department_agents WHERE agent_id = $1', [agentId]);
     await c.query('DELETE FROM app.agent_people WHERE agent_id = $1', [agentId]);
-    if (access.org) await c.query('INSERT INTO app.agent_org_access (agent_id) VALUES ($1)', [agentId]);
-    await c.query('INSERT INTO app.department_agents (department_id, agent_id) SELECT unnest($1::uuid[]), $2', [access.departmentIds, agentId]);
-    await c.query('INSERT INTO app.agent_people (agent_id, user_id) SELECT $1, unnest($2::text[])', [agentId, access.userIds]);
+    if (access.org) await c.query('INSERT INTO app.agent_org_access (agent_id) VALUES ($1) ON CONFLICT DO NOTHING', [agentId]);
+    // The same link may be saved meanwhile from the department's card: the second save keeps it, without a failure.
+    await c.query('INSERT INTO app.department_agents (department_id, agent_id) SELECT unnest($1::uuid[]), $2 ON CONFLICT DO NOTHING', [access.departmentIds, agentId]);
+    await c.query('INSERT INTO app.agent_people (agent_id, user_id) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING', [agentId, access.userIds]);
     await writeAudit(c, { actorUserId, action: 'agent.access', target: agentId, details: access });
   });
   return access;

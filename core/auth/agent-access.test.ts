@@ -3,6 +3,7 @@
 import type { AdminAgentsResponse, AdminDepartment, AgentAccess, AgentListResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { membersOf } from '../background/scope.ts';
+import { mailReach } from '../background/tasks.ts';
 import { countEmployeesWithAgents } from '../connections/audience.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 
@@ -60,12 +61,14 @@ describe('access to an agent', () => {
     expect((await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: igor }))).agents.map((a) => a.id).sort()).toEqual(['assistant', 'sales']);
   });
 
-  it('is the same rule for a background task and for «Подключили N из M»', async () => {
+  it('is the same rule for a background task, a mail task and «Подключили N из M»', async () => {
     await setAccess('assistant', { org: false, departmentIds: [], userIds: [ids.anna!] });
     // A task for the whole organisation reaches those who may use its agent: Anna by name and the superadministrator.
     const igorId = (await t.db.query<{ id: string }>(`SELECT "id" FROM app."user" WHERE "email" = 'igor@example.com'`)).rows[0]!.id;
     const members = await membersOf(t.db, 'no-such-task', 'org', 'assistant');
     expect(members.map((m) => m.userId).sort()).toEqual([ids.anna, igorId].sort());
+    // «Сработает у N из M» of a mail task counts the same people.
+    expect(await mailReach({ db: t.db, registry: t.registry }, 'assistant', { scope: 'org', departmentIds: [], userIds: [] })).toMatchObject({ total: 2 });
     // Anna by name and the superadministrator.
     expect(await countEmployeesWithAgents(t.db, ['assistant'])).toBe(2);
     await setAccess('assistant', { org: true, departmentIds: [], userIds: [] });
@@ -87,6 +90,15 @@ describe('access to an agent', () => {
   it('forgets an employee who is removed', async () => {
     await t.db.query('DELETE FROM app."user" WHERE "id" = $1', [ids.petr]);
     expect(await accessOf('sales')).toEqual({ org: false, departmentIds: [sales], userIds: [] });
+  });
+
+  it('gives the lists of people and departments to the rights that pick them, not to «Скиллы» any more', async () => {
+    const role = (await t.db.query<{ id: string }>(`INSERT INTO app.roles (name, permissions) VALUES ('Скиллы', '["skills"]') RETURNING id`)).rows[0]!.id;
+    await t.createUser({ email: 'skills@example.com', roleIds: [role] });
+    const skills = await t.signIn('skills@example.com');
+    expect((await t.call('GET', '/app/api/admin/agents', { cookie: skills })).status).toBe(200);
+    expect((await t.call('GET', '/app/api/admin/people', { cookie: skills })).status).toBe(403);
+    expect((await t.call('GET', '/app/api/admin/departments', { cookie: skills })).status).toBe(403);
   });
 
   it('writes who changed the access into the audit', async () => {

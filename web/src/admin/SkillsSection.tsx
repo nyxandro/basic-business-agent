@@ -6,9 +6,8 @@
 // in, always on for every agent that may run commands — no switch and no actions.
 import type { AdminAgent, SkillDto, SkillsSandbox } from '@bba/contracts';
 import { useCallback, useRef, useState } from 'react';
-import { Button, IconButton } from '../ui/Button.tsx';
+import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
-import { cx } from '../ui/Button.tsx';
 import { Card, EmptyState, IconTile, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { dateTime, fileSize } from '../i18n/format.ts';

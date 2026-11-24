@@ -33,11 +33,16 @@ export function agentAccessText(access: Access, departments: AdminDepartment[], 
 type Open = { departments: boolean; people: boolean };
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
+// «Вся организация» covers the lists: a department card may still tick an agent open to everyone, and its row must not
+// show as a second choice — pressing «Отделы» then would close the agent to everyone.
+const startOf = (a: Access): Access => (a.org ? { org: true, departmentIds: [], userIds: [] } : a);
+
 export function AgentAccess({ agent, departments, people, onChanged }: { agent: AdminAgent; departments: AdminDepartment[]; people: AdminPerson[]; onChanged: () => void }) {
-  const [access, setAccess] = useState<Access>(agent.access);
-  const [open, setOpen] = useState<Open>({ departments: agent.access.departmentIds.length > 0, people: agent.access.userIds.length > 0 });
+  const start = startOf(agent.access);
+  const [access, setAccess] = useState<Access>(start);
+  const [open, setOpen] = useState<Open>({ departments: start.departmentIds.length > 0, people: start.userIds.length > 0 });
   const { busy, error, run } = useAction();
-  const dirty = access.org !== agent.access.org || !sameList(access.departmentIds, agent.access.departmentIds) || !sameList(access.userIds, agent.access.userIds);
+  const dirty = access.org !== start.org || !sameList(access.departmentIds, start.departmentIds) || !sameList(access.userIds, start.userIds);
   const nobody = !access.org && access.departmentIds.length === 0 && access.userIds.length === 0;
 
   function chooseOrg() {
@@ -74,6 +79,7 @@ export function AgentAccess({ agent, departments, people, onChanged }: { agent: 
         ) : null}
         {open.people ? <Checklist legend={t.people} items={people.map((p) => ({ id: p.id, label: p.name }))} selected={access.userIds} onChange={(userIds) => setAccess({ ...access, userIds })} /> : null}
         {nobody ? <p className={section.note}>{t.nobodyHint}</p> : null}
+        {access.org ? <p className={section.note}>{t.orgHint}</p> : null}
         <Feedback error={error} />
         {dirty ? (
           <div className={styles.inline}>

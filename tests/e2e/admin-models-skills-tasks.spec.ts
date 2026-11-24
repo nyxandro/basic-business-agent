@@ -52,33 +52,34 @@ test('«Скиллы» lists the system skills of documents without a switch, th
 
 test('a skill ticked on the agent’s page is seen in «Скиллы», and the agent opens to an employee by name', async ({ browser }) => {
   const page = await pageAs(browser, 'igor@example.com');
-  await page.goto('/admin/agents/sales/skills');
-  await page.getByRole('checkbox', { name: 'Заметки сотрудника' }).check();
-  await page.getByRole('button', { name: 'Сохранить скиллы' }).click();
-  await expect(page.getByText('Скиллы сохранены')).toBeVisible();
-  await page.goto('/admin/skills');
-  await expect(page.locator('li').filter({ hasText: 'note-taking' })).toContainText('Агенты: Продажи, Помощник');
-
-  // Пётр of «Бухгалтерия» has no «Продажи» until it is opened to him by name.
   const petr = await pageAs(browser, 'petr@example.com');
   const agentsOfPetr = async () => ((await (await petr.request.get('/app/api/agents')).json()) as { agents: { id: string }[] }).agents.map((a) => a.id);
-  expect(await agentsOfPetr()).not.toContain('sales');
-  await page.goto('/admin/agents/sales/access');
-  const who = page.getByRole('group', { name: 'Кому доступен агент' });
-  await who.getByRole('button', { name: 'Сотрудники' }).click();
-  await page.getByRole('checkbox', { name: 'Пётр' }).check();
-  await page.getByRole('button', { name: 'Сохранить доступ' }).click();
-  await expect(page.getByText('Отделы: Продажи · Сотрудники: Пётр')).toBeVisible();
-  expect(await agentsOfPetr()).toContain('sales');
+  const { departments } = (await (await page.request.get('/app/api/admin/departments')).json()) as { departments: { id: string; name: string }[] };
+  const sales = departments.find((d) => d.name === 'Продажи')!.id;
+  try {
+    await page.goto('/admin/agents/sales/skills');
+    await page.getByRole('checkbox', { name: 'Заметки сотрудника' }).check();
+    await page.getByRole('button', { name: 'Сохранить скиллы' }).click();
+    await expect(page.getByText('Скиллы сохранены')).toBeVisible();
+    await page.goto('/admin/skills');
+    await expect(page.locator('li').filter({ hasText: 'note-taking' })).toContainText('Агенты: Продажи, Помощник');
 
-  // Back as it was for the other scenarios.
-  await who.getByRole('button', { name: 'Сотрудники' }).click();
-  await page.getByRole('button', { name: 'Сохранить доступ' }).click();
-  await expect(page.getByText('Отделы: Продажи', { exact: true })).toBeVisible();
-  await page.goto('/admin/agents/sales/skills');
-  await page.getByRole('checkbox', { name: 'Заметки сотрудника' }).uncheck();
-  await page.getByRole('button', { name: 'Сохранить скиллы' }).click();
-  await expect(page.getByText('Скиллы сохранены')).toBeVisible();
+    // Пётр of «Бухгалтерия» has no «Продажи» until it is opened to him by name.
+    expect(await agentsOfPetr()).not.toContain('sales');
+    await page.goto('/admin/agents/sales/access');
+    const who = page.getByRole('group', { name: 'Кому доступен агент' });
+    await who.getByRole('button', { name: 'Сотрудники' }).click();
+    await page.getByRole('checkbox', { name: 'Пётр' }).check();
+    await page.getByRole('button', { name: 'Сохранить доступ' }).click();
+    await expect(page.getByText('Отделы: Продажи · Сотрудники: Пётр')).toBeVisible();
+    expect(await agentsOfPetr()).toContain('sales');
+  } finally {
+    // Back as it was for the other scenarios, even when a step above failed.
+    const origin = { origin: new URL(page.url()).origin };
+    expect((await page.request.put('/app/api/admin/agents/sales/access', { headers: origin, data: { org: false, departmentIds: [sales], userIds: [] } })).ok()).toBe(true);
+    expect((await page.request.put('/app/api/admin/agents/sales/skills', { headers: origin, data: { skillNames: [] } })).ok()).toBe(true);
+  }
+  expect(await agentsOfPetr()).not.toContain('sales');
 });
 
 test('«Режимы работы» shows the task of the department with its last fire and breakdown', async ({ browser }) => {

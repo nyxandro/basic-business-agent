@@ -79,7 +79,8 @@ export async function setDepartmentAgents(db: Db, actorUserId: string, id: strin
   await assertExists(db, id);
   await inTransaction(db, async (c) => {
     await c.query('DELETE FROM app.department_agents WHERE department_id = $1', [id]);
-    await c.query('INSERT INTO app.department_agents (department_id, agent_id) SELECT $1, unnest($2::text[])', [id, agentIds]);
+    // The same link may be saved meanwhile on the agent's page («Доступ»): the second save keeps it, without a failure.
+    await c.query('INSERT INTO app.department_agents (department_id, agent_id) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING', [id, agentIds]);
     await writeAudit(c, { actorUserId, action: 'department.agents', target: id, details: { agentIds } });
   });
 }

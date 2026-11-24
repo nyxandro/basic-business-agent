@@ -232,6 +232,26 @@ describe('the page of an agent', () => {
     await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/access'))?.body).toEqual({ org: false, departmentIds: [], userIds: ['u2'] }));
   });
 
+  it('«Доступ»: an agent open to everyone shows only «Вся организация», even with a department left from its card', async () => {
+    const s = server(PROMPT, [{ ...AGENT, access: { org: true, departmentIds: [D1], userIds: [] } }]);
+    s.set('PUT /app/api/admin/agents/sales/access', (call) => ({ body: { access: call.body } }));
+    renderApp('/admin/agents/sales/access');
+    const user = userEvent.setup();
+    const group = await screen.findByRole('group', { name: 'Кому доступен агент' });
+    expect(within(group).getByRole('button', { name: 'Вся организация' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: 'Отделы' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('checkbox', { name: 'Отдел продаж' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Сохранить доступ' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Агент открыт всем сотрудникам/)).toBeInTheDocument();
+    expect(screen.getByText('Вся организация', { selector: 'p' })).toBeInTheDocument();
+    // Choosing departments instead is a change to save, the department kept.
+    await user.click(within(group).getByRole('button', { name: 'Отделы' }));
+    expect(screen.getByRole('checkbox', { name: 'Отдел продаж' })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'Отдел продаж' }));
+    await user.click(screen.getByRole('button', { name: 'Сохранить доступ' }));
+    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/access'))?.body).toEqual({ org: false, departmentIds: [D1], userIds: [] }));
+  });
+
   it('«Скиллы»: ticks the skills of the base for the agent; the system ones are always on', async () => {
     const s = server();
     s.set('PUT /app/api/admin/agents/sales/skills', (call) => ({ body: call.body }));
