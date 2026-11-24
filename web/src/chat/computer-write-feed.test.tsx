@@ -28,9 +28,12 @@ const AGENT = {
   systems: { tools: { computer_folder_write: 'Компьютер' }, prefixes: {} },
 };
 
+const AG = { pendingInterrupts: [], subscribe: () => ({ unsubscribe: () => undefined }) };
+const stopRun = vi.fn();
+
 vi.mock('@copilotkit/react-core', async (original) => ({
   ...(await original<typeof import('@copilotkit/react-core')>()),
-  useAgent: () => ({ agent: { pendingInterrupts: [], subscribe: () => ({ unsubscribe: () => undefined }) } }),
+  useAgent: () => ({ agent: AG }),
   // CopilotKit draws a call with its renderer: here the block of the write, as renderers.tsx registers it.
   useRenderToolCall:
     () =>
@@ -63,6 +66,7 @@ function extras(): ChatExtras {
     onTurnsFailed: vi.fn(),
     composerExtra: null,
     composerNotice: null,
+    stopRun,
   };
 }
 
@@ -72,18 +76,19 @@ const MESSAGES: Message[] = [
 ];
 
 describe('a write onto the computer in the feed', () => {
-  it('shows its card in the answer while «Да» is awaited, keeps the input from sending, and «Стоп» lets it go', async () => {
+  // The run of the agent ended with the call: CopilotChat gives no «Стоп» of its own then — the input's stops the run the
+  // browser's tool belongs to, or CopilotKit would go on with the agent after the write gave up.
+  it('shows its card in the answer while «Да» is awaited, keeps the input from sending, and «Стоп» stops the agent too', async () => {
     mockServer({ 'GET /app/api/me': { body: ME } });
     const answer = askToWrite('w1', { threadId: 't1', folder: 'Тендер', items: [{ file: 'КП.docx', to: 'КП.docx', replace: false, exists: null, changedSinceRead: false }] });
     const submitted = vi.fn();
-    const stopped = vi.fn();
     render(
       <MemoryRouter>
         <SessionProvider>
           <ToastProvider>
             <RequireAuth>
               <ChatExtrasContext value={extras()}>
-                <ChatView messages={MESSAGES} isRunning={false} inputValue="Ещё вопрос" onSubmitMessage={submitted} onStop={stopped} />
+                <ChatView messages={MESSAGES} isRunning={false} inputValue="Ещё вопрос" onSubmitMessage={submitted} />
               </ChatExtrasContext>
             </RequireAuth>
           </ToastProvider>
@@ -91,10 +96,12 @@ describe('a write onto the computer in the feed', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('group', { name: 'Сохранить на компьютер в папку «Тендер»?' })).toBeInTheDocument();
+    // The card is what waits: no line «в процессе» under it.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Отправить' })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Остановить ответ' }));
     expect(await answer).toBe('stopped');
-    expect(stopped).toHaveBeenCalledOnce();
+    expect(stopRun).toHaveBeenCalledWith(AG);
     expect(submitted).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('group', { name: /Сохранить на компьютер/ })).not.toBeInTheDocument());
   });

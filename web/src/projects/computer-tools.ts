@@ -11,7 +11,7 @@ import { useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { apiForm } from '../api/client.ts';
 import { accessOf, fileAt, findFiles, FolderError, listEntries, partsOf, type ComputerFolder, type FolderAccess, type HandleFolder } from './computer-folder.ts';
-import { askToWrite, changedSinceRead, noteRead, saveToComputer, setThreadFolder, stopPendingWrites, threadFolderNow, type WriteAskItem } from './computer-saves.ts';
+import { askToWrite, changedSinceRead, noteRead, saveToComputer, setThreadFolder, threadFolderNow, whileWriting, type WriteAskItem } from './computer-saves.ts';
 import { ensureWritable, targetOf, writableFolder } from './computer-write.ts';
 
 // Text up to this size goes to the agent as it is; anything bigger or not text — into the working folder.
@@ -105,7 +105,7 @@ async function writeFiles(folder: HandleFolder, threadId: string, args: z.infer<
 // a thrown handler leaves the answer of the agent cut off.
 async function writeOrSay(folder: HandleFolder, threadId: string, args: z.infer<typeof writeArgs>, context: WriteContext): Promise<ComputerWriteResult> {
   try {
-    return await writeFiles(folder, threadId, args, context);
+    return await whileWriting(threadId, () => writeFiles(folder, threadId, args, context));
   } catch (error) {
     if (error instanceof FolderError) return { error: error.message };
     return { error: `Не удалось записать в папку «${folder.name}»: ${(error as Error).message}` };
@@ -174,6 +174,4 @@ export function useComputerTools(folder: ComputerFolder | null, threadId: string
     setThreadFolder(threadId, folder);
     return () => setThreadFolder(threadId, null);
   }, [folder, threadId]);
-  // The conversation closed: a write it waits on gives up, nothing is written.
-  useEffect(() => () => stopPendingWrites(threadId), [threadId]);
 }

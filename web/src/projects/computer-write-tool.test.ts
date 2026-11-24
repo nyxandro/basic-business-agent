@@ -117,10 +117,10 @@ describe('the agent’s tool that writes into the folder of the computer', () =>
   });
 
   // The person saved a file at the place while the card waited: it is not touched unless the agent asked to replace.
-  it('does not overwrite a file that appeared at the place before «Да»', async () => {
+  it('does not overwrite a file that appeared at the place before «Да», even when the agent asked to replace', async () => {
     const s = server();
     const tree: Tree = {};
-    const result = tool(folderOn(fakeFolder(tree)), 'computer_folder_write')!.handler({ files: [{ file: 'КП Ёлка.docx', to: 'КП Ёлка.docx' }] }, call('c8'));
+    const result = tool(folderOn(fakeFolder(tree)), 'computer_folder_write')!.handler({ files: [{ file: 'КП Ёлка.docx', to: 'КП Ёлка.docx', replace: true }] }, call('c8'));
     await asked('c8');
     tree['КП Ёлка.docx'] = new File(['своё КП'], 'КП Ёлка.docx');
     answerWrite('c8', true);
@@ -180,5 +180,20 @@ describe('the agent’s tool that writes into the folder of the computer', () =>
     await asked('c14');
     stopPendingWrites('thread-1');
     expect(await stopped).toEqual({ error: 'Запись не сделана: ответ остановили.' });
+  });
+});
+
+describe('the input while a write goes on', () => {
+  // After «Да» the files go up and are written for seconds: a new message then would run beside the write.
+  it('waits from the call to the end of the write, not only while «Да» is awaited', async () => {
+    server();
+    const { writeGoesOn } = await import('./computer-saves.ts');
+    const result = tool(folderOn(fakeFolder({})), 'computer_folder_write')!.handler({ files: [{ file: 'КП Ёлка.docx', to: 'КП Ёлка.docx' }] }, call('g1'));
+    await asked('g1');
+    expect(writeGoesOn('thread-1')).toBe(true);
+    answerWrite('g1', true);
+    expect(writeGoesOn('thread-1')).toBe(true);
+    await result;
+    expect(writeGoesOn('thread-1')).toBe(false);
   });
 });

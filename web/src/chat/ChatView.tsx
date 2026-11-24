@@ -31,7 +31,7 @@ import { createWebProgressStore, WebProgressContext, webProgressSubscriber } fro
 import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
 import { PartBoundary } from '../ui/ErrorBoundary.tsx';
-import { stopPendingWrites, useWriteAsked } from '../projects/computer-saves.ts';
+import { pendingWrite, stopPendingWrites, useWriteAsked } from '../projects/computer-saves.ts';
 
 // The feed sticks to the bottom while the person is within this distance of it.
 const STICK_PX = 140;
@@ -88,7 +88,8 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
   // What the agent does now is said in one place, the live line (decision of the owner 21.11): the call under way, else
   // «Работаю» until the next thing to see — also while the model reasons, whose reasoning would otherwise be the last
   // message and take «Работаю» away (decision of the owner 15.11). Its words being written say it themselves.
-  const underWay = callsUnderWay(messages).filter((call) => running || answersInBrowser(call.function.name));
+  // A write awaiting «Да» is its card in the answer, not a line «в процессе» under it.
+  const underWay = callsUnderWay(messages).filter((call) => (running || answersInBrowser(call.function.name)) && !pendingWrite(call.id));
   const last = messages.findLast((m) => FEED_ROLES.has(m.role));
   const waiting = running && (last?.role === 'user' || last?.role === 'tool' || (last?.role === 'assistant' && !last.content && !(last).toolCalls?.length));
   const liveCall = underWay.at(-1) ?? null;
@@ -141,10 +142,12 @@ export function ChatView(props: CopilotChatViewProps) {
   // lets the write go — a new message would run beside the write still to come.
   const writeAsked = useWriteAsked(extras.threadId);
   const busy = isRunning || writeAsked;
+  // The run of the agent ended with the call, and CopilotChat gives no «Стоп» then: the run the browser's tool belongs to
+  // is stopped here, or CopilotKit would go on with the agent once the write gave up.
   const stop = writeAsked
     ? () => {
+        extras.stopRun(agent);
         stopPendingWrites(extras.threadId);
-        onStop?.();
       }
     : onStop;
   const messages = props.messages ?? [];

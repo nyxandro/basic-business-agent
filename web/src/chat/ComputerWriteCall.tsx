@@ -107,7 +107,7 @@ function Written({ threadId, folderName, item }: { threadId: string; folderName:
       </div>
       {asking && item.previous ? (
         <div className={styles.confirm}>
-          <span>{t.restoreConfirm(item.to)}</span>
+          <span>{t.restoreConfirm(item.to, folderName)}</span>
           <div className={styles.askActions}>
             <Button size="sm" variant="primary" onClick={() => void restore(item.previous!)}>
               {t.restoreYes}
@@ -127,8 +127,10 @@ export function ComputerWriteCall({ call, agent }: { call: CallProps; agent: Pic
   const { threadId } = useChatExtras();
   const ask = usePendingWrite(call.toolCallId);
   if (ask) return <AskCard toolCallId={call.toolCallId} ask={ask} />;
-  const result = call.status === 'complete' && call.result !== undefined ? readComputerWriteResult(call.result) : null;
-  // Under way, or a result that is not a write's (a refusal of the input by Mastra): the line of the call says it.
+  const result = call.result !== undefined ? readComputerWriteResult(call.result) : null;
+  // Under way: the live line under the answer says it (ChatView.tsx).
+  if (call.status !== 'complete') return null;
+  // A result that is not a write's (a refusal of the input by Mastra): the line of the call says it.
   if (!result) return <ToolRow name={COMPUTER_TOOLS.write} status={call.status} parameters={call.parameters} result={call.result} agent={agent} />;
   if ('declined' in result) return <p className={styles.declined}>{t.writeDeclined}</p>;
   // Nothing was asked: a file in the way, no right to write — the agent hears it too.

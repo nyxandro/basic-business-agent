@@ -73,10 +73,30 @@ export function usePendingWrite(toolCallId: string): WriteAsk | null {
   return useSyncExternalStore(subscribe, () => pendingWrite(toolCallId));
 }
 
-// The conversation waits for the person's answer on a write: its input waits too, as while the agent answers — a new
-// message would run beside the write still to come.
+// The writes of each conversation going on now: from the call, through «Да», to the last file written.
+const going = new Map<string, number>();
+
+export async function whileWriting<T>(threadId: string, work: () => Promise<T>): Promise<T> {
+  going.set(threadId, (going.get(threadId) ?? 0) + 1);
+  changed();
+  try {
+    return await work();
+  } finally {
+    const left = (going.get(threadId) ?? 1) - 1;
+    if (left > 0) going.set(threadId, left);
+    else going.delete(threadId);
+    changed();
+  }
+}
+
+export function writeGoesOn(threadId: string): boolean {
+  return going.has(threadId) || [...asks.values()].some((p) => p.ask.threadId === threadId);
+}
+
+// A write of the conversation goes on — «Да» awaited, or files going up and written: its input waits too, as while the
+// agent answers — a new message would run beside the write still to come.
 export function useWriteAsked(threadId: string): boolean {
-  return useSyncExternalStore(subscribe, () => [...asks.values()].some((p) => p.ask.threadId === threadId));
+  return useSyncExternalStore(subscribe, () => writeGoesOn(threadId));
 }
 
 // --- The folder of a conversation in this tab ----------------------------------------------------------
@@ -133,8 +153,9 @@ const savesOf = (threadId: string) => `/app/api/threads/${encodeURIComponent(thr
 export async function saveToComputer(folder: HandleFolder, threadId: string, item: WriteAskItem): Promise<ComputerWriteItem> {
   let saved: ComputerSaveResponse | null = null;
   try {
+    // The card said «новый файл»: a file saved at the place while it waited is not touched, whatever the agent asked.
     const now = await targetOf(folder, item.to);
-    if (now.exists && !item.replace) return { to: item.to, written: false, error: `Пока ждали «Да», на этом месте появился файл «${now.path}» — он не тронут. Попросите агента записать заново.` };
+    if (now.exists && !item.exists) return { to: item.to, written: false, error: `Пока ждали «Да», на этом месте появился файл «${now.path}» — он не тронут. Попросите агента записать заново.` };
     const previous = now.exists ? await currentFile(folder, item.to) : null;
     const form = new FormData();
     form.append('source', item.file);
@@ -142,9 +163,9 @@ export async function saveToComputer(folder: HandleFolder, threadId: string, ite
     if (previous) form.append('previous', previous, previous.name);
     saved = await apiForm<ComputerSaveResponse>(savesOf(threadId), form);
     await writeFileAt(folder, item.to, await apiBlob(threadFileUrl(threadId, saved.snapshot)));
-    // The agent's own write: the next write of the file is not «changed after the agent read it».
-    const written = (await targetOf(folder, item.to)).exists;
-    if (written) noteRead(folder, item.to, written.lastModified);
+    // The agent's own write: the next write of the file is not «changed after the agent read it». The file's time is set
+    // by this computer's clock as the write ends, never after now.
+    noteRead(folder, item.to, Date.now());
     return { to: item.to, written: true, name: saved.name, bytes: saved.bytes, snapshot: saved.snapshot, previous: saved.previous, replaced: previous !== null };
   } catch (error) {
     const failure = failureText(error);

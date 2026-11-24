@@ -112,6 +112,7 @@ describe('the light in a turn of the agent', () => {
     onTurnsFailed: vi.fn(),
     composerExtra: null,
     composerNotice: null,
+    stopRun: vi.fn(),
   };
   const WORDS: AssistantMessage = { id: 'a1', role: 'assistant', content: 'Сейчас соберу документ.' };
   // AG-UI puts the calls of a step on the message of the words said before them.

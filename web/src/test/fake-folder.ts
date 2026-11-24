@@ -58,7 +58,7 @@ export function fakeFolder(tree: Tree, options: { access?: Partial<Record<Folder
           return Promise.resolve();
         },
         close: () => {
-          node[n] = new File([written], n, { lastModified: Date.UTC(2026, 10, 25, 9) });
+          node[n] = new File([written], n, { lastModified: Date.now() });
           return Promise.resolve();
         },
         abort: () => Promise.resolve(),

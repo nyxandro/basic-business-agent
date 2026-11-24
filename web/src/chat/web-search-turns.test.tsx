@@ -55,6 +55,7 @@ function extras(interrupt: ChatExtras['interrupt'] = null): ChatExtras {
     onTurnsFailed: vi.fn(),
     composerExtra: null,
     composerNotice: null,
+    stopRun: vi.fn(),
   };
 }
 

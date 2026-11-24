@@ -83,8 +83,9 @@ export function ChatPanel({
       onTurnsFailed,
       composerExtra,
       composerNotice,
+      stopRun: (running) => copilotkit.stopAgent({ agent: running }),
     }),
-    [agent, threadId, draft, attachments, onRunFinished, onThreadTitled, interrupt, shownFailure, lost, interruptedIds, onTurnsFailed, composerExtra, composerNotice],
+    [agent, threadId, draft, attachments, onRunFinished, onThreadTitled, interrupt, shownFailure, lost, interruptedIds, onTurnsFailed, composerExtra, composerNotice, copilotkit],
   );
 
   return (

@@ -1,4 +1,5 @@
 import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
+import type { useAgent } from '@copilotkit/react-core';
 import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
 import type { ChatFailure } from '../chat/chat-errors.ts';
 
@@ -36,6 +37,9 @@ export interface ChatExtras {
   composerExtra: ReactNode;
   // Above the input: why the conversation's project is gone (spec, section 8.20).
   composerNotice: ReactNode;
+  // Stops the run of the agent, the browser's tools of its last call too: «Стоп» of a write onto the computer that waits
+  // for «Да» once the model is done (spec, section 8.25) — CopilotChat offers no «Стоп» then.
+  stopRun: (agent: ReturnType<typeof useAgent>['agent']) => void;
 }
 
 export const ChatExtrasContext = createContext<ChatExtras | null>(null);

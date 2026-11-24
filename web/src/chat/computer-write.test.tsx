@@ -89,7 +89,7 @@ describe('a write onto the computer in the chat', () => {
     show(complete('w4', WRITTEN));
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
-    expect(screen.getByText('Заменить «Договоры/Договор.docx» на компьютере прежней версией? Правки, сделанные после записи агента, пропадут.')).toBeInTheDocument();
+    expect(screen.getByText('Заменить «Договоры/Договор.docx» в папке «Тендер» прежней версией? Правки, сделанные после записи агента, пропадут.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Отмена' }));
     expect(await textAt(tree, 'Договоры', 'Договор.docx')).toBe('правка агента');
     await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));

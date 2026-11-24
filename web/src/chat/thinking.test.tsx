@@ -47,6 +47,7 @@ function extras(): ChatExtras {
     onTurnsFailed: vi.fn(),
     composerExtra: null,
     composerNotice: null,
+    stopRun: vi.fn(),
   };
 }
 
