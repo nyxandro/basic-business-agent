@@ -25,6 +25,7 @@ import type { SkillsDeps } from '../skills-admin/store.ts';
 import { loadSystemSkills, SYSTEM_SKILLS_DIR } from '../skills-admin/system.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
 import { assertIsolationAvailable } from '../sandbox/workspace.ts';
+import { keepBeforeAgentWrite } from '../projects/trash.ts';
 import { createConnectionManager, type ConnectionManager, type ConnectorRuntime } from '../connections/manager.ts';
 import type { RunnerAccess } from '../connections/programs.ts';
 import { createSecretBox } from '../crypto/secret-box.ts';
@@ -367,7 +368,10 @@ export async function createTestApp(
     workflows: { [workflow.id]: workflow },
     ...(opts.sandbox
       ? {
-          sandbox: { deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir }, isolation: assertIsolationAvailable() },
+          sandbox: {
+            deps: { workspaceRoot, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir, beforeWrite: (ctx, paths) => keepBeforeAgentWrite(workspaceRoot, ctx, paths) },
+            isolation: assertIsolationAvailable(),
+          },
           signing: { run: sandboxRunner({ venv: SKILLS_VENV, isolation: assertIsolationAvailable(), readOnlyPaths: [ORG_SCRIPTS_DIR] }), limiter: commandLimiter, workRoot: previewRoot, chains },
         }
       : {}),

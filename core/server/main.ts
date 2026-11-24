@@ -2,7 +2,7 @@
 // Any configuration problem stops the start with APP_CONFIG_INVALID and the list of files and fields.
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recoverProjectFolders, startTrashPurge } from '../projects/trash.ts';
+import { keepBeforeAgentWrite, recoverProjectFolders, startTrashPurge } from '../projects/trash.ts';
 import { startDraftsSweep } from '../storage/drafts-sweep.ts';
 import { serve } from '@hono/node-server';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,7 @@ import { PostgresStore } from '@mastra/pg';
 import { createMastraRuntime } from '../runtime/mastra.ts';
 import { createConnectionManager } from '../connections/manager.ts';
 import { createLimiter, MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS } from '../sandbox/limiter.ts';
-import { assertIsolationAvailable } from '../sandbox/workspace.ts';
+import { assertIsolationAvailable, type SandboxDeps } from '../sandbox/workspace.ts';
 import { assertSandboxEnvironment } from '../sandbox/environment.ts';
 import { migrate } from '../db/migrate.ts';
 import { createAuthPool, createPool } from '../db/pool.ts';
@@ -117,7 +117,13 @@ async function main(): Promise<void> {
   const commandLimiter = createLimiter(MAX_CONCURRENT_COMMANDS, QUEUE_TIMEOUT_MS);
   const officeLimiter = createLimiter(PREVIEW_MAX_CONCURRENT, PREVIEW_QUEUE_WAIT_MS);
   const sandbox = {
-    deps: { workspaceRoot: env.APP_WORKSPACE_DIR, skillsVenv: SKILLS_VENV, limiter: commandLimiter, orgFilesDir: join(tmpdir(), ORG_FILES_DIR) },
+    deps: {
+      workspaceRoot: env.APP_WORKSPACE_DIR,
+      skillsVenv: SKILLS_VENV,
+      limiter: commandLimiter,
+      orgFilesDir: join(tmpdir(), ORG_FILES_DIR),
+      beforeWrite: (ctx, paths) => keepBeforeAgentWrite(env.APP_WORKSPACE_DIR, ctx, paths),
+    } satisfies SandboxDeps,
     isolation: assertIsolationAvailable(),
   };
   assertSandboxEnvironment(SKILLS_VENV);

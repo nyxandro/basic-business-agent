@@ -1,6 +1,5 @@
 // People of the installation: invites, password resets, roles, blocking (spec, scenario 5).
 // Links are copied by the admin and sent by hand; there are no e-mails (spec, section 15).
-import { SHARED } from '../projects/access.ts';
 import type { InviteCreate } from '@bba/contracts';
 import type pg from 'pg';
 import { writeAudit } from '../audit/audit.ts';
@@ -30,9 +29,6 @@ export interface UserListItem {
   roleIds: string[];
   departmentIds: string[];
   createdAt: Date;
-  // Their projects and how many of them are open to colleagues: they go to the administrator who
-  // removes the employee (spec, section 8.20).
-  projects: { total: number; shared: number };
 }
 
 async function emailTaken(db: Pick<pg.Pool, 'query'>, email: string): Promise<boolean> {
@@ -229,20 +225,18 @@ export async function setUserBlocked(db: Db, actorUserId: string, userId: string
 
 export async function listUsers(db: Db): Promise<UserListItem[]> {
   const { rows } = await db.query<{
-    id: string; email: string; name: string; position: string | null; blocked: boolean; role_ids: string[] | null; department_ids: string[] | null; projects: number; shared_projects: number; created_at: Date;
+    id: string; email: string; name: string; position: string | null; blocked: boolean; role_ids: string[] | null; department_ids: string[] | null; created_at: Date;
   }>(
     `SELECT u."id" AS id, u."email" AS email, u."name" AS name, p.position,
             COALESCE(p.blocked_at IS NOT NULL OR p.deletion_started_at IS NOT NULL, false) AS blocked,
             (SELECT array_agg(role_id::text) FROM app.user_roles WHERE user_id = u."id") AS role_ids,
             (SELECT array_agg(department_id::text) FROM app.department_members WHERE user_id = u."id") AS department_ids,
-            (SELECT count(*)::int FROM app.projects p WHERE p.user_id = u."id") AS projects,
-            (SELECT count(*)::int FROM app.projects p WHERE p.user_id = u."id" AND ${SHARED}) AS shared_projects,
             u."createdAt" AS created_at
        FROM app."user" u LEFT JOIN app.user_profiles p ON p.user_id = u."id"
       ORDER BY u."name"`,
   );
   return rows.map((r) => ({
     id: r.id, email: r.email, name: r.name, position: r.position ?? '', blocked: r.blocked,
-    roleIds: r.role_ids ?? [], departmentIds: r.department_ids ?? [], createdAt: r.created_at, projects: { total: r.projects, shared: r.shared_projects },
+    roleIds: r.role_ids ?? [], departmentIds: r.department_ids ?? [], createdAt: r.created_at,
   }));
 }

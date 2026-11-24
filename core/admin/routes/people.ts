@@ -11,6 +11,7 @@ import type { Db } from '../../db/pool.ts';
 import { appError } from '../../errors/catalog.ts';
 import { assertCanGrant, requireAnyPermission, requirePermission } from '../../auth/guards.ts';
 import { access, parseJson, type AppEnv } from '../../http/http.ts';
+import { projectCountsOf } from '../../projects/transfer.ts';
 
 // Managing someone (reset link, roles, block) needs at least the rights that person has:
 // otherwise an admin could take over a stronger account through a reset link.
@@ -28,7 +29,12 @@ export function registerPeopleRoutes(
   const guard = requirePermission('users');
   const link = (kind: 'invite' | 'reset', token: string) => new URL(`/${kind}/${token}`, publicUrl).toString();
 
-  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits'), async (c) => c.json({ users: await listUsers(db) }));
+  app.get('/app/api/admin/users', requireAnyPermission('users', 'departments', 'limits'), async (c) => {
+    const users = await listUsers(db);
+    // Their projects go to the administrator who removes them (spec, section 8.20): the counts come from projects.
+    const counts = await projectCountsOf(db, users.map((u) => u.id));
+    return c.json({ users: users.map((u) => ({ ...u, projects: counts.get(u.id)! })) });
+  });
   // Names only, to pick whom a skill or a background task is for: no e-mails, roles or blocking.
   app.get('/app/api/admin/people', requireAnyPermission('users', 'departments', 'limits', 'skills', 'agents'), async (c) => {
     const { rows } = await db.query<{ id: string; name: string }>('SELECT "id", "name" FROM app."user" ORDER BY "name", "id"');

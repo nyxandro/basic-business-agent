@@ -44,7 +44,7 @@ export const REQUEST_KEYS = {
 
 export type RunKind = 'chat' | 'background' | 'draft';
 
-interface ContextReader {
+export interface ContextReader {
   get(key: string): unknown;
 }
 

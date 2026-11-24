@@ -14,8 +14,7 @@ import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../log/log.ts';
 import type { AnyTool } from '../plugins/public/index.ts';
-import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf } from '../run-context/request-keys.ts';
-import { keepBeforeWrite } from '../projects/trash.ts';
+import { optionalContextValue, REQUEST_KEYS, requireContextValue, skillPathsOf, type ContextReader } from '../run-context/request-keys.ts';
 import { abilitiesOf } from '../abilities/abilities.ts';
 import { conversationRoot, draftsPath, existingInside, openFileInside } from '../workspace/layout.ts';
 import { sandboxOptions } from './environment.ts';
@@ -74,6 +73,9 @@ export interface SandboxDeps {
   limiter: Limiter;
   // The letterhead and the logo of the organisation, read-only (core/org-docs/files.ts); a sandbox without it sees none.
   orgFilesDir?: string;
+  // Called before the agent's own file tools write over these paths of the run's folder: the server keeps the
+  // project's files as they were for its trash (core/projects/trash.ts, spec 8.20) — the sandbox knows no projects.
+  beforeWrite: (requestContext: ContextReader | undefined, paths: string[]) => void;
 }
 
 type Ctx = { get(key: string): unknown } | undefined;
@@ -151,14 +153,14 @@ export function createAgentWorkspace(deps: SandboxDeps, isolation: 'bwrap' | 'se
       [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: { enabled: commandsOn },
       [WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT]: { enabled: commandsOn },
       [WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS]: { enabled: commandsOn },
-      hooks: { beforeToolCall: (ctx) => keepBytesOutOfReadFile(ctx) ?? keepPreviousVersion(deps.workspaceRoot, ctx) },
+      hooks: { beforeToolCall: (ctx) => keepBytesOutOfReadFile(ctx) ?? announceWrite(deps.beforeWrite, ctx) },
     },
   });
   return workspace;
 }
 
-// The agent's own tools write a file in place: in a project, the file as it was before this answer
-// is copied into the answer's snapshot first, so its previous version reaches the trash (spec, 8.20).
+// The agent's own tools write a file in place: whoever built the sandbox is told first (in a project, the file
+// as it was before this answer is copied into the answer's snapshot, so its previous version reaches the trash, 8.20).
 const PATCH_FILE = /^\*\*\* (?:Update|Delete) File: (.+)$/gm;
 
 function pathsWritten(tool: string, input: unknown): string[] {
@@ -168,14 +170,10 @@ function pathsWritten(tool: string, input: unknown): string[] {
   return [];
 }
 
-function keepPreviousVersion(workspaceRoot: string, { workspaceToolName, input, context }: WorkspaceToolHookContext): undefined {
+function announceWrite(beforeWrite: SandboxDeps['beforeWrite'], { workspaceToolName, input, context }: WorkspaceToolHookContext): undefined {
   const paths = pathsWritten(workspaceToolName, input);
   if (paths.length === 0) return undefined;
-  const ctx = (context as { requestContext?: Ctx } | undefined)?.requestContext;
-  const id = optionalContextValue(ctx, REQUEST_KEYS.projectSnapshot);
-  const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
-  const ownerId = optionalContextValue(ctx, REQUEST_KEYS.projectOwnerId);
-  if (id && projectId && ownerId) keepBeforeWrite(workspaceRoot, { id, projectId, ownerId }, paths);
+  beforeWrite((context as { requestContext?: Ctx } | undefined)?.requestContext, paths);
   return undefined;
 }
 

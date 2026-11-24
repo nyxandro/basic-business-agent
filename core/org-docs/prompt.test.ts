@@ -134,7 +134,7 @@ describe('the sandbox of an answer', () => {
       writeFileSync(join(orgFilesDir, 'e'.repeat(64), 'blank.docx'), 'PK letterhead');
       // Where a stamp would be if it ever were on the disk of the server: outside every folder of the sandbox.
       writeFileSync(join(root, 'stamp.png'), 'stamp');
-      const workspace = createAgentWorkspace({ workspaceRoot: join(root, 'ws'), skillsVenv: VENV, limiter: createLimiter(8, 60_000), orgFilesDir }, assertIsolationAvailable());
+      const workspace = createAgentWorkspace({ workspaceRoot: join(root, 'ws'), skillsVenv: VENV, limiter: createLimiter(8, 60_000), orgFilesDir, beforeWrite: () => undefined }, assertIsolationAvailable());
       const rc = new RequestContext();
       for (const [key, value] of [[REQUEST_KEYS.userId, 'olga'], [REQUEST_KEYS.threadId, 't-org'], [REQUEST_KEYS.skillPaths, '[]']] as const) rc.set(key, value);
       const sandbox = (await workspace.resolveSandbox({ requestContext: rc }))!;

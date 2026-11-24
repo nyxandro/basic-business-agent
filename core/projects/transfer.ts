@@ -11,7 +11,27 @@ import { logEvent } from '../log/log.ts';
 import { projectRoot } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
+import { SHARED } from './access.ts';
 import { NAME_MAX, UNPINNED_POSITION } from './projects.ts';
+
+export interface ProjectCounts {
+  total: number;
+  // Open to colleagues: they keep their access after the transfer.
+  shared: number;
+}
+
+// Projects of each of these people and how many of them are open to colleagues: the administrator who removes
+// an employee sees what goes to them (spec, section 8.20). Every person asked gets a line, with no projects too.
+export async function projectCountsOf(db: Pick<Db, 'query'>, userIds: string[]): Promise<Map<string, ProjectCounts>> {
+  const { rows } = await db.query<{ user_id: string; total: number; shared: number }>(
+    `SELECT u.id AS user_id,
+            (SELECT count(*)::int FROM app.projects p WHERE p.user_id = u.id) AS total,
+            (SELECT count(*)::int FROM app.projects p WHERE p.user_id = u.id AND ${SHARED}) AS shared
+       FROM unnest($1::text[]) AS u(id)`,
+    [userIds],
+  );
+  return new Map(rows.map((r) => [r.user_id, { total: r.total, shared: r.shared }]));
+}
 
 // The administrator may have a project of the same name: the given one is named after its creator.
 // The name of the former creator in it is cut short, so each try differs in its number whatever its length.

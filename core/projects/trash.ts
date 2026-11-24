@@ -14,6 +14,7 @@ import type { TrashBatchDto, TrashRestore } from '@bba/contracts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { logEvent } from '../log/log.ts';
+import { optionalContextValue, REQUEST_KEYS, type ContextReader } from '../run-context/request-keys.ts';
 import { copyOpened, inFolderOf, openRegular, sameContent, walkRegularFiles } from '../workspace/held-folder.ts';
 import { contextRoot, freeName, moveFileOutOf, projectRoot, removeFileInside, resolveInside } from '../workspace/layout.ts';
 import { projectArea } from '../storage/areas.ts';
@@ -124,6 +125,15 @@ export function keepBeforeWrite(workspaceRoot: string, snapshot: Pick<ProjectSna
       }
     });
   }
+}
+
+// The same for the agent's own file tools, told by the sandbox (core/sandbox/workspace.ts): in a run of a project
+// the snapshot of the answer is in its request context; a run outside projects keeps nothing.
+export function keepBeforeAgentWrite(workspaceRoot: string, ctx: ContextReader | undefined, paths: string[]): void {
+  const id = optionalContextValue(ctx, REQUEST_KEYS.projectSnapshot);
+  const projectId = optionalContextValue(ctx, REQUEST_KEYS.projectId);
+  const ownerId = optionalContextValue(ctx, REQUEST_KEYS.projectOwnerId);
+  if (id && projectId && ownerId) keepBeforeWrite(workspaceRoot, { id, projectId, ownerId }, paths);
 }
 
 // One project at a time: two answers in it end at once and see the same removed file.

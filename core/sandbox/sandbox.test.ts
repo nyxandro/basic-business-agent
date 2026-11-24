@@ -26,6 +26,9 @@ const SKILL = join(ROOT, 'skills/note-taking');
 const VENV = join(ROOT, '.venv-skills');
 let workspaceRoot: string;
 let model: FakeModel;
+// What the sandbox announced before the agent's file tools wrote over files (the project's trash keeps them, spec 8.20).
+const beforeWrites: { threadId: unknown; paths: string[] }[] = [];
+const beforeWrite = (ctx: { get(key: string): unknown } | undefined, paths: string[]) => beforeWrites.push({ threadId: ctx?.get(REQUEST_KEYS.threadId), paths });
 let agent: Agent;
 let parent: Agent;
 
@@ -134,7 +137,7 @@ beforeAll(async () => {
     gateway,
     firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
     stepMs: MODEL_CALL_MAX_MS,
-    sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
+    sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000), beforeWrite }, isolation: assertIsolationAvailable() },
     // As in core/runtime/mastra.ts: the layers add the time to the latest message before the pictures are looked for.
     processorsFor: () => ({ input: [stampTime, createWidgetHistoryProcessor(), createImageViewProcessor(workspaceRoot)], output: [] }),
   });
@@ -143,7 +146,7 @@ beforeAll(async () => {
     gateway,
     firstChunkMs: FALLBACK_FIRST_CHUNK_MS,
     stepMs: MODEL_CALL_MAX_MS,
-    sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, isolation: assertIsolationAvailable() },
+    sandbox: { deps: { workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000), beforeWrite }, isolation: assertIsolationAvailable() },
     processorsFor: () => ({ input: [stampTime], output: [] }),
   });
   process.env.BBA_TEST_SECRET = 'app-secret-value';
@@ -165,11 +168,24 @@ describe('sandbox', () => {
     }
   });
 
+  // The sandbox knows nothing of projects: before the agent's own file tools write over files it hands their paths,
+  // with the run, to whoever built it — the server gives the project's trash (core/server/main.ts).
+  it('announces the paths the agent’s file tools are about to write over, with the run', async () => {
+    beforeWrites.length = 0;
+    const write = (req: FakeRequest) => ({ toolCalls: [{ name: (req.tools ?? []).map((t) => t.function.name).find((n) => n.endsWith('write_file'))!, args: { path: 'итог.txt', content: 'готово', overwrite: true } }] });
+    model.script(write, { text: 'Записал.' });
+    await runAs('olga', undefined, [SKILL], 'Запиши итог', undefined, agent, 't-olga-write');
+    expect(beforeWrites).toEqual([{ threadId: 't-olga-write', paths: ['итог.txt'] }]);
+    model.script(command('cat итог.txt'), { text: 'Ок.' });
+    await runAs('olga', undefined, [SKILL], 'Что в итоге?', undefined, agent, 't-olga-write');
+    expect(beforeWrites).toHaveLength(1);
+  });
+
   // A sandbox is kept for the calls that follow (a process left running is looked at later), one per folder: one unused
   // for a while is stopped and dropped, so they do not pile up with the conversations.
   it('stops and drops a sandbox unused for a while, and makes a new one when its conversation comes back', async () => {
     let now = 0;
-    const workspace = createAgentWorkspace({ workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000) }, assertIsolationAvailable(), { idleMs: 1000, now: () => now });
+    const workspace = createAgentWorkspace({ workspaceRoot, skillsVenv: VENV, limiter: createLimiter(8, 60_000), beforeWrite }, assertIsolationAvailable(), { idleMs: 1000, now: () => now });
     const contextOf = (threadId: string) => {
       const rc = new RequestContext();
       for (const [key, value] of [[REQUEST_KEYS.userId, 'olga'], [REQUEST_KEYS.threadId, threadId], [REQUEST_KEYS.skillPaths, '[]']] as const) rc.set(key, value);
