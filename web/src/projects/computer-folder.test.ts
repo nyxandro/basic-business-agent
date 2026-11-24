@@ -8,17 +8,19 @@ import { computerTools } from './computer-tools.ts';
 
 type Tree = { [name: string]: Tree | string };
 
-// A folder of the File System Access API made of a plain object: a string is a file with that text.
+// A folder of the File System Access API made of a plain object: a string is a file with that text. Read only: a write
+// is the business of computer-write.test.ts.
+const unwritable = () => Promise.reject(new DOMException('read only', 'NotAllowedError'));
 function handleOf(name: string, tree: Tree, access: PermissionState = 'granted'): DirectoryHandle {
   return {
     kind: 'directory',
     name,
     async *values() {
-      for (const [n, v] of Object.entries(tree)) yield await Promise.resolve(typeof v === 'string' ? { kind: 'file' as const, name: n, getFile: () => Promise.resolve(new File([v], n, { lastModified: Date.UTC(2026, 10, 1) })) } : handleOf(n, v, access));
+      for (const [n, v] of Object.entries(tree)) yield await Promise.resolve(typeof v === 'string' ? { kind: 'file' as const, name: n, getFile: () => Promise.resolve(new File([v], n, { lastModified: Date.UTC(2026, 10, 1) })), createWritable: unwritable } : handleOf(n, v, access));
     },
     getDirectoryHandle: (n: string) => (typeof tree[n] === 'object' ? Promise.resolve(handleOf(n, tree[n], access)) : Promise.reject(new DOMException('no', 'NotFoundError'))),
     getFileHandle: (n: string) =>
-      typeof tree[n] === 'string' ? Promise.resolve({ kind: 'file' as const, name: n, getFile: () => Promise.resolve(new File([tree[n] as string], n)) }) : Promise.reject(new DOMException('no', 'NotFoundError')),
+      typeof tree[n] === 'string' ? Promise.resolve({ kind: 'file' as const, name: n, getFile: () => Promise.resolve(new File([tree[n] as string], n)), createWritable: unwritable }) : Promise.reject(new DOMException('no', 'NotFoundError')),
     queryPermission: () => Promise.resolve(access),
     requestPermission: () => Promise.resolve('granted'),
   };
@@ -31,7 +33,7 @@ const TREE: Tree = {
   'readme.md': '# Папка тендера',
 };
 
-const folder = (access: PermissionState = 'granted'): ComputerFolder => ({ kind: 'handle', name: 'Тендер', handle: handleOf('Тендер', TREE, access) });
+const folder = (access: PermissionState = 'granted'): ComputerFolder => ({ kind: 'handle', name: 'Тендер', handle: handleOf('Тендер', TREE, access), mode: 'read' });
 type AnyTool = { name: string; description: string; handler: (args: Record<string, unknown>) => Promise<unknown> };
 const tool = (f: ComputerFolder, name: string) => computerTools(f, 'thread-1').find((t) => t.name === name) as unknown as AnyTool;
 

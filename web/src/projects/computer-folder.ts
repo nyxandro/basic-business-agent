@@ -4,34 +4,53 @@
 // (File System Access API: the handle is remembered in IndexedDB of this browser, the right to read it — by
 // the browser, which may ask once more after a restart). Firefox and Safari have no such way: the folder is
 // chosen with a file input and kept only while the tab is open.
-// Nothing is copied ahead: a file goes anywhere only when the agent reads it.
+// Nothing is copied ahead: a file goes anywhere only when the agent reads it. A folder given «Читать и записывать»
+// (spec, 8.25, «Запись в папку») lets the agent write into it too — computer-write.ts.
 
 // What the browser offers on top of lib.dom (WICG File System Access).
 interface ReadableHandle {
   kind: 'file' | 'directory';
   name: string;
 }
-interface FileHandle extends ReadableHandle {
+export interface WritableFile {
+  write(data: Blob): Promise<void>;
+  close(): Promise<void>;
+  abort(): Promise<void>;
+}
+export interface FileHandle extends ReadableHandle {
   kind: 'file';
   getFile(): Promise<File>;
+  createWritable(): Promise<WritableFile>;
 }
+// «Только читать» or «Читать и записывать»: the right the browser is asked for.
+export type FolderMode = 'read' | 'readwrite';
 export interface DirectoryHandle extends ReadableHandle {
   kind: 'directory';
   values(): AsyncIterable<FileHandle | DirectoryHandle>;
-  getDirectoryHandle(name: string): Promise<DirectoryHandle>;
-  getFileHandle(name: string): Promise<FileHandle>;
-  queryPermission(options: { mode: 'read' }): Promise<PermissionState>;
-  requestPermission(options: { mode: 'read' }): Promise<PermissionState>;
+  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<DirectoryHandle>;
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<FileHandle>;
+  queryPermission(options: { mode: FolderMode }): Promise<PermissionState>;
+  requestPermission(options: { mode: FolderMode }): Promise<PermissionState>;
 }
-type Picker = (options: { mode: 'read'; id?: string }) => Promise<DirectoryHandle>;
+type Picker = (options: { mode: FolderMode; id?: string }) => Promise<DirectoryHandle>;
 
 export type ComputerFolder =
-  // The folder itself, kept by this browser.
-  | { kind: 'handle'; name: string; handle: DirectoryHandle }
-  // Files chosen once, kept while the tab is open (webkitRelativePath without the folder's name).
+  // The folder itself, kept by this browser, with the mode it was given in.
+  | { kind: 'handle'; name: string; handle: DirectoryHandle; mode: FolderMode }
+  // Files chosen once, kept while the tab is open (webkitRelativePath without the folder's name): read only.
   | { kind: 'files'; name: string; files: Map<string, File> };
 
-export type FolderAccess = 'granted' | 'prompt' | 'denied';
+export type HandleFolder = Extract<ComputerFolder, { kind: 'handle' }>;
+
+// `missing` — the browser lets the folder be read, but it is gone: moved, removed, its disk unplugged.
+export type FolderAccess = 'granted' | 'prompt' | 'denied' | 'missing';
+
+interface StoredFolder {
+  name: string;
+  handle: DirectoryHandle;
+  // A folder kept before «Запись в папку» (25.11) has no mode: it was given to be read.
+  mode?: FolderMode;
+}
 
 export interface Entry {
   path: string;
@@ -90,28 +109,47 @@ export async function folderOf(projectId: string): Promise<ComputerFolder | null
   const kept = inMemory.get(projectId);
   if (kept) return kept;
   if (!canKeepFolder()) return null;
-  const stored = await withStore<{ name: string; handle: DirectoryHandle } | undefined>('readonly', (s) => s.get(projectId) as IDBRequest<{ name: string; handle: DirectoryHandle } | undefined>).catch(() => undefined);
+  const stored = await withStore<StoredFolder | undefined>('readonly', (s) => s.get(projectId) as IDBRequest<StoredFolder | undefined>).catch(() => undefined);
   if (!stored) return null;
-  const folder: ComputerFolder = { kind: 'handle', name: stored.name, handle: stored.handle };
+  const folder: ComputerFolder = { kind: 'handle', name: stored.name, handle: stored.handle, mode: stored.mode ?? 'read' };
   inMemory.set(projectId, folder);
   return folder;
 }
 
-// Chrome and its kin: the folder is chosen and kept. Null when the person closed the window.
-export async function pickFolder(projectId: string): Promise<ComputerFolder | null> {
+async function keep(projectId: string, folder: HandleFolder): Promise<void> {
+  const stored: StoredFolder = { name: folder.name, handle: folder.handle, mode: folder.mode };
+  await withStore('readwrite', (s) => s.put(stored, projectId));
+  inMemory.set(projectId, folder);
+  told(projectId);
+}
+
+// Chrome and its kin: the folder is chosen and kept, the browser asked for the mode's right at once. Null when the person
+// closed the window. The browser refuses a folder it deems too sensitive (a system folder) the same way.
+export async function pickFolder(projectId: string, mode: FolderMode): Promise<ComputerFolder | null> {
   const picker = (window as unknown as { showDirectoryPicker: Picker }).showDirectoryPicker;
   let handle: DirectoryHandle;
   try {
-    handle = await picker({ mode: 'read', id: 'bba-project-folder' });
+    handle = await picker({ mode, id: 'bba-project-folder' });
   } catch (error) {
     if ((error as DOMException).name === 'AbortError') return null;
     throw error;
   }
-  const folder: ComputerFolder = { kind: 'handle', name: handle.name, handle };
-  await withStore('readwrite', (s) => s.put({ name: handle.name, handle }, projectId));
-  inMemory.set(projectId, folder);
-  told(projectId);
+  const folder = { kind: 'handle' as const, name: handle.name, handle, mode };
+  await keep(projectId, folder);
   return folder;
+}
+
+// Another mode for a folder kept (by a click: «Читать и записывать» asks the browser for the right to write). The answer of
+// the browser; a refusal leaves the folder as it was.
+export async function changeMode(projectId: string, folder: ComputerFolder, mode: FolderMode): Promise<FolderAccess> {
+  if (folder.kind !== 'handle') throw new FolderError('Эту папку браузер даёт только читать.');
+  const access = await folder.handle.requestPermission({ mode });
+  if (access !== 'granted') {
+    told(projectId);
+    return access;
+  }
+  await keep(projectId, { ...folder, mode });
+  return access;
 }
 
 // Firefox and Safari: the files of a folder chosen with an input, for this tab.
@@ -138,13 +176,28 @@ export async function forgetFolder(projectId: string): Promise<void> {
 
 export async function accessOf(folder: ComputerFolder): Promise<FolderAccess> {
   if (folder.kind === 'files') return 'granted';
-  return folder.handle.queryPermission({ mode: 'read' });
+  const access = await folder.handle.queryPermission({ mode: folder.mode });
+  return access === 'granted' && !(await reachable(folder.handle)) ? 'missing' : access;
 }
 
-// Needs a click of the person: the browser asks them.
+// The first entry is enough: a folder gone from the computer cannot be listed.
+async function reachable(handle: DirectoryHandle): Promise<boolean> {
+  try {
+    for await (const entry of handle.values()) {
+      void entry;
+      break;
+    }
+    return true;
+  } catch (error) {
+    if ((error as DOMException).name === 'NotFoundError') return false;
+    throw error;
+  }
+}
+
+// Needs a click of the person: the browser asks them, for the right of the folder's mode.
 export async function allowAccess(projectId: string, folder: ComputerFolder): Promise<FolderAccess> {
   if (folder.kind === 'files') return 'granted';
-  const access = await folder.handle.requestPermission({ mode: 'read' });
+  const access = await folder.handle.requestPermission({ mode: folder.mode });
   told(projectId);
   return access;
 }

@@ -23,7 +23,7 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
 
   if (!folder) {
     return (
-      <button type="button" className={cx(styles.chip, styles.chipBare)} aria-label={t.connectShort} title={t.connectShort} onClick={() => void state.choose()}>
+      <button type="button" className={cx(styles.chip, styles.chipBare)} aria-label={t.connectShort} title={t.connectShort} onClick={() => void state.choose('read')}>
         <Icon name="monitor" size={17} className={styles.chipIcon} />
       </button>
     );
@@ -48,7 +48,7 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
           icon="folder"
           onSelect={() => {
             setOpen(false);
-            void state.choose();
+            void state.choose(state.mode ?? 'read');
           }}
         >
           {t.change}

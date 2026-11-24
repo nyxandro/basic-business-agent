@@ -1,16 +1,23 @@
 // The folder of the person's computer given to a project, as this browser holds it (spec, section 8.25): the
-// folder, whether the browser lets it be read now, and the actions — choose, allow, forget. Every place that
-// shows the folder (the chip of the input, the project's page) learns of a change at once.
+// folder and its mode, whether the browser lets it be used now, and the actions — choose, allow, change the mode,
+// forget. Every place that shows the folder (the chip of the input, the project's page) learns of a change at once.
 import { useCallback, useEffect, useState } from 'react';
-import { accessOf, adoptFiles, allowAccess, canKeepFolder, folderOf, forgetFolder, onFolderChange, pickFolder, type ComputerFolder, type FolderAccess } from './computer-folder.ts';
+import { accessOf, adoptFiles, allowAccess, canKeepFolder, changeMode, folderOf, forgetFolder, onFolderChange, pickFolder, type ComputerFolder, type FolderAccess, type FolderMode } from './computer-folder.ts';
+import { canWriteFolder } from './computer-write.ts';
 
 export interface ComputerFolderState {
   folder: ComputerFolder | null;
   access: FolderAccess | null;
+  // The folder's mode: a folder of a file input is read only.
+  mode: FolderMode | null;
   // The browser keeps the folder itself (Chrome and its kin); otherwise it lives while the tab is open.
   keeps: boolean;
-  choose: () => Promise<void>;
+  // The browser can write into a folder (Chrome, Edge, Yandex Browser).
+  writes: boolean;
+  choose: (mode: FolderMode) => Promise<void>;
   allow: () => Promise<void>;
+  // The browser's answer: a refusal keeps the mode as it was.
+  setMode: (mode: FolderMode) => Promise<FolderAccess>;
   forget: () => Promise<void>;
 }
 
@@ -58,16 +65,27 @@ export function useComputerFolder(projectId: string | null): ComputerFolderState
     };
   }, [projectId, turn]);
 
-  const choose = useCallback(async () => {
-    if (!projectId) return;
-    if (canKeepFolder()) await pickFolder(projectId);
-    else chooseWithInput(projectId);
-  }, [projectId]);
+  const choose = useCallback(
+    async (mode: FolderMode) => {
+      if (!projectId) return;
+      if (canKeepFolder()) await pickFolder(projectId, mode);
+      else chooseWithInput(projectId);
+    },
+    [projectId],
+  );
   const allow = useCallback(async () => {
     if (projectId && folder) await allowAccess(projectId, folder);
   }, [projectId, folder]);
+  const setMode = useCallback(
+    async (mode: FolderMode): Promise<FolderAccess> => {
+      if (!projectId || !folder) throw new Error('no folder to change the mode of');
+      return changeMode(projectId, folder, mode);
+    },
+    [projectId, folder],
+  );
   const forget = useCallback(async () => {
     if (projectId) await forgetFolder(projectId);
   }, [projectId]);
-  return { folder, access, keeps: canKeepFolder(), choose, allow, forget };
+  const mode = folder ? (folder.kind === 'handle' ? folder.mode : 'read') : null;
+  return { folder, access, mode, keeps: canKeepFolder(), writes: canWriteFolder(), choose, allow, setMode, forget };
 }

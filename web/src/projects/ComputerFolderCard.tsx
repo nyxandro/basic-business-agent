@@ -21,7 +21,7 @@ export function ComputerFolderCard({ projectId }: { projectId: string }) {
       <div className={styles.sectionHead}>
         <h2 className={styles.sectionTitle}>{t.title}</h2>
         {folder ? null : (
-          <Button icon="monitor" onClick={() => void state.choose()}>
+          <Button icon="monitor" onClick={() => void state.choose('read')}>
             {t.connect}
           </Button>
         )}
@@ -39,7 +39,7 @@ export function ComputerFolderCard({ projectId }: { projectId: string }) {
                 {t.allow}
               </Button>
             ) : null}
-            <Button size="sm" onClick={() => void state.choose()}>
+            <Button size="sm" onClick={() => void state.choose(state.mode ?? 'read')}>
               {t.change}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => void state.forget().then(() => toast(t.forgotten))}>
