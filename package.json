@@ -25,6 +25,8 @@
     "dev:web": "pnpm -C web dev",
     "gateway:config": "node --env-file=.env core/cli/gateway-config.ts",
     "lint": "eslint . && node tooling/architecture/cli.ts",
+    "load": "node --env-file=.env tooling/load/drive.ts",
+    "load:stand": "node --env-file=.env tooling/load/stand.ts",
     "prepare": "git config core.hooksPath tooling/git-hooks",
     "skills:pack": "node tooling/skills-pack.ts",
     "skills:setup": "uv venv .venv-skills --python-preference only-system --allow-existing && uv pip install --python .venv-skills/bin/python -r core/sandbox/requirements.txt && mkdir -p .venv-skills/node && cp core/sandbox/node/package.json core/sandbox/node/package-lock.json .venv-skills/node/ && npm ci --prefix .venv-skills/node --omit=dev --no-audit --no-fund && node tooling/sandbox-programs/install.ts",

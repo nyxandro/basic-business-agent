@@ -3,7 +3,7 @@
 // by the server, never by the browser) and the published — or, for a draft check, the draft —
 // version of the agent from Mastra Editor.
 import { MastraAgent } from '@ag-ui/mastra';
-import { CopilotRuntime, createCopilotRuntimeHandler } from '@copilotkit/runtime';
+import { CopilotRuntime, createCopilotRuntimeHandler, InMemoryAgentRunner } from '@copilotkit/runtime';
 import type { AbstractAgent } from '@ag-ui/client';
 import { EventType, type BaseEvent } from '@ag-ui/core';
 import { CHAT_EVENTS } from '@bba/contracts';
@@ -27,6 +27,13 @@ export type CopilotRequestContext =
 export interface CopilotHandler {
   handle(request: Request, ctx: CopilotRequestContext): Promise<Response>;
 }
+
+// What CopilotKit keeps in the memory of the process (@copilotkit/runtime rc.49, InMemoryAgentRunner): the answers under
+// way — never dropped, whatever the limits — and the events of finished turns, only for its own reconnection, which this
+// server does not use (a conversation is opened from the database, core/chat/connect.ts). Its defaults let it grow to
+// 1 000 conversations and 512 MB; these bound the worst case — long conversations with big results of tools — to a
+// little (issue #35; in the load test of 24.11 the history itself stayed far below either bound).
+const RUNNER_LIMITS = { maxThreads: 200, maxRunsPerThread: 10, maxBytes: 64 * 1024 * 1024 };
 
 // CopilotKit's runtime sends usage events to its servers on every request unless this switch is
 // set; it reads the switch at each event. Employees' activity of a closed installation stays
@@ -84,6 +91,7 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
   }
 
   const runtime = new CopilotRuntime({
+    runner: new InMemoryAgentRunner(RUNNER_LIMITS),
     agents: async ({ request }) => {
       const ctx = contexts.get(request);
       if (!ctx) throw new Error('CopilotKit request reached the runtime without a server context');
