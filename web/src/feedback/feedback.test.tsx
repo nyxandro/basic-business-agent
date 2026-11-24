@@ -1,7 +1,7 @@
 // Complaints, samples, «Поддержка», «Мои обращения», «Польза от агентов» (docs/specs/[20.11.2026]-feedback-and-value.md,
 // steps 3–5 and 7; F6, owner 24.11): «Пожаловаться» only under an answer that ended, its text kept when sending fails; the
-// heart of samples only on a document the agent made, on its block and in its viewer; the support answers and the
-// employee reads it; the report shows hours and spend.
+// heart of samples only on a document the agent made, on its block and in its viewer; the report shows hours and spend.
+// Tickets and their conversation — tickets.test.tsx.
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
@@ -222,77 +222,6 @@ describe('the heart of samples', () => {
     await waitFor(() => expect(within(viewer).getByRole('button', { name: IN })).toHaveAttribute('aria-pressed', 'true'));
     // The heart of the block under the viewer is filled as well.
     await waitFor(() => expect(screen.getAllByRole('button', { name: IN, hidden: true })).toHaveLength(2));
-  });
-});
-
-const TICKET = {
-  id: '14',
-  author: 'Ольга Смирнова',
-  kind: 'complaint',
-  subject: null,
-  agentId: 'sales',
-  agentName: 'Продажи',
-  status: 'new',
-  createdAt: '2026-11-22T06:00:00Z',
-  updatedAt: '2026-11-22T06:00:00Z',
-  comment: 'Цена на С21 из прошлогоднего прайса',
-  turn: 1,
-  snapshot: [
-    { role: 'user', at: '2026-11-22T05:58:00Z', text: 'Сколько стоит С21?', marks: [], turn: 1 },
-    { role: 'assistant', at: '2026-11-22T05:58:10Z', text: '400 ₽ за лист', marks: ['файл: КП.docx'], turn: 1 },
-  ],
-  files: [
-    { ord: 0, name: 'КП.docx', size: 2048, state: 'copied' },
-    { ord: 1, name: 'Видео.mp4', size: 80_000_000, state: 'too_large' },
-  ],
-  models: ['qwen3.8-flash'],
-  instructionsAt: null,
-  taskId: null,
-  reply: null,
-  handledBy: null,
-};
-
-describe('«Поддержка»', () => {
-  it('lists the complaints and answers one, its answer going to the employee', async () => {
-    const agents = { ...ME, permissions: ['agents'] };
-    const s = mockServer({
-      'GET /app/api/me': { body: agents },
-      'GET /app/api/admin/support': { body: { tickets: [TICKET] } },
-      'GET /app/api/admin/support/14': { body: TICKET },
-      'PATCH /app/api/admin/support/14': { body: { ...TICKET, status: 'resolved', reply: 'Обновили прайс', handledBy: 'Игорь' } },
-    });
-    renderApp('/admin/support');
-    const user = userEvent.setup();
-    const list = await screen.findByRole('list', { name: 'Поддержка' });
-    await user.click(within(list).getByRole('link', { name: /№14/ }));
-    expect(await screen.findByText('Цена на С21 из прошлогоднего прайса')).toBeInTheDocument();
-    expect(screen.getByLabelText('Ответ, на который пожаловались')).toHaveTextContent('400 ₽ за лист');
-    expect(screen.getByText(/не приложен: больше 50 МБ/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Скачать' })).toHaveAttribute('href', '/app/api/admin/support/14/files/0');
-    expect(screen.getByText(/qwen3.8-flash · инструкции из файла агента/)).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Ответ сотруднику'), 'Обновили прайс');
-    await user.selectOptions(screen.getByLabelText('Состояние'), 'resolved');
-    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
-    expect(await screen.findByText('Ответ отправлен')).toBeInTheDocument();
-    expect(s.calls.find((c) => c.method === 'PATCH')?.body).toEqual({ status: 'resolved', reply: 'Обновили прайс', seen: '2026-11-22T06:00:00Z' });
-  });
-
-  it('is not in the panel without «Агенты»', async () => {
-    const s = mockServer({ 'GET /app/api/me': { body: { ...ME, permissions: ['usage'] } }, 'GET /app/api/admin/value': apiError('APP_INTERNAL', 'нет', 500) });
-    renderApp('/admin/support');
-    expect(await screen.findByRole('link', { name: 'Польза от агентов' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Поддержка' })).not.toBeInTheDocument();
-    expect(s.calls.some((c) => c.path.startsWith('/app/api/admin/support'))).toBe(false);
-  });
-});
-
-describe('«Мои обращения»', () => {
-  it('shows the person’s complaints and the answer of the support', async () => {
-    mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/support': { body: { tickets: [{ id: '14', kind: 'complaint', subject: null, agentName: 'Продажи', status: 'resolved', comment: 'Цена старая', files: [], reply: 'Обновили прайс', createdAt: '2026-11-22T06:00:00Z', updatedAt: '2026-11-22T07:00:00Z' }] } } });
-    renderApp('/settings/requests');
-    expect(await screen.findByText('Обновили прайс')).toBeInTheDocument();
-    expect(screen.getByText('Решена')).toBeInTheDocument();
-    expect(screen.getByText('Цена старая')).toBeInTheDocument();
   });
 });
 

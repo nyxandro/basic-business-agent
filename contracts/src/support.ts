@@ -2,11 +2,16 @@
 // (docs/specs/[20.11.2026]-feedback-and-value.md).
 import { z } from 'zod';
 
-export const SUPPORT_STATUSES = ['new', 'in_progress', 'resolved', 'rejected'] as const;
+// The states of a ticket (F9, owner 24.11; by the classic help desks — open, pending, solved): waiting for the support's
+// answer; answered by the support, waiting for the employee; closed — resolved (by either side) or rejected (by the
+// support). A closed ticket takes no messages; the support may open it again.
+export const SUPPORT_STATUSES = ['open', 'answered', 'resolved', 'rejected'] as const;
 export type SupportStatus = (typeof SUPPORT_STATUSES)[number];
+export const isClosedStatus = (status: SupportStatus) => status === 'resolved' || status === 'rejected';
 
 // A complaint about an answer, or a request written straight from «Мои обращения» (F7, owner 24.11).
 export type SupportKind = 'complaint' | 'request';
+export type SupportSide = 'employee' | 'support';
 
 export const COMPLAINT_MAX = 4000;
 
@@ -18,8 +23,7 @@ export const complaintSchema = z.strictObject({
   comment: z.string().trim().min(1).max(COMPLAINT_MAX),
 });
 
-// The files of a ticket, all of them together: those of a conversation copied with a complaint, or those the employee
-// attached to a request.
+// The files of one message: those of a conversation copied with a complaint, or those attached to a message.
 export const SUPPORT_FILES_MAX_BYTES = 50 * 1024 * 1024;
 export const SUPPORT_REQUEST_FILES_MAX = 10;
 export const SUPPORT_SUBJECT_MAX = 200;
@@ -38,13 +42,23 @@ export const supportRequestSchema = z.strictObject({
   text: formText(COMPLAINT_MAX),
 });
 
+// POST …/support/:id/messages of either side: the text of the form; the files go as `files`.
+export const supportMessageSchema = z.strictObject({
+  text: formText(COMPLAINT_MAX),
+});
+
+// POST /app/api/admin/support/:id/status: close a ticket as resolved or rejected, or open a closed one again.
+export const supportStatusSchema = z.strictObject({
+  status: z.enum(['resolved', 'rejected', 'open']),
+});
+
 export interface SupportRequestResponse {
   id: string;
 }
 
 export interface ComplaintResponse {
   id: string;
-  // The complaint about this turn was there already: the comment was added to it.
+  // The complaint about this turn was there already: the comment was added to it as a message.
   appended: boolean;
 }
 
@@ -64,15 +78,28 @@ export interface SupportSnapshotMessage {
 }
 
 export interface SupportFileDto {
+  // The number of the file in its ticket: the address of its download.
   ord: number;
   name: string;
   size: number | null;
-  // Copied (and every file attached to a request); not copied — over 50 MB a complaint; the file was removed before the
+  // Copied (and every file attached to a message); not copied — over 50 MB a complaint; the file was removed before the
   // complaint.
   state: 'copied' | 'too_large' | 'gone';
 }
 
-export interface MyTicketDto {
+// A message of a ticket's conversation.
+export interface SupportMessageDto {
+  id: string;
+  side: SupportSide;
+  // Who wrote it; null — the person was removed.
+  author: string | null;
+  text: string;
+  at: string;
+  files: SupportFileDto[];
+}
+
+// What both sides know of a ticket in a list.
+interface TicketRowBase {
   id: string;
   kind: SupportKind;
   // The subject of a request; null — a complaint.
@@ -80,65 +107,53 @@ export interface MyTicketDto {
   // The agent complained about; null — a request.
   agentName: string | null;
   status: SupportStatus;
-  comment: string;
-  // The names of the files the person attached to a request; a complaint — none.
-  files: string[];
-  reply: string | null;
   createdAt: string;
+  // The last message or change.
   updatedAt: string;
+  // Who wrote last.
+  lastSide: SupportSide;
 }
+
+// A closed ticket: who closed it and when; null — open.
+interface TicketClosing {
+  closedAt: string | null;
+  closedSide: SupportSide | null;
+}
+
+// «Мои обращения»: the list, and a ticket with its conversation.
+export type MyTicketRow = TicketRowBase;
 
 export interface MyTicketsResponse {
-  tickets: MyTicketDto[];
+  tickets: MyTicketRow[];
 }
 
-export interface AdminTicketRow {
-  id: string;
+export interface MyTicketDto extends MyTicketRow, TicketClosing {
+  messages: SupportMessageDto[];
+}
+
+// «Поддержка» of the admin panel.
+export interface AdminTicketRow extends TicketRowBase {
   // Null — the person was removed: «бывший сотрудник».
   author: string | null;
-  kind: SupportKind;
-  // The subject of a request; null — a complaint.
-  subject: string | null;
-  // The agent complained about; null — a request.
   agentId: string | null;
-  agentName: string | null;
-  status: SupportStatus;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface AdminTicketsResponse {
   tickets: AdminTicketRow[];
 }
 
-// A request has no turn, copy of a conversation, models, instructions or task.
-export interface AdminTicketDto extends AdminTicketRow {
-  comment: string;
+// A complaint carries, for the support only, the conversation complained about: its copy, its files, the models and the
+// instructions; a request has none of it.
+export interface AdminTicketDto extends AdminTicketRow, TicketClosing {
+  messages: SupportMessageDto[];
   turn: number | null;
   snapshot: SupportSnapshotMessage[];
-  files: SupportFileDto[];
+  contextFiles: SupportFileDto[];
   models: string[];
   // When the instructions in use were published; null — those of the agent's file.
   instructionsAt: string | null;
   taskId: string | null;
-  reply: string | null;
-  handledBy: string | null;
 }
-
-// The states a ticket goes to from each (section 17): a closed one only opens again («Открыть снова»).
-export const SUPPORT_NEXT: Record<SupportStatus, readonly SupportStatus[]> = {
-  new: ['new', 'in_progress', 'resolved', 'rejected'],
-  in_progress: ['in_progress', 'resolved', 'rejected'],
-  resolved: ['resolved', 'in_progress'],
-  rejected: ['rejected', 'in_progress'],
-};
-
-// `seen` — when the ticket the page shows was last changed: a colleague's answer given meanwhile is never overwritten.
-export const ticketUpdateSchema = z.strictObject({
-  status: z.enum(SUPPORT_STATUSES),
-  reply: z.string().trim().max(COMPLAINT_MAX).nullable(),
-  seen: z.iso.datetime(),
-});
 
 // A sample (F4): a document the agent made in a conversation goes into the knowledge base of a department of the person
 // (or of the organisation, for the one who keeps it).

@@ -125,11 +125,10 @@ export const ERROR_CATALOG = {
   APP_DEPARTMENT_HAS_KNOWLEDGE: { status: 409, userMessage: 'В базе знаний отдела есть документы. Удалите их в «Базе знаний» (нужные сначала загрузите в базу организации), затем удаляйте отдел.' },
   // Complaints, samples, the report of value (docs/specs/[20.11.2026]-feedback-and-value.md).
   APP_SUPPORT_FAILED: { status: 500, userMessage: 'Жалоба не отправилась. Попробуйте ещё раз.' },
-  APP_SUPPORT_TOO_LONG: { status: 400, userMessage: 'Жалоба получилась слишком длинной. Сократите текст.' },
   APP_SUPPORT_STATE: { status: 409, userMessage: 'Такой переход состояния у обращения невозможен. Обновите страницу.' },
   APP_SUPPORT_TOO_MANY_FILES: { status: 400, userMessage: 'К обращению можно приложить не больше 10 файлов. Уберите лишние.' },
   APP_SUPPORT_FILES_TOO_LARGE: { status: 413, userMessage: 'Файлы вместе больше 50 МБ. Уберите часть файлов или сожмите их.' },
-  APP_SUPPORT_STALE: { status: 409, userMessage: 'Обращение изменил коллега, пока вы его читали. Обновите страницу и посмотрите его ответ.' },
+  APP_SUPPORT_CLOSED: { status: 409, userMessage: 'Обращение закрыто — писать в него нельзя. Сотрудник может создать новое обращение, поддержка — открыть это снова.' },
   APP_EXAMPLES_OFF: { status: 403, userMessage: 'Добавление документов в референсы выключено. Его включает администратор в разделе «Интерфейс».' },
   APP_EXAMPLE_NOT_MADE: { status: 409, userMessage: 'В референсы можно добавить только документ, который сделал агент.' },
   APP_EXAMPLE_NO_BASE: { status: 403, userMessage: 'Документ некуда добавить: вы не состоите ни в одном отделе. Попросите администратора добавить вас в отдел.' },

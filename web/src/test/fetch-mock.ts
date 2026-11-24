@@ -31,7 +31,7 @@ export function mockServer(routes: Record<string, Route>): { calls: MockCall[]; 
   // The menu counters are asked on every screen; tests that care override them.
   // CopilotKit asks its runtime which agents exist when the provider mounts.
   const table: Map<string, Route> = new Map<string, Route>([
-    ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null, threads: {} } }],
+    ['GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null, threads: {}, supportWaiting: null } }],
     // A visible tab tells the server it is here and gets the bell's counters (docs/specs/[20.11.2026]-notifications.md):
     // the same answer as the counters themselves, whatever a test set for them.
     ['POST /app/api/me/presence', (call: MockCall): Reply | Promise<Reply> => answerOf(table.get('GET /app/api/me/notifications'), call)],

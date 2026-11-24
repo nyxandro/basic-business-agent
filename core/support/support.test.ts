@@ -1,16 +1,15 @@
-// Complaints (docs/specs/[20.11.2026]-feedback-and-value.md, steps 1–3): a complaint becomes a ticket with a copy of the
-// conversation as the person saw it and its files; a second complaint about the same turn adds to the first; only the
-// person's own conversation; «Поддержка» only with «Агенты»; the answer goes back as a notification and «Мои обращения».
-// Requests written straight from «Мои обращения» (F7, owner 24.11): a subject, a text and the files attached, nothing of a
-// conversation; the support's answer reaches the open page of the employee at once.
+// Complaints (docs/specs/[20.11.2026]-feedback-and-value.md, steps 1–3; F9): a complaint becomes a ticket — its comment
+// the first message — with a copy of the conversation as the person saw it and its files; a second complaint about the
+// same turn is a new message of the first and opens it again; only the person's own conversation; «Поддержка» only with
+// «Агенты». The conversation of a ticket, requests and the counter — conversation.test.ts.
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SUPPORT_FILES_MAX_BYTES, SUPPORT_REQUEST_FILES_MAX, type AdminTicketDto, type AdminTicketsResponse, type ComplaintResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportRequestResponse } from '@bba/contracts';
+import type { AdminTicketDto, ComplaintResponse, ComplaintStateResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
-import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
+import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { chatRoot } from '../workspace/layout.ts';
 import { copyFiles } from './snapshot.ts';
 
@@ -74,7 +73,8 @@ describe('complaints', () => {
     expect(made.appended).toBe(false);
 
     const ticket = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${made.id}`, { cookie: igor }));
-    expect(ticket).toMatchObject({ author: 'Ольга Смирнова', agentName: 'Продажи', status: 'new', turn: 1, comment: 'Цена на С21 из прошлогоднего прайса', models: ['test-paid'] });
+    expect(ticket).toMatchObject({ author: 'Ольга Смирнова', kind: 'complaint', agentName: 'Продажи', status: 'open', turn: 1, models: ['test-paid'] });
+    expect(ticket.messages).toMatchObject([{ side: 'employee', author: 'Ольга Смирнова', text: 'Цена на С21 из прошлогоднего прайса', files: [] }]);
     expect(ticket.snapshot.map((m) => [m.role, m.text, m.turn])).toEqual([
       ['user', 'Сделай КП для «Вектора»', 1],
       ['assistant', 'Готово, вот КП.', 1],
@@ -83,9 +83,11 @@ describe('complaints', () => {
     ]);
     expect(JSON.stringify(ticket.snapshot)).not.toContain('служебное');
     expect(ticket.snapshot[1]!.marks).toEqual(['файл: КП-Вектор.docx']);
-    expect(ticket.files).toEqual([{ ord: 0, name: 'КП-Вектор.docx', size: Buffer.byteLength('кп вектор'), state: 'copied' }]);
+    expect(ticket.contextFiles).toEqual([{ ord: 0, name: 'КП-Вектор.docx', size: Buffer.byteLength('кп вектор'), state: 'copied' }]);
     const file = await t.call('GET', `/app/api/admin/support/${made.id}/files/0`, { cookie: igor });
     expect(await file.text()).toBe('кп вектор');
+    // The files of the conversation are the support's to see, not the employee's ticket files.
+    expect((await t.call('GET', `/app/api/me/support/${made.id}/files/0`, { cookie: olga })).status).toBe(404);
 
     const told = await t.db.query<{ title: string; link: string }>(`SELECT title, link FROM app.notifications WHERE user_id = $1 AND kind = 'support_new'`, [igorId]);
     expect(told.rows).toEqual([{ title: `Новая жалоба №${made.id}`, link: `/admin/support/${made.id}` }]);
@@ -97,15 +99,24 @@ describe('complaints', () => {
     expect(await (await t.call('GET', `/app/api/admin/support/${made.id}/files/0`, { cookie: igor })).text()).toBe('кп вектор');
   });
 
-  it('adds a second complaint about the same turn to the first', async () => {
+  it('adds a second complaint about the same turn to the first as a message, opening it again when closed', async () => {
     const threadId = await conversation(olgaId, [['user', [text('Сколько стоит С21?')]], ['assistant', [text('400 ₽')]]]);
     const first = await json<ComplaintResponse>(await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: 'Старая цена' } }));
     const state = await json<ComplaintStateResponse>(await t.call('GET', `/app/api/me/support/turn?threadId=${threadId}&turn=1`, { cookie: olga }));
-    expect(state.ticket).toEqual({ id: first.id, status: 'new' });
+    expect(state.ticket).toEqual({ id: first.id, status: 'open' });
     const second = await json<ComplaintResponse>(await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: 'Сейчас 495 ₽' } }));
     expect(second).toEqual({ id: first.id, appended: true });
     const ticket = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${first.id}`, { cookie: igor }));
-    expect(ticket.comment).toMatch(/^Старая цена\n\nДописано \d\d\.\d\d, \d\d:\d\d: Сейчас 495 ₽$/);
+    expect(ticket.messages.map((m) => [m.side, m.text])).toEqual([
+      ['employee', 'Старая цена'],
+      ['employee', 'Сейчас 495 ₽'],
+    ]);
+
+    await json(await t.call('POST', `/app/api/admin/support/${first.id}/status`, { cookie: igor, body: { status: 'rejected' } }));
+    await json(await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: 'Цена всё ещё старая' } }));
+    const reopened = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${first.id}`, { cookie: igor }));
+    expect(reopened).toMatchObject({ status: 'open', closedAt: null, closedSide: null });
+    expect(reopened.messages.at(-1)).toMatchObject({ side: 'employee', text: 'Цена всё ещё старая' });
   });
 
   // The browser counts only what the person wrote: a turn the server started on their behalf (the outcome of an agreed
@@ -142,32 +153,8 @@ describe('complaints', () => {
   it('opens «Поддержка» only with «Агенты»', async () => {
     expect((await t.call('GET', '/app/api/admin/support', { cookie: olga })).status).toBe(403);
     expect((await t.call('GET', '/app/api/admin/support/1', { cookie: olga })).status).toBe(403);
-    expect((await t.call('PATCH', '/app/api/admin/support/1', { cookie: olga, body: { status: 'resolved', reply: null, seen: new Date().toISOString() } })).status).toBe(403);
-  });
-
-  it('sends the answer and the state to the employee, who sees only their own requests', async () => {
-    const threadId = await conversation(olgaId, [['user', [text('Сроки поставки?')]], ['assistant', [text('Неделя')]]]);
-    const { id } = await json<ComplaintResponse>(await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: 'Сроки другие' } }));
-    const list = await json<AdminTicketsResponse>(await t.call('GET', '/app/api/admin/support?status=new', { cookie: igor }));
-    expect(list.tickets.map((x) => x.id)).toContain(id);
-
-    const opened = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }));
-    const done = await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'resolved', reply: 'Обновили сроки в базе знаний', seen: opened.updatedAt } }));
-    // A page opened before this answer does not overwrite it.
-    const stale = await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'in_progress', reply: 'Другой ответ', seen: opened.updatedAt } });
-    expect(stale.status).toBe(409);
-    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe('APP_SUPPORT_STALE');
-    expect(done).toMatchObject({ status: 'resolved', reply: 'Обновили сроки в базе знаний', handledBy: 'Игорь' });
-    const told = await t.db.query<{ title: string }>(`SELECT title FROM app.notifications WHERE user_id = $1 AND kind = 'support_reply'`, [olgaId]);
-    expect(told.rows.map((r) => r.title)).toContain(`Ответ на обращение №${id}`);
-
-    const mine = await json<MyTicketsResponse>(await t.call('GET', '/app/api/me/support', { cookie: olga }));
-    expect(mine.tickets.find((x) => x.id === id)).toMatchObject({ status: 'resolved', reply: 'Обновили сроки в базе знаний', agentName: 'Продажи' });
-    expect((await json<MyTicketsResponse>(await t.call('GET', '/app/api/me/support', { cookie: petr }))).tickets).toEqual([]);
-
-    // A closed ticket only opens again.
-    expect((await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'rejected', reply: null, seen: done.updatedAt } })).status).toBe(409);
-    expect((await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'in_progress', reply: 'Смотрим ещё', seen: done.updatedAt } }))).status).toBe('in_progress');
+    expect((await t.call('POST', '/app/api/admin/support/1/status', { cookie: olga, body: { status: 'resolved' } })).status).toBe(403);
+    expect((await t.call('POST', '/app/api/admin/support/1/messages', { cookie: olga, body: {} })).status).toBe(403);
   });
 
   it('copies files while they fit in the limit and names the rest', () => {
@@ -192,98 +179,5 @@ describe('complaints', () => {
       ['pipe.docx', 'gone', null],
       ['link.docx', 'gone', null],
     ]);
-  });
-});
-
-describe('requests straight to the support', () => {
-  const file = (name: string, content: string | Uint8Array) => new File([content], name);
-  function form(fields: { subject?: string; text?: string; files?: File[] }): FormData {
-    const f = new FormData();
-    if (fields.subject !== undefined) f.append('subject', fields.subject);
-    if (fields.text !== undefined) f.append('text', fields.text);
-    for (const x of fields.files ?? []) f.append('files', x);
-    return f;
-  }
-  const send = (cookie: string, body: FormData) => t.app.request('/app/api/me/support/requests', { method: 'POST', body, headers: { cookie, origin: TEST_PUBLIC_URL } });
-  const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
-
-  it('makes a ticket of the subject, the text and the files attached — nothing of a conversation — and tells the support', async () => {
-    const res = await send(olga, form({ subject: '  Не приходит письмо со сводкой  ', text: 'Вчера и сегодня сводки не было.', files: [file('экран.png', 'PNG-байты'), file('лог.txt', 'строка')] }));
-    expect(res.status).toBe(201);
-    const { id } = (await res.json()) as SupportRequestResponse;
-
-    const row = (await json<AdminTicketsResponse>(await t.call('GET', '/app/api/admin/support', { cookie: igor }))).tickets.find((x) => x.id === id);
-    expect(row).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', author: 'Ольга Смирнова', agentId: null, agentName: null, status: 'new' });
-    const detail = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }));
-    expect(detail).toMatchObject({ kind: 'request', comment: 'Вчера и сегодня сводки не было.', turn: null, snapshot: [], models: [], instructionsAt: null, taskId: null });
-    expect(detail.files).toEqual([
-      { ord: 0, name: 'экран.png', size: Buffer.byteLength('PNG-байты'), state: 'copied' },
-      { ord: 1, name: 'лог.txt', size: Buffer.byteLength('строка'), state: 'copied' },
-    ]);
-    expect(await (await t.call('GET', `/app/api/admin/support/${id}/files/1`, { cookie: igor })).text()).toBe('строка');
-
-    const told = await t.db.query<{ title: string; link: string }>(`SELECT title, link FROM app.notifications WHERE user_id = $1 AND kind = 'support_new' AND subject_ref = $2`, [igorId, `ticket:${id}`]);
-    expect(told.rows).toEqual([{ title: `Новое обращение №${id}`, link: `/admin/support/${id}` }]);
-
-    const mine = (await json<MyTicketsResponse>(await t.call('GET', '/app/api/me/support', { cookie: olga }))).tickets.find((x) => x.id === id);
-    expect(mine).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', agentName: null, comment: 'Вчера и сегодня сводки не было.', files: ['экран.png', 'лог.txt'], status: 'new', reply: null });
-  });
-
-  it('takes a request without files, and each one is its own ticket', async () => {
-    const first = (await (await send(olga, form({ subject: 'Доступ к CRM', text: 'Нет доступа' }))).json()) as SupportRequestResponse;
-    const second = (await (await send(olga, form({ subject: 'Доступ к CRM', text: 'Нет доступа' }))).json()) as SupportRequestResponse;
-    expect(first.id).not.toBe(second.id);
-    expect((await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${second.id}`, { cookie: igor }))).files).toEqual([]);
-  });
-
-  it('counts a line break as one character, as the text box did: a long text of many lines is taken whole', async () => {
-    // A form with files carries each line break as «\r\n».
-    const text = `${'строка\n'.repeat(570)}конец`;
-    expect(text.length).toBeLessThanOrEqual(4000);
-    const res = await send(olga, form({ subject: 'Лог', text }));
-    expect(res.status).toBe(201);
-    const { id } = (await res.json()) as SupportRequestResponse;
-    expect((await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }))).comment).toBe(text);
-  });
-
-  it('refuses a request without a subject or a text, with too many files or files over the limit', async () => {
-    expect(await code(await send(olga, form({ subject: '   ', text: 'Текст' })))).toBe('APP_VALIDATION_FAILED');
-    expect(await code(await send(olga, form({ subject: 'Тема' })))).toBe('APP_VALIDATION_FAILED');
-    expect(await code(await send(olga, form({ subject: 'Т'.repeat(201), text: 'Текст' })))).toBe('APP_VALIDATION_FAILED');
-    // A zero character Postgres cannot keep: refused, not a failure of the server.
-    expect(await code(await send(olga, form({ subject: 'Т\0ема', text: 'Текст' })))).toBe('APP_VALIDATION_FAILED');
-    expect(await code(await send(olga, form({ subject: 'Тема', text: 'Текст', files: [file('a\0b.txt', 'x')] })))).toBe('APP_VALIDATION_FAILED');
-    const many = Array.from({ length: SUPPORT_REQUEST_FILES_MAX + 1 }, (_, i) => file(`${i}.txt`, 'x'));
-    expect(await code(await send(olga, form({ subject: 'Тема', text: 'Текст', files: many })))).toBe('APP_SUPPORT_TOO_MANY_FILES');
-    const big = await send(olga, form({ subject: 'Тема', text: 'Текст', files: [file('a.bin', new Uint8Array(SUPPORT_FILES_MAX_BYTES / 2)), file('b.bin', new Uint8Array(SUPPORT_FILES_MAX_BYTES / 2 + 1))] }));
-    expect(big.status).toBe(413);
-    expect(await code(big)).toBe('APP_SUPPORT_FILES_TOO_LARGE');
-    const { rows } = await t.db.query(`SELECT 1 FROM app.support_tickets WHERE subject = 'Тема'`);
-    expect(rows).toEqual([]);
-  });
-
-  it('tells the open page of the employee at once when the support answers', async () => {
-    const { id } = (await (await send(olga, form({ subject: 'Ответьте', text: 'Жду ответа' }))).json()) as SupportRequestResponse;
-    const opened = await json<AdminTicketDto>(await t.call('GET', `/app/api/admin/support/${id}`, { cookie: igor }));
-    const page = await t.call('GET', '/app/api/me/events', { cookie: olga });
-    const reader = page.body!.getReader();
-    const decoder = new TextDecoder();
-    let stream = '';
-    const readUntil = async (marker: string) => {
-      while (!stream.includes(marker)) {
-        const chunk = (await reader.read()) as { done: boolean; value?: Uint8Array };
-        if (chunk.done) throw new Error(`the stream ended before «${marker}»: ${stream}`);
-        stream += decoder.decode(chunk.value);
-      }
-    };
-    try {
-      await readUntil('event: ready');
-      await json<AdminTicketDto>(await t.call('PATCH', `/app/api/admin/support/${id}`, { cookie: igor, body: { status: 'resolved', reply: 'Готово', seen: opened.updatedAt } }));
-      await readUntil('event: changed');
-    } finally {
-      await reader.cancel();
-    }
-    const told = await t.db.query<{ title: string; link: string }>(`SELECT title, link FROM app.notifications WHERE user_id = $1 AND kind = 'support_reply' AND subject_ref = $2`, [olgaId, `ticket:${id}`]);
-    expect(told.rows).toEqual([{ title: `Ответ на обращение №${id}`, link: '/settings/requests' }]);
   });
 });

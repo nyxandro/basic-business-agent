@@ -55,6 +55,9 @@ export interface NotificationsResponse {
   unread: number;
   latest: NotificationItem | null;
   threads: Record<string, ThreadState>;
+  // The red counter of «Поддержка» in the admin panel: tickets waiting for the support's answer; null — the person does not
+  // handle the support (no right «Агенты»).
+  supportWaiting: number | null;
 }
 
 // A visible tab says «I am here» this often; a hidden one says «hidden» at once (the server pushes then).

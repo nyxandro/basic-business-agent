@@ -1,10 +1,11 @@
 // The person's notifications (docs/specs/[20.11.2026]-notifications.md, section 17): the counters of the bell, the list,
 // «прочитано», presence, the browser's subscription and a trial push. Everything is the signed-in person's own.
-import { presenceInputSchema, pushSubscriptionInputSchema, pushUnsubscribeSchema, type NotificationList, type PushKeyResponse, type PushStatusResponse } from '@bba/contracts';
+import { presenceInputSchema, pushSubscriptionInputSchema, pushUnsubscribeSchema, type NotificationList, type NotificationsResponse, type PushKeyResponse, type PushStatusResponse } from '@bba/contracts';
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import type { AccessContext } from '../auth/access.ts';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
@@ -34,12 +35,17 @@ export interface NotificationRouteDeps {
   publicKey: string;
   // The origin of the fake push service of tests; null in an installation.
   testOrigin: string | null;
+  // The tickets of «Поддержка» waiting for its answer, for one who handles them (null — not theirs): the module of the
+  // support counts them (core/support/tickets.ts); given here so that this module does not import it.
+  supportWaiting: (who: AccessContext) => Promise<number | null>;
 }
 
 export function registerNotificationRoutes(app: Hono<AppEnv>, deps: NotificationRouteDeps): void {
   const { db } = deps;
 
-  app.get('/app/api/me/notifications', async (c) => c.json(await notificationCounts(db, deps.activity, access(c).userId)));
+  const countsOf = async (who: AccessContext): Promise<NotificationsResponse> => ({ ...(await notificationCounts(db, deps.activity, who.userId)), supportWaiting: await deps.supportWaiting(who) });
+
+  app.get('/app/api/me/notifications', async (c) => c.json(await countsOf(access(c))));
 
   // The instant channel (decision of the owner 22.11): «changed» whenever the bell or the states of the person's
   // conversations change; the page reads them again. An open tab of a hidden page closes it (web/src/layout/notifications.tsx).
@@ -71,9 +77,9 @@ export function registerNotificationRoutes(app: Hono<AppEnv>, deps: Notification
   // A visible tab every 30 s, a hidden one at once; the answer is the bell's counters, so one request does both.
   app.post('/app/api/me/presence', async (c) => {
     const { tab, visible, threadId } = await parseJson(c, presenceInputSchema);
-    const userId = access(c).userId;
-    deps.presence.seen(userId, tab, visible, threadId);
-    return c.json(await notificationCounts(db, deps.activity, userId));
+    const who = access(c);
+    deps.presence.seen(who.userId, tab, visible, threadId);
+    return c.json(await countsOf(who));
   });
 
   app.get('/app/api/push/key', (c) => {

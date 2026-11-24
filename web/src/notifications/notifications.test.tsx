@@ -4,10 +4,11 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PRESENCE_PING_MS } from '@bba/contracts';
 import { ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const READY = { id: 'n1', kind: 'task_result', title: 'Готово: Утренняя сводка', body: 'Результат — в разговоре задачи.', link: '/agents/sales?thread=bg%3At1%3Au1', createdAt: '2026-11-21T06:05:00.000Z', read: false };
 const SHARED = { id: 'n2', kind: 'project_shared', title: 'Вам открыли проект «Тендер»', body: 'Проект ведёт Пётр.', link: '/projects/p1', createdAt: '2026-11-20T10:00:00.000Z', read: true };
 
@@ -166,6 +167,43 @@ describe('the instant channel', () => {
     act(() => FakeSource.last!.listeners.get('changed')!());
     expect(await within(row).findByRole('img', { name: 'Ждёт вашего решения' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Уведомления: 1 вопрос ждёт решения' })).toBeInTheDocument();
+  });
+
+  // A server restarting answers the browser's own reconnection with an error page: the browser gives up for good.
+  it('opens the channel again after the server closed it for good, at the cadence of the presence ping', async () => {
+    class ClosingSource {
+      static CLOSED = 2;
+      static made: ClosingSource[] = [];
+      readyState = 0;
+      listeners = new Map<string, () => void>();
+      constructor() {
+        ClosingSource.made.push(this);
+      }
+      addEventListener(type: string, listener: () => void) {
+        this.listeners.set(type, listener);
+      }
+      close() {
+        this.readyState = ClosingSource.CLOSED;
+      }
+    }
+    vi.stubGlobal('EventSource', ClosingSource);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      server({ pendingApprovals: 0, unread: 0, latest: null, threads: {} });
+      renderApp('/settings/memory');
+      await waitFor(() => expect(ClosingSource.made.length).toBeGreaterThan(0));
+      const open = ClosingSource.made.at(-1)!;
+      const before = ClosingSource.made.length;
+      open.readyState = ClosingSource.CLOSED;
+      act(() => open.listeners.get('error')!());
+      expect(ClosingSource.made).toHaveLength(before);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PRESENCE_PING_MS);
+      });
+      expect(ClosingSource.made).toHaveLength(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

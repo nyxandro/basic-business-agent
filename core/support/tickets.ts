@@ -1,11 +1,11 @@
-// Complaints about answers (docs/specs/[20.11.2026]-feedback-and-value.md, scenarios 1 and 2; owner 21.11, F1 and F5):
-// the employee's comment with a copy of the conversation and its files becomes a ticket of «Поддержка», read by the
-// people with «Агенты»; the answer and the state go back to the employee as a notification and «Мои обращения».
-// A second complaint about the same turn adds to the first. A request written straight to the support (F7, requests.ts)
-// is a ticket too: the list, the ticket, its answer and «Мои обращения» here serve both.
-import { SUPPORT_NEXT, type AdminTicketDto, type AdminTicketRow, type ComplaintResponse, type MyTicketDto, type SupportFileDto, type SupportKind, type SupportSnapshotMessage, type SupportStatus } from '@bba/contracts';
+// Tickets of «Поддержка» (docs/specs/[20.11.2026]-feedback-and-value.md, scenarios 1 and 2; owner 21.11, F1 and F5; 24.11,
+// F7–F9): a complaint about an answer — its comment the first message, with a copy of the conversation and its files for
+// the support — or a request written straight (requests.ts). Inside, a conversation of both sides (messages.ts). Read by
+// the people with «Агенты»; the employee sees only their own. A second complaint about the same turn is a new message of
+// the first.
+import type { AdminTicketDto, AdminTicketRow, ComplaintResponse, MyTicketDto, MyTicketRow, SupportFileDto, SupportKind, SupportMessageDto, SupportSide, SupportSnapshotMessage, SupportStatus } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
-import { writeAudit } from '../audit/audit.ts';
+import type { AccessContext } from '../auth/access.ts';
 import { holdersOf } from '../auth/holders.ts';
 import { inThreadFolder, threadFoldersOf } from '../chat/thread-folder.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -15,9 +15,9 @@ import { notices } from '../notifications/kinds.ts';
 import { notify } from '../notifications/notify.ts';
 import { logEvent } from '../log/log.ts';
 import type { FileStorage } from '../storage/engine.ts';
+import { employeeWrites, insertMessage } from './messages.ts';
 import { copyFiles, filesOfConversation, snapshotOf } from './snapshot.ts';
 
-const COMMENT_MAX = 8000;
 const TICKETS_SHOWN = 200;
 
 export interface SupportDeps {
@@ -43,36 +43,15 @@ interface TicketRow {
   thread_id: string | null;
   turn_key: number | null;
   task_id: string | null;
-  comment: string;
   snapshot: SupportSnapshotMessage[];
   models: string[];
   instructions_at: Date | null;
   status: SupportStatus;
-  reply: string | null;
-  handler: string | null;
+  closed_side: SupportSide | null;
+  closed_at: Date | null;
+  last_side: SupportSide;
   created_at: Date;
   updated_at: Date;
-}
-
-const stamp = (at: Date, timeZone: string) => at.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone });
-
-async function tellSupport(deps: SupportDeps, ticketId: string, agentId: string, appendedAt: Date | null): Promise<void> {
-  for (const userId of await holdersOf(deps.db, 'agents')) await notify(deps.db, notices.supportNew({ userId, ticketId, agentName: deps.agentName(agentId), appendedAt }));
-}
-
-// Adds the comment to the complaint about the same turn; a closed one opens again for the support to see it.
-async function append(deps: SupportDeps, ticketId: string, agentId: string, comment: string): Promise<ComplaintResponse> {
-  const at = new Date();
-  const { rows } = await deps.db.query<{ length: number }>(
-    `UPDATE app.support_tickets SET comment = comment || $2, updated_at = $3,
-            status = CASE WHEN status IN ('resolved', 'rejected') THEN 'new' ELSE status END
-      WHERE id = $1 AND length(comment || $2) <= ${COMMENT_MAX} RETURNING length(comment) AS length`,
-    [ticketId, `\n\nДописано ${stamp(at, deps.timezone)}: ${comment}`, at],
-  );
-  if (!rows[0]) throw appError('APP_SUPPORT_TOO_LONG', `complaint ${ticketId} would grow over ${COMMENT_MAX} characters`);
-  await tellSupport(deps, ticketId, agentId, at);
-  logEvent('info', 'support_ticket_appended', { ticketId });
-  return { id: ticketId, appended: true };
 }
 
 export async function existingComplaint(db: Db, userId: string, threadId: string, turn: number): Promise<{ id: string; status: SupportStatus } | null> {
@@ -80,12 +59,19 @@ export async function existingComplaint(db: Db, userId: string, threadId: string
   return rows[0] ?? null;
 }
 
+// A second complaint about the same turn: a message of the first, which opens again if it was closed.
+async function append(deps: SupportDeps, userId: string, ticketId: string, comment: string): Promise<ComplaintResponse> {
+  await employeeWrites(deps.db, userId, ticketId, comment, [], { reopen: true });
+  logEvent('info', 'support_ticket_appended', { ticketId });
+  return { id: ticketId, appended: true };
+}
+
 export async function complain(deps: SupportDeps, userId: string, input: { threadId: string; turn: number; comment: string }): Promise<ComplaintResponse> {
   const { db } = deps;
   const [conversation] = await conversationsByIds(db, userId, [input.threadId]);
   if (!conversation) throw appError('APP_NOT_FOUND', `thread ${input.threadId} is not a conversation of ${userId}`, { userMessage: 'Разговор не найден.' });
   const before = await existingComplaint(db, userId, input.threadId, input.turn);
-  if (before) return append(deps, before.id, conversation.agentId, input.comment);
+  if (before) return append(deps, userId, before.id, input.comment);
 
   const { messages, approvals } = await conversationMessages(db, userId, input.threadId);
   const snapshot = snapshotOf(messages, approvals);
@@ -104,119 +90,144 @@ export async function complain(deps: SupportDeps, userId: string, input: { threa
 
   const id = await inTransaction(db, async (c) => {
     const { rows } = await c.query<{ id: string }>(
-      `INSERT INTO app.support_tickets (user_id, kind, agent_id, thread_id, turn_key, task_id, comment, snapshot, models, instructions_at, status)
-       VALUES ($1, 'complaint', $2, $3, $4, $5, $6, $7, $8, $9, 'new')
+      `INSERT INTO app.support_tickets (user_id, kind, agent_id, thread_id, turn_key, task_id, snapshot, models, instructions_at, status)
+       VALUES ($1, 'complaint', $2, $3, $4, $5, $6, $7, $8, 'open')
        ON CONFLICT (user_id, thread_id, turn_key) WHERE user_id IS NOT NULL DO NOTHING RETURNING id::text`,
-      [userId, conversation.agentId, input.threadId, input.turn, taskOfThread(input.threadId), input.comment, JSON.stringify(snapshot.messages), models.rows.map((r) => r.model), instructions.rows[0]?.published_at ?? null],
+      [userId, conversation.agentId, input.threadId, input.turn, taskOfThread(input.threadId), JSON.stringify(snapshot.messages), models.rows.map((r) => r.model), instructions.rows[0]?.published_at ?? null],
     );
     const ticketId = rows[0]?.id;
     if (!ticketId) return null;
+    // The files of the conversation, for the support: they belong to no message.
     for (const [ord, f] of files.entries()) {
       await c.query('INSERT INTO app.support_files (ticket_id, ord, name, path, size, state, content) VALUES ($1, $2, $3, $4, $5, $6, $7)', [ticketId, ord, f.name, f.path, f.size, f.state, f.content]);
     }
+    await insertMessage(c, ticketId, 'employee', userId, input.comment, []);
     return ticketId;
   });
   // Two presses at once: the other one made the ticket — this comment adds to it.
   if (!id) {
     const made = await existingComplaint(db, userId, input.threadId, input.turn);
     if (!made) throw appError('APP_SUPPORT_FAILED', `complaint about turn ${input.turn} of ${input.threadId} neither made nor found`);
-    return append(deps, made.id, conversation.agentId, input.comment);
+    return append(deps, userId, made.id, input.comment);
   }
   logEvent('info', 'support_ticket_created', { ticketId: id, agentId: conversation.agentId, files: files.length });
-  await tellSupport(deps, id, conversation.agentId, null);
+  for (const holder of await holdersOf(db, 'agents')) await notify(db, notices.supportNew({ userId: holder, ticketId: id, complaintOf: deps.agentName(conversation.agentId) }));
   return { id, appended: false };
 }
 
-const ROW_SQL = `SELECT t.id::text, t.user_id, u."name" AS author, t.kind, t.subject, t.agent_id, t.thread_id, t.turn_key, t.task_id, t.comment, t.snapshot, t.models,
-                        t.instructions_at, t.status, t.reply, h."name" AS handler, t.created_at, t.updated_at
-                   FROM app.support_tickets t LEFT JOIN app."user" u ON u."id" = t.user_id LEFT JOIN app."user" h ON h."id" = t.handled_by`;
+const ROW_SQL = `SELECT t.id::text, t.user_id, u."name" AS author, t.kind, t.subject, t.agent_id, t.thread_id, t.turn_key, t.task_id, t.snapshot,
+                        t.models, t.instructions_at, t.status, t.closed_side, t.closed_at, t.created_at, t.updated_at,
+                        (SELECT m.side FROM app.support_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_side
+                   FROM app.support_tickets t LEFT JOIN app."user" u ON u."id" = t.user_id`;
 
-const rowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): AdminTicketRow => ({
+type Named = Pick<SupportDeps, 'db' | 'agentName'>;
+
+const myRowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): MyTicketRow => ({
   id: r.id,
-  author: r.author,
   kind: r.kind,
   subject: r.subject,
-  agentId: r.agent_id,
   agentName: r.agent_id === null ? null : deps.agentName(r.agent_id),
   status: r.status,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
+  lastSide: r.last_side,
 });
 
-export async function myTickets(deps: Pick<SupportDeps, 'db' | 'agentName'>, userId: string): Promise<MyTicketDto[]> {
-  const { rows } = await deps.db.query<TicketRow>(`${ROW_SQL} WHERE t.user_id = $1 ORDER BY t.created_at DESC LIMIT ${TICKETS_SHOWN}`, [userId]);
-  // The files a person attached to a request; those of a conversation copied with a complaint are not theirs to list.
-  const kept = await deps.db.query<{ ticket_id: string; names: string[] }>(
-    `SELECT ticket_id::text, array_agg(name ORDER BY ord) AS names FROM app.support_files WHERE ticket_id = ANY($1::bigint[]) AND state = 'copied' GROUP BY ticket_id`,
-    [rows.filter((r) => r.kind === 'request').map((r) => r.id)],
-  );
-  const files = new Map(kept.rows.map((f) => [f.ticket_id, f.names]));
-  return rows.map((r) => ({
-    id: r.id,
-    kind: r.kind,
-    subject: r.subject,
-    agentName: r.agent_id === null ? null : deps.agentName(r.agent_id),
-    status: r.status,
-    comment: r.comment,
-    files: files.get(r.id) ?? [],
-    reply: r.reply,
-    createdAt: r.created_at.toISOString(),
-    updatedAt: r.updated_at.toISOString(),
-  }));
+const adminRowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): AdminTicketRow => ({ ...myRowOf(deps, r), author: r.author, agentId: r.agent_id });
+
+const closingOf = (r: TicketRow) => ({ closedAt: r.closed_at?.toISOString() ?? null, closedSide: r.closed_side });
+
+export async function myTickets(deps: Named, userId: string): Promise<MyTicketRow[]> {
+  const { rows } = await deps.db.query<TicketRow>(`${ROW_SQL} WHERE t.user_id = $1 ORDER BY t.updated_at DESC LIMIT ${TICKETS_SHOWN}`, [userId]);
+  return rows.map((r) => myRowOf(deps, r));
 }
 
-export async function listTickets(deps: Pick<SupportDeps, 'db' | 'agentName'>, status: SupportStatus | null): Promise<AdminTicketRow[]> {
-  const { rows } = await deps.db.query<TicketRow>(`${ROW_SQL} WHERE ($1::text IS NULL OR t.status = $1) ORDER BY t.created_at DESC LIMIT ${TICKETS_SHOWN}`, [status]);
-  return rows.map((r) => rowOf(deps, r));
+export async function listTickets(deps: Named, status: SupportStatus | null): Promise<AdminTicketRow[]> {
+  const { rows } = await deps.db.query<TicketRow>(`${ROW_SQL} WHERE ($1::text IS NULL OR t.status = $1) ORDER BY t.updated_at DESC LIMIT ${TICKETS_SHOWN}`, [status]);
+  return rows.map((r) => adminRowOf(deps, r));
 }
 
-async function ticketRow(db: Db, id: string): Promise<TicketRow> {
-  if (!/^\d{1,18}$/.test(id)) throw appError('APP_NOT_FOUND', `ticket ${id} not found`, { userMessage: 'Обращение не найдено.' });
-  const { rows } = await db.query<TicketRow>(`${ROW_SQL} WHERE t.id = $1`, [id]);
-  if (!rows[0]) throw appError('APP_NOT_FOUND', `ticket ${id} not found`, { userMessage: 'Обращение не найдено.' });
+const notFound = (id: string) => appError('APP_NOT_FOUND', `ticket ${id} not found`, { userMessage: 'Обращение не найдено.' });
+
+// `ownerId` — only a ticket of this person: another one's is as missing as none.
+async function ticketRow(db: Db, id: string, ownerId: string | null): Promise<TicketRow> {
+  if (!/^\d{1,18}$/.test(id)) throw notFound(id);
+  const { rows } = await db.query<TicketRow>(`${ROW_SQL} WHERE t.id = $1 AND ($2::text IS NULL OR t.user_id = $2)`, [id, ownerId]);
+  if (!rows[0]) throw notFound(id);
   return rows[0];
 }
 
-export async function ticketDetail(deps: Pick<SupportDeps, 'db' | 'agentName'>, id: string): Promise<AdminTicketDto> {
-  const r = await ticketRow(deps.db, id);
-  const files = await deps.db.query<{ ord: number; name: string; size: string | null; state: SupportFileDto['state'] }>('SELECT ord, name, size, state FROM app.support_files WHERE ticket_id = $1 ORDER BY ord', [id]);
+interface FileRow {
+  ord: number;
+  name: string;
+  size: string | null;
+  state: SupportFileDto['state'];
+  message_id: string | null;
+}
+
+const fileOf = (f: FileRow): SupportFileDto => ({ ord: f.ord, name: f.name, size: f.size === null ? null : Number(f.size), state: f.state });
+
+// The conversation of a ticket, each message with its files; and the files of the complained conversation apart.
+async function conversationOf(db: Db, id: string): Promise<{ messages: SupportMessageDto[]; contextFiles: SupportFileDto[] }> {
+  const [messages, files] = await Promise.all([
+    db.query<{ id: string; side: SupportSide; author: string | null; text: string; created_at: Date }>(
+      `SELECT m.id::text, m.side, u."name" AS author, m.text, m.created_at FROM app.support_messages m LEFT JOIN app."user" u ON u."id" = m.author_id WHERE m.ticket_id = $1 ORDER BY m.id`,
+      [id],
+    ),
+    db.query<FileRow>('SELECT ord, name, size, state, message_id::text FROM app.support_files WHERE ticket_id = $1 ORDER BY ord', [id]),
+  ]);
+  const byMessage = new Map<string, SupportFileDto[]>();
+  for (const f of files.rows) if (f.message_id) byMessage.set(f.message_id, [...(byMessage.get(f.message_id) ?? []), fileOf(f)]);
   return {
-    ...rowOf(deps, r),
-    comment: r.comment,
-    turn: r.turn_key,
-    snapshot: r.snapshot,
-    files: files.rows.map((f) => ({ ord: f.ord, name: f.name, size: f.size === null ? null : Number(f.size), state: f.state })),
-    models: r.models,
-    instructionsAt: r.instructions_at?.toISOString() ?? null,
-    taskId: r.task_id,
-    reply: r.reply,
-    handledBy: r.handler,
+    messages: messages.rows.map((m) => ({ id: m.id, side: m.side, author: m.author, text: m.text, at: m.created_at.toISOString(), files: byMessage.get(m.id) ?? [] })),
+    contextFiles: files.rows.filter((f) => !f.message_id).map(fileOf),
   };
 }
 
-export async function updateTicket(deps: Pick<SupportDeps, 'db' | 'agentName'>, actorUserId: string, id: string, change: { status: SupportStatus; reply: string | null; seen: string }): Promise<AdminTicketDto> {
-  const { db } = deps;
-  const before = await ticketRow(db, id);
-  if (before.updated_at.getTime() !== new Date(change.seen).getTime()) throw appError('APP_SUPPORT_STALE', `ticket ${id} changed since ${change.seen}`);
-  if (!SUPPORT_NEXT[before.status].includes(change.status)) throw appError('APP_SUPPORT_STATE', `ticket ${id}: ${before.status} → ${change.status}`);
-  const reply = change.reply === '' ? null : change.reply;
-  const at = new Date();
-  await inTransaction(db, async (c) => {
-    // Only the version the page showed is changed: two admins answering at once do not overwrite each other silently. The
-    // time is compared to the millisecond, as the page got it.
-    const { rowCount } = await c.query("UPDATE app.support_tickets SET status = $2, reply = $3, handled_by = $4, updated_at = $5 WHERE id = $1 AND date_trunc('milliseconds', updated_at) = $6", [id, change.status, reply, actorUserId, at, before.updated_at]);
-    if (!rowCount) throw appError('APP_SUPPORT_STALE', `ticket ${id} changed meanwhile`);
-    await writeAudit(c, { actorUserId, action: 'support.update', target: id, details: { from: before.status, to: change.status, replied: reply !== null } });
-  });
-  const changed = before.status !== change.status || before.reply !== reply;
-  if (changed && before.user_id) await notify(db, notices.supportReply({ userId: before.user_id, ticketId: id, status: change.status, changedAt: at }));
-  if (change.status === 'resolved' && before.status !== 'resolved') logEvent('info', 'support_ticket_resolved', { ticketId: id });
-  return ticketDetail(deps, id);
+export async function myTicket(deps: Named, userId: string, id: string): Promise<MyTicketDto> {
+  const r = await ticketRow(deps.db, id, userId);
+  const { messages } = await conversationOf(deps.db, id);
+  return { ...myRowOf(deps, r), ...closingOf(r), messages };
 }
 
+export async function ticketDetail(deps: Named, id: string): Promise<AdminTicketDto> {
+  const r = await ticketRow(deps.db, id, null);
+  const { messages, contextFiles } = await conversationOf(deps.db, id);
+  return {
+    ...adminRowOf(deps, r),
+    ...closingOf(r),
+    messages,
+    turn: r.turn_key,
+    snapshot: r.snapshot,
+    contextFiles,
+    models: r.models,
+    instructionsAt: r.instructions_at?.toISOString() ?? null,
+    taskId: r.task_id,
+  };
+}
+
+// A file of a ticket for the support: any it keeps.
 export async function ticketFile(db: Db, id: string, ord: number): Promise<{ name: string; content: Buffer }> {
-  await ticketRow(db, id);
+  await ticketRow(db, id, null);
   const { rows } = await db.query<{ name: string; content: Buffer | null }>('SELECT name, content FROM app.support_files WHERE ticket_id = $1 AND ord = $2', [id, ord]);
   if (!rows[0]?.content) throw appError('APP_NOT_FOUND', `file ${ord} of ticket ${id} not copied`, { userMessage: 'Этот файл не приложен к обращению.' });
   return { name: rows[0].name, content: rows[0].content };
+}
+
+// A file of a ticket for its employee: only one attached to a message — the copies of a complained conversation are the
+// support's.
+export async function myTicketFile(db: Db, userId: string, id: string, ord: number): Promise<{ name: string; content: Buffer }> {
+  await ticketRow(db, id, userId);
+  const { rows } = await db.query<{ name: string; content: Buffer | null }>('SELECT name, content FROM app.support_files WHERE ticket_id = $1 AND ord = $2 AND message_id IS NOT NULL', [id, ord]);
+  if (!rows[0]?.content) throw appError('APP_NOT_FOUND', `file ${ord} of ticket ${id} is not a file of its messages`, { userMessage: 'Этот файл не приложен к обращению.' });
+  return { name: rows[0].name, content: rows[0].content };
+}
+
+// The red counter of «Поддержка» in the menu of the admin panel (owner 24.11, F8–F9): the tickets waiting for the
+// support's answer, for those who handle them (F5); null for the others.
+export async function waitingTicketsFor(db: Db, who: Pick<AccessContext, 'isSuperadmin' | 'permissions'>): Promise<number | null> {
+  if (!who.isSuperadmin && !who.permissions.has('agents')) return null;
+  const { rows } = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM app.support_tickets WHERE status = 'open'");
+  if (!rows[0]) throw new Error('count of waiting tickets returned no row');
+  return rows[0].n;
 }

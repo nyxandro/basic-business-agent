@@ -1,10 +1,15 @@
 // The admin panel (mockup «Админка»): on a computer its own side panel — «Админка» and the
 // organisation, the sections in groups, «Вернуться в чат», the person and the theme; on a phone a
 // header with the way back and the sections as chips. Only the sections of the person's roles
-// show; a section without the right sends to the start page with «Этот раздел вам недоступен».
-import { useCallback, type ReactNode } from 'react';
+// show; a section without the right sends to the start page with «Этот раздел вам недоступен». «Поддержка» carries a red
+// counter of the tickets waiting for the support's answer (owner 24.11, F8–F9).
+import type { NotificationsResponse } from '@bba/contracts';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useMe } from '../auth/session.tsx';
+import { fetchCounts } from '../notifications/api.ts';
+import { LiveNewsContext, useLiveChannel } from '../notifications/live.ts';
+import { ru } from '../i18n/ru.ts';
 import { usePresence } from '../notifications/presence.ts';
 import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
@@ -19,6 +24,39 @@ import { availableSections, canOpen, sectionByPath, type SectionDef } from './se
 export const FORBIDDEN_STATE = { adminForbidden: true } as const;
 
 const BACK = 'Вернуться в чат';
+const SUPPORT_PATH = 'support';
+// More is «99+»: the counter keeps its size.
+const COUNT_SHOWN_MAX = 99;
+
+// The tickets of «Поддержка» waiting for its answer: with the presence of the page every 30 s, and at once when the server
+// says there is news (a message of an employee, a colleague's answer) — for those who handle the support; the others keep
+// no channel. `news` — how many times the server said so: the screens of «Поддержка» read their data again. A person in
+// the admin panel is in the app: news is not pushed to their browser meanwhile (notifications spec, section 8).
+function useSupportWaiting(handles: boolean): { waiting: number; news: number } {
+  const [waiting, setWaiting] = useState(0);
+  const [news, setNews] = useState(0);
+  const apply = useCallback((counts: NotificationsResponse) => setWaiting(counts.supportWaiting ?? 0), []);
+  usePresence(null, apply);
+  useLiveChannel(() => {
+    setNews((n) => n + 1);
+    fetchCounts().then(apply, (error: unknown) => console.warn('support counter not refreshed', error));
+  }, handles);
+  return { waiting, news };
+}
+
+// The label of a section in the menu: «Поддержка» with its counter when tickets wait for an answer.
+function SectionLabel({ section, waiting, className }: { section: SectionDef; waiting: number; className: string | undefined }) {
+  if (section.path !== SUPPORT_PATH || waiting === 0) return <span>{section.label}</span>;
+  return (
+    <>
+      <span>{section.label}</span>
+      <span className="visually-hidden">{ru.feedback.support.menuWaiting(waiting)}</span>
+      <span className={className} aria-hidden="true">
+        {waiting > COUNT_SHOWN_MAX ? `${COUNT_SHOWN_MAX}+` : waiting}
+      </span>
+    </>
+  );
+}
 
 function ThemeToggle({ plain }: { plain?: boolean }) {
   const { theme, setTheme } = useTheme();
@@ -43,7 +81,7 @@ function groupsOf(sections: SectionDef[]): { title: string; items: SectionDef[] 
   return groups;
 }
 
-function Side({ sections }: { sections: SectionDef[] }) {
+function Side({ sections, waiting }: { sections: SectionDef[]; waiting: number }) {
   const me = useMe();
   return (
     <aside className={styles.side}>
@@ -63,7 +101,7 @@ function Side({ sections }: { sections: SectionDef[] }) {
             {g.items.map((s) => (
               <NavLink key={s.path} to={`/admin/${s.path}`} className={({ isActive }) => cx(styles.navItem, isActive && styles.navItemOn)}>
                 <Icon name={s.icon} size={16} />
-                <span>{s.label}</span>
+                <SectionLabel section={s} waiting={waiting} className={styles.navCount} />
               </NavLink>
             ))}
           </div>
@@ -86,7 +124,7 @@ function Side({ sections }: { sections: SectionDef[] }) {
   );
 }
 
-function PhoneTop({ sections }: { sections: SectionDef[] }) {
+function PhoneTop({ sections, waiting }: { sections: SectionDef[]; waiting: number }) {
   const keepInView = useActiveChipInView();
   return (
     <>
@@ -100,7 +138,7 @@ function PhoneTop({ sections }: { sections: SectionDef[] }) {
       <nav aria-label="Разделы админки" className={cx(styles.chips, 'scroll-thin')}>
         {sections.map((s) => (
           <NavLink key={s.path} ref={keepInView} to={`/admin/${s.path}`} className={({ isActive }) => cx(styles.chip, isActive && styles.chipOn)}>
-            {s.label}
+            <SectionLabel section={s} waiting={waiting} className={styles.chipCount} />
           </NavLink>
         ))}
       </nav>
@@ -113,17 +151,18 @@ export function AdminLayout() {
   const wide = useMedia(WIDE_QUERY);
   const sections = availableSections(me);
   const { pathname } = useLocation();
-  // A person in the admin panel is in the app: news is not pushed to their browser meanwhile (notifications spec, 8).
-  usePresence(null);
+  const { waiting, news } = useSupportWaiting(sections.some((s) => s.path === SUPPORT_PATH));
   if (sections.length === 0) return <Navigate to="/" replace state={FORBIDDEN_STATE} />;
   return (
     <div className={styles.shell}>
-      {wide ? <Side sections={sections} /> : <PhoneTop sections={sections} />}
+      {wide ? <Side sections={sections} waiting={waiting} /> : <PhoneTop sections={sections} waiting={waiting} />}
       <main className={cx(styles.main, 'scroll-thin')}>
         {/* A new section starts from its top; the sections of one agent are one page. */}
         <div key={agentPageKey(pathname)} className={styles.content}>
           <ErrorBoundary>
-            <Outlet />
+            <LiveNewsContext value={news}>
+              <Outlet />
+            </LiveNewsContext>
           </ErrorBoundary>
         </div>
       </main>

@@ -219,29 +219,15 @@ export const notices = {
     });
   },
 
-  // A complaint about an answer, to the people with «Агенты» (feedback-and-value.md, F5): only its number and agent —
-  // the comment and the conversation stay inside the ticket.
-  // `appendedAt` — the employee added to the complaint: a case of its own.
-  supportNew(input: { userId: string; ticketId: string; agentName: string; appendedAt: Date | null }): Notice {
+  // To the people with «Агенты» (feedback-and-value.md, F5, F9): a new ticket — a complaint about an answer of the agent,
+  // or a request written straight; then each message the employee writes into it. Only the number and the agent — the
+  // words and the conversation stay inside the ticket.
+  supportNew(input: { userId: string; ticketId: string; complaintOf: string | null }): Notice {
     return notice({
       userId: input.userId,
       kind: 'support_new',
-      title: input.appendedAt ? `Жалоба №${input.ticketId} дополнена` : `Новая жалоба №${input.ticketId}`,
-      body: `Агент «${input.agentName}». Разберите её в «Поддержке».`,
-      link: `/admin/support/${encodeURIComponent(input.ticketId)}`,
-      dedupKey: input.appendedAt ? `support_new:${input.ticketId}:${input.appendedAt.getTime()}` : `support_new:${input.ticketId}`,
-      subjectRef: `ticket:${input.ticketId}`,
-      threadId: null,
-    });
-  },
-
-  // A request written straight to the support (F7): its subject and text stay inside the ticket, as a complaint's do.
-  supportRequest(input: { userId: string; ticketId: string }): Notice {
-    return notice({
-      userId: input.userId,
-      kind: 'support_new',
-      title: `Новое обращение №${input.ticketId}`,
-      body: 'Сотрудник написал в поддержку. Разберите обращение в «Поддержке».',
+      title: input.complaintOf === null ? `Новое обращение №${input.ticketId}` : `Новая жалоба №${input.ticketId}`,
+      body: input.complaintOf === null ? 'Сотрудник написал в поддержку. Разберите обращение в «Поддержке».' : `Агент «${input.complaintOf}». Разберите её в «Поддержке».`,
       link: `/admin/support/${encodeURIComponent(input.ticketId)}`,
       dedupKey: `support_new:${input.ticketId}`,
       subjectRef: `ticket:${input.ticketId}`,
@@ -249,17 +235,36 @@ export const notices = {
     });
   },
 
-  // The answer to the employee, or a change of the state: each change is its own case.
-  supportReply(input: { userId: string; ticketId: string; status: 'new' | 'in_progress' | 'resolved' | 'rejected'; changedAt: Date }): Notice {
-    const states = { new: 'снова открыто', in_progress: 'в работе', resolved: 'решено', rejected: 'отклонено' } as const;
+  supportMessage(input: { userId: string; ticketId: string; messageId: string }): Notice {
+    return notice({
+      userId: input.userId,
+      kind: 'support_new',
+      title: `Новое сообщение в обращении №${input.ticketId}`,
+      body: 'Сотрудник ответил. Откройте обращение в «Поддержке».',
+      link: `/admin/support/${encodeURIComponent(input.ticketId)}`,
+      dedupKey: `support_message:${input.messageId}`,
+      subjectRef: `ticket:${input.ticketId}`,
+      threadId: null,
+    });
+  },
+
+  // To the employee (F9): an answer of the support, the ticket closed or opened again by it — each its own case (`key`: the
+  // message, or the time of the change). The words stay inside the ticket.
+  supportReply(input: { userId: string; ticketId: string; event: 'reply' | 'resolved' | 'rejected' | 'reopened'; key: string }): Notice {
+    const n = input.ticketId;
+    const texts = {
+      reply: { title: `Ответ на обращение №${n}`, body: 'Поддержка ответила. Откройте обращение, чтобы продолжить переписку.' },
+      resolved: { title: `Обращение №${n} решено`, body: 'Поддержка закрыла обращение. Если вопрос остался — создайте новое.' },
+      rejected: { title: `Обращение №${n} отклонено`, body: 'Поддержка закрыла обращение без решения. Если вопрос остался — создайте новое.' },
+      reopened: { title: `Обращение №${n} открыто снова`, body: 'Поддержка открыла обращение снова — в нём можно продолжить переписку.' },
+    } as const;
     return notice({
       userId: input.userId,
       kind: 'support_reply',
-      title: `Ответ на обращение №${input.ticketId}`,
-      body: `Обращение ${states[input.status]}. Ответ — в «Настройках» → «Мои обращения».`,
-      link: '/settings/requests',
-      dedupKey: `support_reply:${input.ticketId}:${input.changedAt.getTime()}`,
-      subjectRef: `ticket:${input.ticketId}`,
+      ...texts[input.event],
+      link: `/settings/requests/${encodeURIComponent(n)}`,
+      dedupKey: `support_reply:${n}:${input.event}:${input.key}`,
+      subjectRef: `ticket:${n}`,
       threadId: null,
     });
   },

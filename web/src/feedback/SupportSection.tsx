@@ -1,43 +1,56 @@
-// «Поддержка» (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 2; owner 21.11, F5): the complaints of employees
-// about answers and their requests written straight (F7), for the people with «Агенты» — a list with its state filter,
-// and a ticket. A complaint: the employee's comment, the conversation as it was with the answer complained about marked,
-// its files, the agent, the models and the version of the instructions. A request: its subject, text and the files the
-// employee attached. Both: the answer and the state, which go back to the employee as a notification.
+// «Поддержка» (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 2; owner 21.11, F5; 24.11, F7–F9): the tickets of
+// employees — requests written straight and complaints about answers — for the people with «Агенты»: a list with its
+// state filter, the latest activity first, and a ticket. A ticket is a conversation with its employee (TicketChat.tsx):
+// the support answers with files while it is open, closes it as resolved or rejected, opens a closed one again. A
+// complaint shows above it, for the support only, the conversation as it was with the answer complained about marked,
+// its files, the agent, the models and the version of the instructions. Both read again at once when the server says
+// there is news (a message of the employee, a colleague's answer).
 import type { AdminTicketDto, AdminTicketRow, SupportStatus } from '@bba/contracts';
-import { SUPPORT_NEXT, SUPPORT_STATUSES } from '@bba/contracts';
-import { useCallback, useState } from 'react';
+import { isClosedStatus, SUPPORT_STATUSES } from '@bba/contracts';
+import { useCallback, useEffect, useEffectEvent, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button, ButtonLink, cx } from '../ui/Button.tsx';
-import { Card, EmptyState, PageHead, Pill, type Tone } from '../ui/Display.tsx';
+import { Card, EmptyState, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Field, Select, TextArea } from '../ui/Field.tsx';
 import { dateTime, fileSize, fullDate } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { ru } from '../i18n/ru.ts';
+import { useLiveNews } from '../notifications/live.ts';
 import { Feedback, useAction } from '../ui/form-parts.tsx';
 import chips from '../ui/chips.module.css';
-import { ticket, ticketFileUrl, tickets, updateTicket } from './api.ts';
+import { setTicketStatus, ticket, ticketFileUrl, tickets, writeAsSupport } from './api.ts';
+import { STATUS_TONE, TicketComposer, TicketMessages } from './TicketChat.tsx';
 import styles from './feedback.module.css';
 
 const t = ru.feedback.support;
-export const STATUS_TONE: Record<SupportStatus, Tone> = { new: 'accent', in_progress: 'warn', resolved: 'ok', rejected: 'neutral' };
+const tt = ru.feedback.ticket;
 
 // A request is named by its subject, a complaint by its agent.
 const titleOf = (x: AdminTicketRow) => (x.kind === 'request' ? t.numberWithSubject(x.id, x.subject ?? '') : t.number(x.id));
-const lineOf = (x: AdminTicketRow) => (x.kind === 'request' ? t.requestRow(x.author ?? t.formerEmployee, dateTime(x.createdAt)) : t.row(x.author ?? t.formerEmployee, x.agentName ?? '', dateTime(x.createdAt)));
+const lineOf = (x: AdminTicketRow, when: string) => (x.kind === 'request' ? t.requestRow(x.author ?? tt.formerEmployee, when) : t.row(x.author ?? tt.formerEmployee, x.agentName ?? '', when));
+
+// Reads its data again when the frame of the admin panel hears news.
+function useReloadOnNews(reload: () => void) {
+  const news = useLiveNews();
+  const onNews = useEffectEvent(reload);
+  useEffect(() => {
+    if (news > 0) onNews();
+  }, [news]);
+}
 
 export function SupportSection() {
   const [status, setStatus] = useState<SupportStatus | null>(null);
   const load = useCallback(() => tickets(status), [status]);
   const { state, reload } = useLoad(load);
+  useReloadOnNews(reload);
   return (
     <div className={styles.stack}>
       <PageHead title={t.title} lead={t.lead} />
-      <div role="group" aria-label={t.state} className={chips.row}>
+      <div role="group" aria-label={t.stateFilter} className={chips.row}>
         {[null, ...SUPPORT_STATUSES].map((s) => (
           <button key={s ?? 'all'} type="button" aria-pressed={status === s} className={cx(chips.chip, status === s && chips.on)} onClick={() => setStatus(s)}>
-            {s ? t.status[s] : t.all}
+            {s ? tt.status[s] : t.all}
           </button>
         ))}
       </div>
@@ -51,9 +64,9 @@ export function SupportSection() {
               <li key={x.id} className={styles.row}>
                 <Link to={`/admin/support/${encodeURIComponent(x.id)}`} className={cx(styles.rowMain, styles.rowLink)}>
                   <div className={styles.rowTitle}>{titleOf(x)}</div>
-                  <div className={styles.rowSub}>{lineOf(x)}</div>
+                  <div className={styles.rowSub}>{lineOf(x, dateTime(x.updatedAt))}</div>
                 </Link>
-                <Pill tone={STATUS_TONE[x.status]}>{t.status[x.status]}</Pill>
+                <Pill tone={STATUS_TONE.support[x.status]}>{tt.status[x.status]}</Pill>
               </li>
             ))}
           </ul>
@@ -63,7 +76,7 @@ export function SupportSection() {
   );
 }
 
-function Conversation({ data }: { data: AdminTicketDto }) {
+function Snapshot({ data }: { data: AdminTicketDto }) {
   return (
     <div className={styles.thread} aria-label={t.conversation}>
       {data.snapshot.map((m, i) => (
@@ -85,78 +98,10 @@ function Conversation({ data }: { data: AdminTicketDto }) {
   );
 }
 
-function Answer({ data, onSaved }: { data: AdminTicketDto; onSaved: (next: AdminTicketDto) => void }) {
-  const [status, setStatus] = useState<SupportStatus>(data.status === 'new' ? 'in_progress' : data.status);
-  const [reply, setReply] = useState(data.reply ?? '');
-  const { busy, error, run } = useAction();
-  return (
-    <form
-      className={styles.section}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void run(async () => onSaved(await updateTicket(data.id, { status, reply: reply.trim() || null, seen: data.updatedAt })), t.saved);
-      }}
-    >
-      <h2 className={styles.sectionTitle}>{t.reply}</h2>
-      <Field label={t.reply} hint={t.replyHint}>
-        <TextArea rows={4} maxLength={4000} value={reply} onChange={(e) => setReply(e.target.value)} />
-      </Field>
-      <Field label={t.state}>
-        <Select value={status} onChange={(e) => setStatus(e.target.value as SupportStatus)}>
-          {/* Only where the ticket can go from its state: a closed one opens again. */}
-          {SUPPORT_NEXT[data.status].map((s) => (
-            <option key={s} value={s}>
-              {t.status[s]}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Feedback error={error} />
-      {data.handledBy ? <p className={styles.note}>{t.handledBy(data.handledBy)}</p> : null}
-      <div className={styles.actions}>
-        <Button type="submit" variant="primary" disabled={busy}>
-          {t.save}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function Files({ data, title, none }: { data: AdminTicketDto; title: string; none: string }) {
-  return (
-    <Card className="rise">
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>{title}</h2>
-        {data.files.length === 0 ? <p className={styles.note}>{none}</p> : null}
-        <ul className={styles.list}>
-          {data.files.map((f) => (
-            <li key={f.ord} className={styles.row}>
-              <div className={styles.rowMain}>
-                <div className={styles.rowTitle}>{f.name}</div>
-                <div className={styles.rowSub}>{f.state === 'copied' ? fileSize(f.size ?? 0) : f.state === 'too_large' ? t.fileTooLarge(fileSize(f.size ?? 0)) : t.fileGone}</div>
-              </div>
-              {f.state === 'copied' ? (
-                <ButtonLink href={ticketFileUrl(data.id, f.ord)} download={f.name} icon="download" size="sm">
-                  {t.download}
-                </ButtonLink>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Card>
-  );
-}
-
-function ComplaintBody({ data }: { data: AdminTicketDto }) {
+// What a complaint brings to the support only: the agent and the models, the conversation as it was, its files.
+function ComplaintContext({ data }: { data: AdminTicketDto }) {
   return (
     <>
-      <Card className="rise">
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>{t.comment}</h2>
-          <p className={styles.pre}>{data.comment}</p>
-        </div>
-      </Card>
       <Card className="rise">
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>{t.trace}</h2>
@@ -168,24 +113,61 @@ function ComplaintBody({ data }: { data: AdminTicketDto }) {
       </Card>
       <Card className="rise">
         <h2 className={cx(styles.sectionTitle, styles.section)}>{t.conversation}</h2>
-        <Conversation data={data} />
+        <Snapshot data={data} />
       </Card>
-      <Files data={data} title={t.files} none={t.noFiles} />
+      <Card className="rise">
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>{t.files}</h2>
+          {data.contextFiles.length === 0 ? <p className={styles.note}>{t.noFiles}</p> : null}
+          <ul className={styles.list}>
+            {data.contextFiles.map((f) => (
+              <li key={f.ord} className={styles.row}>
+                <div className={styles.rowMain}>
+                  <div className={styles.rowTitle}>{f.name}</div>
+                  <div className={styles.rowSub}>{f.state === 'copied' ? fileSize(f.size ?? 0) : f.state === 'too_large' ? t.fileTooLarge(fileSize(f.size ?? 0)) : t.fileGone}</div>
+                </div>
+                {f.state === 'copied' ? (
+                  <ButtonLink href={ticketFileUrl(data.id, f.ord)} download={f.name} icon="download" size="sm" aria-label={tt.downloadFile(f.name)}>
+                    {tt.download}
+                  </ButtonLink>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Card>
     </>
   );
 }
 
-// A request: its subject as the heading of its text, and the files the employee attached — nothing of a conversation.
-function RequestBody({ data }: { data: AdminTicketDto }) {
+// Closing as resolved or rejected while open, opening again when closed.
+function StatusActions({ data, onChanged }: { data: AdminTicketDto; onChanged: () => void }) {
+  const { busy, error, run } = useAction();
+  const change = (status: 'resolved' | 'rejected' | 'open', done: string) =>
+    void run(async () => {
+      await setTicketStatus(data.id, status);
+      onChanged();
+    }, done);
   return (
     <>
-      <Card className="rise">
-        <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>{data.subject}</h2>
-          <p className={styles.pre}>{data.comment}</p>
-        </div>
-      </Card>
-      <Files data={data} title={t.requestFiles} none={t.noRequestFiles} />
+      <div className={styles.headActions}>
+        <Pill tone={STATUS_TONE.support[data.status]}>{tt.status[data.status]}</Pill>
+        {isClosedStatus(data.status) ? (
+          <Button disabled={busy} onClick={() => change('open', t.reopened)}>
+            {t.reopen}
+          </Button>
+        ) : (
+          <>
+            <Button icon="check" disabled={busy} onClick={() => change('resolved', t.resolved)}>
+              {t.resolve}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => change('rejected', t.rejected)}>
+              {t.reject}
+            </Button>
+          </>
+        )}
+      </div>
+      <Feedback error={error} />
     </>
   );
 }
@@ -194,8 +176,8 @@ export function TicketPage() {
   const { ticketId = '' } = useParams();
   const load = useCallback(() => ticket(ticketId), [ticketId]);
   const { state, reload } = useLoad(load);
-  const [fresh, setFresh] = useState<AdminTicketDto | null>(null);
-  const data = fresh ?? (state.status === 'ready' ? state.data : null);
+  useReloadOnNews(reload);
+  const data = state.status === 'ready' ? state.data : null;
   return (
     <div className={styles.stack}>
       <Link to="/admin/support" className={styles.note}>
@@ -205,10 +187,27 @@ export function TicketPage() {
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
       {data ? (
         <>
-          <PageHead title={`${t.title} ${t.number(data.id)}`} lead={lineOf(data)} actions={<Pill tone={STATUS_TONE[data.status]}>{t.status[data.status]}</Pill>} />
-          {data.kind === 'request' ? <RequestBody data={data} /> : <ComplaintBody data={data} />}
+          <PageHead title={`${t.title} ${titleOf(data)}`} lead={lineOf(data, dateTime(data.createdAt))} actions={<StatusActions data={data} onChanged={reload} />} />
+          {data.kind === 'complaint' ? <ComplaintContext data={data} /> : null}
           <Card className="rise">
-            <Answer key={`${data.id}:${data.status}:${data.reply ?? ''}`} data={data} onSaved={setFresh} />
+            <h2 className={cx(styles.sectionTitle, styles.section)}>{tt.conversation}</h2>
+            <TicketMessages
+              messages={data.messages}
+              mine="support"
+              nameOf={(m) => (m.side === 'employee' ? (m.author ?? tt.formerEmployee) : m.author ? tt.supportOf(m.author) : tt.support)}
+              fileUrl={(ord) => ticketFileUrl(data.id, ord)}
+            />
+            {isClosedStatus(data.status) && data.closedSide && data.closedAt ? (
+              <p className={styles.closedNote}>{tt.closedNote(tt.closedBy[data.closedSide], tt.status[data.status], dateTime(data.closedAt))}</p>
+            ) : (
+              <TicketComposer
+                hint={t.replyHint}
+                onSend={async (text, files) => {
+                  await writeAsSupport(data.id, text, files);
+                  reload();
+                }}
+              />
+            )}
           </Card>
         </>
       ) : null}

@@ -107,6 +107,39 @@
   color: var(--muted);
 }
 
+/* A ticket's conversation (TicketChat.tsx, F9): a list of messages, the files under the text of one, the field to write. */
+ol.thread {
+  margin: 0;
+  list-style: none;
+}
+
+.messageFiles {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  white-space: normal;
+}
+
+.composer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+/* A closed ticket: who closed it and when, instead of the field to write. */
+.closedNote {
+  margin: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .marks {
   margin: 6px 0 0;
   padding-left: 18px;
@@ -245,4 +278,12 @@
    selector outweighs the colour of the button whatever order the styles load in. */
 button.hearted {
   color: var(--bad);
+}
+
+/* The head of a ticket: its state and what the person may do with it. */
+.headActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }

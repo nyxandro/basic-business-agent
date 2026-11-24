@@ -29,7 +29,8 @@ const READ = `(n.read_at IS NOT NULL OR ${decidedSql('n', 'now()')})`;
 // draft check of a prompt is the admin's own and never waits there.
 export const WAITING_QUESTION = `status = 'pending' AND expires_at > now() AND run_kind <> 'draft'`;
 
-export async function notificationCounts(db: Db, activity: Activity, userId: string): Promise<NotificationsResponse> {
+// The counter of «Поддержка» is added by the route (NotificationRouteDeps.supportWaiting): it is the support's to count.
+export async function notificationCounts(db: Db, activity: Activity, userId: string): Promise<Omit<NotificationsResponse, 'supportWaiting'>> {
   // One after another on one connection: it runs on every «changed» and every presence ping of every open page.
   const counts = await db.query<{ approvals: number; unread: number }>(
     // Requests of multi-step approvals waiting for the person's decision count too (multi-step-approvals.md, section 17).

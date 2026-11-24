@@ -53,6 +53,7 @@ import { createMailTools } from '../mail/tools.ts';
 import type { KnowledgeIndexer } from '../knowledge/indexer.ts';
 import { registerKnowledgeRoutes } from '../knowledge/routes.ts';
 import { registerSupportRoutes } from '../support/routes.ts';
+import { waitingTicketsFor } from '../support/tickets.ts';
 import { registerExampleRoutes } from '../knowledge/examples.ts';
 import type { ActionDescription } from '@bba/contracts';
 
@@ -122,7 +123,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerFileSearchRoutes(app, { ...projects, preview: deps.preview });
   registerVoiceRoutes(app, { db: deps.db, gateway: deps.gateway, registry: deps.chat.registry });
   registerBackgroundRoutes(app, { db: deps.db, registry: deps.chat.registry, background: deps.background, memory: deps.chat.memory });
-  registerNotificationRoutes(app, { db: deps.db, ...deps.notifications });
+  registerNotificationRoutes(app, { db: deps.db, ...deps.notifications, supportWaiting: (who) => waitingTicketsFor(deps.db, who) });
   registerAdminSections(app, { db: deps.db, registry: deps.chat.registry, editor: deps.chat.editor, gateway: deps.gateway, connections: deps.connections });
   registerOrgDocsRoutes(app, { db: deps.db, ...deps.org });
   registerUsageReportRoutes(app, { db: deps.db, registry: deps.chat.registry, timezone: deps.timezone });

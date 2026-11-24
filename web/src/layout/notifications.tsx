@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-router';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { fetchCounts, markRead } from '../notifications/api.ts';
+import { LiveNewsContext, useLiveChannel } from '../notifications/live.ts';
 import { usePresence } from '../notifications/presence.ts';
 import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { keepOwnSubscription, OPEN_MESSAGE } from '../notifications/push.ts';
@@ -16,7 +17,6 @@ import { NotificationsContext, type PanelTab } from '../notifications/notificati
 import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 
 const NO_STATES: Readonly<Record<string, ThreadState>> = {};
-const LIVE_PATH = '/app/api/me/events';
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [counts, setCounts] = useState<NotificationsResponse | null>(null);
@@ -65,30 +65,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [params] = useSearchParams();
   usePresence(onChat ? params.get('thread') : null, apply);
 
-  // The instant channel (decision of the owner 22.11): the server says «changed» and the page reads the bell and the marks
-  // of conversations again — at once, not at the next check. Only a visible tab keeps it open: a browser allows few
-  // connections to one site over plain http, and a hidden tab needs no news at once (it reads them when shown again).
-  useEffect(() => {
-    if (typeof EventSource === 'undefined') return;
-    let source: EventSource | null = null;
-    const open = () => {
-      if (source) return;
-      source = new EventSource(LIVE_PATH);
-      source.addEventListener('ready', refresh);
-      source.addEventListener('changed', refresh);
-    };
-    const close = () => {
-      source?.close();
-      source = null;
-    };
-    const onVisibility = () => (document.visibilityState === 'visible' ? open() : close());
-    if (document.visibilityState === 'visible') open();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      close();
-    };
-  }, [refresh]);
+  // The instant channel: the server says «changed» and the page reads the bell and the marks of conversations again;
+  // the screens that show changing data hear it too (LiveNewsContext).
+  const [heard, setHeard] = useState(0);
+  useLiveChannel(() => {
+    setHeard((n) => n + 1);
+    refresh();
+  });
 
   // The browser's handler is kept fresh, and a subscription of this browser left by another person is dropped.
   useEffect(() => keepOwnSubscription(), []);
@@ -115,7 +98,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({ counts, threadStates, refresh, panel, openPanel, closePanel, Panel: NotificationsPanel }), [counts, threadStates, refresh, panel, openPanel, closePanel]);
   return (
     <NotificationsContext value={value}>
-      {children}
+      <LiveNewsContext value={heard}>{children}</LiveNewsContext>
       {/* On a computer the panel opens under the bell (shell/ChatHeader.tsx). */}
       {wide ? null : (
         <Sheet open={panel.open} onClose={closePanel} label={t.bell}>
