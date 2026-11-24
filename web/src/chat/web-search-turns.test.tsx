@@ -49,6 +49,7 @@ function extras(interrupt: ChatExtras['interrupt'] = null): ChatExtras {
     interrupt,
     failure: null,
     onFailure: vi.fn(),
+    offline: false,
     interruptedIds: [],
     keepInterrupted: vi.fn(),
     onTurnsFailed: vi.fn(),

@@ -106,6 +106,7 @@ describe('the light in a turn of the agent', () => {
     interrupt: null,
     failure: null,
     onFailure: vi.fn(),
+    offline: false,
     interruptedIds: [],
     keepInterrupted: vi.fn(),
     onTurnsFailed: vi.fn(),

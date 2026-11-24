@@ -94,7 +94,7 @@ export function Composer({
   const extras = useChatExtras();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const ready = value.trim().length > 0 && uploading.length === 0;
+  const ready = value.trim().length > 0 && uploading.length === 0 && !extras.offline;
   const me = useMe();
   const deliver = useDeliverText(extras.agentId, extras.threadId, value, onChange);
   useDraftChanges(extras.agentId, extras.threadId, onChange);

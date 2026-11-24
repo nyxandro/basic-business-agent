@@ -25,6 +25,8 @@ export interface ChatExtras {
   // again (spec, section 9.1).
   failure: ChatFailure | null;
   onFailure: (failure: ChatFailure) => void;
+  // No connection to the server's runtime now (chat/runtime-recovery.ts): nothing can be sent until it is back.
+  offline: boolean;
   // Answers that broke earlier in the conversation, by message id («Ответ прервался» under them).
   interruptedIds: readonly string[];
   keepInterrupted: (ids: readonly string[]) => void;

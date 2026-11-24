@@ -42,6 +42,7 @@ function extras(mark: AgentMark, interrupt: ReactElement | null): ChatExtras {
     interrupt,
     failure: null,
     onFailure: vi.fn(),
+    offline: false,
     interruptedIds: [],
     keepInterrupted: vi.fn(),
     onTurnsFailed: vi.fn(),
