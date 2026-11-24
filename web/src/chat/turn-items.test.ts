@@ -1,6 +1,6 @@
 // How a turn of the agent is laid out (decision of the owner 15.11): the status lines between two
 // things the agent shows go into one stack; its words and the blocks it draws stay in sight.
-import { GENUI_TOOL, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
+import { COMPUTER_TOOLS, GENUI_TOOL, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { describe, expect, it } from 'vitest';
 import { callsUnderWay } from '../answer/call-progress.ts';
@@ -75,6 +75,14 @@ describe('the layout of the turn being answered now', () => {
     const turn = [said('a1', '', [call('w1', WEB_RESEARCH_TOOL), call('f1', GENUI_TOOL.file)])];
     expect(live(turn)).toEqual([]);
     expect(live(turn, [result('w1', '{"sources":[]}'), result('f1', FILE_SHOWN)])).toEqual(['w1', '[f1]', 'f1']);
+  });
+
+  // A write onto the person's computer (spec, section 8.25) asks «Да» on its block while the browser's tool waits: the
+  // block is in sight from the call on, and stays with what was written.
+  it('keeps a write onto the computer in sight while it waits for «Да», and after it', () => {
+    const turn = [said('a1', 'Сохраняю на компьютер.', [call('c1'), call('w1', COMPUTER_TOOLS.write)])];
+    expect(live(turn, [result('c1', '{}')])).toEqual(['Сохраняю на компьютер.', '[c1]', 'w1']);
+    expect(live(turn, [result('c1', '{}'), result('w1', '{"declined":true,"message":"нет"}')])).toEqual(['Сохраняю на компьютер.', '[c1]', 'w1']);
   });
 
   // The engine draws a screen as the model writes it (spec, section 8.31): it is in sight from its first component.

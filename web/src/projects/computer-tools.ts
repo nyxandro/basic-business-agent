@@ -10,8 +10,8 @@ import { useFrontendTools } from '@copilotkit/react-core';
 import { useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { apiForm } from '../api/client.ts';
-import { accessOf, fileAt, findFiles, FolderError, listEntries, partsOf, type ComputerFolder, type HandleFolder } from './computer-folder.ts';
-import { askToWrite, changedSinceRead, noteRead, saveToComputer, setThreadFolder, type WriteAskItem } from './computer-saves.ts';
+import { accessOf, fileAt, findFiles, FolderError, listEntries, partsOf, type ComputerFolder, type FolderAccess, type HandleFolder } from './computer-folder.ts';
+import { askToWrite, changedSinceRead, noteRead, saveToComputer, setThreadFolder, stopPendingWrites, threadFolderNow, type WriteAskItem } from './computer-saves.ts';
 import { ensureWritable, targetOf, writableFolder } from './computer-write.ts';
 
 // Text up to this size goes to the agent as it is; anything bigger or not text — into the working folder.
@@ -22,13 +22,19 @@ const ext = (path: string) => path.split('.').pop()?.toLowerCase() ?? '';
 
 type Result = Record<string, unknown>;
 
+// What the agent says to the person when the folder cannot be used now.
+function noAccessText(folder: ComputerFolder, access: FolderAccess): string {
+  if (access === 'missing') return `Папки «${folder.name}» больше нет на компьютере: её переместили, удалили или отключили диск. Попросите сотрудника выбрать её заново.`;
+  if (access === 'denied') return `Браузер запретил этому сайту доступ к папке «${folder.name}»: сотрудник может разрешить его в настройках сайта (значок слева от адреса).`;
+  return `Нет доступа к папке «${folder.name}»: попросите сотрудника нажать «Разрешить доступ» у папки над полем ввода.`;
+}
+
 // Every failure becomes a text the agent can retell: a tool of the browser that throws would leave the
-// answer without a result.
+// answer without a result. Reading needs only the right to read, whatever the folder's mode.
 async function answer(folder: ComputerFolder, work: () => Promise<Result>): Promise<Result> {
   try {
-    if ((await accessOf(folder)) !== 'granted') {
-      return { error: `Нет доступа к папке «${folder.name}»: попросите сотрудника нажать «Разрешить доступ» у папки над полем ввода.` };
-    }
+    const access = await accessOf(folder, 'read');
+    if (access !== 'granted') return { error: noAccessText(folder, access) };
     return await work();
   } catch (error) {
     if (error instanceof FolderError) return { error: error.message };
@@ -71,34 +77,39 @@ async function asksOf(folder: HandleFolder, files: z.infer<typeof writeArgs>['fi
     const target = await targetOf(folder, f.to);
     if (target.exists && !f.replace) return { error: `Файл «${target.path}» уже есть в папке «${folder.name}». Чтобы заменить его, повтори с replace: true; чтобы сохранить рядом — выбери другое имя.` };
     if (items.some((i) => i.to === target.path)) return { error: `Два файла не записать в одно место: «${target.path}».` };
-    items.push({ file: f.file, to: target.path, exists: target.exists, changedSinceRead: changedSinceRead(folder, target.path, target.exists) });
+    items.push({ file: f.file, to: target.path, replace: f.replace === true, exists: target.exists, changedSinceRead: changedSinceRead(folder, target.path, target.exists) });
   }
   return items;
 }
 
 async function writeFiles(folder: HandleFolder, threadId: string, args: z.infer<typeof writeArgs>, context: WriteContext): Promise<ComputerWriteResult> {
-  let items: WriteAskItem[];
-  try {
-    const looked = await asksOf(folder, args.files);
-    if ('error' in looked) return looked;
-    items = looked;
-  } catch (error) {
-    if (error instanceof FolderError) return { error: error.message };
-    throw error;
-  }
-  const yes = await askToWrite(context.toolCall.id, { folder: folder.name, items }, context.signal);
-  if (context.signal?.aborted) return { error: 'Запись не сделана: ответ остановили.' };
-  if (!yes) return { declined: true, message: 'Сотрудник отказался записывать файлы на компьютер. Не записывай их снова, пока он сам не попросит.' };
+  // The targets are looked at with the right to read: without it the person is asked to give it back first.
+  const access = await accessOf(folder, 'read');
+  if (access !== 'granted') return { error: noAccessText(folder, access) };
+  const looked = await asksOf(folder, args.files);
+  if ('error' in looked) return looked;
+  const answer = await askToWrite(context.toolCall.id, { threadId, folder: folder.name, items: looked }, context.signal);
+  if (answer === 'stopped') return { error: 'Запись не сделана: ответ остановили.' };
+  if (answer === 'no') return { declined: true, message: 'Сотрудник отказался записывать файлы на компьютер. Не записывай их снова, пока он сам не попросит.' };
+  // While the card waited the person may have turned the folder to reading, chosen another or let it go.
+  const now = threadFolderNow(threadId);
+  if (!now || now.handle !== folder.handle || now.mode !== 'readwrite') return { error: `Папку «${folder.name}» переключили на «Только читать» или отключили — ничего не записано.` };
   // Right after the click of «Да»: the browser may ask the person for the right to write.
+  await ensureWritable(folder);
+  const written = [];
+  for (const item of looked) written.push(await saveToComputer(folder, threadId, item));
+  return { folder: folder.name, items: written };
+}
+
+// The tool's answer is the agent's only news of the write: a failure of the browser is told in words, never thrown —
+// a thrown handler leaves the answer of the agent cut off.
+async function writeOrSay(folder: HandleFolder, threadId: string, args: z.infer<typeof writeArgs>, context: WriteContext): Promise<ComputerWriteResult> {
   try {
-    await ensureWritable(folder);
+    return await writeFiles(folder, threadId, args, context);
   } catch (error) {
     if (error instanceof FolderError) return { error: error.message };
-    throw error;
+    return { error: `Не удалось записать в папку «${folder.name}»: ${(error as Error).message}` };
   }
-  const written = [];
-  for (const item of items) written.push(await saveToComputer(folder, threadId, item));
-  return { folder: folder.name, items: written };
 }
 
 // The tools of a connected folder for the conversation `threadId`.
@@ -115,7 +126,7 @@ export function computerTools(folder: ComputerFolder, threadId: string) {
             'Удалять и переименовывать файлы на компьютере нельзя.',
           parameters: writeArgs,
           reconnectBehavior: 'resume-pending' as const,
-          handler: (args: z.infer<typeof writeArgs>, context: WriteContext) => writeFiles(writable, threadId, args, context),
+          handler: (args: z.infer<typeof writeArgs>, context: WriteContext) => writeOrSay(writable, threadId, args, context),
         },
       ]
     : [];
@@ -163,4 +174,6 @@ export function useComputerTools(folder: ComputerFolder | null, threadId: string
     setThreadFolder(threadId, folder);
     return () => setThreadFolder(threadId, null);
   }, [folder, threadId]);
+  // The conversation closed: a write it waits on gives up, nothing is written.
+  useEffect(() => () => stopPendingWrites(threadId), [threadId]);
 }

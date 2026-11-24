@@ -21,7 +21,7 @@ import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { startNaming } from './naming.ts';
 import { inThreadFolder, threadFoldersOf } from './thread-folder.ts';
-import { prepareComputerSave } from './computer-saves.ts';
+import { COMPUTER_SAVE_MAX_BODY, discardComputerSave, prepareComputerSave } from './computer-saves.ts';
 import { logEvent } from '../log/log.ts';
 import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, noteStopped, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
@@ -277,6 +277,9 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const userId = access(c).userId;
     const threadId = c.req.param('threadId');
     const found = await threadFolders(userId, threadId);
+    if (Number(c.req.header('content-length') ?? 0) > COMPUTER_SAVE_MAX_BODY) {
+      throw new AppError({ code: 'APP_UPLOAD_TOO_LARGE', message: 'computer save over the limit', userMessage: 'Файл больше 20 МБ — на компьютер его не записать.', status: 413 });
+    }
     const body = await c.req.parseBody();
     const { source, target } = body;
     if (typeof source !== 'string' || !source.trim() || typeof target !== 'string' || !target.trim()) {
@@ -287,6 +290,13 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
     const saved = await inFolder(found, 'write', (folder) => prepareComputerSave(folder, { userId, source, target, previous }));
     logEvent('info', 'computer_save_prepared', { userId, threadId, bytes: saved.bytes, replaces: previous !== null });
     return c.json(saved, 201);
+  });
+
+  app.delete('/app/api/threads/:threadId/computer-saves/:id', async (c) => {
+    const userId = access(c).userId;
+    const found = await threadFolders(userId, c.req.param('threadId'));
+    await inFolder(found, 'write', (folder) => discardComputerSave(folder, userId, c.req.param('id')));
+    return c.json({ ok: true });
   });
 
   // The picture of the marks drawn on a document in the viewer (spec, section 8.32): into the hidden folder «.marks»

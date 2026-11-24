@@ -117,4 +117,14 @@ describe('the chip of the folder in the input', () => {
     chip('c-gone');
     expect(await screen.findByRole('button', { name: /Выбрать заново/ })).toBeInTheDocument();
   });
+
+  // The browser forbade editing the folder: the chip offers to go on reading it.
+  it('turns a folder whose editing the browser forbade to reading', async () => {
+    const kept = stubFolderStore();
+    stubPicker(null);
+    kept.set('c-denied', { name: 'Тендер', handle: fakeFolder({}, { access: { read: 'granted', readwrite: 'denied' } }).handle, mode: 'readwrite' });
+    chip('c-denied');
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Только читать/ }));
+    expect(await screen.findByRole('button', { name: 'Папка с компьютера: Тендер · только чтение' })).toBeInTheDocument();
+  });
 });

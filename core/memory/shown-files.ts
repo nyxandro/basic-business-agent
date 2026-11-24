@@ -1,7 +1,7 @@
 // The files a stored message showed the person — attached to it, shown by the agent with «Скачать», or written onto their
 // computer (spec, sections 8.25, 8.28 and 8.33): the agent reading an old conversation takes them by their path, and the
 // lists of conversations say how many files each one brought.
-import { COMPUTER_TOOLS, computerWriteResultSchema, GENUI_TOOL, splitAttachments } from '@bba/contracts';
+import { COMPUTER_TOOLS, GENUI_TOOL, readComputerWriteResult, splitAttachments } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
 
 // The word of the block of attachments (contracts/src/chat.ts, withAttachments): stored JSON escapes the
@@ -29,8 +29,8 @@ export function shownFilesOf(message: { role: 'user' | 'assistant'; content: str
     if (part.type !== 'tool-invocation' || !isObject(part.toolInvocation)) continue;
     // The snapshot of a file written onto the computer is what the chat shows of it.
     if (part.toolInvocation.toolName === COMPUTER_TOOLS.write) {
-      const written = computerWriteResultSchema.safeParse(part.toolInvocation.result);
-      if (written.success && 'items' in written.data) for (const item of written.data.items) if (item.written) files.push({ name: item.name, path: item.snapshot });
+      const written = readComputerWriteResult(part.toolInvocation.result);
+      if (written && 'items' in written) for (const item of written.items) if (item.written) files.push({ name: item.name, path: item.snapshot });
       continue;
     }
     if (part.toolInvocation.toolName !== GENUI_TOOL.file) continue;

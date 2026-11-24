@@ -174,9 +174,10 @@ export async function forgetFolder(projectId: string): Promise<void> {
   told(projectId);
 }
 
-export async function accessOf(folder: ComputerFolder): Promise<FolderAccess> {
+// The browser's answer for the right of `mode` (the folder's own by default): reading needs only the right to read.
+export async function accessOf(folder: ComputerFolder, mode?: FolderMode): Promise<FolderAccess> {
   if (folder.kind === 'files') return 'granted';
-  const access = await folder.handle.queryPermission({ mode: folder.mode });
+  const access = await folder.handle.queryPermission({ mode: mode ?? folder.mode });
   return access === 'granted' && !(await reachable(folder.handle)) ? 'missing' : access;
 }
 

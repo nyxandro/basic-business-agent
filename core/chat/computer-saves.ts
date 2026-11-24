@@ -6,10 +6,15 @@
 import { randomBytes } from 'node:crypto';
 import { COMPUTER_BEFORE, COMPUTER_SAVES, MAX_UPLOAD_BYTES, type ComputerSaveResponse } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
-import { putInFolder, readFileInside } from '../workspace/layout.ts';
+import { existingInside, putInFolder, readFileInside, removeFileInside } from '../workspace/layout.ts';
+import { walkRegularFiles } from '../workspace/held-folder.ts';
 
 // A number of its own for each write: two writes of one file a moment apart keep both snapshots.
 const saveId = () => `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
+const SAVE_ID = /^[a-z0-9]{1,16}-[0-9a-f]{8}$/;
+
+// A snapshot and a replaced version at most, with the fields of the form.
+export const COMPUTER_SAVE_MAX_BODY = 2 * MAX_UPLOAD_BYTES + 64 * 1024;
 
 export function prepareComputerSave(folder: string, input: { userId: string; source: string; target: string; previous: Uint8Array | null }): ComputerSaveResponse {
   const read = readFileInside(folder, input.source, MAX_UPLOAD_BYTES);
@@ -22,4 +27,15 @@ export function prepareComputerSave(folder: string, input: { userId: string; sou
   const snapshot = putInFolder(folder, base, name, read.bytes);
   const previous = input.previous ? putInFolder(folder, `${base}/${COMPUTER_BEFORE}`, name, input.previous).path : null;
   return { id, name: snapshot.path.split('/').pop()!, bytes: snapshot.bytes, snapshot: snapshot.path, previous };
+}
+
+// The browser could not write the file (it is open in another program, the disk is full): its save goes, so failed
+// tries do not pile up. Only the person's own saves; files reached without following a link the agent may have put there.
+export function discardComputerSave(folder: string, userId: string, id: string): void {
+  if (!SAVE_ID.test(id)) throw appError('APP_VALIDATION_FAILED', `bad computer save id ${id}`, { userMessage: 'Неверный номер записи.' });
+  const base = existingInside(folder, `${COMPUTER_SAVES}/${userId}/${id}`);
+  if (!base) throw appError('APP_NOT_FOUND', `no computer save ${id}`, { userMessage: 'Такой записи нет.' });
+  const files: string[] = [];
+  walkRegularFiles(base, (file) => void files.push(file.rel), true);
+  for (const rel of files) removeFileInside(base, rel);
 }

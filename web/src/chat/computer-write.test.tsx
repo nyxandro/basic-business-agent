@@ -42,30 +42,33 @@ describe('a write onto the computer in the chat', () => {
   it('asks «Да» with what goes where, and the answer goes to the waiting tool', async () => {
     mockServer({});
     const answer = askToWrite('w1', {
+      threadId: 't1',
       folder: 'Тендер',
       items: [
-        { file: 'КП Ёлка.docx', to: 'КП/2026/КП Ёлка.docx', exists: null, changedSinceRead: false },
-        { file: '.computer/u/Договор.docx', to: 'Договоры/Договор.docx', exists: { bytes: 27, lastModified: Date.UTC(2026, 10, 20, 9, 5) }, changedSinceRead: true },
+        { file: 'out/КП Ёлка v2.docx', to: 'КП/2026/КП Ёлка.docx', replace: false, exists: null, changedSinceRead: false },
+        { file: '.computer/u/Договор.docx', to: 'Договоры/Договор.docx', replace: true, exists: { bytes: 27, lastModified: Date.UTC(2026, 10, 20, 9, 5) }, changedSinceRead: true },
       ],
     });
     show(running('w1'));
     const card = screen.getByRole('group', { name: 'Сохранить на компьютер в папку «Тендер»?' });
     expect(within(card).getByText('КП/2026/КП Ёлка.docx')).toBeInTheDocument();
+    // Which file of the agent goes there, when its name differs.
+    expect(within(card).getByText('из «КП Ёлка v2.docx»')).toBeInTheDocument();
     expect(within(card).getByText('новый файл')).toBeInTheDocument();
     expect(within(card).getByText(/^заменит файл от 20 ноября/)).toBeInTheDocument();
     expect(within(card).getByText('Файл изменили после того, как агент его прочитал, — эти изменения пропадут.')).toBeInTheDocument();
     expect(within(card).getByText('Прежняя версия заменённого файла сохранится на сервере на 30 дней.')).toBeInTheDocument();
     await userEvent.setup().click(within(card).getByRole('button', { name: 'Да, сохранить' }));
-    expect(await answer).toBe(true);
+    expect(await answer).toBe('yes');
     expect(screen.queryByRole('group', { name: /Сохранить на компьютер/ })).not.toBeInTheDocument();
   });
 
   it('«Нет» answers no', async () => {
     mockServer({});
-    const answer = askToWrite('w2', { folder: 'Тендер', items: [{ file: 'a.docx', to: 'a.docx', exists: null, changedSinceRead: false }] });
+    const answer = askToWrite('w2', { threadId: 't1', folder: 'Тендер', items: [{ file: 'a.docx', to: 'a.docx', replace: false, exists: null, changedSinceRead: false }] });
     show(running('w2'));
     await userEvent.setup().click(screen.getByRole('button', { name: 'Нет' }));
-    expect(await answer).toBe(false);
+    expect(await answer).toBe('no');
   });
 
   it('shows each file written as a block with where it lies now, and what failed', () => {
@@ -79,14 +82,39 @@ describe('a write onto the computer in the chat', () => {
     expect(screen.getByText('Не записано: Акт.docx — Не удалось записать «Акт.docx»: файл занят другой программой (например, открыт в Word). Закройте его и попробуйте снова.')).toBeInTheDocument();
   });
 
-  it('«Вернуть прежнюю версию» writes the kept version back onto the computer', async () => {
+  it('«Вернуть прежнюю версию» asks first, then writes the kept version back onto the computer', async () => {
     mockServer({ 'GET /app/api/threads/t1/file': { raw: 'старый договор' } });
     const tree: Tree = { 'Договоры': { 'Договор.docx': new File(['правка агента'], 'Договор.docx') } };
     act(() => setThreadFolder('t1', folderOn(fakeFolder(tree))));
     show(complete('w4', WRITTEN));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
+    expect(screen.getByText('Заменить «Договоры/Договор.docx» на компьютере прежней версией? Правки, сделанные после записи агента, пропадут.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(await textAt(tree, 'Договоры', 'Договор.docx')).toBe('правка агента');
+    await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
+    await user.click(screen.getByRole('button', { name: 'Вернуть' }));
     await waitFor(async () => expect(await textAt(tree, 'Договоры', 'Договор.docx')).toBe('старый договор'));
     expect(await screen.findByText('Прежняя версия возвращена на компьютер.')).toBeInTheDocument();
+    act(() => setThreadFolder('t1', null));
+  });
+
+  it('does not put the version back into another folder, and says when the kept version is gone after 30 days', async () => {
+    const s = mockServer({ 'GET /app/api/threads/t1/file': { status: 404, body: { error: { code: 'APP_FILE_DELETED', message: 'Файл «Договор.docx» удалён из рабочей папки — скачать его нельзя.' } } } });
+    const other: Tree = { 'Договоры': { 'Договор.docx': new File(['чужой'], 'Договор.docx') } };
+    act(() => setThreadFolder('t1', { ...folderOn(fakeFolder(other)), name: 'Другая папка' }));
+    const view = show(complete('w7', WRITTEN));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
+    expect(await screen.findByText('К проекту теперь подключена другая папка — «Другая папка»: прежнюю версию в неё не вернуть.')).toBeInTheDocument();
+    expect(s.calls.filter((c) => c.path === '/app/api/threads/t1/file')).toEqual([]);
+    view.unmount();
+    act(() => setThreadFolder('t1', folderOn(fakeFolder(other))));
+    show(complete('w8', WRITTEN));
+    await user.click(screen.getByRole('button', { name: 'Вернуть прежнюю версию' }));
+    await user.click(screen.getByRole('button', { name: 'Вернуть' }));
+    expect(await screen.findByText('Прежняя версия хранилась на сервере 30 дней и уже удалена.')).toBeInTheDocument();
+    expect(await textAt(other, 'Договоры', 'Договор.docx')).toBe('чужой');
     act(() => setThreadFolder('t1', null));
   });
 

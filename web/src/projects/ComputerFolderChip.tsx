@@ -32,10 +32,13 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
   const write = state.mode === 'readwrite';
   if (access !== 'granted') {
     const gone = access === 'missing';
-    const action = gone ? t.chooseAgain : access === 'denied' ? t.deniedShort : t.allow;
+    // The browser forbade editing the folder: it can still be read.
+    const toReading = access === 'denied' && write;
+    const action = gone ? t.chooseAgain : toReading ? t.modeRead : access === 'denied' ? t.deniedShort : t.allow;
     const title = gone ? t.missing : access === 'denied' ? (write ? t.deniedWrite : t.denied) : t.needsAllow;
+    const act = () => (gone ? state.choose(state.mode ?? 'read') : toReading ? state.setMode('read') : state.allow());
     return (
-      <button type="button" className={cx(styles.chip, styles.chipWarn, styles.folderAnchor)} title={title} onClick={() => void (gone ? state.choose(state.mode ?? 'read') : state.allow())}>
+      <button type="button" className={cx(styles.chip, styles.chipWarn, styles.folderAnchor)} title={title} onClick={() => void act()}>
         <Icon name="monitor" size={15} className={styles.chipIcon} />
         <span className={styles.chipName}>{folder.name}</span>
         <span className={styles.chipAction}>{action}</span>

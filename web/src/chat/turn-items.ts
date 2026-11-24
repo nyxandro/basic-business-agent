@@ -7,7 +7,7 @@
 // way comes into the turn once it is done — into its stack, or as its block; a widget comes as soon as it has something
 // to draw, since the engine draws it as it is written. A widget or a file the agent showed goes into the stack as a line
 // like any done action — every attempt, the ones the check refused too — and its screen or file comes after it.
-import { GENUI_TOOL, toolTableResultSchema, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
+import { COMPUTER_TOOLS, GENUI_TOOL, toolTableResultSchema, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { drawableOperations, drawsWhileWritten } from '../widgets/operations.ts';
 import { toolMessageOf } from '../answer/messages.ts';
@@ -31,8 +31,13 @@ export type TurnItem =
   // earlier call of it is done after a later one.
   | { kind: 'stack'; key: string; calls: ToolCall[] };
 
-// The live block of a search of the internet stands alone too (spec, section 8.30): it is the search itself.
-const BLOCKS: ReadonlySet<string> = new Set([...Object.values(GENUI_TOOL), WEB_RESEARCH_TOOL, WIDGET_TOOL.render]);
+// The live block of a search of the internet stands alone too (spec, section 8.30): it is the search itself. So does a write
+// onto the person's computer (8.25): its block asks «Да», then shows what was written.
+const BLOCKS: ReadonlySet<string> = new Set([...Object.values(GENUI_TOOL), WEB_RESEARCH_TOOL, WIDGET_TOOL.render, COMPUTER_TOOLS.write]);
+
+// A call in sight while it is under way: a screen once it has something to draw; a write onto the computer, whose card
+// is the question «Да» the browser's tool waits on.
+const inSightUnderWay = (call: ToolCall): boolean => (call.function.name === WIDGET_TOOL.render && drawsWhileWritten(call)) || call.function.name === COMPUTER_TOOLS.write;
 
 // A block of the catalog, or a call whose result is a table the person reads: content, not status.
 function standsAlone(call: ToolCall, messages: readonly Message[]): boolean {
@@ -80,7 +85,7 @@ export function turnItems(turn: readonly AssistantMessage[], messages: readonly 
       const showing = SHOWING.has(call.function.name) && typeof result === 'string';
       const alone = !showing && standsAlone(call, messages);
       if (underWay.has(call.id)) {
-        if (call.function.name === WIDGET_TOOL.render && drawsWhileWritten(call)) asBlock(call);
+        if (inSightUnderWay(call)) asBlock(call);
         else if (!alone && items.at(-1)?.kind !== 'stack') anchor ??= call.id;
         continue;
       }

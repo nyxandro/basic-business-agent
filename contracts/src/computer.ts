@@ -49,3 +49,18 @@ export const computerWriteResultSchema = z.union([
   z.object({ error: z.string() }),
 ]);
 export type ComputerWriteResult = z.infer<typeof computerWriteResultSchema>;
+
+// The result of a write as stored or drawn: the result of a tool of the browser comes as the JSON text it sent (AG-UI
+// keeps a tool message's content as is); null — not a write's result.
+export function readComputerWriteResult(raw: unknown): ComputerWriteResult | null {
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const parsed = computerWriteResultSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}

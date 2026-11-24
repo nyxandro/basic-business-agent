@@ -31,6 +31,7 @@ import { createWebProgressStore, WebProgressContext, webProgressSubscriber } fro
 import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
 import { PartBoundary } from '../ui/ErrorBoundary.tsx';
+import { stopPendingWrites, useWriteAsked } from '../projects/computer-saves.ts';
 
 // The feed sticks to the bottom while the person is within this distance of it.
 const STICK_PX = 140;
@@ -136,6 +137,16 @@ export function ChatView(props: CopilotChatViewProps) {
   const extras = useChatExtras();
   const { agent } = useAgent();
   const { inputValue = '', onInputChange, onSubmitMessage, onStop, isRunning = false, isConnecting = false } = props;
+  // A write onto the computer waits for «Да» (spec, section 8.25): the input waits as while the agent answers, and «Стоп»
+  // lets the write go — a new message would run beside the write still to come.
+  const writeAsked = useWriteAsked(extras.threadId);
+  const busy = isRunning || writeAsked;
+  const stop = writeAsked
+    ? () => {
+        stopPendingWrites(extras.threadId);
+        onStop?.();
+      }
+    : onStop;
   const messages = props.messages ?? [];
   const restored = useRef(false);
   const wasRunning = useRef(false);
@@ -232,7 +243,7 @@ export function ChatView(props: CopilotChatViewProps) {
   // stay as they are; nothing goes while the agent answers. The viewer calls it after the picture of the marks went
   // up — seconds after the press: it reads the chat as it is then, not as it was at the press.
   const sendText = (text: string): boolean => {
-    if (!onSubmitMessage || isRunning) return false;
+    if (!onSubmitMessage || busy) return false;
     if (extras.failure?.broken) extras.keepInterrupted(lastTurnIds(messages));
     submit(text);
     return true;
@@ -241,7 +252,7 @@ export function ChatView(props: CopilotChatViewProps) {
   useLayoutEffect(() => {
     latestSend.current = sendText;
   });
-  const chatSend = useMemo(() => ({ send: (text: string) => latestSend.current(text), running: isRunning }), [isRunning]);
+  const chatSend = useMemo(() => ({ send: (text: string) => latestSend.current(text), running: busy }), [busy]);
   // While «Ответить заново» waits for the server the button is gone: a second click cannot take out
   // another turn (the server takes out only the question the person sees anyway).
   const [answeringAgain, setAnsweringAgain] = useState(false);
@@ -300,8 +311,8 @@ export function ChatView(props: CopilotChatViewProps) {
                 value={inputValue}
                 onChange={change}
                 onSend={() => send(inputValue)}
-                {...(onStop ? { onStop } : {})}
-                running={isRunning}
+                {...(stop ? { onStop: stop } : {})}
+                running={busy}
                 extra={extras.composerExtra}
                 uploading={uploads.waiting}
                 progress={uploads.progress}

@@ -114,6 +114,7 @@ describe('search', () => {
       ['assistant', [shown('out/КП Ёлка.docx'), text('Готово.')]],
       ['assistant', [shown('out/КП Ёлка.docx'), shown('out/Пропал.docx', false)]],
       // A file written onto the person's computer (spec, 8.25): its snapshot is a file of the conversation; a failed write is not.
+      // The result of a tool of the browser is stored as the JSON text the browser sent.
       [
         'assistant',
         [
@@ -124,13 +125,13 @@ describe('search', () => {
               toolCallId: randomUUID(),
               toolName: 'computer_folder_write',
               args: {},
-              result: {
+              result: JSON.stringify({
                 folder: 'Тендер',
                 items: [
                   { to: 'КП/Смета.xlsx', written: true, name: 'Смета.xlsx', bytes: 5, snapshot: '.computer-saved/u/s1/Смета.xlsx', previous: null, replaced: false },
                   { to: 'КП/Акт.docx', written: false, error: 'файл занят' },
                 ],
-              },
+              }),
             },
           },
         ],

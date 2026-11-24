@@ -58,7 +58,8 @@ describe('visibleOf', () => {
         { to: 'КП/Акт.docx', written: false, error: 'файл занят' },
       ],
     };
-    const { marks } = visibleOf({ role: 'assistant', content: message([call('computer_folder_write', { files: [] }, written), call('computer_folder_write', { files: [] }, { declined: true, message: 'нет' })]) }, none);
+    // The result of a tool of the browser is stored as the JSON text the browser sent; an object is read too.
+    const { marks } = visibleOf({ role: 'assistant', content: message([call('computer_folder_write', { files: [] }, JSON.stringify(written)), call('computer_folder_write', { files: [] }, { declined: true, message: 'нет' })]) }, none);
     expect(marks).toEqual([
       'записано на компьютер в папку «Тендер»: КП/КП Ёлка.docx (заменён прежний файл), КП/Смета.xlsx',
       'не записано на компьютер: КП/Акт.docx — файл занят',

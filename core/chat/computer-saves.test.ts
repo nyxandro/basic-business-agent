@@ -91,6 +91,26 @@ describe('a file written onto the computer', () => {
     expect((await save(olga, threadId, { source: 'a.txt', target: '' })).status).toBe(400);
   });
 
+  // The browser could not write the file (it is open in Word): the snapshot and the version kept for it go.
+  it('removes a save the browser could not write, only its own, and nothing out of the folder', async () => {
+    const { threadId, root } = await projectThread('Не записалось');
+    put(root, 'КП.docx', 'x');
+    const saved = (await (await save(olga, threadId, { source: 'КП.docx', target: 'КП.docx', previous: 'было' })).json()) as ComputerSaveResponse;
+    const kept = (await (await save(olga, threadId, { source: 'КП.docx', target: 'КП.docx' })).json()) as ComputerSaveResponse;
+    expect((await t.call('DELETE', `/app/api/threads/${threadId}/computer-saves/${saved.id}`, { cookie: petr })).status).toBe(404);
+    expect((await t.call('DELETE', `/app/api/threads/${threadId}/computer-saves/${saved.id}`, { cookie: olga })).status).toBe(200);
+    expect(existsSync(join(root, saved.snapshot))).toBe(false);
+    expect(existsSync(join(root, saved.previous!))).toBe(false);
+    expect(existsSync(join(root, kept.snapshot))).toBe(true);
+    expect((await t.call('DELETE', `/app/api/threads/${threadId}/computer-saves/..%2F..`, { cookie: olga })).status).toBe(400);
+  });
+
+  it('refuses a body over the limit before reading it', async () => {
+    const { threadId } = await projectThread('Большой');
+    const res = await t.app.request(`/app/api/threads/${threadId}/computer-saves`, { method: 'POST', body: 'x', headers: { cookie: olga, origin: TEST_PUBLIC_URL, 'content-length': String(100 * 1024 * 1024), 'content-type': 'multipart/form-data; boundary=x' } });
+    expect(res.status).toBe(413);
+  });
+
   it('another person’s conversation is not found', async () => {
     const { threadId, root } = await projectThread('Чужое');
     put(root, 'КП.docx', 'x');
