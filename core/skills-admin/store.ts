@@ -1,14 +1,15 @@
 // Skills of the installation (spec, scenario 10, section 8.15): the admin uploads a `.skill` file,
-// chooses who gets it, switches it off, replaces it with a new version or removes it. The archive is
-// kept in the database; its unpacked copy for the agents is in APP_SKILLS_DIR/<sha256>/<name>.
+// ticks the agents that have it, switches it off, replaces it with a new version or removes it. A skill has no access of
+// its own (owner's decision 24.11): people get it through an agent open to them; the link agent — skill
+// (app.agent_skills) is one, set from the skill or from the agent. The archive is kept in the database; its unpacked
+// copy for the agents is in APP_SKILLS_DIR/<sha256>/<name>.
 // System skills of the core (section 8.18) are listed first and refuse every change; their names
 // cannot be taken by an uploaded skill.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SkillAccess, SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
+import type { SkillDto, SkillFile, SkillPreview, SkillsResponse, SkillUpdate } from '@bba/contracts';
 import type pg from 'pg';
 import { writeAudit } from '../audit/audit.ts';
-import { checkScope, writeScopeTargets } from '../auth/scope.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { sandboxContents } from '../sandbox/environment.ts';
@@ -20,6 +21,8 @@ export interface SkillsDeps {
   skillsDir: string;
   // core/system-skills, loaded once at the start (loadSystemSkills).
   systemSkills: SystemSkill[];
+  // The agents of the installation: a skill is given only to them.
+  agentIds: ReadonlySet<string>;
 }
 
 interface SkillRow {
@@ -31,11 +34,9 @@ interface SkillRow {
   files: SkillFile[];
   has_scripts: boolean;
   enabled: boolean;
-  scope: SkillAccess['scope'];
   uploaded_at: Date;
   uploaded_by: string | null;
-  department_ids: string[];
-  user_ids: string[];
+  agent_ids: string[];
 }
 
 const UNIQUE_VIOLATION = '23505';
@@ -85,7 +86,7 @@ function systemDto(s: SystemSkill): SkillDto {
     files: s.files,
     hasScripts: s.hasScripts,
     enabled: true,
-    access: { scope: 'org', departmentIds: [], userIds: [] },
+    agentIds: [],
     system: true,
     uploadedAt: null,
     uploadedBy: null,
@@ -98,11 +99,10 @@ function filesOf(pkg: SkillPackage): SkillFile[] {
 
 async function rows(db: Db, name?: string): Promise<SkillRow[]> {
   const { rows: found } = await db.query<SkillRow>(
-    `SELECT s.name, s.title, s.description, s.sha256, s.size_bytes, s.files, s.has_scripts, s.enabled, s.scope, s.uploaded_at, u."name" AS uploaded_by,
-            coalesce(array_agg(sc.department_id::text) FILTER (WHERE sc.department_id IS NOT NULL), '{}') AS department_ids,
-            coalesce(array_agg(sc.user_id) FILTER (WHERE sc.user_id IS NOT NULL), '{}') AS user_ids
+    `SELECT s.name, s.title, s.description, s.sha256, s.size_bytes, s.files, s.has_scripts, s.enabled, s.uploaded_at, u."name" AS uploaded_by,
+            coalesce(array_agg(a.agent_id ORDER BY a.agent_id) FILTER (WHERE a.agent_id IS NOT NULL), '{}') AS agent_ids
        FROM app.skills s
-       LEFT JOIN app.skill_scope sc ON sc.skill_name = s.name
+       LEFT JOIN app.agent_skills a ON a.skill_name = s.name
        LEFT JOIN app."user" u ON u."id" = s.uploaded_by
       WHERE $1::text IS NULL OR s.name = $1
       GROUP BY s.name, u."name"
@@ -121,7 +121,7 @@ function toDto(r: SkillRow): SkillDto {
     files: r.files,
     hasScripts: r.has_scripts,
     enabled: r.enabled,
-    access: { scope: r.scope, departmentIds: [...r.department_ids].sort(), userIds: [...r.user_ids].sort() },
+    agentIds: r.agent_ids,
     system: false,
     uploadedAt: r.uploaded_at.toISOString(),
     uploadedBy: r.uploaded_by,
@@ -146,28 +146,38 @@ export async function previewSkill(deps: SkillsDeps, archive: Uint8Array): Promi
   return { name: pkg.name, title: pkg.title, description: pkg.description, sizeBytes: pkg.sizeBytes, files: filesOf(pkg), hasScripts: pkg.hasScripts, exists: (rowCount ?? 0) > 0 };
 }
 
-async function writeScope(c: pg.PoolClient, name: string, access: SkillAccess): Promise<void> {
-  await c.query('UPDATE app.skills SET scope = $2 WHERE name = $1', [name, access.scope]);
-  await writeScopeTargets(c, 'skill', name, access);
+// The agents of a skill must be agents of the installation; the order and repeats do not matter.
+function checkAgents(deps: SkillsDeps, agentIds: readonly string[]): string[] {
+  const unique = [...new Set(agentIds)].sort();
+  const unknown = unique.filter((id) => !deps.agentIds.has(id));
+  if (unknown.length > 0) throw appError('APP_VALIDATION_FAILED', `unknown agents for a skill: ${unknown.join(', ')}`, { userMessage: 'Некоторых агентов уже нет в установке. Обновите страницу.' });
+  return unique;
 }
 
-export async function createSkill(deps: SkillsDeps, actorUserId: string, archive: Uint8Array, rawAccess: SkillAccess): Promise<SkillDto> {
+// Agents the installation no longer has keep their link: it comes back with the agent.
+async function writeSkillAgents(c: pg.PoolClient, deps: SkillsDeps, name: string, agentIds: readonly string[]): Promise<void> {
+  await c.query('DELETE FROM app.agent_skills WHERE skill_name = $1 AND agent_id = ANY($2::text[])', [name, [...deps.agentIds]]);
+  await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT unnest($1::text[]), $2', [agentIds, name]);
+}
+
+// A new skill is with no agent unless the admin ticked some at the upload (owner's decision 24.11).
+export async function createSkill(deps: SkillsDeps, actorUserId: string, archive: Uint8Array, rawAgentIds: readonly string[]): Promise<SkillDto> {
   const pkg = readSkillArchive(archive);
   refuseSystemName(deps, pkg.name);
+  const agentIds = checkAgents(deps, rawAgentIds);
   await inTransaction(deps.db, async (c) => {
-    const access = await checkScope(c, rawAccess);
     try {
       await c.query(
-        `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, scope, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [pkg.name, pkg.title, pkg.description, Buffer.from(archive), pkg.sha256, pkg.sizeBytes, JSON.stringify(filesOf(pkg)), pkg.hasScripts, access.scope, actorUserId],
+        `INSERT INTO app.skills (name, title, description, archive, sha256, size_bytes, files, has_scripts, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [pkg.name, pkg.title, pkg.description, Buffer.from(archive), pkg.sha256, pkg.sizeBytes, JSON.stringify(filesOf(pkg)), pkg.hasScripts, actorUserId],
       );
     } catch (error) {
       if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error;
       throw appError('APP_SKILL_EXISTS', `skill ${pkg.name} exists`, { cause: error, userMessage: `Скилл «${pkg.name}» уже загружен. Чтобы обновить его, нажмите «Заменить».` });
     }
-    await writeScope(c, pkg.name, access);
-    await writeAudit(c, { actorUserId, action: 'skill.upload', target: pkg.name, details: { sha256: pkg.sha256, access } });
+    await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT unnest($1::text[]), $2', [agentIds, pkg.name]);
+    await writeAudit(c, { actorUserId, action: 'skill.upload', target: pkg.name, details: { sha256: pkg.sha256, agentIds } });
   });
   writeSkillFiles(pkg.files, skillDir(deps.skillsDir, pkg.name, pkg.sha256));
   return dtoOf(deps.db, pkg.name);
@@ -195,13 +205,35 @@ export async function replaceSkill(deps: SkillsDeps, actorUserId: string, name: 
 export async function updateSkill(deps: SkillsDeps, actorUserId: string, name: string, change: SkillUpdate): Promise<SkillDto> {
   refuseSystem(deps, name);
   await dtoOf(deps.db, name);
+  const agentIds = change.agentIds ? checkAgents(deps, change.agentIds) : undefined;
   await inTransaction(deps.db, async (c) => {
     if (change.enabled !== undefined) await c.query('UPDATE app.skills SET enabled = $2 WHERE name = $1', [name, change.enabled]);
-    const access = change.access ? await checkScope(c, change.access) : undefined;
-    if (access) await writeScope(c, name, access);
-    await writeAudit(c, { actorUserId, action: 'skill.update', target: name, details: { enabled: change.enabled, access } });
+    if (agentIds) await writeSkillAgents(c, deps, name, agentIds);
+    await writeAudit(c, { actorUserId, action: 'skill.update', target: name, details: { enabled: change.enabled, agentIds } });
   });
   return dtoOf(deps.db, name);
+}
+
+// «Скиллы» of an agent's page: the same link from the side of the agent. The system skills are with every agent that may
+// run commands and are not in the list.
+export async function setAgentSkills(deps: SkillsDeps, actorUserId: string, agentId: string, skillNames: readonly string[]): Promise<string[]> {
+  const names = [...new Set(skillNames)].sort();
+  const system = names.filter((n) => isSystem(deps, n));
+  if (system.length > 0) throw appError('APP_SKILL_SYSTEM', `system skills ${system.join(', ')} cannot be given to an agent`, { userMessage: `«${system.join('», «')}» — системный скилл: он и так есть у каждого агента, которому можно выполнять команды.` });
+  await inTransaction(deps.db, async (c) => {
+    const { rowCount } = await c.query('SELECT 1 FROM app.skills WHERE name = ANY($1::text[])', [names]);
+    if (rowCount !== names.length) throw appError('APP_VALIDATION_FAILED', `unknown skills for agent ${agentId}`, { userMessage: 'Некоторых скиллов уже нет. Обновите страницу.' });
+    await c.query('DELETE FROM app.agent_skills WHERE agent_id = $1', [agentId]);
+    await c.query('INSERT INTO app.agent_skills (agent_id, skill_name) SELECT $1, unnest($2::text[])', [agentId, names]);
+    await writeAudit(c, { actorUserId, action: 'agent.skills', target: agentId, details: { skillNames: names } });
+  });
+  return names;
+}
+
+// The uploaded skills of every agent that has any, by name.
+export async function skillNamesByAgent(db: Db): Promise<Map<string, string[]>> {
+  const { rows } = await db.query<{ agent_id: string; names: string[] }>('SELECT agent_id, array_agg(skill_name ORDER BY skill_name) AS names FROM app.agent_skills GROUP BY agent_id');
+  return new Map(rows.map((r) => [r.agent_id, r.names]));
 }
 
 export async function deleteSkill(deps: SkillsDeps, actorUserId: string, name: string): Promise<void> {

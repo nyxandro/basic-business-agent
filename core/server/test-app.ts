@@ -309,7 +309,7 @@ export async function createTestApp(
   };
   const workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-test-ws-'));
   const skillsDir = mkdtempSync(join(tmpdir(), 'bba-test-skills-'));
-  const skillsDeps = { db, skillsDir, systemSkills: SYSTEM_SKILLS };
+  const skillsDeps = { db, skillsDir, systemSkills: SYSTEM_SKILLS, agentIds: registry.ids() };
   const skills = createSkillsRuntime(skillsDeps);
   const mail = createMailService({
     db,

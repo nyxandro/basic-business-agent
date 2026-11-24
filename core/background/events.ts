@@ -3,6 +3,7 @@
 // transaction, so an accepted event is never lost between the two. One key — one run in the task: a letter's Message-ID
 // or a system's own event id for good, the fingerprint of a body without an id for a day. Over 100 events an hour (a
 // task's messages, a mailbox's letters — owner 21.11, F2) the rest are «Пропущено: лавина»; the admins hear of it once.
+import { mayUseAgentSql } from '../auth/agent-access.ts';
 import { holdersOf } from '../auth/holders.ts';
 import type { TaskEventOutcome } from '@bba/contracts';
 import type pg from 'pg';
@@ -47,8 +48,7 @@ export function eventOfThread(threadId: string): string | null {
 async function mayRun(db: Db | pg.PoolClient, userId: string, agentId: string): Promise<boolean> {
   const { rows } = await db.query<{ ok: boolean }>(
     `SELECT COALESCE(p.blocked_at IS NULL AND p.deletion_started_at IS NULL, true)
-            AND (EXISTS (SELECT 1 FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id WHERE ur.user_id = u."id" AND r.builtin = 'superadmin')
-                 OR EXISTS (SELECT 1 FROM app.department_members dm JOIN app.department_agents da ON da.department_id = dm.department_id WHERE dm.user_id = u."id" AND da.agent_id = $2)) AS ok
+            AND ${mayUseAgentSql('u."id"', '$2')} AS ok
        FROM app."user" u LEFT JOIN app.user_profiles p ON p.user_id = u."id" WHERE u."id" = $1`,
     [userId, agentId],
   );

@@ -75,9 +75,9 @@ createMailTrigger({ db: t.db, mail: t.mail, wake: () => t.background.wake(), int
 // Agreed requests of multi-step approvals run here as in an installation (docs/specs/[20.11.2026]-multi-step-approvals.md).
 t.approvals.executor.start();
 
-// A skill of the company for the whole organisation, as the admin uploads it in «Скиллы»; the
-// system skills of documents are there without any upload (spec, section 8.18).
-await createSkill(t.skillsDeps, igor, new Uint8Array(readFileSync(new URL('../../skills/note-taking.skill', import.meta.url))), { scope: 'org', departmentIds: [], userIds: [] });
+// A skill of the company ticked for the «Общий помощник», as the admin uploads it in «Скиллы»; the system skills of
+// documents are there without any upload (spec, section 8.18).
+await createSkill(t.skillsDeps, igor, new Uint8Array(readFileSync(new URL('../../skills/note-taking.skill', import.meta.url))), ['assistant']);
 // Ольга's project with its instructions.
 const tender = await createProject({ db: t.db, memory: t.memory, workspaceRoot: t.workspaceRoot, storage: t.storage }, olga, { name: 'Тендер', access: { mode: 'private', departmentIds: [], userIds: [] } });
 await t.db.query('UPDATE app.projects SET instructions = $1 WHERE id = $2', ['Заказчик — ООО «Пример». Отвечай кратко.', tender.id]);

@@ -1,8 +1,8 @@
-// Skills an employee's agent gets (spec, sections 8.15 and 8.18): the system skills of the core
-// first, then the enabled uploaded skills whose scope is the whole organisation, a department of
-// the employee or the employee. The entry point of a run asks once and puts the folders into the
-// request context, so a skill replaced during an answer does not change under it; the sandbox and
-// the file tools see these folders only.
+// Skills an agent gets (spec, sections 8.15 and 8.18): the system skills of the core first, then the enabled uploaded
+// skills ticked for the agent — the same at whichever employee the agent works (owner's decision 24.11: people get skills
+// through the agent). Its sub-agents work with the same folders. The entry point of a run asks once and puts the folders
+// into the request context, so a skill replaced during an answer does not change under it; the sandbox and the file tools
+// see these folders only.
 import { existsSync } from 'node:fs';
 import { writeAudit } from '../audit/audit.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -13,7 +13,7 @@ import { removeSkillCopies, skillDir, type SkillsDeps } from './store.ts';
 export interface SkillsRuntime {
   // `documents: false` — the agent may run no commands (spec, section 8.30): the system skills of documents
   // are made of scripts it could not run, so it does not get them.
-  skillsFor(userId: string, opts?: { documents: boolean }): Promise<string[]>;
+  skillsFor(agentId: string, opts?: { documents: boolean }): Promise<string[]>;
   // At the start of the server: removes uploaded skills a system skill took the name of, unpacks
   // the enabled skills afresh from their archives (a copy changed on disk does not survive a start),
   // removes copies nobody uses any more.
@@ -46,17 +46,12 @@ export function createSkillsRuntime(deps: SkillsDeps): SkillsRuntime {
   const systemDirs = deps.systemSkills.map((s) => s.dir);
   const systemNames = deps.systemSkills.map((s) => s.name);
   return {
-    async skillsFor(userId, opts = { documents: true }) {
+    async skillsFor(agentId, opts = { documents: true }) {
       const { rows } = await deps.db.query<{ name: string; sha256: string }>(
-        `SELECT s.name, s.sha256 FROM app.skills s
-          WHERE s.enabled AND s.name <> ALL($2) AND (
-                s.scope = 'org'
-             OR (s.scope = 'users' AND EXISTS (SELECT 1 FROM app.skill_scope sc WHERE sc.skill_name = s.name AND sc.user_id = $1))
-             OR (s.scope = 'departments' AND EXISTS (
-                  SELECT 1 FROM app.skill_scope sc JOIN app.department_members m ON m.department_id = sc.department_id
-                   WHERE sc.skill_name = s.name AND m.user_id = $1)))
+        `SELECT s.name, s.sha256 FROM app.skills s JOIN app.agent_skills a ON a.skill_name = s.name
+          WHERE a.agent_id = $1 AND s.enabled AND s.name <> ALL($2)
           ORDER BY s.name`,
-        [userId, systemNames],
+        [agentId, systemNames],
       );
       const dirs = await Promise.all(rows.map((r) => unpack(deps.db, deps.skillsDir, r.name, r.sha256)));
       return [...(opts.documents ? systemDirs : []), ...dirs.filter((d): d is string => d !== null)];

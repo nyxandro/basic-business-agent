@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type { AdminTask, MailFilter, MailReachResponse, RunOutcomeName, TaskAccess, TaskCreate, TaskEventOutcome, TaskEventsResponse, TaskFireSummary, TaskRunsResponse, TaskUpdate } from '@bba/contracts';
 import { RUN_OUTCOMES } from '@bba/contracts';
 import { writeAudit } from '../audit/audit.ts';
+import { mayUseAgentSql } from '../auth/agent-access.ts';
 import { checkScope, writeScopeTargets } from '../auth/scope.ts';
 import type { SecretBox } from '../crypto/secret-box.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
@@ -131,7 +132,7 @@ export async function createTask(deps: TasksDeps, actorUserId: string, input: Ta
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active', $15, now())`,
       [id, title, agentId, access.scope, input.trigger, cron, mailFilter, hook?.ciphertext ?? null, hook?.iv ?? null, hook?.keyVersion ?? null, hook?.hash ?? null, input.trigger === 'webhook' ? 'fixed' : null, input.trigger === 'webhook' ? input.executorId : null, prompt, actorUserId],
     );
-    await writeScopeTargets(c, 'task', id, access);
+    await writeScopeTargets(c, id, access);
     await writeAudit(c, { actorUserId, action: 'task.create', target: id, details: { title, agentId, trigger: input.trigger, cron, mailFilter, executorId: input.trigger === 'webhook' ? input.executorId : null, access } });
   });
   await deps.background.syncSchedules();
@@ -161,7 +162,7 @@ export async function updateTask(deps: TasksDeps, actorUserId: string, id: strin
         WHERE id = $1`,
       [id, title, agentId, cron, prompt, access?.scope ?? null, fixed, mailFilter, executorId],
     );
-    if (access) await writeScopeTargets(c, 'task', id, access);
+    if (access) await writeScopeTargets(c, id, access);
     await writeAudit(c, { actorUserId, action: 'task.update', target: id, details: { ...change } });
   });
   await deps.background.syncSchedules();
@@ -243,8 +244,7 @@ export async function mailReach(deps: Pick<TasksDeps, 'db' | 'registry'>, agentI
      ), able AS (
        SELECT p.user_id FROM people p LEFT JOIN app.user_profiles pr ON pr.user_id = p.user_id
         WHERE pr.blocked_at IS NULL AND pr.deletion_started_at IS NULL
-          AND (EXISTS (SELECT 1 FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id WHERE ur.user_id = p.user_id AND r.builtin = 'superadmin')
-               OR EXISTS (SELECT 1 FROM app.department_members dm JOIN app.department_agents da ON da.department_id = dm.department_id WHERE dm.user_id = p.user_id AND da.agent_id = $4))
+          AND ${mayUseAgentSql('p.user_id', '$4')}
      )
      SELECT count(*)::int AS total, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM app.mail_accounts m WHERE m.user_id = able.user_id AND m.status = 'connected'))::int AS with_mail FROM able`,
     [access.scope, access.departmentIds, access.userIds, agentId],

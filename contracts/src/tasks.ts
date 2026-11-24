@@ -1,10 +1,17 @@
 import { z } from 'zod';
-import { skillAccessSchema, type SkillAccess } from './skills.ts';
 
 // «Режимы работы» (spec, scenario 4, section 8.6): background tasks the admin sets for the
 // organisation, departments or employees; each fire runs on behalf of every employee in scope.
-export const taskAccessSchema = skillAccessSchema;
-export type TaskAccess = SkillAccess;
+export const TASK_SCOPES = ['org', 'departments', 'users'] as const;
+export type TaskScope = (typeof TASK_SCOPES)[number];
+
+// «Вся организация», «Отделы» or «Сотрудники»; the lists matter for the last two only.
+export const taskAccessSchema = z.object({
+  scope: z.enum(TASK_SCOPES),
+  departmentIds: z.array(z.uuid()),
+  userIds: z.array(z.string().min(1)),
+});
+export type TaskAccess = z.infer<typeof taskAccessSchema>;
 
 // The time is hh:mm in the installation's time zone; a week day is 1 (Monday) … 7 (Sunday).
 export const taskScheduleSchema = z.discriminatedUnion('kind', [

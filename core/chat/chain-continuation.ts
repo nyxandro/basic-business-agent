@@ -81,7 +81,7 @@ export function createChainContinuation(deps: ChainContinuationDeps): ChainConti
       return;
     }
     const abilities = await readAbilities(db, row.agent_id);
-    const [project, models, skillPaths] = await Promise.all([runProjectOfWaitingAnswer(db, row.project_id), chooseModels(db, deps.timezone, row.user_id, row.agent_id), deps.skills.skillsFor(row.user_id, { documents: abilities.commands })]);
+    const [project, models, skillPaths] = await Promise.all([runProjectOfWaitingAnswer(db, row.project_id), chooseModels(db, deps.timezone, row.user_id, row.agent_id), deps.skills.skillsFor(row.agent_id, { documents: abilities.commands })]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, row.user_id);
     rc.set(REQUEST_KEYS.threadId, row.thread_id);

@@ -74,7 +74,7 @@ export function createChainExecutor(deps: ChainExecutorDeps): ChainExecutor {
 
   async function contextOf(row: ChainRow): Promise<RequestContext> {
     const abilities = await readAbilities(db, row.agent_id);
-    const [project, skillPaths] = await Promise.all([runProjectOfWaitingAnswer(db, row.project_id), deps.skills.skillsFor(row.user_id, { documents: abilities.commands })]);
+    const [project, skillPaths] = await Promise.all([runProjectOfWaitingAnswer(db, row.project_id), deps.skills.skillsFor(row.agent_id, { documents: abilities.commands })]);
     const rc = new Context();
     rc.set(REQUEST_KEYS.userId, row.user_id);
     rc.set(REQUEST_KEYS.threadId, row.thread_id);

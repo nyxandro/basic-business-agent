@@ -1,11 +1,10 @@
-// Who gets something the admin set up — a skill or a background task (spec, sections 8.6, 8.15):
-// «Вся организация», «Отделы» or «Сотрудники». The scope's lists live in a table of the thing
-// (skill_scope, task_scope) with one department or one employee per row.
-import type { SkillAccess } from '@bba/contracts';
+// Who a background task reaches (spec, section 8.6): «Вся организация», «Отделы» or «Сотрудники». The lists live in
+// app.task_scope with one department or one employee per row.
+import type { TaskAccess } from '@bba/contracts';
 import type pg from 'pg';
 import { appError } from '../errors/catalog.ts';
 
-export type ScopeAccess = SkillAccess;
+export type ScopeAccess = TaskAccess;
 type Queryable = Pick<pg.PoolClient, 'query'>;
 
 // Departments or employees of the scope must exist; "the whole organisation" takes no list.
@@ -20,15 +19,9 @@ export async function checkScope(db: Queryable, access: ScopeAccess): Promise<Sc
   return access.scope === 'departments' ? { scope: 'departments', departmentIds: ids, userIds: [] } : { scope: 'users', departmentIds: [], userIds: ids };
 }
 
-const TABLES = {
-  skill: { table: 'app.skill_scope', key: 'skill_name' },
-  task: { table: 'app.task_scope', key: 'task_id' },
-} as const;
-
-// Replaces the lists of a checked scope (the scope column itself belongs to the owner's table).
-export async function writeScopeTargets(db: Queryable, of: keyof typeof TABLES, id: string, access: ScopeAccess): Promise<void> {
-  const { table, key } = TABLES[of];
-  await db.query(`DELETE FROM ${table} WHERE ${key} = $1`, [id]);
-  for (const department of access.departmentIds) await db.query(`INSERT INTO ${table} (${key}, department_id) VALUES ($1, $2)`, [id, department]);
-  for (const user of access.userIds) await db.query(`INSERT INTO ${table} (${key}, user_id) VALUES ($1, $2)`, [id, user]);
+// Replaces the lists of a checked scope (the scope column itself belongs to app.background_tasks).
+export async function writeScopeTargets(db: Queryable, taskId: string, access: ScopeAccess): Promise<void> {
+  await db.query('DELETE FROM app.task_scope WHERE task_id = $1', [taskId]);
+  for (const department of access.departmentIds) await db.query('INSERT INTO app.task_scope (task_id, department_id) VALUES ($1, $2)', [taskId, department]);
+  for (const user of access.userIds) await db.query('INSERT INTO app.task_scope (task_id, user_id) VALUES ($1, $2)', [taskId, user]);
 }

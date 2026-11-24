@@ -26,6 +26,18 @@ export const MASKING_KIND_IDS = ['passport', 'snils', 'card', 'inn', 'phone', 'e
 export const maskingSettingsSchema = z.object({ kinds: z.array(z.enum(MASKING_KIND_IDS)) });
 
 export const promptDraftSchema = z.object({ text: z.string(), baseDraftVersionId: z.string().nullable() });
+// Who may use an agent (owner's decision 24.11, spec section 8.15): the whole organisation — or departments and/or employees
+// by name, both lists at once; nothing chosen — only a superadministrator. Departments are the same link as «Агенты отдела».
+export const agentAccessSchema = z.object({
+  org: z.boolean(),
+  departmentIds: z.array(z.uuid()),
+  userIds: z.array(z.string().min(1)),
+});
+export type AgentAccess = z.infer<typeof agentAccessSchema>;
+
+// The uploaded skills of an agent: the same link as the agents of a skill in «Скиллы».
+export const agentSkillsSchema = z.object({ skillNames: z.array(z.string().min(1)) });
+
 export const agentModelSchema = z.object({ modelId: z.string().nullable() });
 // null — the starter questions of the agent's passport.
 export const agentStartersSchema = z.object({ starters: z.array(z.string().trim().min(1).max(200)).max(3).nullable() });
@@ -115,8 +127,10 @@ export interface AdminAgent {
   description: string;
   // The agent's own model from the catalog; null — the organisation's model.
   modelId: string | null;
-  // Departments that see the agent.
-  departmentNames: string[];
+  // Who may use the agent (spec, section 8.15): the whole organisation, departments and employees.
+  access: AgentAccess;
+  // The uploaded skills the agent has (the system skills of documents are with every agent that may run commands).
+  skillNames: string[];
   // Starter questions of the empty chat: the admin's when set (startersCustom), else the passport's.
   starters: string[];
   startersCustom: boolean;

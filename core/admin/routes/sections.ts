@@ -2,6 +2,7 @@
 // «Журнал действий» (spec, scenario 5, section 17.5). Each needs its own right of the role.
 import {
   agentAbilitiesPatchSchema,
+  agentAccessSchema,
   agentModelSchema,
   agentStartersSchema,
   journalQuerySchema,
@@ -13,6 +14,7 @@ import {
 import type { AgentAbilities } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { writeAudit } from '../../audit/audit.ts';
+import { listAgentAccess, setAgentAccess } from '../../auth/agent-access.ts';
 import { countEmployeesWithAgents } from '../../connections/audience.ts';
 import type { ConnectionManager } from '../../connections/manager.ts';
 import type { Db } from '../../db/pool.ts';
@@ -24,6 +26,7 @@ import type { Registry } from '../../loader/registry.ts';
 import { getMaskingKinds, setMaskingKinds } from '../../masking/settings.ts';
 import type { ModelGateway } from '../../models/gateway.ts';
 import { getLimitSettings } from '../../models/limits.ts';
+import { skillNamesByAgent } from '../../skills-admin/store.ts';
 import { requireAnyPermission, requirePermission } from '../../auth/guards.ts';
 import { access, parseJson, type AppEnv } from '../../http/http.ts';
 
@@ -62,11 +65,10 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
   });
 
   const agents = requirePermission('agents');
-  app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments'), async (c) => {
-    const { rows } = await db.query<{ agent_id: string; names: string[] }>(
-      'SELECT da.agent_id, array_agg(d.name ORDER BY d.name) AS names FROM app.department_agents da JOIN app.departments d ON d.id = da.department_id GROUP BY da.agent_id ORDER BY da.agent_id',
-    );
-    const departments = new Map(rows.map((r) => [r.agent_id, r.names]));
+  // «Скиллы» lists the agents to tick for a skill.
+  app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments', 'skills'), async (c) => {
+    const accessOf = await listAgentAccess(db);
+    const skillsOf = await skillNamesByAgent(db);
     const own = await db.query<{ agent_id: string; model_id: string | null; starters: string[] | null; published_version_id: string | null }>(
       'SELECT agent_id, model_id, starters, published_version_id FROM app.agent_overrides',
     );
@@ -82,7 +84,8 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
           name: a.passport.name,
           description: a.passport.description,
           modelId: o?.model_id ?? null,
-          departmentNames: departments.get(a.passport.id) ?? [],
+          access: accessOf.get(a.passport.id) ?? { org: false, departmentIds: [], userIds: [] },
+          skillNames: skillsOf.get(a.passport.id) ?? [],
           starters: o?.starters ?? a.passport.starters,
           startersCustom: o?.starters !== null && o?.starters !== undefined,
           promptChanged: Boolean(o?.published_version_id),
@@ -92,7 +95,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
         };
       }),
       // Departments still pointing at agents removed from the installation (spec, section 10).
-      missingAgents: rows.map((r) => r.agent_id).filter((id) => !known.has(id)),
+      missingAgents: [...accessOf].filter(([id, a]) => a.departmentIds.length > 0 && !known.has(id)).map(([id]) => id),
     });
   });
   app.get('/app/api/admin/agents/:id/prompt', agents, async (c) => c.json(await getPromptState(deps.editor, c.req.param('id'))));
@@ -116,6 +119,13 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     await db.query('INSERT INTO app.agent_overrides (agent_id, starters) VALUES ($1, $2) ON CONFLICT (agent_id) DO UPDATE SET starters = EXCLUDED.starters', [id, starters]);
     await writeAudit(db, { actorUserId: access(c).userId, action: 'agent.starters', target: id, details: { starters } });
     return c.json({ ok: true });
+  });
+
+  // «Доступ» (owner's decision 24.11, spec section 8.15): from the next request of every employee.
+  app.put('/app/api/admin/agents/:id/access', agents, async (c) => {
+    const id = c.req.param('id');
+    if (!deps.registry.get(id)) throw appError('APP_NOT_FOUND', `agent ${id} is not loaded`, { userMessage: 'Такого агента нет в установке. Обновите страницу.' });
+    return c.json({ access: await setAgentAccess(db, id, await parseJson(c, agentAccessSchema), access(c).userId) });
   });
 
   // «Что агенту можно» (spec, section 8.30): from the next message of every employee.

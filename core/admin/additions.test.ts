@@ -52,10 +52,11 @@ describe('stage 2 additions', () => {
     expect(await starters()).toEqual(['Покажи мои сделки']);
   });
 
-  it('lists the agents for the admin with their departments, starters and a mark of an edited prompt', async () => {
-    type Agent = { id: string; departmentNames: string[]; starters: string[]; startersCustom: boolean; promptChanged: boolean };
+  it('lists the agents for the admin with who may use them, their skills, starters and a mark of an edited prompt', async () => {
+    type Agent = { id: string; access: { org: boolean; departmentIds: string[]; userIds: string[] }; skillNames: string[]; starters: string[]; startersCustom: boolean; promptChanged: boolean };
     const sales = async () => (await json<{ agents: Agent[] }>(await t.call('GET', '/app/api/admin/agents', { cookie: admin }))).agents.find((a) => a.id === 'sales')!;
-    expect(await sales()).toMatchObject({ departmentNames: ['Продажи'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: false });
+    const department = (await t.db.query<{ id: string }>(`SELECT id FROM app.departments WHERE name = 'Продажи'`)).rows[0]!.id;
+    expect(await sales()).toMatchObject({ access: { org: false, departmentIds: [department], userIds: [] }, skillNames: [], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: false });
     await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['Сводка за неделю'] } });
     const draft = await json<{ draftVersionId: string }>(await t.call('PUT', '/app/api/admin/agents/sales/prompt/draft', { cookie: admin, body: { text: 'Ты агент продаж. Кратко.', baseDraftVersionId: null } }));
     expect(draft.draftVersionId).toBeTruthy();

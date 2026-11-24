@@ -2,7 +2,8 @@
 // - «Вся организация» — every active employee with access to the agent;
 // - «Отделы» — the employees of the chosen departments, «Сотрудники» — the chosen people; of
 //   them, a blocked employee or one without access to the agent is skipped with the reason.
-// Access to an agent: a superadmin has every agent, others — the agents of their departments.
+// Access to an agent — one rule for the whole core (core/auth/agent-access.ts).
+import { mayUseAgentSql } from '../auth/agent-access.ts';
 import type { Db } from '../db/pool.ts';
 
 export type SkipReason = 'blocked' | 'no_access';
@@ -28,9 +29,7 @@ export async function membersOf(db: Db, taskId: string, scope: 'org' | 'departme
   const { rows } = await db.query<Row>(
     `SELECT p.user_id,
             COALESCE(pr.blocked_at IS NOT NULL OR pr.deletion_started_at IS NOT NULL, false) AS blocked,
-            EXISTS (SELECT 1 FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id WHERE ur.user_id = p.user_id AND r.builtin = 'superadmin')
-              OR EXISTS (SELECT 1 FROM app.department_members dm JOIN app.department_agents da ON da.department_id = dm.department_id
-                          WHERE dm.user_id = p.user_id AND da.agent_id = $2) AS has_access
+            ${mayUseAgentSql('p.user_id', '$2')} AS has_access
        FROM (${people}) p
        LEFT JOIN app.user_profiles pr ON pr.user_id = p.user_id
       ORDER BY p.user_id`,

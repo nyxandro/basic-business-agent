@@ -1,6 +1,7 @@
-// Who is asking and what they may do: roles, rights, departments and the agents those open.
+// Who is asking and what they may do: roles, rights, departments and the agents open to them (core/auth/agent-access.ts).
 import { ADMIN_SECTIONS, PERMISSIONS, type Permission } from '@bba/contracts';
 import type { Db } from '../db/pool.ts';
+import { agentsOfPersonSql } from './agent-access.ts';
 
 export interface AccessContext {
   userId: string;
@@ -37,8 +38,7 @@ export async function loadAccess(db: Db, userId: string): Promise<AccessContext 
             (SELECT array_agg(DISTINCT perm) FROM app.user_roles ur JOIN app.roles r ON r.id = ur.role_id,
                     jsonb_array_elements_text(r.permissions) AS perm WHERE ur.user_id = u."id") AS permissions,
             (SELECT array_agg(dm.department_id::text) FROM app.department_members dm WHERE dm.user_id = u."id") AS department_ids,
-            (SELECT array_agg(DISTINCT da.agent_id) FROM app.department_members dm
-                    JOIN app.department_agents da ON da.department_id = dm.department_id WHERE dm.user_id = u."id") AS agent_ids
+            (SELECT array_agg(DISTINCT a.agent_id) FROM (${agentsOfPersonSql('u."id"')}) a) AS agent_ids
        FROM app."user" u LEFT JOIN app.user_profiles p ON p.user_id = u."id"
       WHERE u."id" = $1`,
     [userId],

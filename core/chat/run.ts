@@ -305,7 +305,7 @@ export async function prepareRun(deps: ChatDeps, access: AccessContext, agentId:
   if (!SAFE_THREAD_ID.test(threadId)) throw appError('APP_VALIDATION_FAILED', `bad thread id "${threadId}"`);
   const project = mode === 'draft' ? NO_PROJECT : await runProjectOf(deps.db, access.userId, threadId);
   const abilities = await readAbilities(deps.db, agentId);
-  const skillPaths = await deps.skills.skillsFor(access.userId, { documents: abilities.commands });
+  const skillPaths = await deps.skills.skillsFor(agentId, { documents: abilities.commands });
   const run: PreparedRun = { agentId, userId: access.userId, resourceId: mode === 'draft' ? draftResourceId(access.userId) : access.userId, threadId, mode, ...project, snapshot: null, agentStarted: false, models: null, skillPaths, abilities, release: null, life: newRunLife() };
   const firstUser = (input.messages ?? []).find((m) => m.role === 'user');
   const created = await ensureThread(deps.memory, { threadId, resourceId: run.resourceId, agentId, kind: mode === 'draft' ? 'draft' : 'chat', title: titleFrom(textOf(firstUser?.content)) });

@@ -144,7 +144,7 @@ export function createBackgroundService(deps: BackgroundDeps): BackgroundService
   async function contextFor(row: { id: string | null; agent_id: string }, threadId: string, userId: string, waiting?: { projectId: string | null }): Promise<RequestContext> {
     // A run of an event has no internet (owner 21.11, F3): its text is written by a stranger, and nobody watches.
     const abilities = { ...(await readAbilities(db, row.agent_id)), ...(eventOfThread(threadId) ? { web: false } : {}) };
-    const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(userId, { documents: abilities.commands })]);
+    const [project, models, skillPaths] = await Promise.all([waiting ? runProjectOfWaitingAnswer(db, waiting.projectId) : runProjectOf(db, userId, threadId), chooseModels(db, deps.timezone, userId, row.agent_id), deps.skills.skillsFor(row.agent_id, { documents: abilities.commands })]);
     const rc = new RequestContext();
     rc.set(REQUEST_KEYS.userId, userId);
     rc.set(REQUEST_KEYS.threadId, threadId);

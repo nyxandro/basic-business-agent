@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     (result) => logEvent('info', 'gateway_synced', { ...result }),
     (error: unknown) => logEvent('error', 'gateway_sync_failed', { code: 'APP_GATEWAY_SYNC_FAILED', error }),
   );
-  const skillsDeps = { db, skillsDir: env.APP_SKILLS_DIR, systemSkills: loadSystemSkills(SYSTEM_SKILLS_DIR) };
+  const skillsDeps = { db, skillsDir: env.APP_SKILLS_DIR, systemSkills: loadSystemSkills(SYSTEM_SKILLS_DIR), agentIds: registry.ids() };
   const skills = createSkillsRuntime(skillsDeps);
   await skills.prepare();
   const storage = new PostgresStore({ id: 'bba', connectionString: env.DATABASE_URL, schemaName: 'mastra' });

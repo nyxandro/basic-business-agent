@@ -1,18 +1,10 @@
 import { z } from 'zod';
 
-// «Скиллы» (spec, scenario 10, section 8.15): uploaded `.skill` files and who gets them.
-export const SKILL_SCOPES = ['org', 'departments', 'users'] as const;
-export type SkillScope = (typeof SKILL_SCOPES)[number];
+// «Скиллы» (spec, scenario 10, section 8.15): uploaded `.skill` files and the agents that have them. A skill has no access of
+// its own (owner's decision 24.11): a person gets it through an agent open to them; a new skill is with no agent.
+export const skillAgentsSchema = z.array(z.string().min(1));
 
-// «Вся организация», «Отделы» or «Сотрудники»; the lists matter for the last two only.
-export const skillAccessSchema = z.object({
-  scope: z.enum(SKILL_SCOPES),
-  departmentIds: z.array(z.uuid()),
-  userIds: z.array(z.string().min(1)),
-});
-export type SkillAccess = z.infer<typeof skillAccessSchema>;
-
-export const skillUpdateSchema = z.object({ enabled: z.boolean().optional(), access: skillAccessSchema.optional() });
+export const skillUpdateSchema = z.object({ enabled: z.boolean().optional(), agentIds: skillAgentsSchema.optional() });
 export type SkillUpdate = z.infer<typeof skillUpdateSchema>;
 
 export interface SkillFile {
@@ -34,9 +26,11 @@ export interface SkillPreview {
 
 export interface SkillDto extends Omit<SkillPreview, 'exists'> {
   enabled: boolean;
-  access: SkillAccess;
-  // A system skill of the core (spec, section 8.18): always on for the whole organisation, cannot be
-  // switched off, replaced or removed; it was never uploaded (uploadedAt is null).
+  // The agents that have the skill, also those an installation no longer has (the list shows only its agents). Empty for a
+  // system skill: it is with every agent that may run commands.
+  agentIds: string[];
+  // A system skill of the core (spec, section 8.18): always on for every agent, cannot be switched off, given to agents,
+  // replaced or removed; it was never uploaded (uploadedAt is null).
   system: boolean;
   uploadedAt: string | null;
   uploadedBy: string | null;
