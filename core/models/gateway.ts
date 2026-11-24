@@ -73,8 +73,9 @@ function formatResetDate(date: Date | null, timezone: string): string {
 export function createModelGateway(deps: GatewayDeps): ModelGateway {
   const { db, client, box, timezone } = deps;
 
-  async function storedKey(userId: string): Promise<string | null> {
-    const { rows } = await db.query<{ c: Buffer; iv: Buffer; v: number }>(
+  // `q` may be the client of a transaction: the key is read on that one connection.
+  async function storedKey(userId: string, q: Pick<Db, 'query'> = db): Promise<string | null> {
+    const { rows } = await q.query<{ c: Buffer; iv: Buffer; v: number }>(
       'SELECT litellm_key_ciphertext AS c, iv, key_version AS v FROM app.model_keys WHERE user_id = $1',
       [userId],
     );
@@ -84,12 +85,14 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
   async function userKey(userId: string): Promise<string> {
     const existing = await storedKey(userId);
     if (existing) return existing;
-    // Serialise the first request of one employee so parallel requests do not create two keys.
+    // Serialise the first request of one employee so parallel requests do not create two keys. Everything inside reads
+    // on the transaction's own connection: one more taken from the pool while it is held hung the server once ten
+    // employees wrote their first message at once (review 24.11).
     return inTransaction(db, async (c) => {
       await c.query("SELECT pg_advisory_xact_lock(hashtext('model_key:' || $1))", [userId]);
-      const again = await storedKey(userId);
+      const again = await storedKey(userId, c);
       if (again) return again;
-      const { monthlyRub } = await effectiveUserLimits(db, userId);
+      const { monthlyRub } = await effectiveUserLimits(c, userId);
       const key = await client.generateKey(userId, monthlyRub);
       const sealed = box.seal(key);
       await c.query('INSERT INTO app.model_keys (user_id, litellm_key_ciphertext, iv, key_version) VALUES ($1, $2, $3, $4)', [

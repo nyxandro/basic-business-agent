@@ -33,7 +33,7 @@ export function decryptFailed(connectorTitle: string, cause: unknown): AppError 
 }
 
 export async function saveCredential(
-  db: Db,
+  db: Pick<Db, 'query'>,
   box: SecretBox,
   input: { userId: string; connectorId: string; credential: StoredCredential; status: CredentialStatus; lastErrorCode?: string | null },
 ): Promise<void> {
@@ -49,7 +49,7 @@ export async function saveCredential(
   );
 }
 
-export async function loadCredential(db: Db, box: SecretBox, userId: string, connectorId: string, connectorTitle: string): Promise<CredentialRecord | null> {
+export async function loadCredential(db: Pick<Db, 'query'>, box: SecretBox, userId: string, connectorId: string, connectorTitle: string): Promise<CredentialRecord | null> {
   const { rows } = await db.query<{ ciphertext: Buffer; iv: Buffer; key_version: number; status: CredentialStatus; checked_at: Date | null; last_error_code: string | null }>(
     'SELECT ciphertext, iv, key_version, status, checked_at, last_error_code FROM app.connector_credentials WHERE user_id = $1 AND connector_id = $2',
     [userId, connectorId],
@@ -76,7 +76,7 @@ export async function setCredentialStatus(db: Db, userId: string, connectorId: s
 
 // The system refused the employee's access: «Ошибка доступа», and the employee is told — once per breakage, when the
 // access turns from working to broken (docs/specs/[20.11.2026]-notifications.md).
-export async function markCredentialBroken(db: Db, input: { userId: string; connectorId: string; title: string; errorCode: string }): Promise<void> {
+export async function markCredentialBroken(db: Pick<Db, 'query'>, input: { userId: string; connectorId: string; title: string; errorCode: string }): Promise<void> {
   const { rows } = await db.query<{ was: CredentialStatus }>(
     `UPDATE app.connector_credentials c SET status = 'auth_error', checked_at = now(), last_error_code = $3, updated_at = now()
        FROM (SELECT user_id, connector_id, status AS was FROM app.connector_credentials WHERE user_id = $1 AND connector_id = $2 FOR UPDATE) o

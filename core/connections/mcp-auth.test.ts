@@ -4,6 +4,7 @@
 import type { McpServerInput, McpServerView } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createSecretBox } from '../crypto/secret-box.ts';
+import { POOL_MAX } from '../db/pool.ts';
 import { createTestApp, TEST_ENCRYPTION_KEYS, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
 import { loadCredential, saveCredential } from './credentials.ts';
 import { assertSignInPossible, clientDocument, clientDocumentUrl, MCP_CALLBACK_PATH, MCP_CLIENT_DOCUMENT_PATH, mcpAccessToken, startMcpSignIn } from './mcp-auth.ts';
@@ -181,6 +182,17 @@ describe('the token of an employee', () => {
     const before = refreshes();
     const [a, b] = await Promise.all([olgaToken(), olgaToken()]);
     expect(a).toBe(b);
+    expect(refreshes()).toBe(before + 1);
+  });
+
+  // Each waiting request used to hold a connection of the pool while the one refreshing asked the pool for another: with
+  // more requests than connections nobody got one, and the whole server hung (review 24.11).
+  it('is refreshed once, and nobody hangs, when more requests than the pool has connections need it at once', async () => {
+    await expiresIn(60_000);
+    const before = refreshes();
+    const all = Promise.all(Array.from({ length: POOL_MAX + 5 }, () => olgaToken()));
+    const tokens = await Promise.race([all, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the pool hung')), 10_000))]);
+    expect(new Set(tokens).size).toBe(1);
     expect(refreshes()).toBe(before + 1);
   });
 

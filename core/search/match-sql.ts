@@ -5,7 +5,7 @@
 // hundred or thousand): pg_trgm picks those alike and levenshtein keeps those with a word within the
 // allowed edits. The expression is lower case, «ё» as «е».
 import type pg from 'pg';
-import type { Db } from '../db/pool.ts';
+import { inTransaction, type Db } from '../db/pool.ts';
 import type { WordVariants } from './variants.ts';
 
 // The likeness from which pg_trgm gives a word or a name as a candidate for a typo. Measured 16.11 on 283
@@ -104,19 +104,11 @@ export async function correctionsOf(client: pg.PoolClient, words: WordVariants[]
 
 // A search runs read-only with its own likeness threshold for typo candidates.
 export async function inSearch<T>(db: Db, work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN READ ONLY');
+  return inTransaction(db, async (client) => {
+    await client.query('SET TRANSACTION READ ONLY');
     await client.query(`SET LOCAL pg_trgm.word_similarity_threshold = ${TYPO_CANDIDATE_THRESHOLD}`);
-    const result = await work(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+    return work(client);
+  });
 }
 
 // Which of `names` match every word, and whether all of them directly: for project names and file names,

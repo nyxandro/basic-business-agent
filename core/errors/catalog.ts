@@ -12,6 +12,10 @@ export const ERROR_CATALOG = {
   APP_VALIDATION_FAILED: { status: 400, userMessage: 'Данные заполнены неверно. Проверьте поля и попробуйте ещё раз.' },
   APP_NOT_FOUND: { status: 404, userMessage: 'Такой страницы или данных нет.' },
   APP_INTERNAL: { status: 500, userMessage: 'Что-то пошло не так на сервере. Попробуйте ещё раз; если повторяется — сообщите администратору код ошибки.' },
+  // Every connection to the database is taken longer than POOL_WAIT_MS (core/db/pool.ts): the request is refused, not hung.
+  APP_SERVER_BUSY: { status: 503, userMessage: 'Сервер сейчас перегружен и не успел ответить. Попробуйте ещё раз через минуту; если повторяется — сообщите администратору код ошибки.' },
+  // The database dropped a connection (a restart, a network blip): the request it served fails, the server goes on.
+  APP_DB_CONNECTION_LOST: { status: 503, userMessage: 'Связь с базой данных на мгновение прервалась. Попробуйте ещё раз.' },
   APP_AUTH_INVALID_CREDENTIALS: { status: 401, userMessage: 'Неверная почта или пароль. Проверьте раскладку и попробуйте ещё раз.' },
   APP_AUTH_RATE_LIMITED: { status: 429, userMessage: 'Слишком много попыток входа. Подождите несколько минут и попробуйте снова.' },
   APP_AUTH_BANNED: { status: 403, userMessage: 'Ваша учётная запись заблокирована. Обратитесь к администратору.' },

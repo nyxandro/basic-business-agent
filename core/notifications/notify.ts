@@ -13,7 +13,8 @@ const ACTIVE_PERSON = `EXISTS (SELECT 1 FROM app."user" u WHERE u."id" = $2)
   AND NOT EXISTS (SELECT 1 FROM app.user_profiles p WHERE p.user_id = $2 AND (p.blocked_at IS NOT NULL OR p.deletion_started_at IS NOT NULL))`;
 
 // True when a new notification was written; false for a repeat of the same case, a blocked person or a failure.
-export async function notify(db: Db, notice: Notice): Promise<boolean> {
+// `db` may be a connection held for a lock or a transaction: the notice is written on it.
+export async function notify(db: Pick<Db, 'query'>, notice: Notice): Promise<boolean> {
   try {
     const { rowCount } = await db.query(
       `WITH n AS (
@@ -34,6 +35,6 @@ export async function notify(db: Db, notice: Notice): Promise<boolean> {
   }
 }
 
-export async function notifyAll(db: Db, list: readonly Notice[]): Promise<void> {
+export async function notifyAll(db: Pick<Db, 'query'>, list: readonly Notice[]): Promise<void> {
   for (const notice of list) await notify(db, notice);
 }

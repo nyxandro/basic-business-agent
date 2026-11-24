@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import type { AccessContext } from '../auth/access.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
+import { isConnectionLost, isPoolExhausted } from '../db/pool.ts';
 import { logEvent } from '../log/log.ts';
 
 export interface AppEnv {
@@ -19,10 +20,18 @@ export function errorJson(c: Context, error: AppError): Response {
 // The address of a webhook task carries its secret (core/background/hooks.ts): it never reaches the journal.
 const loggedPath = (path: string) => (path.startsWith('/app/api/hooks/') ? '/app/api/hooks/[secret]' : path);
 
+// A failure of the database itself is told as such: the person tries again, the journal has its code.
+function databaseFailure(error: unknown): AppError | null {
+  if (isPoolExhausted(error)) return appError('APP_SERVER_BUSY', 'no free connection to the database in time', { cause: error });
+  if (isConnectionLost(error)) return appError('APP_DB_CONNECTION_LOST', 'the database dropped the connection of the request', { cause: error });
+  return null;
+}
+
 export function handleError(error: unknown, c: Context): Response {
-  if (isAppError(error)) {
-    if (error.status >= 500) logEvent('error', 'request_failed', { code: error.code, path: loggedPath(c.req.path), error });
-    return errorJson(c, error);
+  const known = isAppError(error) ? error : databaseFailure(error);
+  if (known) {
+    if (known.status >= 500) logEvent('error', 'request_failed', { code: known.code, path: loggedPath(c.req.path), error: known });
+    return errorJson(c, known);
   }
   logEvent('error', 'request_failed', { code: 'APP_INTERNAL', path: loggedPath(c.req.path), error });
   return errorJson(c, appError('APP_INTERNAL', 'unexpected error', { cause: error }));

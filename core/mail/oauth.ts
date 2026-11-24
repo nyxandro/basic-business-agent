@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { MailOAuthProvider } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
-import { inTransaction, type Db } from '../db/pool.ts';
+import { withLock, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { loadApp, loadSecret, markMailboxBroken, replaceSecret, type MailAccount, type OAuthApp, type SealedMailSecret } from './accounts.ts';
@@ -69,8 +69,9 @@ export interface OAuthDeps {
   endpoints: EndpointsOf;
 }
 
-async function appOf(deps: OAuthDeps, provider: MailOAuthProvider): Promise<OAuthApp> {
-  const app = await loadApp(deps.db, deps.box, provider);
+// `q` — the connection held for the refresh's lock when called under it (freshMailSecret).
+async function appOf(deps: OAuthDeps, provider: MailOAuthProvider, q: Pick<OAuthDeps['db'], 'query'> = deps.db): Promise<OAuthApp> {
+  const app = await loadApp(q, deps.box, provider);
   if (!app) throw oauthNotConfigured(provider);
   return app;
 }
@@ -157,16 +158,18 @@ const nearExpiry = (s: SealedMailSecret) => s.kind === 'oauth' && s.expiresAt !=
 export async function freshMailSecret(deps: OAuthDeps, account: MailAccount): Promise<SealedMailSecret> {
   const secret = await loadSecret(deps.db, deps.box, account.id);
   if (!nearExpiry(secret)) return secret;
-  return inTransaction(deps.db, async (c) => {
-    await c.query("SELECT pg_advisory_xact_lock(hashtext('mail-oauth:' || $1))", [account.id]);
-    const latest = await loadSecret(deps.db, deps.box, account.id);
+  // One refresh of a mailbox at a time, all of it on the connection held for the lock: a waiter holds its own
+  // connection, so one more taken from the pool inside could hang the server (review 24.11). The new token is saved at
+  // once — a service that rotated the refresh token keeps only the new one.
+  return withLock(deps.db, `mail-oauth:${account.id}`, async (c) => {
+    const latest = await loadSecret(c, deps.box, account.id);
     if (latest.kind !== 'oauth' || !nearExpiry(latest)) return latest;
     const refused = async (cause: Error) => {
-      await markMailboxBroken(deps.db, account, 'APP_MAIL_AUTH_FAILED');
+      await markMailboxBroken(c, account, 'APP_MAIL_AUTH_FAILED');
       return mailAuthFailed(account.email, cause);
     };
     if (!latest.refreshToken) throw await refused(new Error('no refresh token'));
-    const res = await tokenRequest(deps, await appOf(deps, latest.provider), { grant_type: 'refresh_token', refresh_token: latest.refreshToken });
+    const res = await tokenRequest(deps, await appOf(deps, latest.provider, c), { grant_type: 'refresh_token', refresh_token: latest.refreshToken });
     // Only a refusal of the sign-in itself breaks the mailbox; a busy or failing service is tried next time.
     if (!res.ok && (res.status === 400 || res.status === 401 || res.error === 'invalid_grant')) throw await refused(new Error(`refresh answered ${res.status}: ${res.error ?? 'no access_token'}`));
     if (!res.ok) {
@@ -179,7 +182,7 @@ export async function freshMailSecret(deps: OAuthDeps, account: MailAccount): Pr
       });
     }
     const next: SealedMailSecret = { ...latest, accessToken: res.access_token!, refreshToken: res.refresh_token ?? latest.refreshToken, expiresAt: expiresAt(res.expires_in) };
-    await replaceSecret(deps.db, deps.box, account.id, next);
+    await replaceSecret(c, deps.box, account.id, next);
     return next;
   });
 }

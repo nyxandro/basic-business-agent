@@ -6,7 +6,7 @@ import type { Hono } from 'hono';
 import { AppError } from '../errors/app-error.ts';
 import { agentActions, describeTools, subagentCalls } from '../approvals/describe.ts';
 import { createMailTools, MAIL_SYSTEM, MAIL_TOOL_NAMES } from '../mail/tools.ts';
-import { appError, ERROR_CATALOG } from '../errors/catalog.ts';
+import { appError } from '../errors/catalog.ts';
 import { deleteThread, draftResourceId } from '../memory/memory.ts';
 import { renameThread } from '../memory/titles.ts';
 import { agentMarks, chatMark, DEFAULT_MARK } from '../interface-settings/agent-marks.ts';
@@ -28,6 +28,7 @@ import { COPILOT_BASE_PATH, type CopilotHandler } from './copilot.ts';
 import { toHistory, toolCallArgsOf } from './history.ts';
 import { takeBack, turnToAnswerAgain } from './retry.ts';
 import { wrapRunResponse, type TranslatedError } from './stream.ts';
+import { translateRunFailure } from './run-failure.ts';
 import { WORKSPACE_ACTIONS } from '../sandbox/workspace.ts';
 import { MEMORY_ACTIONS } from '../memory/tools.ts';
 import { signActionsFor } from '../org-docs/sign-tool.ts';
@@ -70,16 +71,7 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // The tools of the browser for a folder of the person's computer (spec, section 8.25): read-only.
   const computerActions = Object.fromEntries(Object.entries(COMPUTER_ACTION_TITLES).map(([name, title]) => [name, { title, fields: {}, readOnly: true }]));
   const computerSystems = Object.fromEntries(Object.values(COMPUTER_TOOLS).map((name) => [name, COMPUTER_SYSTEM]));
-  // A failure of a run in our code and words: the text of RUN_ERROR, or the failure Mastra kept in
-  // a broken answer (spec, section 9.1).
-  async function translate(userId: string, failure: unknown): Promise<TranslatedError> {
-    const raw = typeof failure === 'string' ? failure : String((failure as { message?: unknown } | null)?.message ?? failure);
-    const code = /^(APP_[A-Z0-9_]+):/.exec(raw)?.[1];
-    const known = code ? (ERROR_CATALOG as Record<string, { userMessage: string }>)[code] : undefined;
-    if (code && known) return { code, message: known.userMessage };
-    const error = await deps.gateway.translateError(typeof failure === 'string' ? new Error(failure) : failure, userId);
-    return { code: error.code, message: error.userMessage };
-  }
+  const translate = (userId: string, failure: unknown): Promise<TranslatedError> => translateRunFailure(deps.gateway, userId, failure);
 
   app.get('/app/api/agents', async (c) => {
     const a = access(c);

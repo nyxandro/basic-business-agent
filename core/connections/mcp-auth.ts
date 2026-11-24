@@ -25,7 +25,7 @@ import {
 import type pg from 'pg';
 import { MCP_OAUTH_CALLBACK_PATH } from '@bba/contracts';
 import type { SecretBox } from '../crypto/secret-box.ts';
-import { inTransaction, type Db } from '../db/pool.ts';
+import { inTransaction, transactionOn, withLock, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { isPublicAddress } from '../net/public-address.ts';
@@ -347,10 +347,12 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
   if (record.status === 'auth_error') throw authFailed(title, connectorId);
   if (!nearExpiry(record.credential)) return record.credential.accessToken;
 
-  return inTransaction(deps.db, async (client) => {
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('oauth:' || $1 || ':' || $2))", [userId, connectorId]);
+  // One refresh per employee and system at a time, all of it on the connection held for the lock: a waiter holds its own
+  // connection, so one more taken from the pool inside hung the server once more requests than connections came at once
+  // (review 24.11). Each new token is saved at once — a system that rotated the refresh token keeps only the new one.
+  return withLock(deps.db, `oauth:${userId}:${connectorId}`, async (client) => {
     // Another request may have refreshed while this one waited for the lock.
-    const latest = await loadCredential(deps.db, deps.box, userId, connectorId, title);
+    const latest = await loadCredential(client, deps.box, userId, connectorId, title);
     if (latest?.credential.kind !== 'oauth') throw notConnected(title, connectorId);
     if (latest.status === 'auth_error') throw authFailed(title, connectorId);
     const credential = latest.credential;
@@ -362,13 +364,13 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
     const provider = providerOf(
       {
         publicUrl: deps.publicUrl,
-        client: () => target.client(deps.db),
-        saveClient: (info) => inTransaction(deps.db, (c) => target.saveClient(c, info)),
+        client: () => target.client(client),
+        saveClient: (info) => transactionOn(client, (c) => target.saveClient(c, info)),
         tokens: () =>
           credential.refreshToken ? { access_token: credential.accessToken, token_type: 'Bearer', refresh_token: credential.refreshToken, ...(credential.issuer ? { issuer: credential.issuer } : {}) } : undefined,
         saveTokens: async (tokens) => {
           const next = credentialOf(tokens, captured.discovery ?? discovery, credential.refreshToken);
-          await saveCredential(deps.db, deps.box, { userId, connectorId, credential: next, status: 'connected' });
+          await saveCredential(client, deps.box, { userId, connectorId, credential: next, status: 'connected' });
           fresh.token = tokens.access_token;
         },
         discovery,
@@ -381,7 +383,7 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
       result = await auth(provider, { serverUrl: target.serverUrl, fetchFn: timed });
     } catch (error) {
       if (notNow(error)) throw unavailable(title, connectorId, safeCause(error));
-      await markCredentialBroken(deps.db, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
+      await markCredentialBroken(client, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
       throw authFailed(title, connectorId, safeCause(error));
     }
     // A refresh that did not work ends in a new sign-in page — and nobody is there to open it. The library goes there
@@ -389,7 +391,7 @@ export async function accessToken(deps: McpAuthDeps, target: SignInTarget, userI
     // system is unavailable for now, the access itself may be fine and stays.
     if (result !== 'AUTHORIZED' || !fresh.token) {
       if (credential.refreshToken && !captured.tokensGone) throw unavailable(title, connectorId);
-      await markCredentialBroken(deps.db, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
+      await markCredentialBroken(client, { userId, connectorId, title, errorCode: 'APP_CONNECTOR_AUTH_FAILED' });
       throw authFailed(title, connectorId);
     }
     return fresh.token;

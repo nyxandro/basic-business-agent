@@ -244,6 +244,16 @@ async function main(): Promise<void> {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, (s) => void shutdown(s));
 }
 
+// A promise nobody waited for that failed: Node would stop the whole server — every person's answer — for one orphan
+// failure. It is written to the journal once; the request it belonged to has already answered or failed on its own.
+process.on('unhandledRejection', (reason: unknown) => logEvent('error', 'unhandled_rejection', { code: 'APP_INTERNAL', error: reason }));
+// An exception nothing caught leaves the process in an unknown state: it is written down and the server stops, so
+// Docker starts it again clean (restart: unless-stopped in deploy/compose.yaml).
+process.on('uncaughtException', (error: Error) => {
+  logEvent('error', 'uncaught_exception', { code: 'APP_INTERNAL', error });
+  process.exit(1);
+});
+
 main().catch((error: unknown) => {
   logEvent('error', 'server_start_failed', { code: isAppError(error) ? error.code : 'APP_INTERNAL', error });
   process.exit(1);

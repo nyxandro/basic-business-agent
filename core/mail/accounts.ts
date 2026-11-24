@@ -85,7 +85,7 @@ export function decryptFailed(cause: unknown): AppError {
   });
 }
 
-export async function loadSecret(db: Db, box: SecretBox, id: string): Promise<SealedMailSecret> {
+export async function loadSecret(db: Pick<Db, 'query'>, box: SecretBox, id: string): Promise<SealedMailSecret> {
   const { rows } = await db.query<{ ciphertext: Buffer; iv: Buffer; key_version: number }>('SELECT ciphertext, iv, key_version FROM app.mail_accounts WHERE id = $1', [id]);
   if (!rows[0]) throw new Error(`mail account ${id} is gone`);
   try {
@@ -115,14 +115,14 @@ export async function saveAccount(
   return rows[0]!.id;
 }
 
-export async function replaceSecret(db: Db, box: SecretBox, id: string, secret: SealedMailSecret): Promise<void> {
+export async function replaceSecret(db: Pick<Db, 'query'>, box: SecretBox, id: string, secret: SealedMailSecret): Promise<void> {
   const sealed = box.seal(JSON.stringify(secret));
   await db.query('UPDATE app.mail_accounts SET ciphertext = $2, iv = $3, key_version = $4, updated_at = now() WHERE id = $1', [id, sealed.ciphertext, sealed.iv, sealed.keyVersion]);
 }
 
 // The mail service refused the mailbox: «Ошибка доступа», and the employee is told — once per breakage, when the
 // mailbox turns from working to broken (docs/specs/[20.11.2026]-notifications.md).
-export async function markMailboxBroken(db: Db, account: Pick<MailAccount, 'id' | 'userId' | 'email'>, code: string): Promise<void> {
+export async function markMailboxBroken(db: Pick<Db, 'query'>, account: Pick<MailAccount, 'id' | 'userId' | 'email'>, code: string): Promise<void> {
   const { rows } = await db.query<{ was: 'connected' | 'auth_error' }>(
     `UPDATE app.mail_accounts a SET status = 'auth_error', last_error_code = $2, checked_at = now(), updated_at = now()
        FROM (SELECT id, status AS was FROM app.mail_accounts WHERE id = $1 FOR UPDATE) o WHERE a.id = o.id RETURNING o.was`,
@@ -163,7 +163,7 @@ export async function listApps(db: Db): Promise<{ provider: MailOAuthProvider; c
   return rows.map((r) => ({ provider: r.provider, clientId: r.client_id, tenant: r.tenant }));
 }
 
-export async function loadApp(db: Db, box: SecretBox, provider: MailOAuthProvider): Promise<OAuthApp | null> {
+export async function loadApp(db: Pick<Db, 'query'>, box: SecretBox, provider: MailOAuthProvider): Promise<OAuthApp | null> {
   const { rows } = await db.query<{ client_id: string; tenant: string | null; ciphertext: Buffer; iv: Buffer; key_version: number }>(
     'SELECT client_id, tenant, ciphertext, iv, key_version FROM app.mail_oauth_apps WHERE provider = $1',
     [provider],

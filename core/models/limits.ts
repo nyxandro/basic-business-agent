@@ -25,7 +25,8 @@ export async function ensureLimitSettings(db: Db, initial: AppConfig['limits']):
   );
 }
 
-export async function getLimitSettings(db: Db): Promise<LimitSettings> {
+// `db` may be the client of a transaction: it is read on that one connection.
+export async function getLimitSettings(db: Pick<Db, 'query'>): Promise<LimitSettings> {
   const { rows } = await db.query<{ org: string | null; usr: string | null; daily: string | null }>(
     'SELECT org_monthly_rub AS org, default_user_monthly_rub AS usr, default_daily_subscription_tokens AS daily FROM app.limit_settings',
   );
@@ -35,7 +36,7 @@ export async function getLimitSettings(db: Db): Promise<LimitSettings> {
 }
 
 // A personal value replaces the default; an absent one (NULL) means "the default applies".
-export async function effectiveUserLimits(db: Db, userId: string): Promise<UserLimits> {
+export async function effectiveUserLimits(db: Pick<Db, 'query'>, userId: string): Promise<UserLimits> {
   const settings = await getLimitSettings(db);
   const { rows } = await db.query<{ monthly: string | null; daily: string | null }>(
     'SELECT monthly_rub AS monthly, daily_subscription_tokens AS daily FROM app.user_limits WHERE user_id = $1',
