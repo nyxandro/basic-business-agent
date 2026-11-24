@@ -75,4 +75,15 @@ describe('pool', () => {
     expect(await withLock(tiny, 'probe', () => Promise.resolve('free'))).toBe('free');
     await tiny.end();
   });
+
+  // Waiting for the lock holds no connection (review 24.11): twenty requests of one person refreshing one token used to
+  // take twenty connections of the pool just to wait, and everyone else waited for a connection.
+  it('lets the waiters of a lock wait without a connection, so the others still get one', async () => {
+    const small = new pg.Pool({ connectionString: database.url, max: 3, connectionTimeoutMillis: 300 });
+    const holders = Array.from({ length: 10 }, () => withLock(small, 'token', () => new Promise((r) => setTimeout(r, 100))));
+    await new Promise((r) => setTimeout(r, 30));
+    expect((await small.query<{ one: number }>('SELECT 1 AS one')).rows[0]!.one).toBe(1);
+    await Promise.all(holders);
+    await small.end();
+  });
 });

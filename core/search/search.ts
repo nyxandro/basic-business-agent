@@ -8,7 +8,7 @@ import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
-import { searchFiles } from './files.ts';
+import { collectFiles, searchFiles } from './files.ts';
 import { marksOf } from './marks.ts';
 import { snippetOf, type MessageText } from './snippet.ts';
 import { queryVariants, type WordVariants } from './variants.ts';
@@ -193,6 +193,8 @@ async function numberedMatches(client: pg.PoolClient, ids: string[], words: Word
 export async function search(deps: ProjectsDeps, userId: string, query: { q: string; scope: SearchScope }): Promise<SearchResponse> {
   const words = await queryWords(deps.db, query.q);
   const seen = (await listProjects(deps, userId)).projects;
+  // The folders are walked before the search's transaction: the walk reads the database on connections of its own.
+  const collected = query.scope === 'all' || query.scope === 'files' ? await collectFiles(deps, userId, seen) : null;
   const { threads, parts, projectHits, corrected, files } = await inSearch(deps.db, async (client) => {
     const found = query.scope === 'all' || query.scope === 'threads' ? await searchThreads(client, userId, words) : { rows: [], words };
     return {
@@ -200,7 +202,7 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
       parts: await partsOf(client, found.rows.map((f) => f.row.id), found.words),
       projectHits: query.scope === 'all' || query.scope === 'projects' ? await matchNames(client, seen.map((p) => p.name), words) : [],
       corrected: found.words,
-      files: query.scope === 'all' || query.scope === 'files' ? await searchFiles(deps, client, userId, words, seen) : NO_FILES,
+      files: collected ? await searchFiles(client, collected, words) : NO_FILES,
     };
   });
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).

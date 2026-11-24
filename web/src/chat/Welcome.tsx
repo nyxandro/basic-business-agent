@@ -8,7 +8,8 @@ import styles from './chat.module.css';
 
 const STARTERS_SHOWN = 3;
 
-export function Welcome({ agent, onStart }: { agent: AgentSummary; onStart: (text: string) => void }) {
+// `offline` — no connection to the server yet (chat/runtime-recovery.ts): a question would leave into nowhere.
+export function Welcome({ agent, onStart, offline }: { agent: AgentSummary; onStart: (text: string) => void; offline: boolean }) {
   const firstName = useMe().user.name.split(/\s+/)[0] ?? '';
   return (
     <div className={styles.welcome}>
@@ -18,7 +19,7 @@ export function Welcome({ agent, onStart }: { agent: AgentSummary; onStart: (tex
       {agent.starters.length > 0 ? (
         <div className={styles.starters}>
           {agent.starters.slice(0, STARTERS_SHOWN).map((s) => (
-            <button key={s} type="button" className={styles.starter} onClick={() => onStart(s)}>
+            <button key={s} type="button" className={styles.starter} disabled={offline} onClick={() => onStart(s)}>
               {s}
             </button>
           ))}

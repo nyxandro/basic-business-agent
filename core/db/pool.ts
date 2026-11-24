@@ -31,22 +31,40 @@ export function createAuthPool(databaseUrl: string): Db {
   return keepAlive(new pg.Pool({ connectionString: databaseUrl, options: '-c search_path=app', max: AUTH_POOL_MAX, connectionTimeoutMillis: POOL_WAIT_MS }), 'auth');
 }
 
-// The error pg-pool gives a request that waited `connectionTimeoutMillis` for a connection (pg-pool 3.14, index.js).
+// The error pg-pool gives a request that waited `connectionTimeoutMillis` for a connection (pg-pool 3.14, index.js); and
+// Postgres refusing a new connection because all of its own are taken (53300 too_many_connections).
 const POOL_TIMEOUT_MESSAGE = 'timeout exceeded when trying to connect';
+const TOO_MANY_CONNECTIONS = '53300';
 
-export function isPoolExhausted(error: unknown): boolean {
-  return error instanceof Error && error.message === POOL_TIMEOUT_MESSAGE;
+// The database dropped the connection of a request or cannot take one now: Postgres shut it down (57P01–57P03 — an
+// administrator, a crash, a restart under way), or pg lost the socket or could not open one in time (pg 8.23).
+const CONNECTION_LOST_CODES = new Set(['57P01', '57P02', '57P03']);
+const CONNECTION_LOST_MESSAGES = new Set([
+  'Connection terminated unexpectedly',
+  'Connection terminated',
+  'Connection terminated due to connection timeout',
+  'Client has encountered a connection error and is not queryable',
+  'Client was closed and is not queryable',
+]);
+
+// The error itself or one it wraps: Better Auth, checking the session first in every request, wraps any failure of the
+// database in an error of its own («Failed to get session»), with the failure as `cause`.
+const MAX_CAUSE_DEPTH = 5;
+function anyInChain(error: unknown, test: (e: Error & { code?: unknown }) => boolean): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < MAX_CAUSE_DEPTH; depth++) {
+    if (test(current)) return true;
+    current = current.cause;
+  }
+  return false;
 }
 
-// The database dropped the connection of a request: Postgres shut it down (57P01–57P03 — an administrator, a crash, a
-// restart under way), or pg lost the socket.
-const CONNECTION_LOST_CODES = new Set(['57P01', '57P02', '57P03']);
-const CONNECTION_LOST_MESSAGES = new Set(['Connection terminated unexpectedly', 'Connection terminated', 'Client has encountered a connection error and is not queryable', 'Client was closed and is not queryable']);
+export function isPoolExhausted(error: unknown): boolean {
+  return anyInChain(error, (e) => e.message === POOL_TIMEOUT_MESSAGE || e.code === TOO_MANY_CONNECTIONS);
+}
 
 export function isConnectionLost(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = (error as { code?: unknown }).code;
-  return (typeof code === 'string' && CONNECTION_LOST_CODES.has(code)) || CONNECTION_LOST_MESSAGES.has(error.message);
+  return anyInChain(error, (e) => (typeof e.code === 'string' && CONNECTION_LOST_CODES.has(e.code)) || CONNECTION_LOST_MESSAGES.has(e.message));
 }
 
 // Runs `fn` in a transaction on the given connection: commits, or rolls back and rethrows the error of `fn`.
@@ -78,23 +96,37 @@ export async function inTransaction<T>(db: Db, fn: (client: pg.PoolClient) => Pr
   }
 }
 
-// Runs `fn` alone among callers with the same `key` (a lock of the session in Postgres), on one connection held for it.
-// Each query of `fn` through `client` is saved at once, not at the end — a token a service rotated is never lost to a
-// later failure. Inside, query only through `client`: waiters hold their own connection while they wait.
+// The callers of withLock in this process, by key: they wait here, without a connection, and take one only in their turn.
+// Without it twenty requests of one person refreshing one token took twenty connections just to wait (review 24.11).
+const lockQueues = new Map<string, Promise<void>>();
+
+// Runs `fn` alone among callers with the same `key` — in this process by a queue, across processes by a lock of the
+// session in Postgres — on one connection held for it. Each query of `fn` through `client` is saved at once, not at the
+// end: a token a service rotated is never lost to a later failure. Inside, query only through `client`.
 export async function withLock<T>(db: Db, key: string, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect();
+  const before = lockQueues.get(key) ?? Promise.resolve();
+  let done!: () => void;
+  const mine = before.then(() => new Promise<void>((resolve) => (done = resolve)));
+  lockQueues.set(key, mine);
+  await before;
   try {
-    await client.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+    const client = await db.connect();
     try {
-      return await fn(client);
+      await client.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      try {
+        return await fn(client);
+      } finally {
+        await client.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch((error: unknown) => {
+          logEvent('error', 'db_unlock_failed', { code: 'APP_DB_CONNECTION_LOST', error });
+          // The lock may still be held by this session: it is closed (the lock goes with it), never reused.
+          void client.end().catch(() => undefined);
+        });
+      }
     } finally {
-      await client.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch((error: unknown) => {
-        logEvent('error', 'db_unlock_failed', { code: 'APP_DB_CONNECTION_LOST', error });
-        // The lock may still be held by this session: it is closed (the lock goes with it), never reused.
-        void client.end().catch(() => undefined);
-      });
+      client.release();
     }
   } finally {
-    client.release();
+    done();
+    if (lockQueues.get(key) === mine) lockQueues.delete(key);
   }
 }

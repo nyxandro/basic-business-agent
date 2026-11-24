@@ -65,13 +65,34 @@ describe('useRuntimeRecovery', () => {
     expect(core.urls).toHaveLength(4);
   });
 
-  it('notices a connection that breaks later and keeps the tries no rarer than the limit', () => {
+  it('keeps trying, no rarer than the limit, while the server stays away', () => {
+    const core = fakeCore(Status.Error);
+    renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
+    act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 20));
+    expect(core.urls.length / 2).toBeGreaterThanOrEqual(19);
+  });
+
+  it('waits for a try still under way instead of starting another', () => {
+    const core = fakeCore(Status.Error);
+    renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
+    act(() => void vi.advanceTimersByTime(RETRY_FIRST_MS));
+    expect(core.urls).toHaveLength(2);
+    core.runtimeConnectionStatus = Status.Connecting;
+    act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 3));
+    expect(core.urls).toHaveLength(2);
+  });
+
+  // After the chat worked, CopilotKit keeps its agents through a failure, and sending goes on through them: setting the
+  // address anew would drop them — with the question sent and the answer under way (independent review 24.11).
+  it('leaves a connection that broke after it had worked to CopilotKit: no note, no new address', () => {
     const core = fakeCore(Status.Connected);
     const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
     act(() => core.become(Status.Error));
-    expect(result.current.lost).toBe(true);
-    act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 20));
-    const tries = core.urls.length / 2;
-    expect(tries).toBeGreaterThanOrEqual(20);
+    expect(result.current.lost).toBe(false);
+    act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 3));
+    expect(core.urls).toEqual([]);
+    act(() => core.become(Status.Connected));
+    expect(result.current.generation).toBe(0);
+    expect(onRecovered).not.toHaveBeenCalled();
   });
 });

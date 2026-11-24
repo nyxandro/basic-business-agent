@@ -41,3 +41,33 @@ describe('a part of a screen that failed to draw', () => {
     expect(log).toHaveBeenCalledWith('ui part render failed', expect.any(Error), expect.anything());
   });
 });
+
+describe('a part that failed while it was still being written', () => {
+  function Block({ text }: { text: string }) {
+    if (text.endsWith('{')) throw new Error('half a block');
+    return <p>{text}</p>;
+  }
+
+  it('tries again when its key changes — the answer is written to its end', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { rerender } = render(
+      <PartBoundary resetKey="live">
+        <Block text="таблица {" />
+      </PartBoundary>,
+    );
+    expect(screen.getByText(uiErrorTexts.partFailed)).toBeInTheDocument();
+    rerender(
+      <PartBoundary resetKey="live">
+        <Block text="таблица готова" />
+      </PartBoundary>,
+    );
+    // Still the same key: the note stays (no flicker on every word of the answer).
+    expect(screen.getByText(uiErrorTexts.partFailed)).toBeInTheDocument();
+    rerender(
+      <PartBoundary resetKey="done">
+        <Block text="таблица готова" />
+      </PartBoundary>,
+    );
+    expect(screen.getByText('таблица готова')).toBeInTheDocument();
+  });
+});

@@ -26,7 +26,7 @@ interface Listed extends SearchFile {
   modifiedMs: number;
 }
 
-interface Collected {
+export interface Collected {
   files: Listed[];
   unreadable: SearchFiles['unreadable'];
 }
@@ -47,8 +47,10 @@ async function withConversations(deps: ProjectsDeps, userId: string, files: List
   });
 }
 
-// `projects` — what the person sees (listProjects): never an archived one, never someone's own folder.
-async function collect(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<Collected> {
+// `projects` — what the person sees (listProjects): never an archived one, never someone's own folder. Reads the database
+// (titles of conversations, the bucket's list): call it before a transaction of the search, never inside one — inside it
+// would ask the pool for one more connection while the transaction holds one (review 24.11).
+export async function collectFiles(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<Collected> {
   const folders = [{ project: null, area: userArea(userId) }, ...projects.map((p) => ({ project: p, area: projectArea(p.id, p.owner.id) }))];
   const out: Collected = { files: [], unreadable: [] };
   for (const { project, area } of folders) {
@@ -84,8 +86,8 @@ const listed = ({ modifiedMs: _, ...file }: Listed): SearchFile => file;
 const shown = (files: Listed[]): SearchFile[] => files.slice(0, MAX_FOUND_FILES).map(listed);
 
 // Found directly first, then with a typo; newest first in each part; what of each name was found is marked.
-export async function searchFiles(deps: ProjectsDeps, client: pg.PoolClient, userId: string, words: WordVariants[], projects: ProjectDto[]): Promise<SearchFiles> {
-  const { files, unreadable } = await collect(deps, userId, projects);
+// The files gathered by collectFiles that match the words, on the search's own connection.
+export async function searchFiles(client: pg.PoolClient, { files, unreadable }: Collected, words: WordVariants[]): Promise<SearchFiles> {
   const hits = await matchNames(client, files.map((f) => f.name), words, MAX_FOUND_FILES + 1);
   const ordered = hits.map((hit) => ({ file: files[hit.index]!, direct: hit.direct })).sort((a, b) => Number(b.direct) - Number(a.direct) || b.file.modifiedMs - a.file.modifiedMs);
   // Marks only for the files shown: with a typo thousands of names may match.
@@ -95,7 +97,7 @@ export async function searchFiles(deps: ProjectsDeps, client: pg.PoolClient, use
 
 // The tab «Файлы» before a query: the newest documents.
 export async function recentFiles(deps: ProjectsDeps, userId: string, projects: ProjectDto[]): Promise<SearchFiles> {
-  const { files, unreadable } = await collect(deps, userId, projects);
+  const { files, unreadable } = await collectFiles(deps, userId, projects);
   const ordered = [...files].sort((a, b) => b.modifiedMs - a.modifiedMs);
   return { files: shown(ordered), unreadable, more: ordered.length > MAX_FOUND_FILES };
 }

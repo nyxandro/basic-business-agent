@@ -29,6 +29,19 @@ describe('handleError', () => {
     }
   });
 
+  // Better Auth checks the session first in every request and wraps any failure of the database in its own error.
+  it('looks through the errors that wrap a failure of the database', async () => {
+    const wrapped = (cause: Error) => Object.assign(new Error('Failed to get session'), { cause });
+    const busy = await appThrowing(wrapped(new Error('timeout exceeded when trying to connect'))).request('/app/api/x');
+    expect((await body(busy)).error.code).toBe('APP_SERVER_BUSY');
+    const tooMany = await appThrowing(wrapped(Object.assign(new Error('sorry, too many clients already'), { code: '53300' }))).request('/app/api/x');
+    expect((await body(tooMany)).error.code).toBe('APP_SERVER_BUSY');
+    for (const lost of [Object.assign(new Error('the database system is starting up'), { code: '57P03' }), new Error('Connection terminated due to connection timeout')]) {
+      const res = await appThrowing(wrapped(lost)).request('/app/api/x');
+      expect((await body(res)).error.code).toBe('APP_DB_CONNECTION_LOST');
+    }
+  });
+
   it('keeps an unknown failure an internal error', async () => {
     const res = await appThrowing(new Error('boom')).request('/app/api/x');
     expect(res.status).toBe(500);

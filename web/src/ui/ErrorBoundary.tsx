@@ -33,11 +33,17 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 // One part of a screen — a message of a conversation — that failed to draw: a short note in its place, the rest of the
 // screen stays (review 24.11). The whole-screen boundary above would otherwise take the conversation away, and again
 // after every reload, since the same message draws the same way.
-export class PartBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false };
+// `resetKey` — a part drawn from data still coming (an answer being written) may fail on half of it: a new key (the
+// answer written to its end) draws it again.
+export class PartBoundary extends Component<{ children: ReactNode; resetKey?: string }, { failed: boolean; key: string | undefined }> {
+  override state = { failed: false, key: this.props.resetKey };
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
+  }
+
+  static getDerivedStateFromProps(props: { resetKey?: string }, state: { failed: boolean; key: string | undefined }): { failed: boolean; key: string | undefined } | null {
+    return props.resetKey === state.key ? null : { failed: false, key: props.resetKey };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {

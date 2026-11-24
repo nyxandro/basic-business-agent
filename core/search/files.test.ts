@@ -5,7 +5,9 @@ import { ensureThread } from '../memory/memory.ts';
 import { listProjects } from '../projects/projects.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { filesRoot } from '../workspace/layout.ts';
-import { recentFiles, searchFiles } from './files.ts';
+import pg from 'pg';
+import { collectFiles, recentFiles, searchFiles } from './files.ts';
+import { search } from './search.ts';
 import { inSearch } from './match-sql.ts';
 import { queryVariants } from './variants.ts';
 
@@ -26,7 +28,8 @@ function put(root: string, path: string, minutesAgo = 0): void {
 async function find(userId: string, q: string) {
   const projects = (await listProjects(deps(), userId)).projects;
   const words = await queryVariants(t.db, q);
-  return inSearch(t.db, (client) => searchFiles(deps(), client, userId, words, projects));
+  const collected = await collectFiles(deps(), userId, projects);
+  return inSearch(t.db, (client) => searchFiles(client, collected, words));
 }
 const names = async (userId: string, q: string) => (await find(userId, q)).files.map((f) => f.name);
 const recent = async (userId: string) => recentFiles(deps(), userId, (await listProjects(deps(), userId)).projects);
@@ -51,6 +54,24 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await t.close();
+});
+
+describe('the search and the connections of the pool', () => {
+  // The walk of the folders reads the database too (the titles of conversations, the list of the bucket): done inside the
+  // search's transaction it asked the pool for one more connection — with every connection held that way, the search
+  // waited for good (review 24.11). With a pool of one connection, any such second ask fails at once.
+  it('needs one connection at a time: a pool of one answers a search of files of conversations', async () => {
+    await ensureThread(t.memory, { threadId: 'b1d0c7e2-0000-4000-8000-0000000000aa', resourceId: petrId, agentId: 'sales', kind: 'chat', title: 'Счета' });
+    put(filesRoot(t.workspaceRoot, petrId, null), 'chats/b1d0c7e2-0000-4000-8000-0000000000aa/Счёт поставщика.pdf', 3);
+    const { connectionString } = (t.db as unknown as { options: { connectionString: string } }).options;
+    const one = new pg.Pool({ connectionString, max: 1, connectionTimeoutMillis: 2_000 });
+    try {
+      const found = await search({ ...deps(), db: one }, petrId, { q: 'счёт', scope: 'all' });
+      expect(found.files.files.find((f) => f.name === 'Счёт поставщика.pdf')?.conversation).toEqual({ id: 'b1d0c7e2-0000-4000-8000-0000000000aa', title: 'Счета' });
+    } finally {
+      await one.end();
+    }
+  });
 });
 
 describe('files the person finds by name (spec, section 8.21)', () => {

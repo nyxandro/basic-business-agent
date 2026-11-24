@@ -113,7 +113,7 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
         const isLast = i === rows.length - 1;
         const broken = (isLast && lastBroken) || row.turn.some((m) => failures.interrupted.has(m.id));
         return (
-          <PartBoundary key={row.key}>
+          <PartBoundary key={row.key} resetKey={running && isLast ? 'writing' : 'written'}>
             <AssistantTurn
               turn={row.turn}
               messages={messages}
@@ -280,7 +280,7 @@ export function ChatView(props: CopilotChatViewProps) {
             <div ref={feed} className={styles.feed}>
               {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
               {empty && isConnecting ? <DelayedBar /> : null}
-              {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} /> : null}
+              {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} offline={extras.offline} /> : null}
               <MotionConfig reducedMotion="user" transition={{ duration: still ? 0 : MOVE_S, ease: EASING }}>
                 <Feed messages={messages} running={isRunning} asking={extras.interrupt !== null} failures={failures} agent={extras.agent} />
               </MotionConfig>
