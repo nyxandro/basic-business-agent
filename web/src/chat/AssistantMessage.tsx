@@ -81,6 +81,10 @@ export function TurnFooter({ text, streaming, interrupted, onAnswerAgain, compla
 
 const NONE: ReadonlySet<string> = new Set();
 
+// «Копировать» and «Пожаловаться» under answers are hidden for now (owner 24.11, temporary); «Ответить заново» under a
+// broken answer stays. TurnFooter still draws them when given — to bring them back, set this to true.
+const ANSWER_TOOLBAR_SHOWN = false;
+
 export function AssistantTurn({
   turn,
   messages,
@@ -149,11 +153,11 @@ export function AssistantTurn({
           </AnimatePresence>
         </TurnStateContext>
         <TurnFooter
-          text={lastText}
+          text={ANSWER_TOOLBAR_SHOWN ? lastText : ''}
           streaming={streaming}
           interrupted={interrupted}
           {...(onAnswerAgain ? { onAnswerAgain } : {})}
-          {...(!draft && turnNumber > 0 && !interrupted && !asking && items.length > 0 ? { complaint: { threadId, turn: turnNumber } } : {})}
+          {...(ANSWER_TOOLBAR_SHOWN && !draft && turnNumber > 0 && !interrupted && !asking && items.length > 0 ? { complaint: { threadId, turn: turnNumber } } : {})}
         />
       </div>
     </div>
