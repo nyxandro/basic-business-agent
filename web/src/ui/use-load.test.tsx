@@ -149,6 +149,47 @@ describe('the memory of screens (spec, section 8.22)', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  // A screen that reads its data again by itself (a ticket's conversation) keeps what it showed, and what is being
+  // written there, under the error.
+  it('gives the failure of a repeat with what was shown before it, and nothing with a failed first load', async () => {
+    const { load, answers } = server();
+    function Kept() {
+      const { state, reload } = useLoad(load);
+      return (
+        <p>
+          {state.status === 'error' ? `ошибка ${state.error.code}; было: ${state.stale ?? 'ничего'}` : state.status}
+          <button type="button" onClick={reload}>
+            заново
+          </button>
+        </p>
+      );
+    }
+    render(
+      <Memory>
+        <Kept />
+      </Memory>,
+    );
+    await act(async () => {
+      answers[0]!.reject(new ApiRequestError({ code: 'APP_SERVER_UNAVAILABLE', message: 'Сервер не отвечает', status: 0 }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('ошибка APP_SERVER_UNAVAILABLE; было: ничего')).toBeInTheDocument();
+    act(() => screen.getByRole('button', { name: 'заново' }).click());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      answers[1]!.resolve('Переписка');
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('ready')).toBeInTheDocument();
+    act(() => screen.getByRole('button', { name: 'заново' }).click());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      answers[2]!.reject(new ApiRequestError({ code: 'APP_SERVER_UNAVAILABLE', message: 'Сервер не отвечает', status: 0 }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('ошибка APP_SERVER_UNAVAILABLE; было: Переписка')).toBeInTheDocument();
+  });
+
   it('asks anew when told to while the first load is on its way, and shows only the newer answer', async () => {
     const { load, answers } = server();
     render(

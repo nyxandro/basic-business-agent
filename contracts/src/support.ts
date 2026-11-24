@@ -16,11 +16,11 @@ export type SupportSide = 'employee' | 'support';
 export const COMPLAINT_MAX = 4000;
 
 // The turn complained about: the number of the person's message it answers among the person's messages of the
-// conversation — the same live and after a reload.
+// conversation — the same live and after a reload. A zero character Postgres cannot keep is refused.
 export const complaintSchema = z.strictObject({
   threadId: z.string().min(1).max(300),
   turn: z.number().int().min(1).max(1_000_000),
-  comment: z.string().trim().min(1).max(COMPLAINT_MAX),
+  comment: z.string().trim().min(1).max(COMPLAINT_MAX).refine((v) => !v.includes('\0'), 'zero character'),
 });
 
 // The files of one message: those of a conversation copied with a complaint, or those attached to a message.
@@ -110,8 +110,6 @@ interface TicketRowBase {
   createdAt: string;
   // The last message or change.
   updatedAt: string;
-  // Who wrote last.
-  lastSide: SupportSide;
 }
 
 // A closed ticket: who closed it and when; null — open.

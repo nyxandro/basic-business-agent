@@ -4,7 +4,7 @@
 // shown again). Used by the bell of the app (layout/notifications.tsx) and by the admin panel (the counter and the tickets
 // of «Поддержка»). `onNews` is also called on each (re)connection: news may have come while there was none.
 import { PRESENCE_PING_MS } from '@bba/contracts';
-import { createContext, useContext, useEffect, useEffectEvent } from 'react';
+import { createContext, useContext, useEffect, useEffectEvent, useRef } from 'react';
 
 const LIVE_PATH = '/app/api/me/events';
 // A server restarting answers the browser's own reconnection with an error page, and the browser then gives up for good:
@@ -55,4 +55,17 @@ export function useLiveChannel(onNews: () => void, enabled = true): void {
 // it — the bell of the app (layout/notifications.tsx) or the admin panel (admin/AdminLayout.tsx) — so a screen needs no
 // connection of its own.
 export const LiveNewsContext = createContext(0);
-export const useLiveNews = (): number => useContext(LiveNewsContext);
+
+// Calls `onNews` (reads the screen's data again) on the news heard after the screen opened — the news heard before it is
+// in what the screen loads at its opening anyway. A channel that connects after the screen opened (a new tab) says
+// «ready» once more and the screen reads again: a change between its first load and the connection is not lost.
+export function useOnLiveNews(onNews: () => void): void {
+  const news = useContext(LiveNewsContext);
+  const seen = useRef(news);
+  const tell = useEffectEvent(onNews);
+  useEffect(() => {
+    if (news === seen.current) return;
+    seen.current = news;
+    tell();
+  }, [news]);
+}

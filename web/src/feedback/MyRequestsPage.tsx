@@ -1,13 +1,13 @@
 // «Настройки → Мои обращения» (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 2; F7–F9, owner 24.11): the person's
 // tickets — requests to the support and complaints about answers — the latest activity first, each opening its
 // conversation; «Новое обращение» writes to the support and opens the new ticket. Never memorised, and read again at
-// once when the server says there is news (an answer of the support).
+// once when the server says there is news (an answer of the support); when that fails, the list stays, under the error.
 import type { MyTicketRow } from '@bba/contracts';
-import { useEffect, useEffectEvent, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { dateTime } from '../i18n/format.ts';
 import { ru } from '../i18n/ru.ts';
-import { useLiveNews } from '../notifications/live.ts';
+import { useOnLiveNews } from '../notifications/live.ts';
 import { PageFrame } from '../shell/PageFrame.tsx';
 import { Button, cx } from '../ui/Button.tsx';
 import { Card, EmptyState, Pill } from '../ui/Display.tsx';
@@ -28,11 +28,8 @@ export function MyRequestsPage() {
   const { state, reload } = useLoad(myTickets);
   const [writing, setWriting] = useState(false);
   const navigate = useNavigate();
-  const news = useLiveNews();
-  const onNews = useEffectEvent(reload);
-  useEffect(() => {
-    if (news > 0) onNews();
-  }, [news]);
+  useOnLiveNews(reload);
+  const data = state.status === 'ready' ? state.data : state.status === 'error' ? (state.stale ?? null) : null;
   return (
     <PageFrame
       title={t.title}
@@ -45,11 +42,11 @@ export function MyRequestsPage() {
     >
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
-      {state.status === 'ready' && state.data.tickets.length === 0 ? <EmptyState title={t.empty} text={t.emptyText} /> : null}
-      {state.status === 'ready' && state.data.tickets.length > 0 ? (
+      {data && data.tickets.length === 0 ? <EmptyState title={t.empty} text={t.emptyText} /> : null}
+      {data && data.tickets.length > 0 ? (
         <Card className="rise">
           <ul className={styles.list} aria-label={t.title}>
-            {state.data.tickets.map((x) => (
+            {data.tickets.map((x) => (
               <li key={x.id} className={styles.row}>
                 <Link to={`/settings/requests/${encodeURIComponent(x.id)}`} className={cx(styles.rowMain, styles.rowLink)}>
                   <div className={styles.rowTitle}>{myTitleOf(x)}</div>

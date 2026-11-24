@@ -282,6 +282,65 @@ describe('migrate', () => {
     }
   });
 
+  // 0047: a ticket becomes a conversation (docs/specs/[20.11.2026]-feedback-and-value.md, F9) — its comment the first
+  // message, its answer the second; who wrote last sets the state.
+  it('turns the tickets of before into conversations, the state by who wrote last', async () => {
+    const stage = await createTestDatabase();
+    const before = mkdtempSync(join(tmpdir(), 'bba-migrations-'));
+    try {
+      for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f < '0047')) copyFileSync(join(MIGRATIONS_DIR, f), join(before, f));
+      await migrate(stage.url, before);
+      for (const [id, name] of [['u1', 'Ольга'], ['u2', 'Игорь']]) {
+        await query(stage.url, `INSERT INTO app."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") VALUES ($1, $2, $3, true, now(), now())`, [id, name, `${id}@example.com`]);
+      }
+      const complaint = `INSERT INTO app.support_tickets (id, user_id, kind, agent_id, thread_id, turn_key, comment, snapshot, models, status, reply, handled_by, created_at, updated_at)
+        OVERRIDING SYSTEM VALUE VALUES ($1, 'u1', 'complaint', 'sales', $2, 1, $3, '[]', '{}', $4, $5, $6, '2026-11-20T10:00:00Z', '2026-11-21T12:00:00Z')`;
+      const request = `INSERT INTO app.support_tickets (id, user_id, kind, subject, comment, snapshot, models, status, reply, handled_by, created_at, updated_at)
+        OVERRIDING SYSTEM VALUE VALUES ($1, 'u1', 'request', $2, $3, '[]', '{}', $4, $5, $6, '2026-11-20T10:00:00Z', '2026-11-21T12:00:00Z')`;
+      await query(stage.url, complaint, [1, 't1', 'Неверная сумма', 'new', null, null]);
+      // Added to by the employee after the support closed it: the old «Дописано» opened it again as «Новая».
+      await query(stage.url, complaint, [2, 't2', 'Не тот срок\n\nДописано 21.11.2026 15:00: всё ещё не так', 'new', 'Поправили срок', 'u2']);
+      await query(stage.url, complaint, [3, 't3', 'Нет подписи', 'in_progress', 'Подпись добавим', 'u2']);
+      // Added to while «В работе»: whether before the answer or after it, the row does not tell — it waits for the support.
+      await query(stage.url, complaint, [6, 't6', 'Нет печати\n\nДописано 21.11.2026 16:00: и даты', 'in_progress', 'Печать добавим', 'u2']);
+      await query(stage.url, request, [4, 'Отчёт', 'Не открывается отчёт', 'in_progress', null, null]);
+      await query(stage.url, request, [5, 'Доступ', 'Нужен доступ', 'resolved', 'Доступ выдан', 'u2']);
+      // A file of the complained conversation, and one the employee attached to a request.
+      await query(stage.url, `INSERT INTO app.support_files (ticket_id, ord, name, path, size, state, content) VALUES (1, 0, 'a.docx', 'docs/a.docx', 1, 'copied', '\\x00'), (4, 0, 'b.pdf', NULL, 1, 'copied', '\\x00')`);
+
+      expect(await migrate(stage.url)).toContain('0047_support_conversation.sql');
+      expect(await query(stage.url, 'SELECT id::int, status, closed_side, closed_at FROM app.support_tickets ORDER BY id')).toEqual([
+        { id: 1, status: 'open', closed_side: null, closed_at: null },
+        { id: 2, status: 'open', closed_side: null, closed_at: null },
+        { id: 3, status: 'answered', closed_side: null, closed_at: null },
+        { id: 4, status: 'open', closed_side: null, closed_at: null },
+        { id: 5, status: 'resolved', closed_side: 'support', closed_at: new Date('2026-11-21T12:00:00Z') },
+        { id: 6, status: 'open', closed_side: null, closed_at: null },
+      ]);
+      expect(await query(stage.url, 'SELECT id::int, ticket_id::int, side, author_id, text FROM app.support_messages ORDER BY id')).toEqual([
+        { id: 1, ticket_id: 1, side: 'employee', author_id: 'u1', text: 'Неверная сумма' },
+        { id: 2, ticket_id: 2, side: 'employee', author_id: 'u1', text: 'Не тот срок\n\nДописано 21.11.2026 15:00: всё ещё не так' },
+        { id: 3, ticket_id: 3, side: 'employee', author_id: 'u1', text: 'Нет подписи' },
+        { id: 4, ticket_id: 4, side: 'employee', author_id: 'u1', text: 'Не открывается отчёт' },
+        { id: 5, ticket_id: 5, side: 'employee', author_id: 'u1', text: 'Нужен доступ' },
+        { id: 6, ticket_id: 6, side: 'employee', author_id: 'u1', text: 'Нет печати\n\nДописано 21.11.2026 16:00: и даты' },
+        { id: 7, ticket_id: 2, side: 'support', author_id: 'u2', text: 'Поправили срок' },
+        { id: 8, ticket_id: 3, side: 'support', author_id: 'u2', text: 'Подпись добавим' },
+        { id: 9, ticket_id: 5, side: 'support', author_id: 'u2', text: 'Доступ выдан' },
+        { id: 10, ticket_id: 6, side: 'support', author_id: 'u2', text: 'Печать добавим' },
+      ]);
+      // The file of the conversation is the support's; the attached one belongs to the request's message.
+      expect(await query(stage.url, 'SELECT ticket_id::int, ord, message_id::int FROM app.support_files ORDER BY ticket_id')).toEqual([
+        { ticket_id: 1, ord: 0, message_id: null },
+        { ticket_id: 4, ord: 0, message_id: 4 },
+      ]);
+      expect(await query(stage.url, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'support_tickets' AND column_name IN ('comment', 'reply', 'handled_by')")).toEqual([]);
+    } finally {
+      rmSync(before, { recursive: true, force: true });
+      await stage.drop();
+    }
+  });
+
   it('keeps journals append-only', async () => {
     await query(db.url, "INSERT INTO app.action_journal (run_kind, event, result) VALUES ('chat', 'tool_call', 'ok')");
     await expect(query(db.url, "UPDATE app.action_journal SET result = 'error'")).rejects.toThrow(/APP_DB_APPEND_ONLY/);

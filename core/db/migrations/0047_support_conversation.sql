@@ -32,7 +32,12 @@ ALTER TABLE app.support_files ADD CONSTRAINT support_files_message_or_path CHECK
 ALTER TABLE app.support_tickets ADD COLUMN closed_side text CHECK (closed_side IN ('employee', 'support'));
 ALTER TABLE app.support_tickets ADD COLUMN closed_at timestamptz;
 ALTER TABLE app.support_tickets DROP CONSTRAINT support_tickets_status_check;
-UPDATE app.support_tickets SET status = CASE WHEN reply IS NULL THEN 'open' ELSE 'answered' END WHERE status IN ('new', 'in_progress');
+-- «Новая» waits for the support: never answered, or added to by the employee after it was closed (the old «Дописано» kept
+-- the answer and put the added text into the comment — so in such a ticket it stands above the answer). «В работе» with
+-- an answer waits for the employee — unless it was added to: whether before the answer or after it, the row does not
+-- tell, and a question of the employee left unseen costs more than a ticket the support looks at once more.
+UPDATE app.support_tickets SET status = CASE WHEN status = 'in_progress' AND reply IS NOT NULL AND position(E'\n\nДописано ' IN comment) = 0 THEN 'answered' ELSE 'open' END
+ WHERE status IN ('new', 'in_progress');
 UPDATE app.support_tickets SET closed_side = 'support', closed_at = updated_at WHERE status IN ('resolved', 'rejected');
 ALTER TABLE app.support_tickets ADD CONSTRAINT support_tickets_status_check CHECK (status IN ('open', 'answered', 'resolved', 'rejected'));
 ALTER TABLE app.support_tickets ADD CONSTRAINT support_tickets_closed CHECK ((status IN ('resolved', 'rejected')) = (closed_side IS NOT NULL AND closed_at IS NOT NULL));

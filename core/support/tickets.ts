@@ -6,16 +6,13 @@
 import type { AdminTicketDto, AdminTicketRow, ComplaintResponse, MyTicketDto, MyTicketRow, SupportFileDto, SupportKind, SupportMessageDto, SupportSide, SupportSnapshotMessage, SupportStatus } from '@bba/contracts';
 import type { Memory } from '@mastra/memory';
 import type { AccessContext } from '../auth/access.ts';
-import { holdersOf } from '../auth/holders.ts';
 import { inThreadFolder, threadFoldersOf } from '../chat/thread-folder.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
 import { conversationMessages, conversationsByIds } from '../history/store.ts';
-import { notices } from '../notifications/kinds.ts';
-import { notify } from '../notifications/notify.ts';
 import { logEvent } from '../log/log.ts';
 import type { FileStorage } from '../storage/engine.ts';
-import { employeeWrites, insertMessage } from './messages.ts';
+import { employeeWrites, insertMessage, tellAfterSave, tellSupport } from './messages.ts';
 import { copyFiles, filesOfConversation, snapshotOf } from './snapshot.ts';
 
 const TICKETS_SHOWN = 200;
@@ -49,7 +46,6 @@ interface TicketRow {
   status: SupportStatus;
   closed_side: SupportSide | null;
   closed_at: Date | null;
-  last_side: SupportSide;
   created_at: Date;
   updated_at: Date;
 }
@@ -111,13 +107,12 @@ export async function complain(deps: SupportDeps, userId: string, input: { threa
     return append(deps, userId, made.id, input.comment);
   }
   logEvent('info', 'support_ticket_created', { ticketId: id, agentId: conversation.agentId, files: files.length });
-  for (const holder of await holdersOf(db, 'agents')) await notify(db, notices.supportNew({ userId: holder, ticketId: id, complaintOf: deps.agentName(conversation.agentId) }));
+  await tellAfterSave(db, id, () => tellSupport(db, id, userId, { complaintOf: deps.agentName(conversation.agentId) }));
   return { id, appended: false };
 }
 
 const ROW_SQL = `SELECT t.id::text, t.user_id, u."name" AS author, t.kind, t.subject, t.agent_id, t.thread_id, t.turn_key, t.task_id, t.snapshot,
-                        t.models, t.instructions_at, t.status, t.closed_side, t.closed_at, t.created_at, t.updated_at,
-                        (SELECT m.side FROM app.support_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_side
+                        t.models, t.instructions_at, t.status, t.closed_side, t.closed_at, t.created_at, t.updated_at
                    FROM app.support_tickets t LEFT JOIN app."user" u ON u."id" = t.user_id`;
 
 type Named = Pick<SupportDeps, 'db' | 'agentName'>;
@@ -130,7 +125,6 @@ const myRowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): MyTicketRo
   status: r.status,
   createdAt: r.created_at.toISOString(),
   updatedAt: r.updated_at.toISOString(),
-  lastSide: r.last_side,
 });
 
 const adminRowOf = (deps: Pick<SupportDeps, 'agentName'>, r: TicketRow): AdminTicketRow => ({ ...myRowOf(deps, r), author: r.author, agentId: r.agent_id });

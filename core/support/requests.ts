@@ -2,12 +2,9 @@
 // owner 24.11): the subject, and the text with the files the employee attached as the first message of its conversation —
 // nothing of a chat with an agent goes with it. The people with «Агенты» are told, as of a complaint (F5).
 import type { SupportRequestResponse } from '@bba/contracts';
-import { holdersOf } from '../auth/holders.ts';
 import { inTransaction, type Db } from '../db/pool.ts';
 import { logEvent } from '../log/log.ts';
-import { notices } from '../notifications/kinds.ts';
-import { notify } from '../notifications/notify.ts';
-import { insertMessage, readAttached, type AttachedFile } from './messages.ts';
+import { insertMessage, readAttached, tellAfterSave, tellSupport, type AttachedFile } from './messages.ts';
 
 export async function createRequest(db: Db, userId: string, input: { subject: string; text: string }, files: readonly AttachedFile[]): Promise<SupportRequestResponse> {
   const read = await readAttached(files);
@@ -22,6 +19,6 @@ export async function createRequest(db: Db, userId: string, input: { subject: st
     return ticketId;
   });
   logEvent('info', 'support_request_created', { ticketId: id, files: files.length });
-  for (const holder of await holdersOf(db, 'agents')) await notify(db, notices.supportNew({ userId: holder, ticketId: id, complaintOf: null }));
+  await tellAfterSave(db, id, () => tellSupport(db, id, userId, { complaintOf: null }));
   return { id };
 }

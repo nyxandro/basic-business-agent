@@ -1,14 +1,15 @@
 // A ticket of the person (docs/specs/[20.11.2026]-feedback-and-value.md, F9; owner 24.11, by the classic help desks): its
 // conversation with the support — the person's messages on the right, the support's on the left, each with its files —
 // and the field to write while it is open; «Проблема решена» closes it for both sides. A closed ticket says who closed it
-// and offers a new one. The page reads the ticket again at once when the server says there is news (a support's answer).
+// and offers a new one. The page reads the ticket again at once when the server says there is news (a support's answer);
+// when that fails, the conversation and what is being written stay, under the error.
 import { isClosedStatus, type MyTicketDto } from '@bba/contracts';
-import { useCallback, useEffect, useEffectEvent, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { asApiError } from '../api/client.ts';
 import { dateTime } from '../i18n/format.ts';
 import { ru } from '../i18n/ru.ts';
-import { useLiveNews } from '../notifications/live.ts';
+import { useOnLiveNews } from '../notifications/live.ts';
 import { PageFrame } from '../shell/PageFrame.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -58,12 +59,8 @@ export function MyTicketPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const navigate = useNavigate();
-  const news = useLiveNews();
-  const onNews = useEffectEvent(reload);
-  useEffect(() => {
-    if (news > 0) onNews();
-  }, [news]);
-  const data = state.status === 'ready' ? state.data : null;
+  useOnLiveNews(reload);
+  const data = state.status === 'ready' ? state.data : state.status === 'error' ? (state.stale ?? null) : null;
 
   async function resolve(id: string) {
     if (!(await confirm({ title: t.resolveTitle, text: t.resolveText, confirmLabel: t.resolveConfirm }))) return;
@@ -103,9 +100,7 @@ export function MyTicketPage() {
       </Link>
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
-      {data ? (
-        <Conversation data={data} onChanged={reload} />
-      ) : null}
+      {data ? <Conversation data={data} onChanged={reload} /> : null}
       <RequestDialog
         open={writing}
         onClose={() => setWriting(false)}

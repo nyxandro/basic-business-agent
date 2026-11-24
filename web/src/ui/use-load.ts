@@ -8,7 +8,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 
-export type LoadState<T> = { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: ApiRequestError };
+// `stale` — what the screen showed before a repeat that failed (absent when the first load failed): a screen that reads
+// its data again by itself may keep showing it, with the error, so what is being written there is not lost.
+export type LoadState<T> = { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: ApiRequestError; stale?: T };
 
 const LOADING = { status: 'loading' } as const;
 
@@ -36,7 +38,8 @@ export function useLoad<T>(load: () => Promise<T>, key?: readonly unknown[]): { 
   // A repeat keeps showing what is there until the answer comes (no flicker after a save).
   const state = useMemo<LoadState<T>>(() => {
     if (query.status === 'pending') return LOADING;
-    if (query.status === 'error') return { status: 'error', error: asApiError(query.error) };
+    // A failed repeat keeps the last data in the memory of screens (TanStack Query).
+    if (query.status === 'error') return { status: 'error', error: asApiError(query.error), ...(query.data === undefined ? {} : { stale: query.data }) };
     return { status: 'ready', data: query.data };
   }, [query.status, query.data, query.error]);
   // «Заново» asks after the drawing (screens ask it while drawing, on a new refreshKey). An answer already

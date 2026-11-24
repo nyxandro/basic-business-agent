@@ -12,6 +12,8 @@ import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
 import { chatRoot } from '../workspace/layout.ts';
 import { copyFiles } from './snapshot.ts';
+import { withoutHolders } from './test-db.ts';
+import { complain } from './tickets.ts';
 
 let t: TestApp;
 let olgaId: string;
@@ -148,6 +150,19 @@ describe('complaints', () => {
     expect((await t.call('POST', '/app/api/me/support', { cookie: petr, body: { threadId, turn: 1, comment: 'Плохо' } })).status).toBe(404);
     expect((await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 5, comment: 'Плохо' } })).status).toBe(400);
     expect((await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: '   ' } })).status).toBe(400);
+    // A zero character Postgres cannot keep: refused as a bad comment, not failed on saving.
+    const zero = await t.call('POST', '/app/api/me/support', { cookie: olga, body: { threadId, turn: 1, comment: 'Пло\0хо' } });
+    expect(zero.status).toBe(400);
+    expect(((await zero.json()) as { error: { code: string } }).error.code).toBe('APP_VALIDATION_FAILED');
+  });
+
+  // Sent again after an error, a complaint made already would be a second message of it.
+  it('keeps a complaint made and answers it as made when whom to tell cannot be read', async () => {
+    const threadId = await conversation(olgaId, [['user', [text('Итог за неделю')]], ['assistant', [text('Итог: 0')]]]);
+    const deps = { db: withoutHolders(t.db), memory: t.memory, storage: t.storage, workspaceRoot: t.workspaceRoot, timezone: 'Europe/Moscow', agentName: (id: string) => id };
+    expect(await complain(deps, olgaId, { threadId, turn: 1, comment: 'Не посчитал' })).toMatchObject({ appended: false });
+    const state = await json<ComplaintStateResponse>(await t.call('GET', `/app/api/me/support/turn?threadId=${threadId}&turn=1`, { cookie: olga }));
+    expect(state.ticket).toMatchObject({ status: 'open' });
   });
 
   it('opens «Поддержка» only with «Агенты»', async () => {

@@ -4,10 +4,11 @@
 // the support answers with files while it is open, closes it as resolved or rejected, opens a closed one again. A
 // complaint shows above it, for the support only, the conversation as it was with the answer complained about marked,
 // its files, the agent, the models and the version of the instructions. Both read again at once when the server says
-// there is news (a message of the employee, a colleague's answer).
+// there is news (a message of the employee, a colleague's answer); when that fails, what is shown and what is being
+// written stay, under the error.
 import type { AdminTicketDto, AdminTicketRow, SupportStatus } from '@bba/contracts';
 import { isClosedStatus, SUPPORT_STATUSES } from '@bba/contracts';
-import { useCallback, useEffect, useEffectEvent, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button, ButtonLink, cx } from '../ui/Button.tsx';
 import { Card, EmptyState, PageHead, Pill } from '../ui/Display.tsx';
@@ -16,7 +17,7 @@ import { dateTime, fileSize, fullDate } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { ru } from '../i18n/ru.ts';
-import { useLiveNews } from '../notifications/live.ts';
+import { useOnLiveNews } from '../notifications/live.ts';
 import { Feedback, useAction } from '../ui/form-parts.tsx';
 import chips from '../ui/chips.module.css';
 import { setTicketStatus, ticket, ticketFileUrl, tickets, writeAsSupport } from './api.ts';
@@ -30,20 +31,12 @@ const tt = ru.feedback.ticket;
 const titleOf = (x: AdminTicketRow) => (x.kind === 'request' ? t.numberWithSubject(x.id, x.subject ?? '') : t.number(x.id));
 const lineOf = (x: AdminTicketRow, when: string) => (x.kind === 'request' ? t.requestRow(x.author ?? tt.formerEmployee, when) : t.row(x.author ?? tt.formerEmployee, x.agentName ?? '', when));
 
-// Reads its data again when the frame of the admin panel hears news.
-function useReloadOnNews(reload: () => void) {
-  const news = useLiveNews();
-  const onNews = useEffectEvent(reload);
-  useEffect(() => {
-    if (news > 0) onNews();
-  }, [news]);
-}
-
 export function SupportSection() {
   const [status, setStatus] = useState<SupportStatus | null>(null);
   const load = useCallback(() => tickets(status), [status]);
   const { state, reload } = useLoad(load);
-  useReloadOnNews(reload);
+  useOnLiveNews(reload);
+  const data = state.status === 'ready' ? state.data : state.status === 'error' ? (state.stale ?? null) : null;
   return (
     <div className={styles.stack}>
       <PageHead title={t.title} lead={t.lead} />
@@ -56,11 +49,11 @@ export function SupportSection() {
       </div>
       {state.status === 'loading' ? <DelayedBar /> : null}
       {state.status === 'error' ? <ErrorBanner error={state.error} onRetry={reload} /> : null}
-      {state.status === 'ready' && state.data.tickets.length === 0 ? <EmptyState title={t.empty} text={t.emptyText} /> : null}
-      {state.status === 'ready' && state.data.tickets.length > 0 ? (
+      {data && data.tickets.length === 0 ? <EmptyState title={t.empty} text={t.emptyText} /> : null}
+      {data && data.tickets.length > 0 ? (
         <Card className="rise">
           <ul className={styles.list} aria-label={t.title}>
-            {state.data.tickets.map((x) => (
+            {data.tickets.map((x) => (
               <li key={x.id} className={styles.row}>
                 <Link to={`/admin/support/${encodeURIComponent(x.id)}`} className={cx(styles.rowMain, styles.rowLink)}>
                   <div className={styles.rowTitle}>{titleOf(x)}</div>
@@ -176,8 +169,8 @@ export function TicketPage() {
   const { ticketId = '' } = useParams();
   const load = useCallback(() => ticket(ticketId), [ticketId]);
   const { state, reload } = useLoad(load);
-  useReloadOnNews(reload);
-  const data = state.status === 'ready' ? state.data : null;
+  useOnLiveNews(reload);
+  const data = state.status === 'ready' ? state.data : state.status === 'error' ? (state.stale ?? null) : null;
   return (
     <div className={styles.stack}>
       <Link to="/admin/support" className={styles.note}>

@@ -1,7 +1,7 @@
 // The parts of a ticket's conversation (docs/specs/[20.11.2026]-feedback-and-value.md, F9; owner 24.11): the messages of
 // both sides with their files, the field to write with «Прикрепить файлы», and the picker of files shared with
 // «Новое обращение». Each page — the employee's and the support's — gives whose side is «mine» and where a file downloads.
-import { SUPPORT_FILES_MAX_BYTES, SUPPORT_REQUEST_FILES_MAX, type SupportMessageDto, type SupportSide, type SupportStatus } from '@bba/contracts';
+import { COMPLAINT_MAX, SUPPORT_FILES_MAX_BYTES, SUPPORT_REQUEST_FILES_MAX, type SupportMessageDto, type SupportSide, type SupportStatus } from '@bba/contracts';
 import { useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { dateTime, fileSize } from '../i18n/format.ts';
@@ -14,12 +14,12 @@ import { FileIcon } from '../ui/FileIcon.tsx';
 import styles from './feedback.module.css';
 
 const t = ru.feedback.ticket;
-const TEXT_MAX = 4000;
 
-// The colour of a state for each side: what waits for this side stands out.
+// The colour of a state for each side: what waits for this side stands out — the employee's answer waits for the
+// employee, the employee's message for the support.
 export const STATUS_TONE: Record<SupportSide, Record<SupportStatus, Tone>> = {
   employee: { open: 'neutral', answered: 'accent', resolved: 'ok', rejected: 'neutral' },
-  support: { open: 'accent', answered: 'warn', resolved: 'ok', rejected: 'neutral' },
+  support: { open: 'accent', answered: 'neutral', resolved: 'ok', rejected: 'neutral' },
 };
 
 // Files picked for one message: up to 10, 50 MB together; files picked past the limits are not added, and the person is
@@ -148,7 +148,7 @@ export function TicketComposer({ onSend, hint }: { onSend: (text: string, files:
       <Field label={t.write} error={empty ? t.noText : null} hint={hint}>
         <TextArea
           rows={3}
-          maxLength={TEXT_MAX}
+          maxLength={COMPLAINT_MAX}
           value={text}
           placeholder={t.writePlaceholder}
           onChange={(e) => {

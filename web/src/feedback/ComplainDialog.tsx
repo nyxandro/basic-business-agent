@@ -1,7 +1,7 @@
 // «Пожаловаться» under an answer (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 1): «Что было не так?», the
 // warning that the whole conversation and its files go with it, «Отправить в поддержку». A complaint about the same
 // answer already made is said so, and the new text is added to it. On a failure the text stays.
-import type { ComplaintStateResponse } from '@bba/contracts';
+import { COMPLAINT_MAX, type ComplaintStateResponse } from '@bba/contracts';
 import { useEffect, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -64,7 +64,7 @@ function ComplainForm({ threadId, turn, onClose }: { threadId: string; turn: num
         <TextArea
           autoFocus
           rows={4}
-          maxLength={4000}
+          maxLength={COMPLAINT_MAX}
           value={text}
           placeholder={t.placeholder}
           onChange={(e) => {

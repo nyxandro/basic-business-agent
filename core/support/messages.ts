@@ -75,9 +75,10 @@ export async function heldTicket(c: pg.PoolClient, ticketId: string, ownerId: st
 
 const closedTicket = (ticketId: string) => appError('APP_SUPPORT_CLOSED', `ticket ${ticketId} is closed`);
 
-// After the change is saved: telling never undoes it. A notification that fails is logged by `notify`; a failure to find
-// whom to tell is logged here — the open pages catch up at their next check.
-async function afterChange(db: Db, ticketId: string, tell: () => Promise<void>): Promise<void> {
+// After the change is saved: telling never undoes it — an error here would have the person send a saved ticket or message
+// again. A notification that fails is logged by `notify`; a failure to find whom to tell is logged here — the red counter
+// catches up at the next presence ping (30 s), the open lists and tickets at the next news or opening.
+export async function tellAfterSave(db: Db, ticketId: string, tell: () => Promise<void>): Promise<void> {
   try {
     await tell();
     for (const holder of await holdersOf(db, 'agents')) await signalLive(db, holder);
@@ -86,9 +87,13 @@ async function afterChange(db: Db, ticketId: string, tell: () => Promise<void>):
   }
 }
 
-// The people who handle the support, told of a message of the employee.
-async function tellSupport(db: Db, ticketId: string, messageId: string): Promise<void> {
-  for (const holder of await holdersOf(db, 'agents')) await notify(db, notices.supportMessage({ userId: holder, ticketId, messageId }));
+// The people who handle the support, told of a new ticket (`complaintOf` — the agent complained about; null — a request)
+// or of a message of the employee — not the employee, when they handle the support too.
+export async function tellSupport(db: Db, ticketId: string, authorId: string, about: { complaintOf: string | null } | { messageId: string }): Promise<void> {
+  for (const holder of await holdersOf(db, 'agents')) {
+    if (holder === authorId) continue;
+    await notify(db, 'messageId' in about ? notices.supportMessage({ userId: holder, ticketId, messageId: about.messageId }) : notices.supportNew({ userId: holder, ticketId, complaintOf: about.complaintOf }));
+  }
 }
 
 // The employee writes into their own ticket: it waits for the support again. `reopen` — a second complaint about the same
@@ -103,7 +108,7 @@ export async function employeeWrites(db: Db, userId: string, ticketId: string, t
     return id;
   });
   logEvent('info', 'support_message', { ticketId, side: 'employee', files: files.length });
-  await afterChange(db, ticketId, () => tellSupport(db, ticketId, messageId));
+  await tellAfterSave(db, ticketId, () => tellSupport(db, ticketId, userId, { messageId }));
   return { messageId };
 }
 
@@ -118,7 +123,7 @@ export async function supportWrites(db: Db, authorId: string, ticketId: string, 
     return { messageId: id, employee: ticket.user_id };
   });
   logEvent('info', 'support_message', { ticketId, side: 'support', files: files.length });
-  await afterChange(db, ticketId, async () => {
+  await tellAfterSave(db, ticketId, async () => {
     if (employee) await notify(db, notices.supportReply({ userId: employee, ticketId, event: 'reply', key: messageId }));
   });
   return { messageId };
@@ -128,11 +133,12 @@ export async function supportWrites(db: Db, authorId: string, ticketId: string, 
 export async function employeeResolves(db: Db, userId: string, ticketId: string): Promise<void> {
   await inTransaction(db, async (c) => {
     const ticket = await heldTicket(c, ticketId, userId);
-    if (isClosedStatus(ticket.status)) throw closedTicket(ticketId);
+    // A second press, in another tab: nothing to close.
+    if (isClosedStatus(ticket.status)) throw appError('APP_SUPPORT_ALREADY_CLOSED', `ticket ${ticketId} is ${ticket.status} already`);
     await c.query("UPDATE app.support_tickets SET status = 'resolved', closed_side = 'employee', closed_at = now(), updated_at = now() WHERE id = $1", [ticketId]);
   });
-  logEvent('info', 'support_ticket_closed', { ticketId, side: 'employee', status: 'resolved' });
-  await afterChange(db, ticketId, () => Promise.resolve());
+  logEvent('info', 'support_ticket_status', { ticketId, side: 'employee', status: 'resolved' });
+  await tellAfterSave(db, ticketId, () => Promise.resolve());
 }
 
 // The support closes a ticket as resolved or rejected, or opens a closed one again; the employee is told.
@@ -146,8 +152,8 @@ export async function supportSetsStatus(db: Db, actorId: string, ticketId: strin
     await writeAudit(c, { actorUserId: actorId, action: 'support.update', target: ticketId, details: { from: ticket.status, to: status } });
     return { from: ticket.status, employee: ticket.user_id };
   });
-  logEvent('info', 'support_ticket_closed', { ticketId, side: 'support', from, status });
-  await afterChange(db, ticketId, async () => {
+  logEvent('info', 'support_ticket_status', { ticketId, side: 'support', from, status });
+  await tellAfterSave(db, ticketId, async () => {
     if (employee) await notify(db, notices.supportReply({ userId: employee, ticketId, event: status === 'open' ? 'reopened' : status, key: String(Date.now()) }));
   });
 }

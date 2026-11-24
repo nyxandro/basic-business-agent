@@ -31,7 +31,6 @@ const MY_TICKET = {
   status: 'answered',
   createdAt: at(0),
   updatedAt: at(2),
-  lastSide: 'support',
   closedAt: null,
   closedSide: null,
   messages: [msg('1', 'employee', 'Ольга', 'Вчера сводки не было.', [{ ord: 0, name: 'экран.png' }]), msg('2', 'support', 'Анна', 'Посмотрите в спаме.', [{ ord: 1, name: 'инструкция.pdf' }])],
@@ -185,6 +184,43 @@ describe('a ticket of the employee', () => {
     act(() => FakeSource.last!.listeners.get('changed')!());
     expect(await screen.findByText('Посмотрите в спаме.')).toBeInTheDocument();
   });
+
+  it('keeps the conversation and what is being written when reading the ticket again fails, saying so', async () => {
+    vi.stubGlobal('EventSource', FakeSource);
+    const s = mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/support/21': { body: MY_TICKET } });
+    renderApp('/settings/requests/21');
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText('Сообщение');
+    await user.type(field, 'Нашла в спаме');
+    await user.upload(screen.getByLabelText('Прикрепить файлы'), [file('спам.png')]);
+
+    s.set('GET /app/api/me/support/21', apiError('APP_DB_UNAVAILABLE', 'Сервер временно недоступен.', 503));
+    act(() => FakeSource.last!.listeners.get('changed')!());
+    expect(await screen.findByText('Сервер временно недоступен.')).toBeInTheDocument();
+    expect(screen.getByText('Посмотрите в спаме.')).toBeInTheDocument();
+    // The same field, found anew: not drawn again empty.
+    expect(screen.getByLabelText('Сообщение')).toBe(field);
+    expect(field).toHaveValue('Нашла в спаме');
+    expect(within(screen.getByRole('list', { name: 'Приложенные файлы' })).getByText('спам.png')).toBeInTheDocument();
+
+    s.set('GET /app/api/me/support/21', { body: MY_TICKET });
+    act(() => FakeSource.last!.listeners.get('changed')!());
+    await waitFor(() => expect(screen.queryByText('Сервер временно недоступен.')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Сообщение')).toHaveValue('Нашла в спаме');
+  });
+
+  it('loads a ticket once when opened after the channel has heard news', async () => {
+    vi.stubGlobal('EventSource', FakeSource);
+    const s = mockServer({ 'GET /app/api/me': { body: ME }, 'GET /app/api/me/support': { body: { tickets: [MY_ROW] } }, 'GET /app/api/me/support/21': { body: MY_TICKET } });
+    renderApp('/settings/requests');
+    const list = await screen.findByRole('list', { name: 'Мои обращения' });
+    act(() => FakeSource.last!.listeners.get('ready')!());
+    await userEvent.setup().click(within(list).getByRole('link', { name: /Не приходит сводка/ }));
+    expect(await screen.findByText('Посмотрите в спаме.')).toBeInTheDocument();
+    // A second load would come right after the first.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/me/support/21')).toHaveLength(1);
+  });
 });
 
 describe('a ticket in «Поддержка»', () => {
@@ -192,7 +228,6 @@ describe('a ticket in «Поддержка»', () => {
   const ADMIN_TICKET = {
     ...MY_TICKET,
     status: 'open',
-    lastSide: 'employee',
     author: 'Ольга Смирнова',
     agentId: null,
     messages: [MY_TICKET.messages[0]],
@@ -263,6 +298,20 @@ describe('a ticket in «Поддержка»', () => {
     expect(screen.getByText(/не приложен: больше 50 МБ/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Скачать КП.docx' })).toHaveAttribute('href', '/app/api/admin/support/14/files/0');
     expect(screen.getByText(/qwen3.8-flash · инструкции из файла агента/)).toBeInTheDocument();
+  });
+
+  it('keeps the answer being written when reading the ticket again fails', async () => {
+    vi.stubGlobal('EventSource', FakeSource);
+    const s = mockServer({ 'GET /app/api/me': { body: SUPPORT }, 'GET /app/api/admin/support/21': { body: ADMIN_TICKET } });
+    renderApp('/admin/support/21');
+    const field = await screen.findByLabelText('Сообщение');
+    await userEvent.setup().type(field, 'Посмотрите в спаме');
+    s.set('GET /app/api/admin/support/21', apiError('APP_DB_UNAVAILABLE', 'Сервер временно недоступен.', 503));
+    act(() => FakeSource.last!.listeners.get('changed')!());
+    expect(await screen.findByText('Сервер временно недоступен.')).toBeInTheDocument();
+    expect(screen.getByText('Вчера сводки не было.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Сообщение')).toBe(field);
+    expect(field).toHaveValue('Посмотрите в спаме');
   });
 
   it('closes as resolved, then opens again; a closed ticket takes no messages', async () => {

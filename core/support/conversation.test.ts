@@ -6,6 +6,8 @@
 import { SUPPORT_FILES_MAX_BYTES, SUPPORT_REQUEST_FILES_MAX, type AdminTicketDto, type AdminTicketsResponse, type MyTicketDto, type MyTicketsResponse, type NotificationsResponse, type SupportRequestResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, TEST_PUBLIC_URL, type TestApp } from '../server/test-app.ts';
+import { createRequest } from './requests.ts';
+import { withoutHolders } from './test-db.ts';
 
 let t: TestApp;
 let olgaId: string;
@@ -21,6 +23,7 @@ const json = async <T>(res: Response): Promise<T> => {
   return (await res.json()) as T;
 };
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
+const message = async (res: Response) => ((await res.json()) as { error: { message: string } }).error.message;
 const file = (name: string, content: string | Uint8Array) => new File([content], name);
 function form(fields: { subject?: string; text?: string; files?: File[] }): FormData {
   const f = new FormData();
@@ -86,7 +89,7 @@ describe('a request straight to the support', () => {
     const { id } = (await res.json()) as SupportRequestResponse;
 
     const row = (await json<AdminTicketsResponse>(await t.call('GET', '/app/api/admin/support', { cookie: igor }))).tickets.find((x) => x.id === id);
-    expect(row).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', author: 'Ольга Смирнова', agentId: null, agentName: null, status: 'open', lastSide: 'employee' });
+    expect(row).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', author: 'Ольга Смирнова', agentId: null, agentName: null, status: 'open' });
     const detail = await theirs(id);
     expect(detail).toMatchObject({ kind: 'request', turn: null, snapshot: [], contextFiles: [], models: [], instructionsAt: null, taskId: null, closedAt: null, closedSide: null });
     expect(detail.messages).toMatchObject([
@@ -105,7 +108,7 @@ describe('a request straight to the support', () => {
     expect(await toldTo(igorId, id, 'support_new')).toEqual([{ title: `Новое обращение №${id}`, link: `/admin/support/${id}` }]);
 
     const listed = (await json<MyTicketsResponse>(await t.call('GET', '/app/api/me/support', { cookie: olga }))).tickets.find((x) => x.id === id);
-    expect(listed).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', agentName: null, status: 'open', lastSide: 'employee' });
+    expect(listed).toMatchObject({ kind: 'request', subject: 'Не приходит письмо со сводкой', agentName: null, status: 'open' });
   });
 
   it('counts a line break as one character, as the text box did: a long text of many lines is taken whole', async () => {
@@ -153,7 +156,6 @@ describe('the conversation of a ticket', () => {
     expect(await (await t.call('GET', `/app/api/admin/support/${id}/files/${ticket.messages[2]!.files[0]!.ord}`, { cookie: igor })).text()).toBe('PNG');
     // Every message of the employee tells the support.
     expect((await toldTo(annaId, id, 'support_new')).map((n) => n.title)).toEqual([`Новое обращение №${id}`, `Новое сообщение в обращении №${id}`]);
-    expect((await theirs(id)).lastSide).toBe('employee');
   });
 
   it('is closed for both sides by «Проблема решена» of the employee; the support may open it again', async () => {
@@ -165,7 +167,10 @@ describe('the conversation of a ticket', () => {
     // Nobody writes into a closed ticket.
     expect(await code(await employeeWrites(olga, id, form({ text: 'Ещё вопрос' })))).toBe('APP_SUPPORT_CLOSED');
     expect(await code(await supportWrites(igor, id, form({ text: 'Ещё ответ' })))).toBe('APP_SUPPORT_CLOSED');
-    expect(await code(await t.call('POST', `/app/api/me/support/${id}/resolve`, { cookie: olga }))).toBe('APP_SUPPORT_CLOSED');
+    // A second «Проблема решена» (another tab): closed already — nothing about writing.
+    const again = await t.call('POST', `/app/api/me/support/${id}/resolve`, { cookie: olga });
+    expect(again.status).toBe(409);
+    expect(await again.clone().json()).toMatchObject({ error: { code: 'APP_SUPPORT_ALREADY_CLOSED', message: 'Обращение уже закрыто. Обновите страницу.' } });
 
     expect(await theirs(id)).toMatchObject({ status: 'resolved', closedSide: 'employee' });
     const reopened = await json<AdminTicketDto>(await t.call('POST', `/app/api/admin/support/${id}/status`, { cookie: igor, body: { status: 'open' } }));
@@ -200,7 +205,9 @@ describe('the conversation of a ticket', () => {
 
   it('refuses an empty message and files over the limits, on both sides', async () => {
     const id = await newRequest();
-    expect(await code(await employeeWrites(olga, id, form({ text: '  ' })))).toBe('APP_VALIDATION_FAILED');
+    const empty = await employeeWrites(olga, id, form({ text: '  ' }));
+    expect(await empty.clone().json()).toMatchObject({ error: { code: 'APP_VALIDATION_FAILED', message: 'Напишите сообщение — до 4000 знаков.' } });
+    expect(await message(await request(olga, form({ subject: 'Тема' })))).toBe('Заполните поля формы: тема — до 200 знаков, текст — до 4000.');
     expect(await code(await supportWrites(igor, id, form({})))).toBe('APP_VALIDATION_FAILED');
     const many = Array.from({ length: SUPPORT_REQUEST_FILES_MAX + 1 }, (_, i) => file(`${i}.txt`, 'x'));
     expect(await code(await supportWrites(igor, id, form({ text: 'Файлы', files: many })))).toBe('APP_SUPPORT_TOO_MANY_FILES');
@@ -217,6 +224,20 @@ describe('the conversation of a ticket', () => {
     await json(await supportWrites(igor, id, form({ text: 'Ответ' })));
     await heard(anna, async () => json(await employeeWrites(olga, id, form({ text: 'Ещё' }))));
     await heard(anna, async () => json(await t.call('POST', `/app/api/me/support/${id}/resolve`, { cookie: olga })));
+  });
+
+  it('tells the other people of the support of a ticket of one of them, never the one who wrote', async () => {
+    const id = (await json<SupportRequestResponse>(await request(anna, form({ subject: 'Свой вопрос', text: 'Не вижу отчёт' })))).id;
+    await json(await employeeWrites(anna, id, form({ text: 'Дополню' })));
+    expect(await toldTo(annaId, id, 'support_new')).toEqual([]);
+    expect((await toldTo(igorId, id, 'support_new')).map((n) => n.title)).toEqual([`Новое обращение №${id}`, `Новое сообщение в обращении №${id}`]);
+  });
+
+  it('keeps a request made and answers it as made when whom to tell cannot be read: sent again, it would be a second one', async () => {
+    const before = (await t.db.query(`SELECT 1 FROM app.support_tickets`)).rowCount;
+    const { id } = await createRequest(withoutHolders(t.db), olgaId, { subject: 'Без оповещения', text: 'Текст' }, []);
+    expect((await t.db.query(`SELECT 1 FROM app.support_tickets`)).rowCount).toBe((before ?? 0) + 1);
+    expect(await mine(olga, id)).toMatchObject({ subject: 'Без оповещения', status: 'open' });
   });
 });
 

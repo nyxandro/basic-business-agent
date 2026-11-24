@@ -36,7 +36,6 @@ export const feedbackTexts = {
     you: 'Вы',
     support: 'Поддержка',
     supportOf: (name: string) => `Поддержка · ${name}`,
-    employee: 'Сотрудник',
     formerEmployee: 'бывший сотрудник',
     conversation: 'Переписка',
     write: 'Сообщение',
@@ -69,7 +68,6 @@ export const feedbackTexts = {
     // A request straight to the support (F7): its subject instead of an agent.
     numberWithSubject: (id: string, subject: string) => `№${id} · ${subject}`,
     requestRow: (author: string, when: string) => `${author} · обращение · ${when}`,
-    lastEmployee: 'ждёт ответа',
     back: 'Все обращения',
     conversation: 'Разговор на момент жалобы',
     complained: 'Ответ, на который пожаловались',
@@ -86,7 +84,6 @@ export const feedbackTexts = {
     you: 'Сотрудник',
     agent: 'Агент',
     replyHint: 'Сотрудник увидит ответ сразу и получит уведомление.',
-    sent: 'Ответ отправлен',
     resolve: 'Закрыть: решено',
     reject: 'Отклонить',
     reopen: 'Открыть снова',

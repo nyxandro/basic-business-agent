@@ -2,7 +2,7 @@
 // an answer, a request straight to the support, «Мои обращения», a ticket's conversation, its messages, «Проблема решена»
 // and its files; the admin panel — the list, a ticket, its messages, closing and opening again, its files — for the
 // people with «Агенты» (owner 21.11, F5).
-import { complaintSchema, SUPPORT_FILES_MAX_BYTES, SUPPORT_STATUSES, supportMessageSchema, supportRequestSchema, supportStatusSchema, type AdminTicketsResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportStatus } from '@bba/contracts';
+import { COMPLAINT_MAX, complaintSchema, SUPPORT_FILES_MAX_BYTES, SUPPORT_STATUSES, SUPPORT_SUBJECT_MAX, supportMessageSchema, supportRequestSchema, supportStatusSchema, type AdminTicketsResponse, type ComplaintStateResponse, type MyTicketsResponse, type SupportStatus } from '@bba/contracts';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { z } from 'zod';
@@ -26,12 +26,16 @@ const formLimit = () =>
     },
   });
 
-// The text fields of a form by `schema`, and its files (`files`): one comes as a value, several as a list (Hono, `all`).
-async function readForm<T extends z.ZodType>(c: Context<AppEnv>, schema: T): Promise<{ fields: z.infer<T>; files: AttachedFile[] }> {
+// What a person is told of a form filled wrong.
+const REQUEST_FORM = { schema: supportRequestSchema, userMessage: `Заполните поля формы: тема — до ${SUPPORT_SUBJECT_MAX} знаков, текст — до ${COMPLAINT_MAX}.` };
+const MESSAGE_FORM = { schema: supportMessageSchema, userMessage: `Напишите сообщение — до ${COMPLAINT_MAX} знаков.` };
+
+// The text fields of a form, and its files (`files`): one comes as a value, several as a list (Hono, `all`).
+async function readForm<T extends z.ZodType>(c: Context<AppEnv>, form: { schema: T; userMessage: string }): Promise<{ fields: z.infer<T>; files: AttachedFile[] }> {
   const body = await c.req.parseBody({ all: true });
   const { files: raw, ...rest } = body;
-  const fields = schema.safeParse(rest);
-  if (!fields.success) throw appError('APP_VALIDATION_FAILED', `bad support form: ${fields.error.message}`, { userMessage: 'Заполните поля формы: тема — до 200 знаков, текст — до 4000.' });
+  const fields = form.schema.safeParse(rest);
+  if (!fields.success) throw appError('APP_VALIDATION_FAILED', `bad support form: ${fields.error.message}`, { userMessage: form.userMessage });
   const list = raw === undefined ? [] : [raw].flat();
   if (list.some((f) => !(f instanceof File))) throw appError('APP_VALIDATION_FAILED', 'files field is not a file', { userMessage: 'Файл не получен. Приложите его ещё раз.' });
   return { fields: fields.data, files: (list as File[]).map((f) => ({ name: f.name, size: f.size, read: async () => new Uint8Array(await f.arrayBuffer()) })) };
@@ -55,7 +59,7 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
   app.post(ME, async (c) => c.json(await complain(deps, access(c).userId, await parseJson(c, complaintSchema)), 201));
 
   app.post(`${ME}/requests`, formLimit(), async (c) => {
-    const { fields, files } = await readForm(c, supportRequestSchema);
+    const { fields, files } = await readForm(c, REQUEST_FORM);
     return c.json(await createRequest(deps.db, access(c).userId, fields, files), 201);
   });
 
@@ -72,7 +76,7 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
   app.get(`${ME}/:id`, async (c) => c.json(await myTicket(deps, access(c).userId, c.req.param('id'))));
 
   app.post(`${ME}/:id/messages`, formLimit(), async (c) => {
-    const { fields, files } = await readForm(c, supportMessageSchema);
+    const { fields, files } = await readForm(c, MESSAGE_FORM);
     return c.json(await employeeWrites(deps.db, access(c).userId, c.req.param('id'), fields.text, files), 201);
   });
 
@@ -94,7 +98,7 @@ export function registerSupportRoutes(app: Hono<AppEnv>, deps: SupportDeps): voi
   app.get(`${S}/:id`, agents, async (c) => c.json(await ticketDetail(deps, c.req.param('id'))));
 
   app.post(`${S}/:id/messages`, agents, formLimit(), async (c) => {
-    const { fields, files } = await readForm(c, supportMessageSchema);
+    const { fields, files } = await readForm(c, MESSAGE_FORM);
     return c.json(await supportWrites(deps.db, access(c).userId, c.req.param('id'), fields.text, files), 201);
   });
 

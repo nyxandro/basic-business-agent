@@ -44,13 +44,15 @@ function useSupportWaiting(handles: boolean): { waiting: number; news: number } 
   return { waiting, news };
 }
 
-// The label of a section in the menu: «Поддержка» with its counter when tickets wait for an answer.
+// The label of a section in the menu: «Поддержка» with its counter when tickets wait for an answer. A screen reader hears
+// one line, «Поддержка, ждут ответа: 3»: the hidden part apart from the visible label would be read with a gap before
+// the comma (a browser puts a space around an element taken out of the line).
 function SectionLabel({ section, waiting, className }: { section: SectionDef; waiting: number; className: string | undefined }) {
   if (section.path !== SUPPORT_PATH || waiting === 0) return <span>{section.label}</span>;
   return (
     <>
-      <span>{section.label}</span>
-      <span className="visually-hidden">{ru.feedback.support.menuWaiting(waiting)}</span>
+      <span aria-hidden="true">{section.label}</span>
+      <span className="visually-hidden">{`${section.label}${ru.feedback.support.menuWaiting(waiting)}`}</span>
       <span className={className} aria-hidden="true">
         {waiting > COUNT_SHOWN_MAX ? `${COUNT_SHOWN_MAX}+` : waiting}
       </span>
