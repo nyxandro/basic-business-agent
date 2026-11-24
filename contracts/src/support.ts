@@ -108,23 +108,28 @@ export const ticketUpdateSchema = z.strictObject({
 export const cleanDocType = (text: string) =>
   [...text.replace(/[^\p{L}\p{N} .,()«»"'\-–—]+/gu, ' ').replace(/\s+/g, ' ').trim()].slice(0, 100).join('');
 
-export const exampleSaveSchema = z.strictObject({
+// A file of a conversation of the person (the heart of a sample, F6; owner 24.11): DELETE /app/api/me/examples takes it
+// as the query.
+export const exampleFileSchema = z.strictObject({
   threadId: z.string().min(1).max(300),
   path: z.string().min(1).max(1000),
-  docType: z.string().max(200).transform(cleanDocType).pipe(z.string().min(1)),
+});
+
+// One press of the heart: the kind of the document the server guesses from its name.
+export const exampleSaveSchema = exampleFileSchema.extend({
   base: z.discriminatedUnion('scope', [z.strictObject({ scope: z.literal('org') }), z.strictObject({ scope: z.literal('department'), departmentId: z.uuid() })]),
 });
 
-// Where a sample may go and whether this file is one already.
-export interface ExampleStateResponse {
-  // none — not marked; saved — in the base now; removed — the keeper of the base took it out («Был образцом»).
-  state: 'none' | 'saved' | 'removed';
-  bases: ({ scope: 'org'; name: string } | { scope: 'department'; departmentId: string; name: string })[];
-  // The kind of document guessed from its name: «Коммерческое предложение».
-  docType: string;
+export type ExampleBase = { scope: 'org'; name: string } | { scope: 'department'; departmentId: string; name: string };
+
+// GET /app/api/me/examples?threadId=: where a sample of the person may go, and the files of the conversation the person
+// put into a base that keeps them still — a file the agent wrote anew under the same name stays marked.
+export interface ExampleMarksResponse {
+  bases: ExampleBase[];
+  saved: string[];
 }
 
-// The documents «Хороший образец» is offered on: Word, Excel, PowerPoint, PDF and their open and older forms.
+// The documents the heart is offered on: Word, Excel, PowerPoint, PDF and their open and older forms.
 const EXAMPLE_EXTENSIONS = new Set(['.docx', '.doc', '.odt', '.rtf', '.xlsx', '.xls', '.ods', '.pptx', '.ppt', '.odp', '.pdf']);
 export const isExampleName = (name: string) => EXAMPLE_EXTENSIONS.has(name.slice(name.lastIndexOf('.')).toLowerCase());
 

@@ -203,6 +203,10 @@ const PATHS = {
   ),
   bolt: <path d="M13 3L5 13h6l-1 8 8-10h-6z" />,
   star: <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />,
+  // The heart of samples on a document of the agent (docs/specs/[20.11.2026]-feedback-and-value.md, F6): empty, and
+  // filled once the document is in the knowledge base.
+  heart: <path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z" />,
+  heartFilled: <path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z" fill="currentColor" />,
   smile: (
     <>
       <circle cx="12" cy="12" r="9" />

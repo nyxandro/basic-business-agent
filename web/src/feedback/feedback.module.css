@@ -32,12 +32,6 @@
   gap: 8px;
 }
 
-.bases {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 /* The copy of the conversation in a ticket: the person's words to the right, the agent's to the left, as in the chat. */
 .thread {
   display: flex;
@@ -205,14 +199,8 @@
   font-weight: 500;
 }
 
-/* «Хороший образец» under a file of the chat (ExampleButton.tsx): the mark of a file kept, the error of the try. */
-.exampleSaved {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.exampleError {
-  margin: 6px 0 0;
+/* The filled heart of samples (SampleHeart.tsx): red, as a liked thing is everywhere, in both themes; the element in the
+   selector outweighs the colour of the button whatever order the styles load in. */
+button.hearted {
   color: var(--bad);
-  font-size: 13px;
 }

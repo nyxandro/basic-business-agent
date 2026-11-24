@@ -185,11 +185,12 @@
   background: var(--border-soft);
 }
 
+/* Over every layer, the document viewer's (70) too: the heart of samples in its bar answers here. */
 .toast {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 60;
+  z-index: 80;
   display: flex;
   align-items: center;
   gap: 10px;

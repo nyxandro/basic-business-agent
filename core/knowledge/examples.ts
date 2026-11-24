@@ -1,11 +1,12 @@
-// Samples of good documents (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 3; owner 21.11, F4): a document the
-// agent made in the person's conversation, marked «Хороший образец», goes into the knowledge base at once as a document
-// of the kind «образец» — read into fragments like every document, its file kept — in the base of a department of the
-// person (or of the organisation, for the one who keeps it), without a keeper's confirmation. Agents find samples first
-// when they make a document of the same kind; the keeper of the base removes a bad one.
+// Samples of good documents (docs/specs/[20.11.2026]-feedback-and-value.md, scenario 3; owner 21.11, F4; owner 24.11, F6): a
+// document the agent made in the person's conversation, marked with the heart, goes into the knowledge base at once as a
+// document of the kind «образец» — its kind guessed from its name, read into fragments like every document, its file kept —
+// in the base of a department of the person (or of the organisation, for the one who keeps it), without a keeper's
+// confirmation. Agents find samples first when they make a document of the same kind; the one who marked a sample takes
+// it out with the heart, the keeper of the base removes any. All of it only while «Интерфейс» allows the heart.
 import { createHash } from 'node:crypto';
 import { extname } from 'node:path';
-import { exampleSaveSchema, GENUI_TOOL, type ExampleSaveResponse, type ExampleStateResponse } from '@bba/contracts';
+import { exampleFileSchema, exampleSaveSchema, GENUI_TOOL, type ExampleBase, type ExampleMarksResponse, type ExampleSaveResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import type { Memory } from '@mastra/memory';
 import type { AccessContext } from '../auth/access.ts';
@@ -15,11 +16,12 @@ import { isAppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { conversationMessages } from '../history/store.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
+import { interfaceAdminState } from '../interface-settings/store.ts';
 import { logEvent } from '../log/log.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { readFileInside } from '../workspace/layout.ts';
 import type { KnowledgeIndexer } from './indexer.ts';
-import { KB_FILE_MAX_BYTES, uploadDocument, type Base } from './store.ts';
+import { deleteDocument, KB_FILE_MAX_BYTES, uploadDocument, type Base } from './store.ts';
 
 export interface ExampleDeps {
   db: Db;
@@ -31,7 +33,7 @@ export interface ExampleDeps {
 
 const ORG_NAME = 'Вся организация';
 
-// The kind of a document by the words of its name: what the person confirms or corrects.
+// The kind of a document by the words of its name: the heart gives a sample this kind (F6, no window to correct it).
 const KINDS: [RegExp, string][] = [
   [/(^|[^а-яё])кп([^а-яё]|$)|коммерческ/i, 'Коммерческое предложение'],
   [/договор|контракт/i, 'Договор'],
@@ -51,7 +53,7 @@ export function guessDocType(name: string): string {
 }
 
 // The bases a sample may go to: each department of the person, and the organisation's for the one who keeps it.
-async function basesFor(db: Db, who: AccessContext): Promise<ExampleStateResponse['bases']> {
+async function basesFor(db: Db, who: AccessContext): Promise<ExampleBase[]> {
   const { rows } = await db.query<{ id: string; name: string }>(
     'SELECT d.id::text, d.name FROM app.department_members m JOIN app.departments d ON d.id = m.department_id WHERE m.user_id = $1 ORDER BY d.name',
     [who.userId],
@@ -81,54 +83,94 @@ async function fileBytes(deps: ExampleDeps, userId: string, threadId: string, pa
   const read = await inThreadFolder(deps.storage, found, 'read', (folder) => readFileInside(folder, path, KB_FILE_MAX_BYTES));
   if (read && !read.bytes) throw appError('APP_UPLOAD_TOO_LARGE', `${path} of ${read.size} bytes for a sample`, { userMessage: 'Файл больше 20 МБ — базой знаний он не читается.' });
   const bytes = read?.bytes;
-  if (!bytes) throw appError('APP_NOT_FOUND', `${path} of ${threadId} is gone`, { userMessage: 'Файла уже нет в папке разговора — сохранить его образцом нельзя.' });
+  if (!bytes) throw appError('APP_NOT_FOUND', `${path} of ${threadId} is gone`, { userMessage: 'Файла уже нет в папке разговора — добавить его в референсы нельзя.' });
   return bytes;
 }
 
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
-export async function exampleState(deps: ExampleDeps, who: AccessContext, threadId: string, path: string): Promise<ExampleStateResponse> {
-  const name = await madeName(deps.db, who.userId, threadId, path);
-  const bytes = await fileBytes(deps, who.userId, threadId, path);
-  const { rows } = await deps.db.query<{ document_id: string | null }>('SELECT document_id FROM app.example_marks WHERE user_id = $1 AND thread_id = $2 AND path = $3 AND sha256 = $4', [who.userId, threadId, path, sha256(bytes)]);
-  const state = !rows[0] ? 'none' : rows[0].document_id ? 'saved' : 'removed';
-  return { state, bases: await basesFor(deps.db, who), docType: guessDocType(name) };
+// The heart is offered and works only while «Добавление документов в референсы» is on (F6); the samples in the bases
+// stay whatever it is.
+async function assertSamplesOn(db: Db): Promise<void> {
+  if (!(await interfaceAdminState(db)).documentSamples) throw appError('APP_EXAMPLES_OFF', 'document samples are turned off in «Интерфейс»');
 }
 
-export async function saveExample(deps: ExampleDeps, who: AccessContext, input: { threadId: string; path: string; docType: string; base: { scope: 'org' } | { scope: 'department'; departmentId: string } }): Promise<ExampleSaveResponse> {
+// The samples in a base now that the person made of the file at this place of the conversation. The heart is filled by
+// the place, not by the bytes: opening a chat reads no files (with S3 that would bring the person's conversations down).
+async function savedDocuments(db: Db, userId: string, threadId: string, path: string): Promise<string[]> {
+  const { rows } = await db.query<{ document_id: string }>('SELECT document_id::text FROM app.example_marks WHERE user_id = $1 AND thread_id = $2 AND path = $3 AND document_id IS NOT NULL', [userId, threadId, path]);
+  return rows.map((r) => r.document_id);
+}
+
+export async function exampleMarks(deps: ExampleDeps, who: AccessContext, threadId: string): Promise<ExampleMarksResponse> {
+  await assertSamplesOn(deps.db);
+  const { rows } = await deps.db.query<{ path: string }>('SELECT DISTINCT path FROM app.example_marks WHERE user_id = $1 AND thread_id = $2 AND document_id IS NOT NULL ORDER BY path', [who.userId, threadId]);
+  return { bases: await basesFor(deps.db, who), saved: rows.map((r) => r.path) };
+}
+
+export async function saveExample(deps: ExampleDeps, who: AccessContext, input: { threadId: string; path: string; base: { scope: 'org' } | { scope: 'department'; departmentId: string } }): Promise<ExampleSaveResponse> {
   const { db } = deps;
+  await assertSamplesOn(db);
   const name = await madeName(db, who.userId, input.threadId, input.path);
   const bases = await basesFor(db, who);
   if (bases.length === 0) throw appError('APP_EXAMPLE_NO_BASE', `${who.userId} has no department and keeps no base`);
   const allowed = bases.find((b) => b.scope === input.base.scope && (b.scope === 'org' || (input.base.scope === 'department' && b.departmentId === input.base.departmentId)));
-  if (!allowed) throw appError('APP_ADMIN_FORBIDDEN', `${who.userId} may not put a sample into ${JSON.stringify(input.base)}`, { userMessage: 'В эту базу знаний вы образец сохранить не можете — выберите базу своего отдела.' });
+  if (!allowed) throw appError('APP_ADMIN_FORBIDDEN', `${who.userId} may not put a sample into ${JSON.stringify(input.base)}`, { userMessage: 'В эту базу знаний вы документ добавить не можете — выберите базу своего отдела.' });
+  if ((await savedDocuments(db, who.userId, input.threadId, input.path)).length > 0) throw appError('APP_EXAMPLE_SAVED', `${input.path} of ${input.threadId} is a sample already`);
   const bytes = await fileBytes(deps, who.userId, input.threadId, input.path);
   const sha = sha256(bytes);
   const base: Base = input.base.scope === 'org' ? { scope: 'org', departmentId: null } : { scope: 'department', departmentId: input.base.departmentId };
+  const docType = guessDocType(name);
   let documentId: string;
   try {
-    documentId = await uploadDocument(db, who.userId, base, 'example', name, new Uint8Array(bytes), input.docType);
+    documentId = await uploadDocument(db, who.userId, base, 'example', name, new Uint8Array(bytes), docType);
   } catch (error) {
     // The same file is in that base already — as a sample or a document.
     if (isAppError(error) && error.code === 'APP_KNOWLEDGE_DUPLICATE') throw appError('APP_EXAMPLE_SAVED', `${input.path} is in the base already`, { cause: error });
     throw error;
   }
-  await db.query(
+  // A mark the keeper's removal emptied is taken again; a live one is never overwritten: the other heart of this file (the
+  // block's and the viewer's) may have put it into another base meanwhile — then this copy leaves the base at once, and
+  // no sample stays there that no heart can take out.
+  const marked = await db.query(
     `INSERT INTO app.example_marks (user_id, thread_id, path, sha256, document_id) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (user_id, thread_id, path, sha256) DO UPDATE SET document_id = EXCLUDED.document_id, created_at = now()`,
+     ON CONFLICT (user_id, thread_id, path, sha256) DO UPDATE SET document_id = EXCLUDED.document_id, created_at = now()
+       WHERE app.example_marks.document_id IS NULL`,
     [who.userId, input.threadId, input.path, sha, documentId],
   );
+  if (marked.rowCount !== 1) {
+    await deleteDocument(db, who.userId, documentId);
+    throw appError('APP_EXAMPLE_SAVED', `${input.path} of ${input.threadId} was marked by another press meanwhile`);
+  }
   deps.indexer.wake();
-  logEvent('info', 'example_saved', { documentId, scope: base.scope, docType: input.docType });
+  logEvent('info', 'example_saved', { documentId, scope: base.scope, docType });
   return { documentId };
+}
+
+// The filled heart pressed: the samples the person made of this place leave their bases (the audit has it as a removal
+// of a document by the person), and the place is marked no more.
+export async function removeExample(deps: ExampleDeps, who: AccessContext, input: { threadId: string; path: string }): Promise<void> {
+  const { db } = deps;
+  await assertSamplesOn(db);
+  const documents = await savedDocuments(db, who.userId, input.threadId, input.path);
+  if (documents.length === 0) throw appError('APP_EXAMPLE_NOT_SAVED', `${input.path} of ${input.threadId} is no sample of ${who.userId}`);
+  for (const documentId of documents) await deleteDocument(db, who.userId, documentId);
+  // The marks of the documents just removed are empty now (ON DELETE SET NULL); a mark a press made meanwhile stays.
+  await db.query('DELETE FROM app.example_marks WHERE user_id = $1 AND thread_id = $2 AND path = $3 AND document_id IS NULL', [who.userId, input.threadId, input.path]);
+  logEvent('info', 'example_removed', { documents: documents.length });
 }
 
 export function registerExampleRoutes(app: Hono<AppEnv>, deps: ExampleDeps): void {
   app.get('/app/api/me/examples', async (c) => {
     const threadId = c.req.query('threadId');
-    const path = c.req.query('path');
-    if (!threadId || !path) throw appError('APP_VALIDATION_FAILED', 'threadId and path are required');
-    return c.json(await exampleState(deps, access(c), threadId, path));
+    if (!threadId) throw appError('APP_VALIDATION_FAILED', 'threadId is required');
+    return c.json(await exampleMarks(deps, access(c), threadId));
   });
   app.post('/app/api/me/examples', async (c) => c.json(await saveExample(deps, access(c), await parseJson(c, exampleSaveSchema)), 201));
+  app.delete('/app/api/me/examples', async (c) => {
+    const parsed = exampleFileSchema.safeParse({ threadId: c.req.query('threadId'), path: c.req.query('path') });
+    if (!parsed.success) throw appError('APP_VALIDATION_FAILED', `bad sample file: ${parsed.error.message}`);
+    await removeExample(deps, access(c), parsed.data);
+    return c.json({ ok: true });
+  });
 }

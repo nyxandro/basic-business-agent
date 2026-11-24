@@ -170,7 +170,7 @@ describe('choice and form', () => {
     const result = JSON.stringify({ shown: true, path: 'итоги/КП «Ёлка».docx', name: 'КП «Ёлка».docx', bytes: 48_128 });
     render(
       <MemoryRouter>
-        <FileCall call={call({ path: 'итоги/КП «Ёлка».docx' }, { result })} threadId="t-1" />
+        <FileCall call={call({ path: 'итоги/КП «Ёлка».docx' }, { result })} threadId="t-1" samples={false} />
       </MemoryRouter>,
     );
     expect(screen.getByText('КП «Ёлка».docx')).toBeInTheDocument();
@@ -183,10 +183,10 @@ describe('choice and form', () => {
   });
 
   it('draws nothing for a file that was not there, and a placeholder while the call runs', () => {
-    const missing = render(<FileCall call={call({ path: 'нет.docx' }, { result: JSON.stringify({ shown: false, error: 'Файла «нет.docx» нет в рабочей папке.' }) })} threadId="t-1" />);
+    const missing = render(<FileCall call={call({ path: 'нет.docx' }, { result: JSON.stringify({ shown: false, error: 'Файла «нет.docx» нет в рабочей папке.' }) })} threadId="t-1" samples={false} />);
     expect(missing.container).toBeEmptyDOMElement();
     missing.unmount();
-    render(<FileCall call={call({ path: 'КП.docx' }, { status: 'executing', result: undefined })} threadId="t-1" />);
+    render(<FileCall call={call({ path: 'КП.docx' }, { status: 'executing', result: undefined })} threadId="t-1" samples={false} />);
     expect(screen.getByRole('status')).toHaveTextContent('Готовлю…');
   });
 });

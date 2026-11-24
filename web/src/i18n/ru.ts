@@ -7,6 +7,7 @@ import { chainsTexts } from './chains.ts';
 import { feedbackTexts } from './feedback.ts';
 import { knowledgeTexts } from './knowledge.ts';
 import { orgTexts } from './org.ts';
+import { interfaceTexts } from './interface.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
 const PAGE_FAILURES: Record<string, string> = {
@@ -624,35 +625,7 @@ export const ru = {
       },
     },
     // «Значок» of an agent and «Интерфейс» (spec, section 8.17; owner's decision 16.11).
-    interface: {
-      title: 'Интерфейс',
-      lead: 'Как выглядит чат у всех сотрудников.',
-      showTitle: 'Показывать значок агента в чате',
-      showSub: 'У ответов агента, у «думает…», у вопроса «Да/Нет» и на приветствии нового разговора. Значок у каждого агента свой — он задаётся на странице агента в «Агенты и промпты».',
-      showOff: 'Значков нет: ответы агентов начинаются от левого края.',
-      toAgents: 'Перейти к агентам',
-      markTitle: 'Значок агента в чате',
-      markSub: 'У ответов этого агента, у «думает…», у вопроса «Да/Нет» и на приветствии нового разговора.',
-      hiddenNote: 'Сейчас значки в чате скрыты: их показ включается в разделе «Интерфейс».',
-      kinds: { icon: 'Иконка', image: 'Своя картинка' },
-      kindLabel: 'Значок агента',
-      iconLabel: 'Иконка агента',
-      icons: { spark: 'Искра', bot: 'Робот', brain: 'Мозг', chat: 'Сообщение', bolt: 'Молния', star: 'Звезда', smile: 'Улыбка', headset: 'Гарнитура' },
-      choose: 'Выбрать картинку',
-      replace: 'Заменить картинку',
-      preparing: 'Готовлю…',
-      fileLabel: 'Файл картинки',
-      picture: 'Выбранная картинка',
-      pictureHint: 'PNG, JPEG или WebP. Обрежется в круг по центру.',
-      sampleTitle: 'Как увидят сотрудники',
-      sampleLight: 'Светлая тема',
-      sampleDark: 'Тёмная тема',
-      sampleText: 'Здравствуйте! Чем могу помочь?',
-      unreadable: 'Не получилось открыть картинку. Нужен PNG, JPEG или WebP — сохраните её в одном из этих форматов и выберите снова.',
-      tooBig: 'Картинка больше 20 МБ. Выберите файл поменьше.',
-      notPrepared: 'Браузер не смог подготовить картинку. Обновите страницу и выберите её снова; если не выйдет — откройте админку в другом браузере.',
-      save: 'Сохранить',
-    },
+    interface: interfaceTexts,
     // «Подключения → Почта» (spec, section 8.24).
     mail: {
       title: 'Почта сотрудников',

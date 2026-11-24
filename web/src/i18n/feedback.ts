@@ -16,19 +16,19 @@ export const feedbackTexts = {
     sent: (id: string) => `Жалоба №${id} отправлена. Ответ придёт в уведомления`,
     appended: (id: string) => `Дописано к жалобе №${id}`,
   },
+  // The heart of samples (F6, owner 24.11): its hint is the whole of what it does.
   example: {
-    button: 'Хороший образец',
-    saved: 'Уже сохранён как образец',
-    removed: 'Был образцом',
-    title: 'Сохранить как образец',
-    lead: 'Агенты возьмут из него структуру, разделы и тон для таких же документов. Клиента, цены и реквизиты они возьмут из задачи.',
-    docType: 'Вид документа',
-    base: 'Куда попадёт',
-    into: (name: string) => `Куда попадёт: база «${name}»`,
-    noBase: 'Образец некуда сохранить: вы не состоите ни в одном отделе.',
-    save: 'Сохранить',
-    cancel: 'Отмена',
-    done: 'Образец сохранён — агенты будут опираться на него',
+    // The hint on hover.
+    add: 'Добавить в референсы: агент будет опираться на этот документ, когда будет делать похожие',
+    saved: 'В референсах. Нажмите, чтобы убрать',
+    // What a screen reader says: with the name, as a conversation may hold several documents.
+    addLabel: (name: string) => `Добавить в референсы: ${name}`,
+    savedLabel: (name: string) => `В референсах: ${name}`,
+    where: 'Куда добавить',
+    added: (base: string) => `Добавлено в референсы: база «${base}»`,
+    removed: 'Убрано из референсов',
+    noBase: 'Документ некуда добавить: вы не состоите ни в одном отделе. Попросите администратора добавить вас в отдел.',
+    failed: (message: string, code: string) => `${message} Код: ${code}`,
   },
   support: {
     title: 'Поддержка',

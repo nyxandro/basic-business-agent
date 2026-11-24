@@ -56,13 +56,13 @@ describe('«Показывать значок агента в чате»', () =>
 
   it('is on in a new installation and changed only with the right «Интерфейс», with a record in the audit', async () => {
     expect(await showOf(olga)).toBe(true);
-    expect(await json<InterfaceAdminState>(await t.call('GET', '/app/api/admin/interface', { cookie: petr }))).toEqual({ showAgentMark: true });
+    expect(await json<InterfaceAdminState>(await t.call('GET', '/app/api/admin/interface', { cookie: petr }))).toEqual({ showAgentMark: true, documentSamples: false });
     expect((await t.call('GET', '/app/api/admin/interface', { cookie: olga })).status).toBe(403);
     const refused = await t.call('PUT', '/app/api/admin/interface', { cookie: anna, body: { showAgentMark: false } });
     expect(await errorCode(refused)).toBe('APP_ADMIN_FORBIDDEN');
 
     const off = await t.call('PUT', '/app/api/admin/interface', { cookie: petr, body: { showAgentMark: false } });
-    expect(await json<InterfaceAdminState>(off)).toEqual({ showAgentMark: false });
+    expect(await json<InterfaceAdminState>(off)).toEqual({ showAgentMark: false, documentSamples: false });
     expect(await showOf(olga)).toBe(false);
     // The marks stay with the agents: turning the switch on brings them back as they were.
     expect(await markOf('sales')).toEqual({ kind: 'icon', icon: 'spark' });
@@ -73,7 +73,26 @@ describe('«Показывать значок агента в чате»', () =>
   });
 
   it('refuses anything but on or off', async () => {
-    for (const body of [{}, { showAgentMark: 'yes' }]) expect(await errorCode(await t.call('PUT', '/app/api/admin/interface', { cookie: igor, body }))).toBe('APP_VALIDATION_FAILED');
+    for (const body of [{}, { showAgentMark: 'yes' }, { documentSamples: 'yes' }, { showAgentMark: true, other: true }]) expect(await errorCode(await t.call('PUT', '/app/api/admin/interface', { cookie: igor, body }))).toBe('APP_VALIDATION_FAILED');
+  });
+});
+
+// The heart of samples on the documents of the agent (docs/specs/[20.11.2026]-feedback-and-value.md, F6; owner 24.11).
+describe('«Добавление документов в референсы»', () => {
+  const samplesOf = async (cookie: string) => (await json<MeResponse>(await t.call('GET', '/app/api/me', { cookie }))).interface.documentSamples;
+
+  it('is off in a new installation; each switch changes only its own field, with a record in the audit', async () => {
+    expect(await samplesOf(olga)).toBe(false);
+    const on = await t.call('PUT', '/app/api/admin/interface', { cookie: petr, body: { documentSamples: true } });
+    expect(await json<InterfaceAdminState>(on)).toEqual({ showAgentMark: true, documentSamples: true });
+    expect(await samplesOf(olga)).toBe(true);
+    // The marks switch does not turn the samples back off.
+    await t.call('PUT', '/app/api/admin/interface', { cookie: petr, body: { showAgentMark: false } });
+    expect(await samplesOf(olga)).toBe(true);
+    await t.call('PUT', '/app/api/admin/interface', { cookie: petr, body: { showAgentMark: true, documentSamples: false } });
+    expect(await json<InterfaceAdminState>(await t.call('GET', '/app/api/admin/interface', { cookie: petr }))).toEqual({ showAgentMark: true, documentSamples: false });
+    const { rows } = await t.db.query<{ details: object }>(`SELECT details FROM app.admin_audit WHERE action = 'interface.update' ORDER BY id DESC LIMIT 3`);
+    expect(rows.map((r) => r.details)).toEqual([{ showAgentMark: true, documentSamples: false }, { showAgentMark: false }, { documentSamples: true }]);
   });
 });
 

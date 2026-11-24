@@ -78,8 +78,8 @@ export const GENUI_TOOL_IDS: readonly string[] = Object.values(GENUI_TOOL);
 
 // What show_file answers: the file is there (path from the folder of the conversation), or why not.
 export const fileBlockResultSchema = z.discriminatedUnion('shown', [
-  // `made` — the agent made or changed the file in this answer (not an attachment of the person): «Хороший образец» is
-  // offered on it (docs/specs/[20.11.2026]-feedback-and-value.md). Absent in answers before 22.11.
+  // `made` — the agent made or changed the file in this answer (not an attachment of the person): the heart of samples
+  // (F6) is offered on it (docs/specs/[20.11.2026]-feedback-and-value.md). Absent in answers before 22.11.
   z.object({ shown: z.literal(true), path: z.string(), name: z.string(), bytes: z.number(), made: z.boolean().optional() }),
   z.object({ shown: z.literal(false), error: z.string() }),
 ]);

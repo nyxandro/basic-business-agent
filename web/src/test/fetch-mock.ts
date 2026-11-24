@@ -109,5 +109,5 @@ export const ME = {
   voiceAvailable: false,
   organisation: { name: 'Альфа-Строй' },
   modelsConfigured: true,
-  interface: { showAgentMark: true },
+  interface: { showAgentMark: true, documentSamples: false },
 };

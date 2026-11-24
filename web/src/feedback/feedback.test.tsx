@@ -1,17 +1,22 @@
 // Complaints, samples, «Поддержка», «Мои обращения», «Польза от агентов» (docs/specs/[20.11.2026]-feedback-and-value.md,
-// steps 3–5 and 7): «Пожаловаться» only under an answer that ended, its text kept when sending fails; «Хороший образец»
-// only on a document the agent made; the support answers and the employee reads it; the report shows hours and spend.
-import { render, screen, within } from '@testing-library/react';
+// steps 3–5 and 7; F6, owner 24.11): «Пожаловаться» only under an answer that ended, its text kept when sending fails; the
+// heart of samples only on a document the agent made, on its block and in its viewer; the support answers and the
+// employee reads it; the report shows hours and spend.
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TurnFooter } from '../chat/AssistantMessage.tsx';
 import { FileCall } from '../genui/FileBlock.tsx';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
+import { WithMemory } from '../test/memory.tsx';
 
-const inApp = (node: React.ReactNode) => render(<MemoryRouter><ToastProvider>{node}</ToastProvider></MemoryRouter>);
+// PDF.js does not draw in jsdom (viewer/viewer.test.tsx): the viewer's pages are a stand-in.
+vi.mock('../viewer/PdfPages.tsx', () => ({ default: () => <div data-testid="pdf-pages" /> }));
+
+const inApp = (node: React.ReactNode) => render(<MemoryRouter><WithMemory><ToastProvider>{node}</ToastProvider></WithMemory></MemoryRouter>);
 const fileCall = (made: boolean | undefined, name = 'КП-Вектор.docx') => ({
   toolCallId: 'c1',
   status: 'complete' as const,
@@ -63,33 +68,160 @@ describe('«Пожаловаться»', () => {
   });
 });
 
-describe('«Хороший образец»', () => {
-  it('is only on a document the agent made', () => {
-    const made = inApp(<FileCall call={fileCall(true)} threadId="t-1" />);
-    expect(screen.getByRole('button', { name: 'Хороший образец: КП-Вектор.docx' })).toBeInTheDocument();
+// The heart of samples (docs/specs/[20.11.2026]-feedback-and-value.md, F6; owner 24.11).
+describe('the heart of samples', () => {
+  const ADD = /^Добавить в референсы/;
+  const IN = /^В референсах/;
+  const SALES = { scope: 'department', departmentId: 'dep-1', name: 'Продажи' };
+  const marks = (saved: string[], bases: object[] = [SALES]) => ({ body: { bases, saved } });
+  const heartOn = async (name: RegExp) => {
+    const heart = await screen.findByRole('button', { name });
+    await waitFor(() => expect(heart).toBeEnabled());
+    return heart;
+  };
+
+  it('is only on a document the agent made, where samples are offered, before «Открыть»', async () => {
+    mockServer({ 'GET /app/api/me/examples': marks([]) });
+    const made = inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    const heart = await heartOn(ADD);
+    expect(heart).toHaveAttribute('aria-pressed', 'false');
+    // A screen reader hears the file; the hint on hover says what the heart does.
+    expect(heart).toHaveAccessibleName('Добавить в референсы: КП-Вектор.docx');
+    expect(heart).toHaveAttribute('title', 'Добавить в референсы: агент будет опираться на этот документ, когда будет делать похожие');
+    expect(heart.compareDocumentPosition(screen.getByRole('button', { name: 'Открыть КП-Вектор.docx' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     made.unmount();
-    const attached = inApp(<FileCall call={fileCall(false)} threadId="t-1" />);
-    expect(screen.queryByRole('button', { name: /Хороший образец/ })).not.toBeInTheDocument();
-    attached.unmount();
-    inApp(<FileCall call={fileCall(true, 'схема.png')} threadId="t-1" />);
-    expect(screen.queryByRole('button', { name: /Хороший образец/ })).not.toBeInTheDocument();
+    for (const [call, samples] of [[fileCall(false), true], [fileCall(true, 'схема.png'), true], [fileCall(true), false]] as const) {
+      const other = inApp(<FileCall call={call} threadId="t-1" samples={samples} />);
+      expect(screen.queryByRole('button', { name: ADD })).not.toBeInTheDocument();
+      other.unmount();
+    }
   });
 
-  it('saves the document as a sample of its kind into the base of the department', async () => {
+  it('puts the document into the base of the department at one press, and takes it out at the next', async () => {
     const s = mockServer({
-      'GET /app/api/me/examples': { body: { state: 'none', bases: [{ scope: 'department', departmentId: 'dep-1', name: 'Продажи' }], docType: 'Коммерческое предложение' } },
+      'GET /app/api/me/examples': marks([]),
+      'POST /app/api/me/examples': () => {
+        s.set('GET /app/api/me/examples', marks(['КП-Вектор.docx']));
+        return { status: 201, body: { documentId: 'doc-1' } };
+      },
+      'DELETE /app/api/me/examples': () => {
+        s.set('GET /app/api/me/examples', marks([]));
+        return { body: { ok: true } };
+      },
+    });
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(await heartOn(ADD));
+    expect(await screen.findByText('Добавлено в референсы: база «Продажи»')).toBeInTheDocument();
+    expect(s.calls.find((c) => c.method === 'POST')?.body).toEqual({ threadId: 't-1', path: 'КП-Вектор.docx', base: { scope: 'department', departmentId: 'dep-1' } });
+    const filled = await heartOn(IN);
+    expect(filled).toHaveAttribute('aria-pressed', 'true');
+    await user.click(filled);
+    expect(await screen.findByText('Убрано из референсов')).toBeInTheDocument();
+    expect(s.calls.find((c) => c.method === 'DELETE')?.query).toEqual({ threadId: 't-1', path: 'КП-Вектор.docx' });
+    expect(await heartOn(ADD)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('asks where to when the person may put it into several bases', async () => {
+    const s = mockServer({
+      'GET /app/api/me/examples': marks([], [SALES, { scope: 'department', departmentId: 'dep-2', name: 'Закупки' }, { scope: 'org', name: 'Вся организация' }]),
       'POST /app/api/me/examples': { status: 201, body: { documentId: 'doc-1' } },
     });
     const user = userEvent.setup();
-    inApp(<FileCall call={fileCall(true)} threadId="t-1" />);
-    await user.click(screen.getByRole('button', { name: 'Хороший образец: КП-Вектор.docx' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Сохранить как образец' });
-    expect(within(dialog).getByLabelText('Вид документа')).toHaveValue('Коммерческое предложение');
-    expect(within(dialog).getByText('Куда попадёт: база «Продажи»')).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
-    expect(await screen.findByText('Образец сохранён — агенты будут опираться на него')).toBeInTheDocument();
-    expect(screen.getByText('Уже сохранён как образец')).toBeInTheDocument();
-    expect(s.calls.find((c) => c.method === 'POST')?.body).toEqual({ threadId: 't-1', path: 'КП-Вектор.docx', docType: 'Коммерческое предложение', base: { scope: 'department', departmentId: 'dep-1' } });
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(await heartOn(ADD));
+    const menu = await screen.findByRole('menu', { name: 'Куда добавить' });
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Продажи', 'Закупки', 'Вся организация']);
+    await user.click(within(menu).getByRole('menuitem', { name: 'Вся организация' }));
+    expect(await screen.findByText('Добавлено в референсы: база «Вся организация»')).toBeInTheDocument();
+    expect(s.calls.find((c) => c.method === 'POST')?.body).toMatchObject({ base: { scope: 'org' } });
+  });
+
+  it('says why it did not, with the code, and stays as it was', async () => {
+    const s = mockServer({
+      'GET /app/api/me/examples': marks([]),
+      'POST /app/api/me/examples': apiError('APP_EXAMPLE_NOT_MADE', 'В референсы можно добавить только документ, который сделал агент.', 409),
+    });
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(await heartOn(ADD));
+    expect(await screen.findByText('В референсы можно добавить только документ, который сделал агент. Код: APP_EXAMPLE_NOT_MADE')).toBeInTheDocument();
+    expect(await heartOn(ADD)).toHaveAttribute('aria-pressed', 'false');
+    expect(s.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+  });
+
+  it('says there is nowhere to put it for a person without a department, and asks nothing', async () => {
+    const s = mockServer({ 'GET /app/api/me/examples': marks([], []) });
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(await heartOn(ADD));
+    expect(await screen.findByText('Документ некуда добавить: вы не состоите ни в одном отделе. Попросите администратора добавить вас в отдел.')).toBeInTheDocument();
+    expect(s.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+
+  it('fills the heart of the block when the viewer it was pressed in closed before the answer', async () => {
+    let answer!: () => void;
+    const s = mockServer({
+      'GET /app/api/me/examples': marks([]),
+      'GET /app/api/threads/t-1/file/status': { body: { state: 'ok', version: 'v1' } },
+      'GET /app/api/threads/t-1/file/preview': { raw: '%PDF' },
+      'POST /app/api/me/examples': () =>
+        new Promise((resolve) => {
+          answer = () => {
+            s.set('GET /app/api/me/examples', marks(['КП-Вектор.docx']));
+            resolve({ status: 201, body: { documentId: 'doc-1' } });
+          };
+        }),
+    });
+    const asked = () => s.calls.filter((c) => c.method === 'GET' && c.path === '/app/api/me/examples').length;
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(screen.getByRole('button', { name: 'Открыть КП-Вектор.docx' }));
+    const viewer = await screen.findByRole('dialog', { name: 'КП-Вектор.docx' });
+    const inBar = await within(viewer).findByRole('button', { name: ADD });
+    await waitFor(() => expect(inBar).toBeEnabled());
+    await user.click(inBar);
+    await user.click(within(viewer).getByRole('button', { name: 'Закрыть' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const before = asked();
+    answer();
+    expect(await screen.findByText('Добавлено в референсы: база «Продажи»')).toBeInTheDocument();
+    await waitFor(() => expect(asked()).toBeGreaterThan(before));
+    expect(await heartOn(IN)).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('says why when the marks did not load, asks again at a press, and adds nothing', async () => {
+    const s = mockServer({ 'GET /app/api/me/examples': apiError('APP_INTERNAL', 'Что-то пошло не так на сервере.', 500) });
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    const heart = await heartOn(ADD);
+    s.set('GET /app/api/me/examples', marks(['КП-Вектор.docx']));
+    await user.click(heart);
+    expect(await screen.findByText(/Код: APP_INTERNAL$/)).toBeInTheDocument();
+    expect(await heartOn(IN)).toHaveAttribute('aria-pressed', 'true');
+    expect(s.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+
+  it('is in the bar of the viewer opened from the block, and both hearts show the same', async () => {
+    const s = mockServer({
+      'GET /app/api/me/examples': marks([]),
+      'GET /app/api/threads/t-1/file/status': { body: { state: 'ok', version: 'v1' } },
+      'GET /app/api/threads/t-1/file/preview': { raw: '%PDF' },
+      'POST /app/api/me/examples': () => {
+        s.set('GET /app/api/me/examples', marks(['КП-Вектор.docx']));
+        return { status: 201, body: { documentId: 'doc-1' } };
+      },
+    });
+    const user = userEvent.setup();
+    inApp(<FileCall call={fileCall(true)} threadId="t-1" samples />);
+    await user.click(screen.getByRole('button', { name: 'Открыть КП-Вектор.docx' }));
+    const viewer = await screen.findByRole('dialog', { name: 'КП-Вектор.docx' });
+    const inBar = await within(viewer).findByRole('button', { name: ADD });
+    await waitFor(() => expect(inBar).toBeEnabled());
+    await user.click(inBar);
+    await waitFor(() => expect(within(viewer).getByRole('button', { name: IN })).toHaveAttribute('aria-pressed', 'true'));
+    // The heart of the block under the viewer is filled as well.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: IN, hidden: true })).toHaveLength(2));
   });
 });
 

@@ -21,7 +21,7 @@ export function registerMeRoutes(app: Hono<AppEnv>, deps: { db: Db }): void {
       organisation: { name: await orgName(deps.db) },
       departmentNames: (await deps.db.query<{ name: string }>('SELECT d.name FROM app.department_members m JOIN app.departments d ON d.id = m.department_id WHERE m.user_id = $1 ORDER BY d.name', [a.userId])).rows.map((r) => r.name),
       modelsConfigured: await modelsConfigured(deps.db),
-      interface: { showAgentMark: (await interfaceAdminState(deps.db)).showAgentMark },
+      interface: await interfaceAdminState(deps.db),
     };
     return c.json(body);
   });

@@ -303,6 +303,8 @@
   padding: 13px 15px;
   /* Room for the name and both «Открыть» and «Скачать» (owner, 18.11); a phone keeps the width of the answer. */
   max-width: 640px;
+  /* Its own width decides whether the actions keep their words (below). */
+  container-type: inline-size;
   color: var(--on-acc);
   border: 0;
   background:
@@ -408,6 +410,26 @@
   background: rgba(255, 255, 255, 0.26);
 }
 
+/* The heart of samples (docs/specs/[20.11.2026]-feedback-and-value.md, F6) on the glass: white as the words of the card —
+   a line when the document is not in the references, filled when it is; the red of the viewer's bar does not read on
+   the accent. */
+.file .fileHeart button {
+  color: var(--on-acc);
+}
+
+.file .fileHeart button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* A narrow card (a phone) with the heart: «Открыть» and «Скачать» are their icons alone — beside the heart their words
+   pushed «Скачать» out of the card and left no room for the name. A card without the heart keeps them as it was. Their
+   labels stay for screen readers (aria-label). */
+@container (max-width: 480px) {
+  .file:has(.fileHeart) .fileActionText {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .file::before,
   .file a.fileDownload {
@@ -417,15 +439,6 @@
   .file a.fileDownload:hover {
     transform: none;
   }
-}
-
-/* Under the block of a document the agent made: «Хороший образец» (docs/specs/[20.11.2026]-feedback-and-value.md). */
-.fileUnder {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
 }
 
 /* «Скачать» of a file removed from the folder (spec, section 8.20). */

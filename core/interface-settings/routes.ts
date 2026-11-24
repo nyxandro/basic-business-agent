@@ -1,7 +1,7 @@
 // The look of the chat (spec, section 8.17, section 17.5): «Интерфейс» — whether the chat shows the
-// marks of the agents (right «Интерфейс»); the mark of an agent — on its page in «Агенты и промпты»
+// marks of the agents and the heart of samples on the documents of the agent (right «Интерфейс»); the mark of an agent — on its page in «Агенты и промпты»
 // (right «Агенты»). An agent's picture is served to whoever has the agent or may set it up.
-import { AGENT_IMAGE_MAX_BYTES, agentMarkFormSchema, interfaceSettingsSchema } from '@bba/contracts';
+import { AGENT_IMAGE_MAX_BYTES, agentMarkFormSchema, interfaceChangeSchema } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Db } from '../db/pool.ts';
@@ -21,7 +21,7 @@ export function registerInterfaceRoutes(app: Hono<AppEnv>, deps: { db: Db; regis
 
   app.get('/app/api/admin/interface', interfaceRight, async (c) => c.json(await interfaceAdminState(deps.db)));
   app.put('/app/api/admin/interface', interfaceRight, async (c) => {
-    await saveInterfaceSettings(deps.db, access(c).userId, await parseJson(c, interfaceSettingsSchema));
+    await saveInterfaceSettings(deps.db, access(c).userId, await parseJson(c, interfaceChangeSchema));
     return c.json(await interfaceAdminState(deps.db));
   });
 

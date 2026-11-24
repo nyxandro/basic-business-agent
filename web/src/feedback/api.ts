@@ -1,5 +1,5 @@
 // Requests of complaints, samples and the report of value (docs/specs/[20.11.2026]-feedback-and-value.md, section 17).
-import type { AdminTicketDto, AdminTicketsResponse, ComplaintResponse, ComplaintStateResponse, ExampleSaveResponse, ExampleStateResponse, MyTicketsResponse, SupportStatus, ValueReport, WorkKind } from '@bba/contracts';
+import type { AdminTicketDto, AdminTicketsResponse, ComplaintResponse, ComplaintStateResponse, ExampleMarksResponse, ExampleSaveResponse, MyTicketsResponse, SupportStatus, ValueReport, WorkKind } from '@bba/contracts';
 import { api } from '../api/client.ts';
 
 const q = (params: Record<string, string>) => new URLSearchParams(params).toString();
@@ -8,8 +8,9 @@ export const complaintState = (threadId: string, turn: number) => api<ComplaintS
 export const complain = (threadId: string, turn: number, comment: string) => api<ComplaintResponse>('POST', '/app/api/me/support', { threadId, turn, comment });
 export const myTickets = () => api<MyTicketsResponse>('GET', '/app/api/me/support');
 
-export const exampleState = (threadId: string, path: string) => api<ExampleStateResponse>('GET', `/app/api/me/examples?${q({ threadId, path })}`);
-export const saveExample = (body: { threadId: string; path: string; docType: string; base: { scope: 'org' } | { scope: 'department'; departmentId: string } }) => api<ExampleSaveResponse>('POST', '/app/api/me/examples', body);
+export const exampleMarks = (threadId: string) => api<ExampleMarksResponse>('GET', `/app/api/me/examples?${q({ threadId })}`);
+export const saveExample = (body: { threadId: string; path: string; base: { scope: 'org' } | { scope: 'department'; departmentId: string } }) => api<ExampleSaveResponse>('POST', '/app/api/me/examples', body);
+export const removeExample = (threadId: string, path: string) => api<{ ok: true }>('DELETE', `/app/api/me/examples?${q({ threadId, path })}`);
 
 const S = '/app/api/admin/support';
 export const tickets = (status: SupportStatus | null) => api<AdminTicketsResponse>('GET', status ? `${S}?${q({ status })}` : S);

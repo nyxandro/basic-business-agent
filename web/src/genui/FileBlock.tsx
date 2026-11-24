@@ -1,8 +1,9 @@
 // The file block (spec, sections 8.18, 8.20 and 8.27): a file the agent made in the folder of the
-// conversation — its icon, name, size, «Открыть» (the document viewer, for what it shows) and «Скачать»; a file removed since then is said so. Drawn from the result of show_file, where the server says the file
+// conversation — its icon, name, size, the heart of samples (F6 of docs/specs/[20.11.2026]-feedback-and-value.md), «Открыть»
+// (the document viewer, for what it shows) and «Скачать»; a file removed since then is said so. Drawn from the result of show_file, where the server says the file
 // is there; a call that found no file draws nothing (the model is told and tries again).
 import { fileBlockResultSchema, isExampleName, previewKindOf, type ThreadFileStatus } from '@bba/contracts';
-import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { asApiError } from '../api/client.ts';
 import { fetchThreadFileStatus, threadFilePreviewUrl, threadFileUrl } from '../threads/api.ts';
 import { restoreFromTrash, trashFileUrl } from '../projects/api.ts';
@@ -11,7 +12,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { useChatSend } from '../answer/chat-send.ts';
-import { ExampleButton } from '../feedback/ExampleButton.tsx';
+import { SampleHeart } from '../feedback/SampleHeart.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { fileSize, fullDate } from '../i18n/format.ts';
 import { Preparing, type CallProps } from './CatalogBlock.tsx';
@@ -56,8 +57,8 @@ export function FileNote({ status, onRestored }: { status: Exclude<ThreadFileSta
 
 // `marks` — the file lies in the folder of this conversation: in the viewer marks can be drawn on it and sent to the
 // agent of the conversation (spec, section 8.32).
-// `under` — what stands under the block: «Хороший образец» of a document the agent made.
-export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks, under }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus>; marks?: { threadId: string; path: string }; under?: ReactNode }) {
+// `sample` — the file is a document the agent made: the heart of samples stands before «Открыть», and in the bar of its viewer.
+export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks, sample }: { name: string; bytes: number; href: string; previewHref: string; checkFile: () => Promise<ThreadFileStatus>; marks?: { threadId: string; path: string }; sample?: { threadId: string; path: string } }) {
   const [note, setNote] = useState<Exclude<ThreadFileStatus, { state: 'ok' }> | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { open, viewer } = useDocumentViewer(useChatSend());
@@ -100,16 +101,20 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks
         </div>
         <div className={styles.fileSize}>{fileSize(bytes)}</div>
       </div>
+      {sample ? (
+        <div className={styles.fileHeart}>
+          <SampleHeart {...sample} floatingMenu />
+        </div>
+      ) : null}
       {previewKindOf(name) ? (
-        <Button icon="eye" size="sm" className={styles.fileOpen} aria-label={ru.viewer.openFile(name)} onClick={() => void whenThere((version) => open({ name, downloadUrl: href, previewUrl: previewHref, ...(marks ? { marks: { ...marks, version } } : {}) }))}>
-          {ru.viewer.open}
+        <Button icon="eye" size="sm" className={styles.fileOpen} aria-label={ru.viewer.openFile(name)} onClick={() => void whenThere((version) => open({ name, downloadUrl: href, previewUrl: previewHref, ...(marks ? { marks: { ...marks, version } } : {}), ...(sample ? { extra: <SampleHeart {...sample} floatingMenu={false} /> } : {}) }))}>
+          <span className={styles.fileActionText}>{ru.viewer.open}</span>
         </Button>
       ) : null}
       <ButtonLink href={href} download={name} icon="download" size="sm" className={styles.fileDownload} aria-label={ru.genui.downloadFile(name)} onClick={download}>
-        {ru.genui.download}
+        <span className={styles.fileActionText}>{ru.genui.download}</span>
       </ButtonLink>
     </article>
-    {under ? <div className={styles.fileUnder}>{under}</div> : null}
     {note ? <FileNote status={note} onRestored={() => setNote(null)} /> : null}
     {failed ? <p className={styles.fileNoteError}>{failed}</p> : null}
     {viewer}
@@ -117,8 +122,8 @@ export function FileBlockView({ name, bytes, href, previewHref, checkFile, marks
   );
 }
 
-// `samples` — «Хороший образец» is offered (not in the check of a prompt's draft).
-export function FileCall({ call, threadId, samples = true }: { call: CallProps; threadId: string; samples?: boolean }) {
+// `samples` — the heart of samples is offered: «Интерфейс» allows it, and it is not the check of a prompt's draft.
+export function FileCall({ call, threadId, samples }: { call: CallProps; threadId: string; samples: boolean }) {
   // A browser tool runs here and answers itself; a call of the server may end without its result.
   if (call.status !== 'complete') return <Preparing ofCall={call.status === 'inProgress'} />;
   const outcome = parseToolResult(call.result);
@@ -135,7 +140,7 @@ export function FileCall({ call, threadId, samples = true }: { call: CallProps; 
       checkFile={() => fetchThreadFileStatus(threadId, path)}
       marks={{ threadId, path }}
       // A document the agent made in this answer may become a sample; an attachment of the person never.
-      {...(samples && parsed.data.made && isExampleName(parsed.data.name) ? { under: <ExampleButton threadId={threadId} path={path} /> } : {})}
+      {...(samples && parsed.data.made && isExampleName(parsed.data.name) ? { sample: { threadId, path } } : {})}
     />
   );
 }

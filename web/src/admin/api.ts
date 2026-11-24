@@ -17,6 +17,7 @@ import type {
   AgentMarkAdminState,
   AgentMarkKind,
   InterfaceAdminState,
+  InterfaceChange,
   StorageConnectInput,
   AdminMailResponse,
   MailOAuthAppInput,
@@ -177,7 +178,7 @@ export const adminApi = {
   connectStorage: (input: StorageConnectInput) => api<StorageStatus>('POST', `${A}/storage`, input),
   storageKeys: (input: StorageKeysInput) => api<StorageStatus>('PUT', `${A}/storage/keys`, input),
   disconnectStorage: () => api<StorageStatus>('DELETE', `${A}/storage`),
-  saveInterface: (settings: InterfaceAdminState) => api<InterfaceAdminState>('PUT', `${A}/interface`, settings),
+  saveInterface: (change: InterfaceChange) => api<InterfaceAdminState>('PUT', `${A}/interface`, change),
   // «Значок» of an agent. The picture goes only when a new one was chosen; the one kept on the server stays otherwise.
   saveAgentMark: (agentId: string, { kind, icon, image }: { kind: AgentMarkKind; icon: AgentIcon; image: Blob | null }) => {
     const form = new FormData();

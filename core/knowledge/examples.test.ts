@@ -1,10 +1,12 @@
-// Samples (docs/specs/[20.11.2026]-feedback-and-value.md, step 5; owner 21.11, F4): only a document the agent made in the
-// person's conversation becomes a sample, at once, in the base of the person's department; the same file twice is «уже
-// сохранён»; samples are searched alone or ahead of a document found as well; the keeper of the base removes one.
+// Samples (docs/specs/[20.11.2026]-feedback-and-value.md, step 5; owner 21.11, F4; owner 24.11, F6): only while
+// «Добавление документов в референсы» is on, only a document the agent made in the person's conversation becomes a sample,
+// at once — its kind guessed from its name — in the base of the person's department; the same file twice is «уже
+// сохранён»; samples are searched alone or ahead of a document found as well; the one who marked a sample takes it out,
+// and so does the keeper of the base.
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ExampleStateResponse, KbDocumentsResponse } from '@bba/contracts';
+import type { ExampleMarksResponse, KbDocumentsResponse } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
@@ -29,8 +31,11 @@ const show = (path: string, made: boolean | undefined) => ({
 });
 
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
-const state = (cookie: string, path: string) => t.call('GET', `/app/api/me/examples?threadId=${threadId}&path=${encodeURIComponent(path)}`, { cookie });
-const save = (cookie: string, path: string, base: object = { scope: 'department', departmentId: sales }) => t.call('POST', '/app/api/me/examples', { cookie, body: { threadId, path, docType: 'Коммерческое предложение', base } });
+const errorCode = async (res: Response) => (await json<{ error: { code: string } }>(res)).error.code;
+const marks = (cookie: string, thread = threadId) => t.call('GET', `/app/api/me/examples?threadId=${thread}`, { cookie });
+const save = (cookie: string, path: string, base: object = { scope: 'department', departmentId: sales }) => t.call('POST', '/app/api/me/examples', { cookie, body: { threadId, path, base } });
+const remove = (cookie: string, path: string) => t.call('DELETE', `/app/api/me/examples?threadId=${threadId}&path=${encodeURIComponent(path)}`, { cookie });
+const samplesIn = async () => (await json<KbDocumentsResponse>(await t.call('GET', `/app/api/knowledge/documents?department=${sales}`, { cookie: igor }))).documents.filter((d) => d.kind === 'example');
 
 beforeAll(async () => {
   t = await createTestApp();
@@ -74,24 +79,32 @@ describe('samples', () => {
     expect(guessDocType('Записка.pdf')).toBe('Документ');
   });
 
-  it('are only documents the agent made, never the person’s attachment or an answer before 22.11', async () => {
-    expect((await save(olga, 'Прайс.md')).status).toBe(409);
-    expect((await save(olga, 'Старое.md')).status).toBe(409);
-    // Another person's conversation is not found.
-    expect((await state(petr, 'КП-Вектор.md')).status).toBe(409);
+  it('are refused while «Добавление документов в референсы» is off, as it is in a new installation', async () => {
+    for (const res of [await marks(olga), await save(olga, 'КП-Вектор.md'), await remove(olga, 'КП-Вектор.md')]) {
+      expect(res.status).toBe(403);
+      expect(await errorCode(res)).toBe('APP_EXAMPLES_OFF');
+    }
+    expect((await t.call('PUT', '/app/api/admin/interface', { cookie: igor, body: { documentSamples: true } })).status).toBe(200);
   });
 
-  it('go into the base of the person’s department at once, with the kind and who marked it', async () => {
-    const before = await json<ExampleStateResponse>(await state(olga, 'КП-Вектор.md'));
-    expect(before).toEqual({ state: 'none', bases: [{ scope: 'department', departmentId: sales, name: 'Продажи' }], docType: 'Коммерческое предложение' });
+  it('are only documents the agent made, never the person’s attachment or an answer before 22.11', async () => {
+    expect(await errorCode(await save(olga, 'Прайс.md'))).toBe('APP_EXAMPLE_NOT_MADE');
+    expect(await errorCode(await save(olga, 'Старое.md'))).toBe('APP_EXAMPLE_NOT_MADE');
+    // Another person's conversation is not found.
+    expect(await errorCode(await save(petr, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_NOT_MADE');
+  });
+
+  it('go into the base of the person’s department at once, the kind guessed from the name, with who marked it', async () => {
+    expect(await json<ExampleMarksResponse>(await marks(olga))).toEqual({ bases: [{ scope: 'department', departmentId: sales, name: 'Продажи' }], saved: [] });
     // Not a base the person may put a sample into.
     expect((await save(olga, 'КП-Вектор.md', { scope: 'org' })).status).toBe(403);
     expect((await save(olga, 'КП-Вектор.md')).status).toBe(201);
     await t.knowledge.indexer.idle();
-    const listed = await json<KbDocumentsResponse>(await t.call('GET', `/app/api/knowledge/documents?department=${sales}`, { cookie: igor }));
-    expect(listed.documents).toMatchObject([{ kind: 'example', docType: 'Коммерческое предложение', markedBy: 'Ольга Смирнова', status: 'ready' }]);
-    expect((await save(olga, 'КП-Вектор.md')).status).toBe(409);
-    expect((await json<ExampleStateResponse>(await state(olga, 'КП-Вектор.md'))).state).toBe('saved');
+    expect(await samplesIn()).toMatchObject([{ kind: 'example', docType: 'Коммерческое предложение', markedBy: 'Ольга Смирнова', status: 'ready' }]);
+    expect(await errorCode(await save(olga, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_SAVED');
+    expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual(['КП-Вектор.md']);
+    // The marks of one person are not shown to another, even by the number of the conversation.
+    expect((await json<ExampleMarksResponse>(await marks(petr))).saved).toEqual([]);
   });
 
   it('are searched alone, and ahead of a document found as well', async () => {
@@ -105,11 +118,65 @@ describe('samples', () => {
     expect(only.map((f) => f.document)).toEqual(['КП-Вектор']);
   });
 
-  it('removed by the keeper are found no more and read «Был образцом»', async () => {
-    const listed = await json<KbDocumentsResponse>(await t.call('GET', `/app/api/knowledge/documents?department=${sales}`, { cookie: igor }));
-    expect((await t.call('DELETE', `/app/api/knowledge/documents/${listed.documents[0]!.id}`, { cookie: igor })).status).toBe(200);
+  it('are taken out of the base by the one who marked them, and may be marked again', async () => {
+    expect(await errorCode(await remove(petr, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_NOT_SAVED');
+    expect(await samplesIn()).toHaveLength(1);
+    const removed = await remove(olga, 'КП-Вектор.md');
+    expect(removed.status).toBe(200);
+    expect(await samplesIn()).toEqual([]);
     expect(await searchKnowledge(t.db, olgaId, 'условия поставки', null, 'example')).toEqual([]);
-    expect((await json<ExampleStateResponse>(await state(olga, 'КП-Вектор.md'))).state).toBe('removed');
+    expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual([]);
+    const { rows } = await t.db.query<{ actor_user_id: string }>(`SELECT actor_user_id FROM app.admin_audit WHERE action = 'knowledge.delete' ORDER BY id DESC LIMIT 1`);
+    expect(rows[0]?.actor_user_id).toBe(olgaId);
+    expect(await errorCode(await remove(olga, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_NOT_SAVED');
+
+    expect((await save(olga, 'КП-Вектор.md')).status).toBe(201);
+    expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual(['КП-Вектор.md']);
+  });
+
+  it('removed by the keeper are found no more, are not marked, and may be marked again', async () => {
+    const [sample] = await samplesIn();
+    expect((await t.call('DELETE', `/app/api/knowledge/documents/${sample!.id}`, { cookie: igor })).status).toBe(200);
+    expect(await searchKnowledge(t.db, olgaId, 'условия поставки', null, 'example')).toEqual([]);
+    expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual([]);
+    expect(await errorCode(await remove(olga, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_NOT_SAVED');
+    expect((await save(olga, 'КП-Вектор.md')).status).toBe(201);
+    expect(await samplesIn()).toHaveLength(1);
+  });
+
+  it('stay marked when the agent writes the file anew under the same name: the heart is by the place, not the bytes', async () => {
+    const file = join(chatRoot(t.workspaceRoot, olgaId, threadId), 'КП-Вектор.md');
+    writeFileSync(file, `${KP}\n\nСрок поставки — 5 дней.`);
+    expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual(['КП-Вектор.md']);
+    expect(await errorCode(await save(olga, 'КП-Вектор.md'))).toBe('APP_EXAMPLE_SAVED');
+    writeFileSync(file, KP);
+  });
+
+  it('make one sample of two presses at once — the heart of the block and that of its viewer — even into two bases', async () => {
+    const purchases = (await t.db.query<{ id: string }>(`INSERT INTO app.departments (name) VALUES ('Закупки') RETURNING id`)).rows[0]!.id;
+    await t.db.query('INSERT INTO app.department_members (department_id, user_id) VALUES ($1, $2)', [purchases, olgaId]);
+    const samplesEverywhere = async () => (await t.db.query(`SELECT 1 FROM app.kb_documents WHERE kind = 'example'`)).rowCount;
+    expect((await remove(olga, 'КП-Вектор.md')).status).toBe(200);
+    for (const bases of [[sales, sales], [sales, purchases]]) {
+      const both = await Promise.all(bases.map((departmentId) => save(olga, 'КП-Вектор.md', { scope: 'department', departmentId })));
+      expect(both.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(await samplesEverywhere()).toBe(1);
+      expect((await json<ExampleMarksResponse>(await marks(olga))).saved).toEqual(['КП-Вектор.md']);
+      // The one sample left is the one the heart takes out: nothing stays in a base unmarked.
+      expect((await remove(olga, 'КП-Вектор.md')).status).toBe(200);
+      expect(await samplesEverywhere()).toBe(0);
+    }
+    await t.db.query('DELETE FROM app.department_members WHERE department_id = $1', [purchases]);
+    expect((await save(olga, 'КП-Вектор.md')).status).toBe(201);
+  });
+
+  it('stay in the base and are found while the switch is off; only the heart is gone', async () => {
+    await t.knowledge.indexer.idle();
+    expect((await t.call('PUT', '/app/api/admin/interface', { cookie: igor, body: { documentSamples: false } })).status).toBe(200);
+    expect(await errorCode(await marks(olga))).toBe('APP_EXAMPLES_OFF');
+    expect((await searchKnowledge(t.db, olgaId, 'условия поставки', null, 'example')).map((f) => f.document)).toEqual(['КП-Вектор']);
+    expect(await samplesIn()).toHaveLength(1);
+    expect((await t.call('PUT', '/app/api/admin/interface', { cookie: igor, body: { documentSamples: true } })).status).toBe(200);
   });
 
   it('have nowhere to go for a person without a department', async () => {
@@ -119,8 +186,9 @@ describe('samples', () => {
     await t.memory.saveMessages({ messages: [{ id: randomUUID(), threadId: own, resourceId: petrId, role: 'assistant', createdAt: new Date(), content: { format: 2, parts: [show('Письмо.md', true)] as never } }] });
     mkdirSync(chatRoot(t.workspaceRoot, petrId, own), { recursive: true });
     writeFileSync(join(chatRoot(t.workspaceRoot, petrId, own), 'Письмо.md'), '# Письмо');
-    const res = await t.call('POST', '/app/api/me/examples', { cookie: petr, body: { threadId: own, path: 'Письмо.md', docType: 'Письмо', base: { scope: 'org' } } });
+    expect((await json<ExampleMarksResponse>(await marks(petr, own))).bases).toEqual([]);
+    const res = await t.call('POST', '/app/api/me/examples', { cookie: petr, body: { threadId: own, path: 'Письмо.md', base: { scope: 'org' } } });
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('APP_EXAMPLE_NO_BASE');
+    expect(await errorCode(res)).toBe('APP_EXAMPLE_NO_BASE');
   });
 });

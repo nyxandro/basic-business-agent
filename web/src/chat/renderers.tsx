@@ -12,6 +12,7 @@ import { answerOf } from '../genui/answer.ts';
 import { ChoiceBlockView } from '../genui/ChoiceBlock.tsx';
 import { FileCall } from '../genui/FileBlock.tsx';
 import { useChatExtras } from '../answer/chat-context.ts';
+import { useMe } from '../auth/session.tsx';
 import { FormBlockView } from '../genui/FormBlock.tsx';
 import { TableBlockView } from '../genui/TableBlock.tsx';
 import { WebSearch } from './WebSearch.tsx';
@@ -54,10 +55,12 @@ function Form({ call }: { call: CallProps }) {
   return <FormBlockView block={parsed.data} answered={answer !== null} onAnswer={send} />;
 }
 
-// The file block needs the conversation: «Скачать» takes the file from its folder.
-function FileOfCall({ call }: { call: CallProps }) {
+// The file block needs the conversation: «Скачать» takes the file from its folder. The heart of samples — only where
+// «Интерфейс» allows it and not in the check of a prompt's draft.
+export function FileOfCall({ call }: { call: CallProps }) {
   const { threadId, draft } = useChatExtras();
-  return <FileCall call={call} threadId={threadId} samples={!draft} />;
+  const samplesOn = useMe().interface.documentSamples;
+  return <FileCall call={call} threadId={threadId} samples={!draft && samplesOn} />;
 }
 
 export function useGenuiRenderers(agent: AgentSummary): void {

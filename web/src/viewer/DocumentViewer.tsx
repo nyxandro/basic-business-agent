@@ -1,9 +1,10 @@
 // The document viewer (spec, section 8.27; decisions of the owner 18.11): the whole screen, a thin bar —
-// the name, «−», the scale, «+», «По ширине» (F23), «Скачать» beside «Закрыть» (F21) — and under it only
+// the name, «−», the scale, «+», «По ширине» (F23), what the opener adds (the heart of samples, F6 of
+// docs/specs/[20.11.2026]-feedback-and-value.md), «Скачать» beside «Закрыть» (F21) — and under it only
 // the document, edge to edge. Word, Excel and PowerPoint the server turns into PDF first: a request of one
 // byte starts it and brings back its refusal as a code and a text; PDF.js then reads the PDF in parts.
 import { CONVERTED_KINDS, previewKindOf } from '@bba/contracts';
-import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiRequestError, toError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
@@ -27,6 +28,8 @@ export interface ViewerSource {
   previewUrl: string;
   // Opened from a file block of the chat: marks can be drawn on it and sent to the agent (spec, section 8.32).
   marks?: MarksTarget;
+  // What the place that opened the viewer puts into its bar after the scale: the heart of a sample of the agent's document.
+  extra?: ReactNode;
 }
 
 // Marks go on what is shown as pages and on pictures; not on text and Markdown (F45).
@@ -159,6 +162,7 @@ export function DocumentViewer({ source, channel, onClose }: { source: ViewerSou
             <IconButton icon="plus" size="sm" label={ru.viewer.zoomIn} disabled={!ready} onClick={() => zoom.current?.zoomIn()} />
             <IconButton icon="fitWidth" size="sm" label={ru.viewer.fit} disabled={!ready} onClick={() => zoom.current?.fit()} />
           </div>
+          {source.extra}
           {marks ? (
             <Button
               icon="markup"
