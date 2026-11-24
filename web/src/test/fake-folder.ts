@@ -1,6 +1,7 @@
 // A folder of the person's computer for tests (spec, section 8.25): the File System Access API over a plain object — a
 // File is a file, an object a folder. `access` answers queryPermission for a mode; `request` — what the browser answers to
 // requestPermission; `fail` — the name of the error a write throws; `gone` — the folder was removed from the computer.
+import { vi } from 'vitest';
 import type { DirectoryHandle, FolderMode, HandleFolder } from '../projects/computer-folder.ts';
 
 export type Tree = { [name: string]: Tree | File };
@@ -12,6 +13,8 @@ export interface Fake {
 
 export function fakeFolder(tree: Tree, options: { access?: Partial<Record<FolderMode, PermissionState>>; request?: PermissionState; fail?: string; gone?: boolean } = {}): Fake {
   const asked: FolderMode[] = [];
+  // As the browser: what the person allows is the answer from then on.
+  const access: Partial<Record<FolderMode, PermissionState>> = { ...options.access };
   const dirOf = (name: string, node: Tree): DirectoryHandle => ({
     kind: 'directory',
     name,
@@ -34,10 +37,12 @@ export function fakeFolder(tree: Tree, options: { access?: Partial<Record<Folder
       if (!v) node[n] = new File([], n);
       return Promise.resolve(fileOf(n, node));
     },
-    queryPermission: ({ mode }) => Promise.resolve(options.access?.[mode] ?? 'granted'),
+    queryPermission: ({ mode }) => Promise.resolve(access[mode] ?? 'granted'),
     requestPermission: ({ mode }) => {
       asked.push(mode);
-      return Promise.resolve(options.request ?? 'granted');
+      const answer = options.request ?? 'granted';
+      access[mode] = answer;
+      return Promise.resolve(answer);
     },
   });
   const fileOf = (n: string, node: Tree) => ({
@@ -70,4 +75,43 @@ export async function textAt(tree: Tree, ...path: string[]): Promise<string> {
   let node: Tree | File = tree;
   for (const p of path) node = (node as Tree)[p]!;
   return (node as File).text();
+}
+
+// --- The browser around the folder ------------------------------------------------------------------
+
+// IndexedDB of this browser, where the folder is kept (computer-folder.ts): one store, values by key, answered a moment later.
+export function stubFolderStore(): Map<string, unknown> {
+  const kept = new Map<string, unknown>();
+  const request = <T,>(value: () => T) => {
+    const r: { result?: T; onsuccess: (() => void) | null; onerror: (() => void) | null } = { onsuccess: null, onerror: null };
+    setTimeout(() => {
+      r.result = value();
+      r.onsuccess?.();
+    }, 0);
+    return r;
+  };
+  const db = {
+    transaction: () => ({
+      objectStore: () => ({
+        get: (key: string) => request(() => kept.get(key)),
+        put: (value: unknown, key: string) => request(() => void kept.set(key, value)),
+        delete: (key: string) => request(() => void kept.delete(key)),
+      }),
+    }),
+    createObjectStore: () => undefined,
+    close: () => undefined,
+  };
+  vi.stubGlobal('indexedDB', { open: () => request(() => db) });
+  return kept;
+}
+
+// The folder picker of Chrome and its kin (`write` — files can be written too): resolves with `handle`, records the modes asked.
+export function stubPicker(handle: DirectoryHandle | null, options: { write?: boolean } = {}): { modes: FolderMode[] } {
+  const asked = { modes: [] as FolderMode[] };
+  vi.stubGlobal('showDirectoryPicker', ({ mode }: { mode: FolderMode }) => {
+    asked.modes.push(mode);
+    return handle ? Promise.resolve(handle) : Promise.reject(new DOMException('closed', 'AbortError'));
+  });
+  vi.stubGlobal('FileSystemFileHandle', options.write === false ? function NoWrite() {} : Object.assign(function Writable() {}, { prototype: { createWritable: () => undefined } }));
+  return asked;
 }

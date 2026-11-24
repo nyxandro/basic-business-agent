@@ -1,7 +1,8 @@
 // The folder of the person's computer in the input of a project's conversation (spec, section 8.25), next to
-// the chip of the project: without one — a square button «Подключить папку с компьютера»; with one — its
-// name, and «Разрешить доступ» when the browser asks to confirm after a restart. The agent's tools for the
-// folder live here, while the conversation is open.
+// the chip of the project: without one — a square button «Подключить папку с компьютера» (to read: writing is chosen
+// with its warning in the project's settings); with one — its name and its mode, a pen for «Читать и записывать»; when
+// the browser wants the access confirmed — «Разрешить доступ»; a folder gone — «Выбрать заново». The menu changes the
+// folder and its mode. The agent's tools for the folder live here, while the conversation is open.
 import { useState } from 'react';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
@@ -28,20 +29,27 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
       </button>
     );
   }
+  const write = state.mode === 'readwrite';
   if (access !== 'granted') {
+    const gone = access === 'missing';
+    const action = gone ? t.chooseAgain : access === 'denied' ? t.deniedShort : t.allow;
+    const title = gone ? t.missing : access === 'denied' ? (write ? t.deniedWrite : t.denied) : t.needsAllow;
     return (
-      <button type="button" className={cx(styles.chip, styles.chipWarn, styles.folderAnchor)} title={t.needsAllow} onClick={() => void state.allow()}>
+      <button type="button" className={cx(styles.chip, styles.chipWarn, styles.folderAnchor)} title={title} onClick={() => void (gone ? state.choose(state.mode ?? 'read') : state.allow())}>
         <Icon name="monitor" size={15} className={styles.chipIcon} />
         <span className={styles.chipName}>{folder.name}</span>
-        <span className={styles.chipAction}>{t.allow}</span>
+        <span className={styles.chipAction}>{action}</span>
       </button>
     );
   }
+  const label = t.chipTitle(folder.name, write);
+  const switchTo = write ? 'read' : 'readwrite';
   return (
     <MenuAnchor className={styles.folderAnchor}>
-      <button type="button" className={cx(styles.chip, styles.chipOn)} aria-haspopup="menu" aria-expanded={open} title={t.chipTitle(folder.name)} aria-label={t.chipTitle(folder.name)} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className={cx(styles.chip, styles.chipOn)} aria-haspopup="menu" aria-expanded={open} title={label} aria-label={label} onClick={() => setOpen((o) => !o)}>
         <Icon name="monitor" size={15} className={styles.chipIconOn} />
         <span className={styles.chipName}>{folder.name}</span>
+        {write ? <Icon name="edit" size={13} className={styles.chipIconOn} /> : null}
       </button>
       <Menu open={open} onClose={() => setOpen(false)} label={t.menu} placement="top-start" width={250}>
         <MenuItem
@@ -53,6 +61,19 @@ export function ComputerFolderChip({ projectId, threadId }: { projectId: string;
         >
           {t.change}
         </MenuItem>
+        {state.writes && folder.kind === 'handle' ? (
+          <MenuItem
+            icon={write ? 'eye' : 'edit'}
+            onSelect={() => {
+              setOpen(false);
+              void state.setMode(switchTo).then((answer) => {
+                if (answer !== 'granted' && switchTo === 'readwrite') toast(t.writeRefused);
+              });
+            }}
+          >
+            {write ? t.modeRead : t.modeWrite}
+          </MenuItem>
+        ) : null}
         <MenuItem
           icon="x"
           danger

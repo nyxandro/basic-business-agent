@@ -9,6 +9,7 @@ import { knowledgeTexts } from './knowledge.ts';
 import { orgTexts } from './org.ts';
 import { interfaceTexts } from './interface.ts';
 import { agentAccessTexts } from './agent-access.ts';
+import { computerTexts } from './computer.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
 const PAGE_FAILURES: Record<string, string> = {
@@ -567,36 +568,7 @@ export const ru = {
     },
   },
   // A folder of the person's computer given to a project (spec, section 8.25).
-  computer: {
-    title: 'Папка на компьютере',
-    lead: 'Агент сможет смотреть, что в ней лежит, искать и читать нужные файлы — только пока страница открыта в этом браузере. Заранее ничего не копируется: файл уходит на сервер, только когда агент его читает.',
-    connect: 'Подключить папку',
-    connectShort: 'Подключить папку с компьютера',
-    change: 'Выбрать другую папку',
-    forget: 'Отключить папку',
-    allow: 'Разрешить доступ',
-    needsAllow: 'Браузер просит подтвердить доступ после перезапуска',
-    ready: 'Доступна агенту в этом браузере',
-    denied: 'Доступ запрещён в настройках браузера',
-    tabOnly: 'Ваш браузер не помнит папку: после обновления страницы выберите её снова. Chrome, Edge и Яндекс Браузер помнят её.',
-    chipTitle: (name: string) => `Папка с компьютера: ${name}`,
-    menu: 'Папка с компьютера',
-    forgotten: 'Папка отключена',
-    // A write of the agent onto the computer in the chat (spec, section 8.25, «Запись в папку»).
-    writeAsk: (folder: string) => `Сохранить на компьютер в папку «${folder}»?`,
-    writeNew: 'новый файл',
-    writeReplace: (when: string) => `заменит файл от ${when}`,
-    writeChanged: 'Файл изменили после того, как агент его прочитал, — эти изменения пропадут.',
-    writeKeep: 'Прежняя версия заменённого файла сохранится на сервере на 30 дней.',
-    writeYes: 'Да, сохранить',
-    writeNo: 'Нет',
-    written: (to: string, replaced: boolean) => `Записано на компьютер: ${to}${replaced ? ' · прежний файл заменён' : ''}`,
-    writeFailed: (to: string, error: string) => `Не записано: ${to} — ${error}`,
-    writeDeclined: 'Вы отказались сохранять файлы на компьютер.',
-    restore: 'Вернуть прежнюю версию',
-    restored: 'Прежняя версия возвращена на компьютер.',
-    restoreNoFolder: 'Чтобы вернуть прежнюю версию, откройте этот разговор там, где подключена папка проекта.',
-  },
+  computer: computerTexts,
   admin: {
     forbidden: 'Этот раздел вам недоступен. Если он нужен для работы, обратитесь к администратору.',
     // «Скиллы»: system skills of the core and what the sandbox has (spec, section 8.18).

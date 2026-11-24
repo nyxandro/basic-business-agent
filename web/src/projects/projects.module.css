@@ -555,6 +555,64 @@ button.rowName:hover {
   flex-wrap: wrap;
 }
 
+/* The mode of the folder: «Только читать» / «Читать и записывать» with what each gives (spec, 8.25, «Запись в папку»). */
+.folderModes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.folderMode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.folderMode input {
+  margin-top: 3px;
+  accent-color: var(--acc);
+}
+
+.folderMode:has(input:disabled) {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.folderModeText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folderModeName {
+  font-weight: 500;
+}
+
+.folderModeHint,
+.folderModeNote {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.folderRisk {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.folderRisk svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 /* The folder chip gives way on a narrow screen: its name is cut, the send button stays (spec, 8.25). */
 .folderAnchor {
   min-width: 0;
