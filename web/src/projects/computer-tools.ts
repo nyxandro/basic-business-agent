@@ -7,11 +7,11 @@
 // of the page runs again (`resume-pending`): a read is safe to repeat, and a write asks «Да» anew.
 import { COMPUTER_COPIES, COMPUTER_TOOLS, MAX_UPLOAD_BYTES, type ComputerWriteResult } from '@bba/contracts';
 import { useFrontendTools } from '@copilotkit/react-core';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { apiForm } from '../api/client.ts';
 import { accessOf, fileAt, findFiles, FolderError, listEntries, partsOf, type ComputerFolder, type HandleFolder } from './computer-folder.ts';
-import { askToWrite, changedSinceRead, noteRead, saveToComputer, type WriteAskItem } from './computer-saves.ts';
+import { askToWrite, changedSinceRead, noteRead, saveToComputer, setThreadFolder, type WriteAskItem } from './computer-saves.ts';
 import { ensureWritable, targetOf, writableFolder } from './computer-write.ts';
 
 // Text up to this size goes to the agent as it is; anything bigger or not text — into the working folder.
@@ -157,4 +157,10 @@ export function useComputerTools(folder: ComputerFolder | null, threadId: string
   // CopilotKit registers a tool again only when its name or description changes: another folder of the same
   // name must replace the handlers too.
   useFrontendTools(tools, [folder, threadId]);
+  // The blocks of the conversation's writes put a replaced version back into this folder.
+  useEffect(() => {
+    if (!folder || folder.kind !== 'handle') return;
+    setThreadFolder(threadId, folder);
+    return () => setThreadFolder(threadId, null);
+  }, [folder, threadId]);
 }

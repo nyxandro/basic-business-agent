@@ -1,0 +1,121 @@
+/* A write of the agent onto the person's computer in the chat (spec, section 8.25, «Запись в папку»). */
+.ask {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.askTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.askList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.askItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.askPath {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.askNew,
+.askReplace {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.askNew {
+  color: var(--acc-text);
+  background: var(--acc-soft);
+}
+
+.askReplace {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.askWarn {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+.askNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.askActions {
+  display: flex;
+  gap: 8px;
+}
+
+.writes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.written {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.writtenLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.writtenWhere {
+  overflow-wrap: anywhere;
+}
+
+.done,
+.failed,
+.declined {
+  margin: 0;
+  font-size: 13px;
+  padding: 0 4px;
+}
+
+.done {
+  color: var(--ok);
+}
+
+.failed {
+  color: var(--bad);
+}
+
+.declined {
+  color: var(--muted);
+}

@@ -62,6 +62,28 @@ export function usePendingWrite(toolCallId: string): WriteAsk | null {
   return useSyncExternalStore(subscribe, () => pendingWrite(toolCallId));
 }
 
+// --- The folder of a conversation in this tab ----------------------------------------------------------
+
+// The folder the tools of a conversation work with now (set by useComputerTools): «Вернуть прежнюю версию» of a block of
+// the chat writes into it.
+const threadFolders = new Map<string, HandleFolder>();
+const folderListeners = new Set<() => void>();
+
+export function setThreadFolder(threadId: string, folder: HandleFolder | null): void {
+  if (folder) threadFolders.set(threadId, folder);
+  else threadFolders.delete(threadId);
+  folderListeners.forEach((l) => l());
+}
+
+const subscribeFolders = (listener: () => void) => {
+  folderListeners.add(listener);
+  return () => folderListeners.delete(listener);
+};
+
+export function useThreadFolder(threadId: string): HandleFolder | null {
+  return useSyncExternalStore(subscribeFolders, () => threadFolders.get(threadId) ?? null);
+}
+
 // --- What the agent read --------------------------------------------------------------------------
 
 // The time of each file of a folder when the agent read it, for this tab.
