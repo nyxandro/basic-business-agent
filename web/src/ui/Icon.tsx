@@ -32,7 +32,8 @@ const PATHS = {
     </>
   ),
   up: <path d="M12 19V5M6 11l6-6 6 6" />,
-  stop: <rect x="7" y="7" width="10" height="10" rx="2" />,
+  // «Остановить» of the chat: a filled square in the colour of the button's text.
+  stop: <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" />,
   clip: <path d="M20 12.5l-7.8 7.8a5 5 0 0 1-7-7L13 5.4a3.3 3.3 0 0 1 4.7 4.7l-7.8 7.8a1.7 1.7 0 0 1-2.4-2.4l7.1-7.1" />,
   sun: (
     <>

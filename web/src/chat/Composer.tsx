@@ -135,7 +135,7 @@ export function Composer({
         {me.voiceAvailable ? <MicButton supported={canRecord()} busy={voice.state.status === 'starting' || voice.state.status === 'transcribing'} onClick={voice.start} /> : null}
         {running && onStop ? (
           <button type="button" className={cx(styles.send, styles.sendReady)} aria-label={ru.chat.stop} title={ru.chat.stop} onClick={onStop}>
-            <Icon name="stop" size={16} />
+            <Icon name="stop" size={18} />
           </button>
         ) : (
           <button type="button" className={cx(styles.send, ready && styles.sendReady)} aria-label={ru.chat.send} title={ru.chat.send} disabled={!ready || running} onClick={onSend}>
