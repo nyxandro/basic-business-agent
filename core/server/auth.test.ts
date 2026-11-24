@@ -77,15 +77,20 @@ describe('invites', () => {
 });
 
 describe('sign-in errors', () => {
-  it('answers a wrong password in our format, and then limits the attempts', async () => {
+  // 30 a minute from one address (review 24.11): ten people of an office behind one address sign in at once; guessing a
+  // password of 10+ characters at that pace takes longer than anyone has.
+  it('answers a wrong password in our format, and limits the attempts of one address to 30 a minute', async () => {
     const ip = '10.200.0.1';
-    const wrong = await t.call('POST', '/app/api/auth/sign-in/email', { body: { email: 'olga@example.com', password: 'wrong-password' }, ip });
+    const attempt = (from: string) => t.call('POST', '/app/api/auth/sign-in/email', { body: { email: 'olga@example.com', password: 'wrong-password' }, ip: from });
+    const wrong = await attempt(ip);
     expect(wrong.status).toBe(401);
     expect((await json(wrong)).error?.code).toBe('APP_AUTH_INVALID_CREDENTIALS');
-    let last: Response = wrong;
-    for (let i = 0; i < 6; i++) last = await t.call('POST', '/app/api/auth/sign-in/email', { body: { email: 'olga@example.com', password: 'wrong-password' }, ip });
-    expect(last.status).toBe(429);
-    expect((await json(last)).error?.code).toBe('APP_AUTH_RATE_LIMITED');
+    for (let i = 1; i < 30; i++) expect((await attempt(ip)).status).toBe(401);
+    const over = await attempt(ip);
+    expect(over.status).toBe(429);
+    expect((await json(over)).error?.code).toBe('APP_AUTH_RATE_LIMITED');
+    // Another address keeps its own count.
+    expect((await attempt('10.200.0.2')).status).toBe(401);
   });
 });
 

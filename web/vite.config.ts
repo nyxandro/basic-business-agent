@@ -74,7 +74,9 @@ export default defineConfig({
   server: {
     port: DEV_PORT,
     strictPort: true,
-    proxy: { '/app/api': { target: APP_SERVER } },
+    // xfwd: the server sees the address of each browser (X-Forwarded-For), so the sign-in limit counts people, not the
+    // proxy — without it everyone shared one count of sign-ins (review 24.11).
+    proxy: { '/app/api': { target: APP_SERVER, xfwd: true } },
   },
   test: {
     environment: 'jsdom',

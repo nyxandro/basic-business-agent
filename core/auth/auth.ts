@@ -9,8 +9,10 @@ export const AUTH_BASE_PATH = '/app/api/auth';
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_REFRESH_SECONDS = 24 * 60 * 60;
+// Sign-ins of one address a minute (review 24.11: was 5 — the sixth of ten people of an office behind one address could
+// not get in). Passwords are at least 10 characters: guessing one at 30 a minute takes longer than anyone has.
 const SIGN_IN_WINDOW_SECONDS = 60;
-const SIGN_IN_MAX_ATTEMPTS = 5;
+const SIGN_IN_MAX_ATTEMPTS = 30;
 const GENERAL_WINDOW_SECONDS = 60;
 const GENERAL_MAX_REQUESTS = 300;
 
