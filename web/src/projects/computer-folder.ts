@@ -214,14 +214,45 @@ export function partsOf(path: string): string[] {
   return parts;
 }
 
+// --- Names ---------------------------------------------------------------------------------------------
+
+// A name from a Mac or an archive writes «й», «ё» as a letter and a mark; the model writes them joined. The browser compares
+// names byte for byte, so the folder compares them joined (NFC) — seen live 25.11: «Файла … нет» for a file just listed.
+export const joined = (name: string): string => name.normalize('NFC');
+
+// Latin letters that look like Cyrillic ones, as a search reads them: «CV» typed in Latin finds «СV» with the Cyrillic «С».
+const LOOK_ALIKE: Readonly<Record<string, string>> = { a: 'а', b: 'в', c: 'с', e: 'е', h: 'н', k: 'к', m: 'м', o: 'о', p: 'р', t: 'т', x: 'х', y: 'у' };
+
+// A name or a query as a search compares them: joined, any case, «ё» as «е», look-alike Latin letters as Cyrillic.
+export const searchForm = (text: string): string =>
+  joined(text)
+    .toLocaleLowerCase('ru')
+    .replace(/ё/g, 'е')
+    .replace(/[a-z]/g, (c) => LOOK_ALIKE[c] ?? c);
+
+const named = (error: unknown): string => (error instanceof DOMException ? error.name : '');
+
+// The entry `name` of `dir`: by the name as given, else by the name written the other way. A name taken by an entry of
+// the other kind is the browser's TypeMismatchError, thrown as is.
+export async function entryOf(dir: DirectoryHandle, name: string, kind: 'file'): Promise<FileHandle | null>;
+export async function entryOf(dir: DirectoryHandle, name: string, kind: 'directory'): Promise<DirectoryHandle | null>;
+export async function entryOf(dir: DirectoryHandle, name: string, kind: 'file' | 'directory'): Promise<FileHandle | DirectoryHandle | null> {
+  try {
+    return kind === 'file' ? await dir.getFileHandle(name) : await dir.getDirectoryHandle(name);
+  } catch (error) {
+    if (named(error) !== 'NotFoundError') throw error;
+  }
+  const wanted = joined(name);
+  for await (const entry of dir.values()) if (entry.kind === kind && joined(entry.name) === wanted) return entry;
+  return null;
+}
+
 async function directoryAt(root: DirectoryHandle, parts: string[]): Promise<DirectoryHandle> {
   let dir = root;
   for (const part of parts) {
-    try {
-      dir = await dir.getDirectoryHandle(part);
-    } catch {
-      throw new FolderError(`Папки «${parts.join('/')}» нет.`);
-    }
+    const next = await entryOf(dir, part, 'directory').catch(() => null);
+    if (!next) throw new FolderError(`Папки «${parts.join('/')}» нет.`);
+    dir = next;
   }
   return dir;
 }
@@ -258,11 +289,11 @@ export async function listEntries(folder: ComputerFolder, path: string): Promise
   return { entries: out.slice(0, MAX_LISTED), more: out.length > MAX_LISTED };
 }
 
-// Files whose path holds every word of the query, without regard to case and «ё».
+// Files whose path holds every word of the query, without regard to case, «ё», the way letters are written and Latin
+// letters that look like Cyrillic ones.
 export async function findFiles(folder: ComputerFolder, query: string): Promise<{ files: Entry[]; more: boolean }> {
-  const norm = (s: string) => s.toLocaleLowerCase('ru').replace(/ё/g, 'е');
-  const words = norm(query).split(/\s+/).filter(Boolean);
-  const hit = (rel: string) => words.every((w) => norm(rel).includes(w));
+  const words = searchForm(query).split(/\s+/).filter(Boolean);
+  const hit = (rel: string) => words.every((w) => searchForm(rel).includes(w));
   const found: Entry[] = [];
   if (folder.kind === 'files') {
     for (const [rel, file] of folder.files) if (hit(rel) && !rel.split('/').some((p) => SKIPPED.has(p))) found.push({ path: rel, kind: 'file', bytes: file.size, modified: new Date(file.lastModified).toISOString() });
@@ -286,19 +317,33 @@ export async function findFiles(folder: ComputerFolder, query: string): Promise<
   return { files: found.slice(0, MAX_FOUND), more: found.length > MAX_FOUND };
 }
 
+// The words of a name a similar one shares: letters and digits, three and more.
+const wordsOf = (name: string): string[] => searchForm(name.replace(/\.[^.]+$/, '')).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+
+// What the agent is told of a file that is not there: the files of its folder with a word of its name — the agent takes the
+// real name and goes on, instead of guessing why the file is gone.
+function missing(path: string, prefix: string, names: readonly string[]): FolderError {
+  const words = wordsOf(path.split('/').pop() ?? path);
+  const like = names.filter((n) => words.some((w) => searchForm(n).includes(w))).slice(0, 5);
+  return new FolderError(like.length > 0 ? `Файла «${path}» нет. Похожие в этой папке: ${like.map((n) => `«${prefix}${n}»`).join(', ')}.` : `Файла «${path}» нет. Посмотри список этой папки (computer_folder_list).`);
+}
+
 export async function fileAt(folder: ComputerFolder, path: string): Promise<File> {
   const parts = partsOf(path);
   const name = parts.pop();
   if (!name) throw new FolderError('Укажите путь файла.');
+  const prefix = parts.length ? `${parts.join('/')}/` : '';
   if (folder.kind === 'files') {
-    const file = folder.files.get([...parts, name].join('/'));
-    if (!file) throw new FolderError(`Файла «${path}» нет.`);
-    return file;
+    const wanted = joined(`${prefix}${name}`);
+    const found = folder.files.get(`${prefix}${name}`) ?? [...folder.files].find(([rel]) => joined(rel) === wanted)?.[1];
+    if (found) return found;
+    const here = [...folder.files.keys()].filter((rel) => rel.startsWith(prefix) && !rel.slice(prefix.length).includes('/')).map((rel) => rel.slice(prefix.length));
+    throw missing(path, prefix, here);
   }
   const dir = await directoryAt(folder.handle, parts);
-  try {
-    return await (await dir.getFileHandle(name)).getFile();
-  } catch {
-    throw new FolderError(`Файла «${path}» нет.`);
-  }
+  const handle = await entryOf(dir, name, 'file').catch(() => null);
+  if (handle) return handle.getFile();
+  const here: string[] = [];
+  for await (const entry of dir.values()) if (entry.kind === 'file') here.push(entry.name);
+  throw missing(path, prefix, here);
 }

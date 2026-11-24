@@ -16,6 +16,17 @@ describe('writing into the folder of the computer', () => {
     expect(await textAt(tree, 'Договоры', 'Договор.docx')).toBe('правка');
   });
 
+  // A file from a Mac keeps «й» as a letter and a mark: the write replaces it, never puts a look-alike twin beside it.
+  it('replaces a file whose name writes letters as a letter and a mark, instead of making a twin', async () => {
+    const mac = 'Системный аналитик.docx'.normalize('NFD');
+    const tree: Tree = { [mac]: new File(['старое'], mac, { lastModified: Date.UTC(2026, 10, 20) }) };
+    const folder = folderOn(fakeFolder(tree));
+    expect((await targetOf(folder, 'Системный аналитик.docx')).exists).toEqual({ bytes: 12, lastModified: Date.UTC(2026, 10, 20) });
+    await writeFileAt(folder, 'Системный аналитик.docx', new Blob(['новое']));
+    expect(Object.keys(tree)).toEqual([mac]);
+    expect(await textAt(tree, mac)).toBe('новое');
+  });
+
   it('tells what is at a target: nothing, a file with its time and size, or a folder in the way', async () => {
     const tree: Tree = { 'Договоры': { 'Договор.docx': new File(['старый'], 'Договор.docx', { lastModified: Date.UTC(2026, 10, 20) }) } };
     const folder = folderOn(fakeFolder(tree));

@@ -2,7 +2,7 @@
 // записывать» in Chrome and its kin. The browser writes a file through a temporary copy and puts it in place of the old
 // one only at the end (File System Access API, createWritable): a tab closed halfway leaves the old file whole.
 // Nothing is removed or renamed on the computer.
-import { FolderError, partsOf, type ComputerFolder, type DirectoryHandle, type FileHandle, type HandleFolder } from './computer-folder.ts';
+import { entryOf, FolderError, partsOf, type ComputerFolder, type DirectoryHandle, type FileHandle, type HandleFolder } from './computer-folder.ts';
 
 // The browser can write a folder it keeps: the folder picker and a writable file (Firefox, Safari and Brave have neither).
 export function canWriteFolder(): boolean {
@@ -29,13 +29,16 @@ export async function ensureWritable(folder: ComputerFolder): Promise<HandleFold
   return writable;
 }
 
+// The folder at `parts`, its name written either way (a folder from a Mac is not made twice); `create` — made if not there.
 async function folderAt(root: DirectoryHandle, parts: readonly string[], create: boolean): Promise<DirectoryHandle | null> {
   let dir = root;
   for (const [i, part] of parts.entries()) {
     try {
-      dir = await dir.getDirectoryHandle(part, { create });
+      const there = await entryOf(dir, part, 'directory');
+      if (there) dir = there;
+      else if (create) dir = await dir.getDirectoryHandle(part, { create: true });
+      else return null;
     } catch (error) {
-      if (named(error) === 'NotFoundError' && !create) return null;
       if (named(error) === 'TypeMismatchError') throw new FolderError(`«${parts.slice(0, i + 1).join('/')}» — файл, а не папка.`);
       throw error;
     }
@@ -61,14 +64,14 @@ export async function targetOf(folder: HandleFolder, path: string): Promise<Targ
   const { parts, name, clean } = split(path);
   const dir = await folderAt(folder.handle, parts, false);
   if (!dir) return { path: clean, exists: null };
-  let handle: FileHandle;
+  let handle: FileHandle | null;
   try {
-    handle = await dir.getFileHandle(name);
+    handle = await entryOf(dir, name, 'file');
   } catch (error) {
-    if (named(error) === 'NotFoundError') return { path: clean, exists: null };
     if (named(error) === 'TypeMismatchError') throw new FolderError(`«${clean}» — папка, а не файл.`);
     throw error;
   }
+  if (!handle) return { path: clean, exists: null };
   const file = await handle.getFile();
   return { path: clean, exists: { bytes: file.size, lastModified: file.lastModified } };
 }
@@ -78,12 +81,8 @@ export async function currentFile(folder: HandleFolder, path: string): Promise<F
   const { parts, name } = split(path);
   const dir = await folderAt(folder.handle, parts, false);
   if (!dir) return null;
-  try {
-    return await (await dir.getFileHandle(name)).getFile();
-  } catch (error) {
-    if (named(error) === 'NotFoundError') return null;
-    throw error;
-  }
+  const handle = await entryOf(dir, name, 'file');
+  return handle ? handle.getFile() : null;
 }
 
 function writeFailure(error: unknown, path: string): FolderError {
@@ -103,12 +102,13 @@ function writeFailure(error: unknown, path: string): FolderError {
   }
 }
 
-// Writes `data` at `path`, making the folders on its way; a file there is replaced.
+// Writes `data` at `path`, making the folders on its way; a file there — its name written either way — is replaced.
 export async function writeFileAt(folder: HandleFolder, path: string, data: Blob): Promise<void> {
   const { parts, name, clean } = split(path);
   try {
     const dir = (await folderAt(folder.handle, parts, true))!;
-    const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+    const handle = (await entryOf(dir, name, 'file')) ?? (await dir.getFileHandle(name, { create: true }));
+    const writable = await handle.createWritable();
     try {
       await writable.write(data);
     } catch (error) {

@@ -52,6 +52,16 @@ describe('workspace layout', () => {
     expect(() => saveFile(root, 'big.pdf', new Uint8Array(20 * 1024 * 1024 + 1))).toThrow(/bytes/);
   });
 
+  // A name from a Mac or an archive keeps «й», «ё» as a letter and a mark after it: saved with the letters joined, as the
+  // model writes them, the agent finds the file by the name it reads (the mark alone would turn into «_»).
+  it('saves a name with letters written as a letter and a mark the way the model writes it', () => {
+    const root = contextRoot(ws, 'olga', null);
+    const decomposed = 'Системный аналитик, ёлка.docx'.normalize('NFD');
+    expect(decomposed).not.toBe('Системный аналитик, ёлка.docx');
+    expect(saveFile(root, decomposed, new Uint8Array([1])).name).toBe('Системный аналитик_ ёлка.docx');
+    expect(readdirSync(root)).toContain('Системный аналитик_ ёлка.docx');
+  });
+
   it('lists the files of a folder without hidden working folders, nested ones with their path', () => {
     const root = contextRoot(ws, 'olga', null);
     saveFile(root, 'договор.pdf', new Uint8Array([1, 2]));

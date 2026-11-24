@@ -3,7 +3,7 @@
 // no access — the agent is told what the person should do.
 import { describe, expect, it } from 'vitest';
 import { mockServer } from '../test/fetch-mock.ts';
-import { adoptFiles, findFiles, listEntries, partsOf, type ComputerFolder, type DirectoryHandle } from './computer-folder.ts';
+import { adoptFiles, fileAt, findFiles, listEntries, partsOf, type ComputerFolder, type DirectoryHandle } from './computer-folder.ts';
 import { computerTools } from './computer-tools.ts';
 
 type Tree = { [name: string]: Tree | string };
@@ -59,6 +59,30 @@ describe('the folder of the computer', () => {
     expect((await findFiles(folder(), 'договор')).files.some((f) => f.path.startsWith('node_modules'))).toBe(false);
   });
 
+  // A name from a Mac or an archive writes «й», «ё» as a letter and a mark; the model writes them joined. The browser
+  // compares names byte for byte: the folder finds the entry either way (seen live 25.11: «Файла … нет» for a file listed).
+  it('finds a file and a folder whose names write letters as a letter and a mark, by the name the model writes', async () => {
+    const mac = (name: string) => name.normalize('NFD');
+    const tree: Tree = { [mac('Отчёты')]: { [mac('ПРИМЕР_СV_Системный_аналитик.docx')]: 'резюме' } };
+    const f: ComputerFolder = { kind: 'handle', name: 'Тендер', handle: handleOf('Тендер', tree), mode: 'read' };
+    expect(await (await fileAt(f, 'Отчёты/ПРИМЕР_СV_Системный_аналитик.docx')).text()).toBe('резюме');
+    expect((await listEntries(f, 'Отчёты')).entries).toHaveLength(1);
+    expect((await findFiles(f, 'системный')).files).toHaveLength(1);
+  });
+
+  // The agent searched «CV» in Latin letters for a name with the Cyrillic «С» (seen live 25.11).
+  it('finds by letters that look alike in Latin and Cyrillic', async () => {
+    const tree: Tree = { 'ПРИМЕР_СV_Иванов.docx': 'резюме', 'Отчет_PECO.xlsx': 'x' };
+    const f: ComputerFolder = { kind: 'handle', name: 'Тендер', handle: handleOf('Тендер', tree), mode: 'read' };
+    expect((await findFiles(f, 'CV')).files.map((e) => e.path)).toEqual(['ПРИМЕР_СV_Иванов.docx']);
+    expect((await findFiles(f, 'ресо')).files.map((e) => e.path)).toEqual(['Отчет_PECO.xlsx']);
+  });
+
+  it('names the files like the one asked when it is not there', async () => {
+    await expect(fileAt(folder(), 'Договоры/2026/Договор.docx')).rejects.toThrow('Файла «Договоры/2026/Договор.docx» нет. Похожие в этой папке: «Договоры/2026/Договор Стройресурс.docx».');
+    await expect(fileAt(folder(), 'Сметы/Акт.pdf')).rejects.toThrow('Файла «Сметы/Акт.pdf» нет. Посмотри список этой папки (computer_folder_list).');
+  });
+
   it('does not lead out of the folder', () => {
     expect(() => partsOf('../../etc/passwd')).toThrow('ведёт за пределы папки');
     expect(partsOf('/Договоры//2026/./')).toEqual(['Договоры', '2026']);
@@ -87,7 +111,7 @@ describe('the agent’s tools of the folder', () => {
       note: 'Файл скопирован в рабочую папку: .computer/Договоры/2026/Договор Стройресурс.docx. Прочитай его скиллом по этому пути.',
     });
     expect(s.calls.filter((c) => c.method === 'POST').map((c) => c.form)).toEqual([{ path: 'Договоры/2026/Договор Стройресурс.docx', file: 'Договор Стройресурс.docx' }]);
-    expect(await read.handler({ path: 'Договоры/нет.docx' })).toEqual({ error: 'Файла «Договоры/нет.docx» нет.' });
+    expect(await read.handler({ path: 'Договоры/нет.docx' })).toEqual({ error: 'Файла «Договоры/нет.docx» нет. Посмотри список этой папки (computer_folder_list).' });
     expect(await read.handler({ path: 'Нет/нет.docx' })).toEqual({ error: 'Папки «Нет» нет.' });
   });
 

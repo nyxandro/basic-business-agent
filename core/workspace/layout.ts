@@ -93,8 +93,10 @@ export function contextRoot(workspaceRoot: string, userId: string, projectId: st
   return dir;
 }
 
+// Letters joined first (NFC): a name from a Mac or an archive writes «й» as «и» and a mark, which would turn into «_» — and
+// the model writes the name joined, so the agent finds the file by the name it reads.
 export function safeFileName(name: string): string {
-  const last = name.split(/[\\/]/).pop() ?? '';
+  const last = name.normalize('NFC').split(/[\\/]/).pop() ?? '';
   const base = last.replace(/[^\p{L}\p{N}._ ()-]/gu, '_').replace(/^\.+/, '').trim();
   return base.slice(-MAX_NAME_LENGTH) || 'file';
 }
