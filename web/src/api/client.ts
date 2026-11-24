@@ -47,6 +47,18 @@ export async function api<T>(method: Method, path: string, body?: unknown): Prom
   return (await res.json()) as T;
 }
 
+// The bytes of a file (a snapshot written onto the person's computer, spec 8.25); a failure is read as api() reads it.
+export async function apiBlob(path: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(path, { credentials: 'same-origin' });
+  } catch (error) {
+    throw new ApiRequestError({ code: 'APP_NETWORK_FAILED', message: ru.clientErrors.APP_NETWORK_FAILED, status: 0, cause: error });
+  }
+  if (!res.ok) throw await toError(res);
+  return res.blob();
+}
+
 // Multipart upload (attachments, skills): the browser sets the boundary header itself. PUT replaces
 // what is there (a new version of a skill).
 export const apiFormPut = <T>(path: string, form: FormData): Promise<T> => apiForm<T>(path, form, 'PUT');
