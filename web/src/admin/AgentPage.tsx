@@ -5,7 +5,7 @@
 // them through its access), «Значок» (an icon or a picture). Every section has its own address, so
 // «Назад» of the browser and a link lead to it. One route serves them all and every section stays
 // mounted while hidden: a prompt or starters typed and not saved survive a look at another section.
-import type { AdminAgent, AdminDepartment, AdminPerson, PromptState } from '@bba/contracts';
+import type { AdminAgent, AdminDepartment, AdminPerson, PromptState, SkillDto } from '@bba/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router';
 import { AgentMarkView } from '../chat/AgentMark.tsx';
@@ -126,7 +126,7 @@ async function load() {
   return { ...agents, departments: departments.departments, people: people.people, skills: skills.skills };
 }
 
-function Lists({ agent, tab, departments, people, skills, onChanged }: { agent: AdminAgent; tab: AgentTab; departments: AdminDepartment[]; people: AdminPerson[]; skills: Awaited<ReturnType<typeof load>>['skills']; onChanged: () => void }) {
+function Lists({ agent, tab, departments, people, skills, onChanged }: { agent: AdminAgent; tab: AgentTab; departments: AdminDepartment[]; people: AdminPerson[]; skills: SkillDto[]; onChanged: () => void }) {
   // A saved choice comes back with the list: the form starts from it anew.
   return (
     <>
