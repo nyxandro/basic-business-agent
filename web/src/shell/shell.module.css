@@ -30,7 +30,7 @@
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding: 14px 12px;
   box-sizing: border-box;
   min-width: 0;
@@ -109,9 +109,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 36px;
+  /* Compact rows of agents, projects and conversations (owner's request 25.11); a finger gets the old height (pointer: coarse). */
+  min-height: 30px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -184,7 +185,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
   transition: background-color 0.2s ease;
 }
 
@@ -225,9 +226,27 @@
   padding-right: 38px;
 }
 
+/* The three dots fit the compact row. */
+.threadMore button[aria-haspopup='menu'] {
+  width: 26px;
+  height: 26px;
+}
+
 /* The open menu lies over the rows below it. */
 .threadRowOpen {
   z-index: 1;
+}
+
+/* A finger keeps the taller rows and the full-size dots. */
+@media (pointer: coarse) {
+  .item {
+    min-height: 36px;
+  }
+
+  .threadMore button[aria-haspopup='menu'] {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 @media (hover: none) {
