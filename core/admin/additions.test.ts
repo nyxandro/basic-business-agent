@@ -73,6 +73,26 @@ describe('stage 2 additions', () => {
     await t.db.query('UPDATE app.model_settings SET agents_choose_model = false');
   });
 
+  it('names the organisation’s primary model next to «Основная организации», only while it is on', async () => {
+    type Prompt = { primaryModel: string | null };
+    const prompt = async () => json<Prompt>(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }));
+    const { rows } = await t.db.query<{ primary_model_id: string | null }>('SELECT primary_model_id FROM app.model_settings');
+    const before = rows[0]!.primary_model_id;
+    const { rows: chat } = await t.db.query<{ id: string; label: string }>("SELECT id, label FROM app.models WHERE kind = 'chat' AND enabled ORDER BY id LIMIT 1");
+    const model = chat[0]!;
+    try {
+      await t.db.query('UPDATE app.model_settings SET primary_model_id = $1', [model.id]);
+      expect((await prompt()).primaryModel).toBe(model.label);
+      await t.db.query('UPDATE app.models SET enabled = false WHERE id = $1', [model.id]);
+      expect((await prompt()).primaryModel).toBeNull();
+      await t.db.query('UPDATE app.model_settings SET primary_model_id = NULL');
+      expect((await prompt()).primaryModel).toBeNull();
+    } finally {
+      await t.db.query('UPDATE app.models SET enabled = true WHERE id = $1', [model.id]);
+      await t.db.query('UPDATE app.model_settings SET primary_model_id = $1', [before]);
+    }
+  });
+
   it('names an action and the fields of its card from the tool’s description, and keeps them with a task’s question', async () => {
     const sales = (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!;
     expect(sales.actions.mail_send).toEqual({ title: 'Отправить письмо клиенту', fields: { to: 'Кому', text: 'Текст письма' }, readOnly: false });

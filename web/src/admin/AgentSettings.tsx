@@ -20,7 +20,7 @@ function AgentModel({ state, onSaved }: { state: PromptState; onSaved: () => voi
     <div>
       <Field label="Модель агента" hint={off ? 'Выбор модели выключен: включите «Агенты выбирают модель из каталога» в разделе «Нейросеть».' : undefined}>
         <Select value={state.modelId ?? ''} disabled={off || busy} onChange={(e) => void change(e.target.value)}>
-          <option value="">Основная организации</option>
+          <option value="">{ru.admin.agents.primaryModel(state.primaryModel)}</option>
           {state.allowedModels.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}

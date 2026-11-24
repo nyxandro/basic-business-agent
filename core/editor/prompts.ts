@@ -79,6 +79,7 @@ export async function getPromptState(deps: EditorDeps, agentId: string): Promise
     fileChangedSincePublish: Boolean(row?.published_version_id && row.file_instructions_hash !== hash(rt.instructions)),
     modelId: row?.model_id ?? null,
     allowedModels: await choosableModels(deps.db),
+    primaryModel: await primaryModelLabel(deps.db),
   };
 }
 
@@ -172,6 +173,14 @@ async function choosableModels(db: Db): Promise<{ id: string; label: string }[]>
     `SELECT m.id, m.label FROM app.models m, app.model_settings s WHERE s.agents_choose_model AND m.kind = 'chat' AND m.enabled ORDER BY m.label, m.id`,
   );
   return rows;
+}
+
+// The model an agent without its own answers on (core/models/resolve.ts): a primary that is off answers nothing.
+async function primaryModelLabel(db: Db): Promise<string | null> {
+  const { rows } = await db.query<{ label: string }>(
+    'SELECT m.label FROM app.model_settings s JOIN app.models m ON m.id = s.primary_model_id WHERE m.enabled',
+  );
+  return rows[0]?.label ?? null;
 }
 
 export async function setAgentModel(deps: EditorDeps, actorUserId: string, agentId: string, modelId: string | null): Promise<void> {

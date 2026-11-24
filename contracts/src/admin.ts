@@ -169,6 +169,8 @@ export interface PromptState {
   modelId: string | null;
   // Chat models an agent may take while «Агенты выбирают модель из каталога» is on; else empty.
   allowedModels: { id: string; label: string }[];
+  // Name of the organisation's primary model, shown with «Основная организации»; null while none is chosen or it is off.
+  primaryModel: string | null;
 }
 
 export const USAGE_GROUPS = ['user', 'agent', 'model', 'deployment'] as const;

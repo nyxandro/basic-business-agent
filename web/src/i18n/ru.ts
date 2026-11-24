@@ -612,6 +612,7 @@ export const ru = {
       access: agentAccessTexts,
       settingsTitle: 'Настройки агента',
       settingsSub: 'Модель, на которой он отвечает.',
+      primaryModel: (name: string | null) => `Основная организации (${name ?? 'не выбрана'})`,
       // «Что агенту можно» (spec, section 8.30).
       abilities: {
         title: 'Что агенту можно',

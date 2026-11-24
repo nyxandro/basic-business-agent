@@ -24,6 +24,7 @@ const PROMPT = {
   fileChangedSincePublish: false,
   modelId: null,
   allowedModels: [] as { id: string; label: string }[],
+  primaryModel: 'qwen3.8-flash' as string | null,
 };
 
 function server(prompt: object = PROMPT, agents: object[] = [AGENT], missing: string[] = []) {
@@ -142,6 +143,19 @@ describe('the page of an agent', () => {
     expect(on).toBeEnabled();
     await userEvent.setup().selectOptions(on, 'GigaChat 2 Max');
     await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/model'))?.body).toEqual({ modelId: 'gigachat' }));
+  });
+
+  it('«Настройки»: names the organisation’s primary model in the first option, and says when none is on', async () => {
+    server();
+    const view = renderApp('/admin/agents/sales/settings');
+    await screen.findByRole('combobox', { name: 'Модель агента' });
+    expect(screen.getByRole('option', { name: 'Основная организации (qwen3.8-flash)' })).toBeInTheDocument();
+    view.unmount();
+
+    server({ ...PROMPT, primaryModel: null });
+    renderApp('/admin/agents/sales/settings');
+    await screen.findByRole('combobox', { name: 'Модель агента' });
+    expect(screen.getByRole('option', { name: 'Основная организации (не выбрана)' })).toBeInTheDocument();
   });
 
   it('keeps the unsaved prompt through a look at other sections and a change of the model', async () => {
