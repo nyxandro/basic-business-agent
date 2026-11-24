@@ -16,6 +16,34 @@ export interface MarkInMessage {
 // The lines after the first of a comment, and the quote, stand under the number of their mark.
 const INDENT = '   ';
 
+// What the chat reads of such a message to draw it as one block «Правки к документу» (request of the owner 25.11): whose
+// marks, how many, and their lines. Only the message the viewer writes: its first line, then «1. …».
+export interface MarksMessageData {
+  kind: 'document' | 'picture';
+  name: string;
+  count: number;
+  lines: string[];
+}
+
+// The first line the viewer writes, as a pattern: the wording is the one of ru.ts, the name and the count are any.
+function headerPattern(make: (name: string, count: number) => string): RegExp {
+  const NAME = '\u0001';
+  const COUNT = 987654321;
+  const escaped = make(NAME, COUNT).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(NAME, '(.+)').replace(String(COUNT), '(\\d+)')}$`);
+}
+
+const HEADERS = { document: headerPattern(ru.marks.message.document), picture: headerPattern(ru.marks.message.picture) } as const;
+
+export function readMarksMessage(text: string): MarksMessageData | null {
+  const [first = '', ...lines] = text.split('\n');
+  for (const kind of ['document', 'picture'] as const) {
+    const match = HEADERS[kind].exec(first);
+    if (match && lines[0]?.startsWith('1. ')) return { kind, name: match[1]!, count: Number(match[2]), lines };
+  }
+  return null;
+}
+
 export function marksMessage(input: { document: AttachedFile; picture: AttachedFile; paged: boolean; marks: readonly MarkInMessage[] }): string {
   const t = ru.marks.message;
   const { document, picture, paged, marks } = input;

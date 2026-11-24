@@ -4,7 +4,7 @@ import { splitAttachments } from '@bba/contracts';
 import { describe, expect, it } from 'vitest';
 import { badgeAt, boundsOf, clampShare, isMarkTooSmall, markPath } from './geometry.ts';
 import { lineRects } from './highlight.ts';
-import { marksMessage } from './message.ts';
+import { marksMessage, readMarksMessage } from './message.ts';
 import { textBoxes, textUnder, type TextBox } from './text-under.ts';
 
 // A page 600 × 800 points, not turned: PDF's y goes up from the bottom, the page's shares go down from the top.
@@ -140,6 +140,20 @@ describe('the message to the agent', () => {
       ].join('\n'),
       files: [document, picture],
     });
+  });
+
+  // The chat draws such a message as one block «Правки к документу» that unfolds (request of the owner 25.11).
+  it('reads back its own message: the document, the count and the lines of the marks; any other text is not one', () => {
+    const marks = [
+      { tool: 'rect' as const, page: 3, comment: 'срок 10 дней', quote: 'Оплата в течение 30 дней' },
+      { tool: 'pen' as const, page: 5, comment: '', quote: '' },
+    ];
+    const { text } = splitAttachments(marksMessage({ document, picture, paged: true, marks }));
+    expect(readMarksMessage(text)).toEqual({ kind: 'document', name: 'Договор.docx', count: 2, lines: ['1. Стр. 3, прямоугольник: срок 10 дней', '   Под пометкой: «Оплата в течение 30 дней»', '2. Стр. 5, карандаш — без комментария'] });
+    const { text: onPicture } = splitAttachments(marksMessage({ document: { name: 'Схема «А».png', path: 'Схема.png' }, picture, paged: false, marks }));
+    expect(readMarksMessage(onPicture)).toMatchObject({ kind: 'picture', name: 'Схема «А».png', count: 2 });
+    expect(readMarksMessage('Пометки к документу «Договор.docx» — 3: поправь срок')).toBeNull();
+    expect(readMarksMessage('Привет')).toBeNull();
   });
 
   it('selected text is named «выделенный текст» and quoted whole as it was selected', () => {

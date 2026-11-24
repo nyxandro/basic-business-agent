@@ -1,5 +1,6 @@
 // Texts of the marks in the viewer (spec, section 8.32), in `ru` as `ru.marks`: ru.ts is near the limit of a file.
 import type { MarkKind, MarkTool } from '../viewer/marks/types.ts';
+import { plural } from './format.ts';
 
 const TOOL: Record<MarkKind, string> = { rect: 'прямоугольник', ellipse: 'овал', pen: 'карандаш', arrow: 'стрелка', highlight: 'выделенный текст' };
 const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
@@ -38,4 +39,7 @@ export const marksTexts = {
     atArrow: 'У стрелки',
     selected: 'Выделено',
   },
+  // Such a message in the chat: one block that unfolds (request of the owner 25.11).
+  bubble: (kind: 'document' | 'picture', name: string, count: number) =>
+    `Правки к ${kind === 'document' ? 'документу' : 'картинке'} «${name}» · ${count} ${plural(count, ['пометка', 'пометки', 'пометок'])}`,
 };

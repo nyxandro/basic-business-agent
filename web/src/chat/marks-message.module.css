@@ -1,0 +1,52 @@
+/* A message of the marks of a document in the chat (MarksMessage.tsx): one block that unfolds. */
+.bubble {
+  padding: 8px 12px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.icon {
+  flex: none;
+  color: var(--acc-text);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.lines {
+  white-space: pre-wrap;
+  font-size: 14px;
+}
