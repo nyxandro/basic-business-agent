@@ -41,13 +41,13 @@ describe('«Недавние» in the panel', () => {
   });
 
 
-  it('shows the seven newest and «Ещё» that opens all of them', async () => {
-    const threads = Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, title: `Тема ${i}`, kind: 'chat', unread: false, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId: null }));
-    const s = mockServer({ 'GET /app/api/threads': { body: { threads, next: 'cursor-7' } } });
+  it('shows the ten newest and «Ещё» that opens all of them', async () => {
+    const threads = Array.from({ length: 10 }, (_, i) => ({ id: `t${i}`, title: `Тема ${i}`, kind: 'chat', unread: false, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId: null }));
+    const s = mockServer({ 'GET /app/api/threads': { body: { threads, next: 'cursor-10' } } });
     const onShowAll = vi.fn();
     render(list(0, onShowAll));
-    expect(await screen.findAllByRole('link', { name: /^Тема/ })).toHaveLength(7);
-    expect(s.calls.find((c) => c.path === '/app/api/threads')?.query).toEqual({ limit: '7', group: 'tasks' });
+    expect(await screen.findAllByRole('link', { name: /^Тема/ })).toHaveLength(10);
+    expect(s.calls.find((c) => c.path === '/app/api/threads')?.query).toEqual({ limit: '10', group: 'tasks' });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Ещё' }));
     expect(onShowAll).toHaveBeenCalledOnce();
   });

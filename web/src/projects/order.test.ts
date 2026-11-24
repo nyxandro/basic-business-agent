@@ -37,13 +37,13 @@ describe('order of the side panel', () => {
     expect(ids(pinProject([project('a')], 'a', true))).toEqual(['a*']);
   });
 
-  it('shows every pinned project and fills the panel up to seven with the rest', () => {
-    const rest = Array.from({ length: 9 }, (_, i) => project(`r${i}`));
-    expect(ids(shownProjects([project('a', true), ...rest], null))).toEqual(['a*', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5']);
-    const pinned = Array.from({ length: 8 }, (_, i) => project(`p${i}`, true));
+  it('shows every pinned project and fills the panel up to ten with the rest', () => {
+    const rest = Array.from({ length: 12 }, (_, i) => project(`r${i}`));
+    expect(ids(shownProjects([project('a', true), ...rest], null))).toEqual(['a*', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8']);
+    const pinned = Array.from({ length: 11 }, (_, i) => project(`p${i}`, true));
     expect(ids(shownProjects([...pinned, ...rest], null))).toEqual(pinned.map((p) => `${p.id}*`));
     // The open project further down is shown after them: it can be pinned from its row.
-    expect(ids(shownProjects([project('a', true), ...rest], 'r8'))).toEqual(['a*', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r8']);
+    expect(ids(shownProjects([project('a', true), ...rest], 'r11'))).toEqual(['a*', 'r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r11']);
     expect(ids(shownProjects([project('a', true), ...rest], 'r2'))).toHaveLength(PROJECTS_SHOWN);
   });
 
@@ -83,14 +83,14 @@ describe('order of the side panel', () => {
     );
   });
 
-  it('the panel shows the head of the list: every pinned one, seven rows unless more are pinned, and the open one after them', () => {
+  it('the panel shows the head of the list: every pinned one, ten rows unless more are pinned, and the open one after them', () => {
     const shown = panel.chain((list) => fc.tuple(fc.constant(list), fc.nat({ max: list.length - 1 })));
     fc.assert(
       fc.property(shown, ([list, open]) => {
         const rows = shownProjects(list, null);
         expect(rows).toEqual(list.slice(0, rows.length));
         expect(list.filter((p) => p.pinned).every((p) => rows.includes(p))).toBe(true);
-        // Something is hidden under «Ещё» only behind seven rows; more than seven are all pinned.
+        // Something is hidden under «Ещё» only behind ten rows; more than ten are all pinned.
         if (rows.length < list.length) expect(rows.length).toBeGreaterThanOrEqual(PROJECTS_SHOWN);
         if (rows.length > PROJECTS_SHOWN) expect(rows.every((p) => p.pinned)).toBe(true);
         const current = list[open]!;

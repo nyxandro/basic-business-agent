@@ -522,10 +522,11 @@ describe('projects of conversations', () => {
   });
 });
 
-// Seven projects in the panel and «Ещё» for the rest, as «Недавние» (request of the owner 17.11).
-describe('seven projects in the panel', () => {
-  const many = Array.from({ length: 9 }, (_, i) => ({ ...TENDER, id: `q${i + 1}`, name: `Проект ${i + 1}` }));
-  const panelLinks = () => screen.getAllByRole('link').filter((a) => !a.closest('nav[aria-label="Разделы проекта"]') && /^\/projects\/q\d$/.test(a.getAttribute('href') ?? ''));
+// Ten projects in the panel and «Ещё» for the rest, as «Недавние» (requests of the owner 17.11 and 25.11).
+describe('ten projects in the panel', () => {
+  // Two digits: «Проект 01» is not a part of «Проект 10».
+  const many = Array.from({ length: 12 }, (_, i) => ({ ...TENDER, id: `q${i + 1}`, name: `Проект ${String(i + 1).padStart(2, '0')}` }));
+  const panelLinks = () => screen.getAllByRole('link').filter((a) => !a.closest('nav[aria-label="Разделы проекта"]') && /^\/projects\/q\d+$/.test(a.getAttribute('href') ?? ''));
 
   function manyServer() {
     const s = server({ 'GET /app/api/projects': { body: { projects: many, archivedCount: 0 } } });
@@ -539,66 +540,66 @@ describe('seven projects in the panel', () => {
     return s;
   }
 
-  it('shows the first seven in the order of the panel and «Ещё», which opens all of them in the search on «Проекты»', async () => {
+  it('shows the first ten in the order of the panel and «Ещё», which opens all of them in the search on «Проекты»', async () => {
     manyServer();
     renderApp('/agents/sales?thread=t1');
-    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
-    expect(panelLinks().map((a) => a.textContent)).toEqual(['Проект 1', 'Проект 2', 'Проект 3', 'Проект 4', 'Проект 5', 'Проект 6', 'Проект 7'].map((n) => expect.stringContaining(n) as unknown as string));
-    expect(screen.queryByRole('link', { name: /Проект 8/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /Проект 10/ })).toBeInTheDocument();
+    expect(panelLinks().map((a) => a.textContent)).toEqual(many.slice(0, 10).map((p) => expect.stringContaining(p.name) as unknown as string));
+    expect(screen.queryByRole('link', { name: /Проект 11/ })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Ещё' }));
     const dialog = screen.getByRole('dialog', { name: 'Поиск' });
     expect(within(dialog).getByRole('button', { name: 'Проекты', pressed: true })).toBeInTheDocument();
-    expect(await within(dialog).findByText('Проект 9')).toBeInTheDocument();
+    expect(await within(dialog).findByText('Проект 12')).toBeInTheDocument();
   });
 
-  it('shows the open project beyond the seven as the eighth, so it can be pinned from its row', async () => {
+  it('shows the open project beyond the ten as the eleventh, so it can be pinned from its row', async () => {
     manyServer();
-    renderApp('/projects/q9');
-    expect(await screen.findByRole('heading', { name: 'Проект 9' })).toBeInTheDocument();
-    await waitFor(() => expect(panelLinks()).toHaveLength(8));
-    expect(panelLinks().at(-1)?.textContent).toContain('Проект 9');
-    expect(screen.queryByRole('link', { name: /Проект 8/ })).not.toBeInTheDocument();
+    renderApp('/projects/q12');
+    expect(await screen.findByRole('heading', { name: 'Проект 12' })).toBeInTheDocument();
+    await waitFor(() => expect(panelLinks()).toHaveLength(11));
+    expect(panelLinks().at(-1)?.textContent).toContain('Проект 12');
+    expect(screen.queryByRole('link', { name: /Проект 11/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ещё' })).toBeInTheDocument();
   });
 
-  // Decision of the owner 17.11: the pinned ones are all shown; the rest fill the panel up to seven.
-  it('shows every pinned project, and the rest only up to seven in all', async () => {
+  // Decision of the owner 17.11: the pinned ones are all shown; the rest fill the panel up to ten.
+  it('shows every pinned project, and the rest only up to ten in all', async () => {
     const pinned = many.slice(0, 3).map((p) => ({ ...p, pinned: true }));
     server({ 'GET /app/api/projects': { body: { projects: [...pinned, ...many.slice(3)], archivedCount: 0 } } });
     renderApp('/agents/sales?thread=t1');
-    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
-    expect(panelLinks()).toHaveLength(7);
+    expect(await screen.findByRole('link', { name: /Проект 10/ })).toBeInTheDocument();
+    expect(panelLinks()).toHaveLength(10);
     expect(screen.getByRole('button', { name: 'Ещё' })).toBeInTheDocument();
   });
 
   // The row and its menu are gone: the keyboard goes to «Ещё», where the project now is.
-  it('an unpinned project that goes beyond the seven leaves the keyboard on «Ещё»', async () => {
-    // Nothing done in Проект 1 for long: unpinned, it goes under the others.
-    const pinned = many.slice(0, 7).map((p, i) => ({ ...p, pinned: true, ...(i === 0 ? { lastActiveAt: '2026-01-01T08:00:00Z' } : {}) }));
+  it('an unpinned project that goes beyond the ten leaves the keyboard on «Ещё»', async () => {
+    // Nothing done in Проект 01 for long: unpinned, it goes under the others.
+    const pinned = many.slice(0, 10).map((p, i) => ({ ...p, pinned: true, ...(i === 0 ? { lastActiveAt: '2026-01-01T08:00:00Z' } : {}) }));
     const s = manyServer();
-    s.set('GET /app/api/projects', { body: { projects: [...pinned, ...many.slice(7)], archivedCount: 0 } });
+    s.set('GET /app/api/projects', { body: { projects: [...pinned, ...many.slice(10)], archivedCount: 0 } });
     s.set('PUT /app/api/projects/q1', { body: { ...pinned[0]!, pinned: false } });
     renderApp('/agents/sales?thread=t1');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Действия с проектом «Проект 1»' }));
+    await user.click(await screen.findByRole('button', { name: 'Действия с проектом «Проект 01»' }));
     await user.click(screen.getByRole('menuitem', { name: 'Открепить' }));
-    expect(screen.queryByRole('link', { name: /Проект 1$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Проект 01/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ещё' })).toHaveFocus();
   });
 
-  it('shows all the pinned ones even beyond seven, with no unpinned one', async () => {
-    const pinned = many.slice(0, 8).map((p) => ({ ...p, pinned: true }));
-    server({ 'GET /app/api/projects': { body: { projects: [...pinned, many[8]!], archivedCount: 0 } } });
+  it('shows all the pinned ones even beyond ten, with no unpinned one', async () => {
+    const pinned = many.slice(0, 11).map((p) => ({ ...p, pinned: true }));
+    server({ 'GET /app/api/projects': { body: { projects: [...pinned, many[11]!], archivedCount: 0 } } });
     renderApp('/agents/sales?thread=t1');
-    expect(await screen.findByRole('link', { name: /Проект 8/ })).toBeInTheDocument();
-    expect(panelLinks()).toHaveLength(8);
-    expect(screen.queryByRole('link', { name: /Проект 9/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /Проект 11/ })).toBeInTheDocument();
+    expect(panelLinks()).toHaveLength(11);
+    expect(screen.queryByRole('link', { name: /Проект 12/ })).not.toBeInTheDocument();
   });
 
-  it('has no «Ещё» with seven projects or fewer', async () => {
-    server({ 'GET /app/api/projects': { body: { projects: many.slice(0, 7), archivedCount: 0 } } });
+  it('has no «Ещё» with ten projects or fewer', async () => {
+    server({ 'GET /app/api/projects': { body: { projects: many.slice(0, 10), archivedCount: 0 } } });
     renderApp('/agents/sales?thread=t1');
-    expect(await screen.findByRole('link', { name: /Проект 7/ })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /Проект 10/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ещё' })).not.toBeInTheDocument();
   });
 });

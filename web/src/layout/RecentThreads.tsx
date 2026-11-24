@@ -18,7 +18,7 @@ import styles from '../shell/shell.module.css';
 import { threadPath, ThreadRow } from '../threads/ThreadRow.tsx';
 
 // How many of the newest conversations the panel shows (decision of the owner 15.11).
-export const RECENT_SHOWN = 7;
+export const RECENT_SHOWN = 10;
 
 // `names` — names given by hand in this tab (here or in the header of the conversation), kept by the
 // frame; `onDeleted` tells the panel that a conversation went (a project page lists its conversations too).

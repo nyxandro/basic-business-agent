@@ -47,7 +47,7 @@ const OLD = { ...ESTIMATE, path: 'chats/t8/Старое КП.pdf', name: 'Ста
 const RECENT = { files: [KP, CONTRACT, WORKING_COPY, ESTIMATE, BILL, OLD], unreadable: [], more: false };
 
 const searches = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/search');
-const lists = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/threads' && c.query.limit !== '7');
+const lists = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/threads' && c.query.limit !== '10');
 
 const conversation = (id: string, title: string, projectId: string | null, unread = false) => ({ id, title, kind: 'chat', unread, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId });
 // 31 conversations: the panel asks 7, the window asks pages of 30; the last page is one, the oldest.
@@ -145,7 +145,7 @@ describe('search over conversations and projects', () => {
 
   it('says when there are no conversations yet and shows a list that did not load with a repeat', async () => {
     const s = server();
-    s.set('GET /app/api/threads', (call) => (call.query.limit === '7' ? { body: { threads: [], next: null } } : apiError('APP_INTERNAL', 'Сервер сейчас не отвечает. Попробуйте позже.', 500)));
+    s.set('GET /app/api/threads', (call) => (call.query.limit === '10' ? { body: { threads: [], next: null } } : apiError('APP_INTERNAL', 'Сервер сейчас не отвечает. Попробуйте позже.', 500)));
     renderApp('/agents/sales?thread=t1');
     const { user, dialog } = await open();
     expect(await within(dialog).findByText('Сервер сейчас не отвечает. Попробуйте позже.')).toBeInTheDocument();
@@ -190,7 +190,7 @@ describe('search over conversations and projects', () => {
     expect(searches(s)).toHaveLength(0);
   });
 
-  // Decision of the owner 17.11: a project beyond the seven of the side panel goes into it from here.
+  // Decision of the owner 17.11: a project beyond the ten of the side panel goes into it from here.
   it('pins a project to the side panel from its row, before a query and among the found ones', async () => {
     const s = server();
     s.set('PUT /app/api/projects/p3', { body: { ...PROJECTS[2], pinned: true } });

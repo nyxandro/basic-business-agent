@@ -7,7 +7,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 
 // How many projects the panel shows, as many as «Недавние» (request of the owner 17.11); the pinned
 // ones are all shown, however many.
-export const PROJECTS_SHOWN = 7;
+export const PROJECTS_SHOWN = 10;
 
 function indexOf(list: readonly ProjectDto[], id: string): number {
   const index = list.findIndex((p) => p.id === id);
