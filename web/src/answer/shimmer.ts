@@ -1,4 +1,4 @@
-// The light running over the words of an answer while they are written (chat.module.css, `.answer`):
+// The light running over the words of an answer while they are written (answer-text.module.css, `.answer`):
 // it does not stop when the last word comes but goes out softly, so it stays on a little longer.
 import { useEffect, useState } from 'react';
 

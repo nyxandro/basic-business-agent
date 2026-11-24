@@ -355,7 +355,7 @@ describe('checkArchitecture: modules of core and folders of web do not import ea
     ]);
   });
 
-  it('does not count imports of types only, or imports made by tests and test helpers', async () => {
+  it('does not count imports of types only, or imports made by tests and the test/ folders of helpers', async () => {
     const r = repo({
       'core/http/http.ts': "import type { Access } from '../auth/access.ts';\nexport type Env = { access: Access };\n",
       'core/auth/access.ts': 'export type Access = { userId: string };\n',
@@ -364,8 +364,6 @@ describe('checkArchitecture: modules of core and folders of web do not import ea
       'core/memory/routes.ts': "import '../projects/access.ts';\n",
       'core/projects/access.ts': OK,
       'core/projects/access.test.ts': "import '../memory/routes.ts';\n",
-      'core/mail/test-server.ts': "import '../projects/access.ts';\n",
-      'core/projects/mail.ts': "import '../mail/test-server.ts';\n",
       'web/src/main.tsx': "import './app/App.tsx';\n",
       'web/src/app/App.tsx': "import '../projects/ProjectPage.tsx';\n",
       'web/src/projects/ProjectPage.tsx': OK,
@@ -375,6 +373,15 @@ describe('checkArchitecture: modules of core and folders of web do not import ea
       'web/src/app/App.test.tsx': "import '../test/render.tsx';\n",
     });
     expect(await checkArchitecture(r)).toEqual([]);
+  });
+
+  it('counts a file named test-*.ts next to production code like any other file', async () => {
+    const r = repo({
+      'core/mail/test-connection.ts': "import { sees } from '../projects/access.ts';\nexport const check = sees;\n",
+      'core/projects/access.ts': OK,
+      'core/projects/mail.ts': "import { check } from '../mail/test-connection.ts';\nexport const m = check;\n",
+    });
+    expect(lines(await checkArchitecture(r))).toEqual(['no-circular-modules: core/mail -> core/projects']);
   });
 });
 

@@ -133,7 +133,7 @@ export const COMPUTED_RULES = {
     'Modules of core (core/<module>) or folders of web (web/src/<folder>) import each other in a circle at run time, directly or through others: ' +
     'none of them can be understood or changed alone. Each module has its level and imports only modules below it: move what a lower module ' +
     'needs from a higher one down (into its own or a new module), or let the higher one pass it as a parameter. ' +
-    'Imports of types only, tests and test helpers (test-*.ts, test/) do not count.',
+    'Imports of types only, tests and the test/ folders of helpers do not count; a file named test-*.ts next to code counts.',
   'unresolved-local-import':
     'A local import leads to no file, so no rule can check where it goes. Fix the path (with its extension) or remove the import.',
 } as const;

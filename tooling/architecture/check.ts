@@ -10,7 +10,7 @@ export interface Violation {
   rule: string;
   from: string;
   to: string;
-  // The circle for a circular import; one file of each direction for mutual modules.
+  // The circle for a circular import; one file import for each arrow of a circle of modules.
   detail?: string;
 }
 
@@ -30,8 +30,9 @@ const RESOLVE = {
 
 // A module of core (core/<module>) or a folder of web (web/src/<folder>): the unit that must not be in a circle.
 const MODULE = /^(core\/[^/]+|web\/src\/[^/]+)\//;
-// Tests and what only tests use: test-*.ts helpers and test/ folders.
-const TEST_CODE = /\.test\.tsx?$|(^|\/)test\/|(^|\/)test-[^/]+\.tsx?$/;
+// Tests and the test/ folders of helpers. A file is not excused by its name: a helper named test-*.ts next to
+// production code counts like any other file (a working «test-connection.ts» must not drop out of the check).
+const TEST_CODE = /\.test\.tsx?$|(^|\/)test\//;
 
 type ComputedRule = keyof typeof COMPUTED_RULES;
 const violation = (rule: ComputedRule, from: string, to: string, detail?: string): Violation => ({ rule, from, to, ...(detail ? { detail } : {}) });
