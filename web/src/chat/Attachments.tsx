@@ -23,7 +23,7 @@ import type { WaitingFile } from './attach.ts';
 import { AttachmentStack, MAX_CHIPS } from './AttachmentStack.tsx';
 import type { UploadProgress } from './upload-progress.ts';
 import { FileRing } from './UploadRing.tsx';
-import { useChatExtras } from './chat-context.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 import { chipMin, chipWidths, stableRows, type ChipSize } from './chip-rows.ts';
 import { FileName } from './FileName.tsx';
 import styles from './attachments.module.css';

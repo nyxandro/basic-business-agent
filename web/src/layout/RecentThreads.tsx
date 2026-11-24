@@ -8,14 +8,14 @@
 import type { ThreadState, ThreadSummaryDto } from '@bba/contracts';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchThreadPage } from '../chat/api.ts';
+import { fetchThreadPage } from '../threads/api.ts';
 import { ru } from '../i18n/ru.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import styles from './shell.module.css';
-import { threadPath, ThreadRow } from './ThreadRow.tsx';
+import styles from '../shell/shell.module.css';
+import { threadPath, ThreadRow } from '../threads/ThreadRow.tsx';
 
 // How many of the newest conversations the panel shows (decision of the owner 15.11).
 export const RECENT_SHOWN = 7;

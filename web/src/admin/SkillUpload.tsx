@@ -4,12 +4,12 @@
 import type { AdminDepartment, AdminPerson, SkillAccess, SkillPreview } from '@bba/contracts';
 import { useRef, useState } from 'react';
 import { Button } from '../ui/Button.tsx';
-import { fileSize, plural } from '../ui/format.ts';
+import { fileSize, plural } from '../i18n/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { AccessPicker, accessIsEmpty } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './skills.module.css';
 

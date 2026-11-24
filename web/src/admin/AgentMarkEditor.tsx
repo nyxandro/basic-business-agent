@@ -17,7 +17,7 @@ import { Segmented } from '../ui/Segmented.tsx';
 import { AgentImageError, prepareAgentImage } from './agent-image.ts';
 import { adminApi } from './api.ts';
 import styles from './interface.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import { hasRight } from './sections.ts';
 import section from './section.module.css';
 

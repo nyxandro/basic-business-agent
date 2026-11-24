@@ -17,8 +17,9 @@ import { Modal } from '../ui/Modal.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { adminApi } from './api.ts';
 import styles from './models.module.css';
+import chips from '../ui/chips.module.css';
 import { fromField, toField } from './numbers.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 const PRICE_FIELDS: { key: keyof TokenPricesInput; label: string }[] = [
@@ -61,9 +62,9 @@ function readPrices(p: Prices): TokenPricesInput | null {
 
 function Chips<V extends string>({ label, value, options, onChange, disabled }: { label: string; value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; disabled?: boolean }) {
   return (
-    <div role="group" aria-label={label} className={styles.chips}>
+    <div role="group" aria-label={label} className={chips.row}>
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={value === o.value} disabled={disabled} className={cx(styles.chip, value === o.value && styles.chipOn)} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" aria-pressed={value === o.value} disabled={disabled} className={cx(chips.chip, value === o.value && chips.on)} onClick={() => onChange(o.value)}>
           {o.label}
         </button>
       ))}

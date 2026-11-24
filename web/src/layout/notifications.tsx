@@ -8,12 +8,12 @@ import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-route
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { fetchCounts, markRead } from '../notifications/api.ts';
 import { usePresence } from '../notifications/presence.ts';
-import { NotificationsPanel, type PanelTab } from '../notifications/NotificationsPanel.tsx';
+import { NotificationsPanel } from './NotificationsPanel.tsx';
 import { keepOwnSubscription, OPEN_MESSAGE } from '../notifications/push.ts';
 import { Sheet } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
-import { NotificationsContext } from './notifications-context.ts';
-import { useMedia, WIDE_QUERY } from './use-media.ts';
+import { NotificationsContext, type PanelTab } from '../notifications/notifications-context.ts';
+import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 
 const NO_STATES: Readonly<Record<string, ThreadState>> = {};
 const LIVE_PATH = '/app/api/me/events';
@@ -112,11 +112,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
   const threadStates = counts?.threads ?? NO_STATES;
-  const value = useMemo(() => ({ counts, threadStates, refresh, panel, openPanel, closePanel }), [counts, threadStates, refresh, panel, openPanel, closePanel]);
+  const value = useMemo(() => ({ counts, threadStates, refresh, panel, openPanel, closePanel, Panel: NotificationsPanel }), [counts, threadStates, refresh, panel, openPanel, closePanel]);
   return (
     <NotificationsContext value={value}>
       {children}
-      {/* On a computer the panel opens under the bell (layout/ChatHeader.tsx). */}
+      {/* On a computer the panel opens under the bell (shell/ChatHeader.tsx). */}
       {wide ? null : (
         <Sheet open={panel.open} onClose={closePanel} label={t.bell}>
           {panel.open ? <NotificationsPanel compact onClose={closePanel} /> : null}

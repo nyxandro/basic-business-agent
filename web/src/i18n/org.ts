@@ -1,5 +1,5 @@
 // Texts of «Бланк, печать и подпись» in «Профиль организации» (docs/specs/[20.11.2026]-org-letterhead.md, section 12).
-import { plural } from '../ui/format.ts';
+import { plural } from './format.ts';
 
 export const orgTexts = {
   title: 'Бланк, печать и подпись',

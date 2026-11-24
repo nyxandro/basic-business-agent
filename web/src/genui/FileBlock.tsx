@@ -4,16 +4,16 @@
 import { fileBlockResultSchema, isExampleName, previewKindOf, type ThreadFileStatus } from '@bba/contracts';
 import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { asApiError } from '../api/client.ts';
-import { fetchThreadFileStatus, threadFilePreviewUrl, threadFileUrl } from '../chat/api.ts';
+import { fetchThreadFileStatus, threadFilePreviewUrl, threadFileUrl } from '../threads/api.ts';
 import { restoreFromTrash, trashFileUrl } from '../projects/api.ts';
-import { parseToolResult } from '../chat/tool-result.ts';
+import { parseToolResult } from '../answer/tool-result.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
-import { useChatSend } from '../chat/chat-send.ts';
+import { useChatSend } from '../answer/chat-send.ts';
 import { ExampleButton } from '../feedback/ExampleButton.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
-import { fileSize, fullDate } from '../ui/format.ts';
+import { fileSize, fullDate } from '../i18n/format.ts';
 import { Preparing, type CallProps } from './CatalogBlock.tsx';
 import styles from './genui.module.css';
 

@@ -8,10 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { ME, mockServer } from '../test/fetch-mock.ts';
 import { ToastProvider } from '../ui/Toast.tsx';
-import { AnswerText } from './AnswerText.tsx';
+import { AnswerText } from '../answer/AnswerText.tsx';
 import { AssistantTurn } from './AssistantMessage.tsx';
-import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
-import { SHIMMER_FADE_MS } from './shimmer.ts';
+import { ChatExtrasContext, type ChatExtras } from '../answer/chat-context.ts';
+import { SHIMMER_FADE_MS } from '../answer/shimmer.ts';
 
 vi.mock('@copilotkit/react-core', async (original) => ({
   ...(await original<typeof import('@copilotkit/react-core')>()),

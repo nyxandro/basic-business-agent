@@ -3,8 +3,8 @@
 // and «Ответить заново» takes the broken last turn back so the question is sent once more.
 import { ANSWER_AGAIN_CODES, CHAT_EVENTS, failedTurnsSchema, messageDiscardedSchema, type ActionDescription, type FailedTurns } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
-import { retryTurn } from './api.ts';
-import { parseToolResult } from './tool-result.ts';
+import { retryTurn } from '../threads/api.ts';
+import { parseToolResult } from '../answer/tool-result.ts';
 
 interface CustomEventParams {
   event: { name: string; value: unknown };

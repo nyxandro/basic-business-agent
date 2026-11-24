@@ -10,13 +10,12 @@ import { Button, ButtonLink, cx } from '../ui/Button.tsx';
 import { Card, EmptyState, PageHead, Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Select, TextArea } from '../ui/Field.tsx';
-import { dateTime, fileSize, fullDate } from '../ui/format.ts';
+import { dateTime, fileSize, fullDate } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { ru } from '../i18n/ru.ts';
-import { Feedback, useAction } from '../admin/parts.tsx';
-import models from '../admin/models.module.css';
-import section from '../admin/section.module.css';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
+import chips from '../ui/chips.module.css';
 import { ticket, ticketFileUrl, tickets, updateTicket } from './api.ts';
 import styles from './feedback.module.css';
 
@@ -28,11 +27,11 @@ export function SupportSection() {
   const load = useCallback(() => tickets(status), [status]);
   const { state, reload } = useLoad(load);
   return (
-    <div className={section.stack}>
+    <div className={styles.stack}>
       <PageHead title={t.title} lead={t.lead} />
-      <div role="group" aria-label={t.state} className={models.chips}>
+      <div role="group" aria-label={t.state} className={chips.row}>
         {[null, ...SUPPORT_STATUSES].map((s) => (
-          <button key={s ?? 'all'} type="button" aria-pressed={status === s} className={cx(models.chip, status === s && models.chipOn)} onClick={() => setStatus(s)}>
+          <button key={s ?? 'all'} type="button" aria-pressed={status === s} className={cx(chips.chip, status === s && chips.on)} onClick={() => setStatus(s)}>
             {s ? t.status[s] : t.all}
           </button>
         ))}
@@ -125,8 +124,8 @@ export function TicketPage() {
   const [fresh, setFresh] = useState<AdminTicketDto | null>(null);
   const data = fresh ?? (state.status === 'ready' ? state.data : null);
   return (
-    <div className={section.stack}>
-      <Link to="/admin/support" className={section.note}>
+    <div className={styles.stack}>
+      <Link to="/admin/support" className={styles.note}>
         ← {t.back}
       </Link>
       {state.status === 'loading' ? <DelayedBar /> : null}

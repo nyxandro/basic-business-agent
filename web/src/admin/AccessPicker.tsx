@@ -2,8 +2,9 @@
 // — for skills and background tasks. The lists matter for the last two only.
 import type { AdminDepartment, AdminPerson, SkillAccess, SkillScope } from '@bba/contracts';
 import { cx } from '../ui/Button.tsx';
-import { Checklist } from './parts.tsx';
+import { Checklist } from '../ui/form-parts.tsx';
 import styles from './models.module.css';
+import chips from '../ui/chips.module.css';
 
 const SCOPES: { value: SkillScope; label: string }[] = [
   { value: 'org', label: 'Вся организация' },
@@ -24,9 +25,9 @@ export function AccessPicker({ value, onChange, departments, users, legend = 'К
   return (
     <fieldset className={styles.prices}>
       <legend className={styles.legend}>{legend}</legend>
-      <div role="group" aria-label={legend} className={styles.chips}>
+      <div role="group" aria-label={legend} className={chips.row}>
         {SCOPES.map((s) => (
-          <button key={s.value} type="button" aria-pressed={value.scope === s.value} className={cx(styles.chip, value.scope === s.value && styles.chipOn)} onClick={() => onChange({ ...value, scope: s.value })}>
+          <button key={s.value} type="button" aria-pressed={value.scope === s.value} className={cx(chips.chip, value.scope === s.value && chips.on)} onClick={() => onChange({ ...value, scope: s.value })}>
             {s.label}
           </button>
         ))}

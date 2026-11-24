@@ -2,11 +2,11 @@
 // opens it at once; an employee without rights never loads it (spec, section 8.22).
 import { screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { preloadAdminCode } from '../app/admin-code.ts';
+import { preloadAdminCode } from '../admin/admin-code.ts';
 import { ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
-vi.mock('../app/admin-code.ts', () => ({ loadAdminCode: vi.fn(() => new Promise(() => undefined)), preloadAdminCode: vi.fn() }));
+vi.mock('../admin/admin-code.ts', () => ({ loadAdminCode: vi.fn(() => new Promise(() => undefined)), preloadAdminCode: vi.fn() }));
 
 const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 

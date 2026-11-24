@@ -15,7 +15,7 @@ import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
 import { Attachments } from './Attachments.tsx';
 import type { WaitingFile } from './attach.ts';
 import type { UploadProgress } from './upload-progress.ts';
-import { useChatExtras } from './chat-context.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
 

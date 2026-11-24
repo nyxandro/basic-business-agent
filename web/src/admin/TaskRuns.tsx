@@ -4,7 +4,7 @@ import type { AdminTask } from '@bba/contracts';
 import { useCallback } from 'react';
 import { Pill, type Tone } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dateTime } from '../ui/format.ts';
+import { dateTime } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';

@@ -1,10 +1,10 @@
 // «Мои расходы» (spec, F5): spent of the monthly limit and, for subscription models, today's tokens.
 // Each is a single figure with a meter under it.
 import { ru } from '../i18n/ru.ts';
-import { PageFrame } from '../layout/PageFrame.tsx';
+import { PageFrame } from '../shell/PageFrame.tsx';
 import { Card, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dayMonth, monthName, rub, thousands } from '../ui/format.ts';
+import { dayMonth, monthName, rub, thousands } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchMyUsage } from './api.ts';

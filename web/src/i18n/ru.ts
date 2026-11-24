@@ -1,6 +1,6 @@
 // Texts of the interface (spec, sections 7, 9 and 12). Server errors bring their own Russian text;
 // here are only the texts of the screens and of the errors the browser detects itself.
-import { plural } from '../ui/format.ts';
+import { plural } from './format.ts';
 import { marksTexts } from './marks.ts';
 import { mcpAdminTexts, mcpEmployeeTexts } from './mcp.ts';
 import { chainsTexts } from './chains.ts';
@@ -380,7 +380,7 @@ export const ru = {
     toolFailed: (what: string) => `Действие «${what}» не выполнилось.`,
     connectInSettings: 'Подключить в настройках',
     declinedAction: 'Действие отменено',
-    // A call without its result that is not under way (web/src/chat/call-progress.ts).
+    // A call without its result that is not under way (web/src/answer/call-progress.ts).
     toolWaiting: 'Ждёт вашего подтверждения',
     toolStopped: 'Прервано',
     supersededAction: 'Отменено: вы написали новое сообщение',

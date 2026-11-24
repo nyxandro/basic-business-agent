@@ -6,13 +6,13 @@ import { useCallback, useState } from 'react';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, Progress } from '../ui/Display.tsx';
-import { plural, thousands, whenLabel } from '../ui/format.ts';
+import { plural, thousands, whenLabel } from '../i18n/format.ts';
 import { Menu, MenuAnchor, MenuItem, MenuSeparator } from '../ui/Menu.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { adminApi } from './api.ts';
 import { ChatGptConnect } from './ChatGptConnect.tsx';
 import styles from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });

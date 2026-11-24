@@ -4,7 +4,7 @@
 import { CHART_SERIES_MAX, chartBlockSchema, type ChartBlock } from '@bba/contracts';
 import { lazy } from 'react';
 
-// The chart of the chat is loaded with the first chart, as in the chat (web/src/genui/renderers.tsx).
+// The chart of the chat is loaded with the first chart, as in the chat (web/src/chat/renderers.tsx).
 export const ChartWidget = lazy(() => import('../genui/ChartBlock.tsx').then((m) => ({ default: m.ChartBlockView })));
 
 interface WidgetChart {

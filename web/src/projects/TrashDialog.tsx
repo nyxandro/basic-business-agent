@@ -8,7 +8,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
-import { dateTime, fileSize, fullDate } from '../ui/format.ts';
+import { dateTime, fileSize, fullDate } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';

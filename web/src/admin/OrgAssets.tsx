@@ -17,7 +17,7 @@ import { useLoad } from '../ui/use-load.ts';
 import { useDocumentViewer } from '../viewer/use-viewer.tsx';
 import { adminApi } from './api.ts';
 import styles from './org-assets.module.css';
-import { Checklist, Feedback, useAction } from './parts.tsx';
+import { Checklist, Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import { OrgImageError, prepareOrgImage, type OrgPictureKind } from './stamp-image.ts';
 

@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockServer } from '../test/fetch-mock.ts';
 import { UserMessage } from './UserMessage.tsx';
-import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
+import { ChatExtrasContext, type ChatExtras } from '../answer/chat-context.ts';
 
 const extras = { threadId: 't1' } as ChatExtras;
 const message = 'Вот файлы\n\nВложения:\n- Схема.png (файл в рабочей папке: Схема.png)\n- Договор.docx (файл в рабочей папке: Договор.docx)';

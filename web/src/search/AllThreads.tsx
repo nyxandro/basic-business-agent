@@ -4,9 +4,9 @@
 import type { ThreadSummaryDto } from '@bba/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
-import { fetchThreadPage, THREAD_PAGE } from '../chat/api.ts';
+import { fetchThreadPage, THREAD_PAGE } from '../threads/api.ts';
 import { ru } from '../i18n/ru.ts';
-import { threadPath } from '../layout/ThreadRow.tsx';
+import { threadPath } from '../threads/ThreadRow.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import styles from './search.module.css';

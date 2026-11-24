@@ -5,8 +5,8 @@
 import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import { standardUI, type GenerativeUIComponentProps } from '@copilotkit/react-core/generative-ui';
 import { createContext, lazy, Suspense, useContext, useState, type ComponentType, type CSSProperties } from 'react';
-import { OWN_PICTURES_ONLY } from '../chat/AnswerText.tsx';
-import chatStyles from '../chat/chat.module.css';
+import { OWN_PICTURES_ONLY } from '../answer/AnswerText.tsx';
+import answerText from '../answer/answer-text.module.css';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -266,7 +266,7 @@ function Chart(props: Props<'Chart'>) {
 function Markdown(props: Props<'Markdown'>) {
   return (
     <div className="a2ui-markdown">
-      <StreamingMarkdownDefaultRenderer content={props.text ?? ''} isStreaming={props.streaming === true} caret={false} className={chatStyles.markdown} nodeRenderers={OWN_PICTURES_ONLY} />
+      <StreamingMarkdownDefaultRenderer content={props.text ?? ''} isStreaming={props.streaming === true} caret={false} className={answerText.markdown} nodeRenderers={OWN_PICTURES_ONLY} />
     </div>
   );
 }

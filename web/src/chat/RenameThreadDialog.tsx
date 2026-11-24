@@ -12,7 +12,7 @@ import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import { fetchThreadName, renameThread } from './api.ts';
+import { fetchThreadName, renameThread } from '../threads/api.ts';
 import styles from './chat.module.css';
 
 const NOT_FOUND = 'APP_NOT_FOUND';

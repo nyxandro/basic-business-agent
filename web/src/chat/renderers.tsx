@@ -4,21 +4,21 @@ import { cardBlockSchema, chartBlockSchema, choiceBlockSchema, formBlockSchema, 
 import { useAgent, useCopilotKit, useRenderTool } from '@copilotkit/react-core';
 import { lazy, Suspense, useCallback } from 'react';
 import { z } from 'zod';
-import { ToolRow } from '../chat/ToolRow.tsx';
-import { BrokenData } from './BrokenData.tsx';
-import { CardBlockView } from './CardBlock.tsx';
-import { CatalogBlock, Preparing, type CallProps } from './CatalogBlock.tsx';
-import { answerOf } from './answer.ts';
-import { ChoiceBlockView } from './ChoiceBlock.tsx';
-import { FileCall } from './FileBlock.tsx';
-import { useChatExtras } from '../chat/chat-context.ts';
-import { FormBlockView } from './FormBlock.tsx';
-import { TableBlockView } from './TableBlock.tsx';
-import { WebSearch } from '../chat/WebSearch.tsx';
+import { ToolRow } from './ToolRow.tsx';
+import { BrokenData } from '../genui/BrokenData.tsx';
+import { CardBlockView } from '../genui/CardBlock.tsx';
+import { CatalogBlock, Preparing, type CallProps } from '../genui/CatalogBlock.tsx';
+import { answerOf } from '../genui/answer.ts';
+import { ChoiceBlockView } from '../genui/ChoiceBlock.tsx';
+import { FileCall } from '../genui/FileBlock.tsx';
+import { useChatExtras } from '../answer/chat-context.ts';
+import { FormBlockView } from '../genui/FormBlock.tsx';
+import { TableBlockView } from '../genui/TableBlock.tsx';
+import { WebSearch } from './WebSearch.tsx';
 import { WidgetCall } from '../widgets/WidgetCall.tsx';
 
 // A chart is drawn by code most conversations never need: it is loaded with the first chart.
-const ChartBlockView = lazy(() => import('./ChartBlock.tsx').then((m) => ({ default: m.ChartBlockView })));
+const ChartBlockView = lazy(() => import('../genui/ChartBlock.tsx').then((m) => ({ default: m.ChartBlockView })));
 
 // CopilotKit only needs the arguments as an object; the real check is the catalog schema below.
 const anyArgs = z.record(z.string(), z.unknown());

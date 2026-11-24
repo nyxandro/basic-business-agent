@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from '
 import { createPortal } from 'react-dom';
 import { ru } from '../i18n/ru.ts';
 import { imageType, readCapped } from '../viewer/read.ts';
-import { threadFileUrl } from './api.ts';
+import { threadFileUrl } from '../threads/api.ts';
 import styles from './attachments.module.css';
 
 // A pass of the mouse over the row is not a wish to see: the window opens after the mouse rests this long.

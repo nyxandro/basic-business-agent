@@ -1,36 +1,3 @@
-.newProject {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 3px 3px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--acc);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px var(--ring);
-  color: var(--muted);
-  animation: global(bba-pop) 0.4s var(--ease-out) both;
-}
-
-.newInput {
-  flex: 1;
-  min-width: 0;
-  height: 30px;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-}
-
-/* The box around the field already shows the focus with its accent border and ring. */
-.newInput:focus-visible {
-  outline: none;
-}
-
-.newInput::placeholder {
-  color: var(--muted);
-}
-
 .fieldError {
   margin: 4px 12px 0;
   font-size: 12px;

@@ -13,7 +13,7 @@ import { Field, TextArea } from '../ui/Field.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { adminApi } from './api.ts';
 import styles from './agents.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 
 // The order the server puts the layers in on every request (spec, section 9).
 const LAYERS = ['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект: память, разговоры, файлы', 'Личная память'];

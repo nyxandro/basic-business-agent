@@ -3,7 +3,7 @@
 // and the same numbers as a table for screen readers.
 import { useState } from 'react';
 import { cx } from '../ui/Button.tsx';
-import { rub } from '../ui/format.ts';
+import { rub } from '../i18n/format.ts';
 import type { DailySpend } from './api.ts';
 import styles from './limits.module.css';
 

@@ -6,10 +6,10 @@ import { useState } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { Field, Input, Select } from '../ui/Field.tsx';
-import { rub } from '../ui/format.ts';
+import { rub } from '../i18n/format.ts';
 import { adminApi } from './api.ts';
 import { fromField, toField } from './numbers.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './limits.module.css';
 
 const INVALID = 'Нужно число не меньше нуля; для токенов — целое.';

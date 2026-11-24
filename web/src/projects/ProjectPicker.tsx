@@ -6,7 +6,7 @@
 import type { ProjectDto } from '@bba/contracts';
 import { useState, type KeyboardEvent } from 'react';
 import { ru } from '../i18n/ru.ts';
-import { useMedia } from '../layout/use-media.ts';
+import { useMedia } from '../ui/use-media.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { SearchInput } from '../ui/Field.tsx';
 import { MenuItem, MenuSeparator, MenuTitle } from '../ui/Menu.tsx';

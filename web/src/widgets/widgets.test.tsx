@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TurnStateContext, type TurnState } from '../chat/call-progress.ts';
+import { TurnStateContext, type TurnState } from '../answer/call-progress.ts';
 import { toolSummary } from '../chat/tool-summary.ts';
 import { widgetsUI } from './catalog.ts';
 import { drawableOperations, laterChanges } from './operations.ts';

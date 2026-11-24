@@ -6,7 +6,7 @@ import { useCallback, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useMe } from '../auth/session.tsx';
 import { usePresence } from '../notifications/presence.ts';
-import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
+import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Avatar } from '../ui/Display.tsx';
 import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';

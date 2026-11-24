@@ -60,13 +60,13 @@
   --ring: rgba(79, 70, 229, 0.16);
   --ring-strong: rgba(79, 70, 229, 0.45);
   --user-bubble: #f0f0f8;
-  /* The light running over the words of an answer being written (chat/shimmer.ts). */
+  /* The light running over the words of an answer being written (answer/shimmer.ts). */
   --glow: #8b85f0;
   --ok: #0b7a57;
   --ok-soft: #e6f6ef;
   --warn: #975a00;
   --warn-soft: #fff3dc;
-  /* A bright amber for marks with a dark sign on them (layout/ThreadState.tsx). */
+  /* A bright amber for marks with a dark sign on them (threads/ThreadState.tsx). */
   --warn-mark: #f5a524;
   --bad: #b42318;
   --bad-soft: #fdecea;

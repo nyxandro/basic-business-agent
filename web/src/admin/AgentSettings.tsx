@@ -9,7 +9,7 @@ import { Card, CardHead } from '../ui/Display.tsx';
 import { Field, Input, Select } from '../ui/Field.tsx';
 import { adminApi } from './api.ts';
 import styles from './agents.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import { AgentAbilities } from './AgentAbilities.tsx';
 
 const MAX_STARTERS = 3;

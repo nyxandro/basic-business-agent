@@ -9,7 +9,7 @@ import type { ThreadProjectResponse } from '@bba/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
-import { useShell } from '../layout/AppShell.tsx';
+import { useShell } from '../shell/shell-context.ts';
 import { useLoad, type LoadState } from '../ui/use-load.ts';
 import { fetchProject, fetchThreadProject, setThreadProject } from './api.ts';
 

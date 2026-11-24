@@ -10,7 +10,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { useUnfinished } from './call-progress.ts';
+import { useUnfinished } from '../answer/call-progress.ts';
 import styles from './chat.module.css';
 import { toolSummary, type ToolStatus } from './tool-summary.ts';
 

@@ -1,6 +1,6 @@
 // Checks the architecture of the repository (spec, section 17.2): dependency-cruiser builds the
 // import graph and applies the rules of rules.ts; over its graph we compute what its rules cannot
-// express — circles of run-time imports, core modules importing each other, imports leading nowhere.
+// express — circles of run-time imports between files and between modules, imports leading nowhere.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { cruise, type ICruiseResult, type IDependency } from 'dependency-cruiser';
@@ -28,8 +28,10 @@ const RESOLVE = {
   extensions: ['.ts', '.tsx', '.mts', '.js', '.mjs', '.d.ts'],
 };
 
-const CORE_MODULE = /^core\/([^/]+)\//;
-const TEST_FILE = /\.test\.tsx?$/;
+// A module of core (core/<module>) or a folder of web (web/src/<folder>): the unit that must not be in a circle.
+const MODULE = /^(core\/[^/]+|web\/src\/[^/]+)\//;
+// Tests and what only tests use: test-*.ts helpers and test/ folders.
+const TEST_CODE = /\.test\.tsx?$|(^|\/)test\/|(^|\/)test-[^/]+\.tsx?$/;
 
 type ComputedRule = keyof typeof COMPUTED_RULES;
 const violation = (rule: ComputedRule, from: string, to: string, detail?: string): Violation => ({ rule, from, to, ...(detail ? { detail } : {}) });
@@ -110,26 +112,30 @@ function circles(graph: Map<string, string[]>): Violation[] {
   });
 }
 
-function mutualModules(graph: Map<string, string[]>): Violation[] {
+// Modules joined by run-time imports of their files, the imports of tests aside. One violation per group of
+// modules in a circle: its shortest circle through the first module, with one file import for each arrow.
+function moduleCircles(graph: Map<string, string[]>): Violation[] {
+  const modules = new Map<string, string[]>();
   // `a>b` -> the first run-time import from module a to module b, as "file -> file".
-  const edges = new Map<string, string>();
+  const examples = new Map<string, string>();
   for (const [source, targets] of graph) {
-    const from = CORE_MODULE.exec(source)?.[1];
-    if (!from || TEST_FILE.test(source)) continue;
+    const from = MODULE.exec(source)?.[1];
+    if (!from || TEST_CODE.test(source)) continue;
+    if (!modules.has(from)) modules.set(from, []);
     for (const target of targets) {
-      const to = CORE_MODULE.exec(target)?.[1];
+      const to = MODULE.exec(target)?.[1];
       if (!to || to === from) continue;
       const key = `${from}>${to}`;
-      if (!edges.has(key)) edges.set(key, `${source} -> ${target}`);
+      if (examples.has(key)) continue;
+      examples.set(key, `${source} -> ${target}`);
+      modules.get(from)!.push(to);
     }
   }
-  const pairs: Violation[] = [];
-  for (const [key, example] of edges) {
-    const [from, to] = key.split('>') as [string, string];
-    const back = edges.get(`${to}>${from}`);
-    if (back && from < to) pairs.push(violation('core-no-mutual-modules', `core/${from}`, `core/${to}`, `${example}; ${back}`));
-  }
-  return pairs;
+  return circularGroups(modules).map((group) => {
+    const circle = circleOf(group, modules);
+    const arrows = circle.slice(1).map((to, i) => examples.get(`${circle[i]!}>${to}`)!);
+    return violation('no-circular-modules', circle[0]!, circle[1]!, arrows.join('; '));
+  });
 }
 
 function unresolvedLocalImports(result: ICruiseResult): Violation[] {
@@ -158,7 +164,7 @@ export async function checkArchitecture(root: string): Promise<Violation[]> {
   const violations: Violation[] = [
     ...output.summary.violations.map((v) => ({ rule: v.rule.name, from: v.from, to: v.to })),
     ...circles(graph),
-    ...mutualModules(graph),
+    ...moduleCircles(graph),
     ...unresolvedLocalImports(output),
   ];
   return violations.sort((a, b) => a.rule.localeCompare(b.rule) || a.from.localeCompare(b.from) || a.to.localeCompare(b.to));

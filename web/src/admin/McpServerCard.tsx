@@ -7,7 +7,7 @@ import { Button, cx } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, Pill, Progress } from '../ui/Display.tsx';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './systems.module.css';
 import mcp from './mcp.module.css';

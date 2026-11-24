@@ -6,7 +6,7 @@ import { useCallback } from 'react';
 import { useMe } from '../auth/session.tsx';
 import { Card, PageHead, Progress } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dayMonth, rub } from '../ui/format.ts';
+import { dayMonth, rub } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi, type DailySpend } from './api.ts';

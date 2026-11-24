@@ -6,7 +6,7 @@ import { Button } from '../ui/Button.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { adminApi } from './api.ts';
-import { Checklist, Feedback, useAction } from './parts.tsx';
+import { Checklist, Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './section.module.css';
 
 export const RESET_CREATED = 'Ссылка для смены пароля создана. Она действует 24 часа — отправьте её сотруднику.';

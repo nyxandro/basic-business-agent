@@ -5,12 +5,12 @@ import { useState } from 'react';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { dateTime } from '../ui/format.ts';
+import { dateTime } from '../i18n/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { adminApi } from './api.ts';
 import styles from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 export function KeysList({ model, onClose, onChanged }: { model: ModelDto; onClose: () => void; onChanged: () => void }) {

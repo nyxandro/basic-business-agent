@@ -3,7 +3,7 @@
 import type { SearchFile, SearchFiles } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
-import { dayLabel } from '../ui/format.ts';
+import { dayLabel } from '../i18n/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Marked } from './Marked.tsx';
 import styles from './search.module.css';

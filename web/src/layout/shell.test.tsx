@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { PHONE_WIDTH, stubSystemTheme } from '../test/match-media.ts';
 import { renderApp } from '../test/render.tsx';
-import { LAST_AGENT_KEY } from './AppShell.tsx';
+import { LAST_AGENT_KEY } from '../shell/shell-context.ts';
 
 const AGENTS = [
   { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },

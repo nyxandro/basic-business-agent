@@ -3,8 +3,8 @@
 import type { MyUsage } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
 import { cx } from '../ui/Button.tsx';
-import { dayMonth, monthName } from '../ui/format.ts';
-import styles from './shell.module.css';
+import { dayMonth, monthName } from '../i18n/format.ts';
+import styles from '../shell/shell.module.css';
 
 const FULL = 100;
 

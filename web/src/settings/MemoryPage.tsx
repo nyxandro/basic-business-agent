@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { PageFrame } from '../layout/PageFrame.tsx';
+import { PageFrame } from '../shell/PageFrame.tsx';
 import { forgetMemory } from '../memory/api.ts';
 import { MemoryEntries } from '../memory/MemoryEntries.tsx';
 import { Button } from '../ui/Button.tsx';

@@ -1,0 +1,30 @@
+/* Filter chips: one of several choices, as a row of pills (admin forms and sections, «Поддержка»). */
+.row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.on {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--on-acc);
+}

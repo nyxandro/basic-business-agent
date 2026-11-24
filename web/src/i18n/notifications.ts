@@ -1,5 +1,5 @@
 // Texts of notifications in the browser and the bell (docs/specs/[20.11.2026]-notifications.md, section 12).
-import { plural } from '../ui/format.ts';
+import { plural } from './format.ts';
 
 export const notificationTexts = {
   bell: 'Уведомления',

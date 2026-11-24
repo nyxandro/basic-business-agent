@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { TurnStateContext, type TurnState } from '../chat/call-progress.ts';
+import { TurnStateContext, type TurnState } from '../answer/call-progress.ts';
 import { CardBlockView } from './CardBlock.tsx';
 import { CatalogBlock, type CallProps } from './CatalogBlock.tsx';
 import { ChartBlockView, pieSlices } from './ChartBlock.tsx';

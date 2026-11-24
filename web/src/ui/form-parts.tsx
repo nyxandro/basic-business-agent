@@ -3,11 +3,11 @@
 // checkboxes.
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
-import { Button, cx } from '../ui/Button.tsx';
-import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { Icon } from '../ui/Icon.tsx';
-import { useToast } from '../ui/Toast.tsx';
-import styles from './parts.module.css';
+import { Button, cx } from './Button.tsx';
+import { ErrorBanner } from './ErrorBanner.tsx';
+import { Icon } from './Icon.tsx';
+import { useToast } from './Toast.tsx';
+import styles from './form-parts.module.css';
 
 export const SAVED = 'Сохранено';
 

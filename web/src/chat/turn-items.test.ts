@@ -3,7 +3,7 @@
 import { GENUI_TOOL, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { describe, expect, it } from 'vitest';
-import { callsUnderWay } from './call-progress.ts';
+import { callsUnderWay } from '../answer/call-progress.ts';
 import { turnItems } from './turn-items.ts';
 
 const call = (id: string, name = 'mastra_workspace_execute_command') => ({ id, type: 'function' as const, function: { name, arguments: '{}' } });

@@ -7,12 +7,12 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, EmptyState, IconTile, PageHead, initials } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { plural } from '../ui/format.ts';
+import { plural } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
-import { Checklist, Feedback, useAction } from './parts.tsx';
+import { Checklist, Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './people.module.css';
 import section from './section.module.css';
 

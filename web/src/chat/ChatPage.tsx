@@ -7,9 +7,9 @@ import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from '
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
-import { ChatHeader } from '../layout/ChatHeader.tsx';
-import { EmptyInstallation } from '../layout/EmptyInstallation.tsx';
-import { rememberAgent, useShell } from '../layout/AppShell.tsx';
+import { ChatHeader } from '../shell/ChatHeader.tsx';
+import { EmptyInstallation } from '../shell/EmptyInstallation.tsx';
+import { rememberAgent, useShell } from '../shell/shell-context.ts';
 import { IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
@@ -20,7 +20,7 @@ import { ComputerFolderChip } from '../projects/ComputerFolderChip.tsx';
 import { ProjectChip } from '../projects/ProjectChip.tsx';
 import { useThreadProject } from '../projects/use-thread-project.ts';
 import { LostProjectNotice } from '../projects/LostProjectNotice.tsx';
-import { deleteThread } from './api.ts';
+import { deleteThread } from '../threads/api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
 import { RenameThreadDialog } from './RenameThreadDialog.tsx';
 

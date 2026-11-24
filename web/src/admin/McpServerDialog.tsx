@@ -8,7 +8,7 @@ import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
 import { Button, IconButton } from '../ui/Button.tsx';
 import { Pill } from '../ui/Display.tsx';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';

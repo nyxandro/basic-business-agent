@@ -9,7 +9,7 @@ import { cx } from '../ui/Button.tsx';
 import { Pill } from '../ui/Display.tsx';
 import { Input } from '../ui/Field.tsx';
 import { Switch } from '../ui/Switch.tsx';
-import { Checklist } from './parts.tsx';
+import { Checklist } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './mcp.module.css';
 

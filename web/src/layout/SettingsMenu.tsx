@@ -13,7 +13,7 @@ import { Menu, MenuItem, MenuSeparator, MenuTitle } from '../ui/Menu.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
 import { useTheme } from '../ui/theme/ThemeProvider.tsx';
 import { spentShare } from './LimitMeter.tsx';
-import styles from './shell.module.css';
+import styles from '../shell/shell.module.css';
 
 export function SettingsMenu({ usage, onNavigate }: { usage: MyUsage | null; onNavigate: () => void }) {
   const [open, setOpen] = useState(false);

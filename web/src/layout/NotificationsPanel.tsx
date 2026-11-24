@@ -10,19 +10,18 @@ import { fetchApprovals } from '../approvals/api.ts';
 import { ApprovalLists } from '../approvals/ApprovalCards.tsx';
 import { notificationTexts as t } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
-import { useNotifications } from '../layout/notifications-context.ts';
+import { useNotifications, type PanelTab } from '../notifications/notifications-context.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { whenLabel } from '../ui/format.ts';
+import { whenLabel } from '../i18n/format.ts';
 import { Icon, type IconName } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Segmented } from '../ui/Segmented.tsx';
 import { useLoad, type LoadState } from '../ui/use-load.ts';
-import { fetchList, markAllRead, markRead } from './api.ts';
-import { PushPrompt } from './PushControls.tsx';
-import styles from './notifications.module.css';
+import { fetchList, markAllRead, markRead } from '../notifications/api.ts';
+import { PushPrompt } from '../notifications/PushControls.tsx';
+import styles from '../notifications/notifications.module.css';
 
-export type PanelTab = 'waiting' | 'list';
 
 const KIND_ICON: Record<NotificationKind, IconName> = {
   approval_waiting: 'inbox',

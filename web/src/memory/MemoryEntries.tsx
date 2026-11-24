@@ -9,7 +9,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button, cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { TextArea } from '../ui/Field.tsx';
-import { dayLabel } from '../ui/format.ts';
+import { dayLabel } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useToast } from '../ui/Toast.tsx';

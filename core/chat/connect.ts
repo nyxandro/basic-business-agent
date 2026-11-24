@@ -36,7 +36,7 @@ export function toAguiMessages(history: HistoryMessage[], superseded: ReadonlySe
       continue;
     }
     // A call still waiting for "Да" is shown by its card (the interrupt below), a call left without a result not at all.
-    // A live turn shows such calls as lines too — «Ждёт вашего подтверждения», «Прервано» (web/src/chat/call-progress.ts).
+    // A live turn shows such calls as lines too — «Ждёт вашего подтверждения», «Прервано» (web/src/answer/call-progress.ts).
     const shown = m.toolCalls.filter((c) => c.state === 'result' || c.state === DENIED_STATE || expired.has(c.id));
     const toolCalls = shown.map((c) => ({ id: c.id, type: 'function' as const, function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) } }));
     if (!m.text && toolCalls.length === 0) continue;

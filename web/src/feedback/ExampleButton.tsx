@@ -7,14 +7,13 @@ import type { ExampleStateResponse } from '@bba/contracts';
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { Button, cx } from '../ui/Button.tsx';
+import { Button } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { exampleState, saveExample } from './api.ts';
 import styles from './feedback.module.css';
-import genui from '../genui/genui.module.css';
 
 const t = ru.feedback.example;
 type BaseChoice = ExampleStateResponse['bases'][number];
@@ -93,13 +92,13 @@ export function ExampleButton({ threadId, path }: { threadId: string; path: stri
       setAsking(false);
     }
   }
-  if (state?.state === 'saved') return <span className={cx(genui.fileExample)}>{t.saved}</span>;
+  if (state?.state === 'saved') return <span className={styles.exampleSaved}>{t.saved}</span>;
   return (
     <>
       <Button icon="star" size="sm" disabled={asking} aria-label={`${t.button}: ${path.split('/').pop() ?? path}`} onClick={() => void ask()}>
         {state?.state === 'removed' ? t.removed : t.button}
       </Button>
-      {failed ? <p className={genui.fileNoteError}>{failed}</p> : null}
+      {failed ? <p className={styles.exampleError}>{failed}</p> : null}
       <Modal open={open} onClose={() => setOpen(false)} label={t.title} narrow>
         {open && state ? (
           <ExampleForm

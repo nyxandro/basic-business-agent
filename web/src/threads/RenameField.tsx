@@ -3,7 +3,7 @@
 // so nothing typed is lost.
 import { useState, type KeyboardEvent } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
-import fields from '../projects/projects.module.css';
+import fields from './rename-field.module.css';
 import { IconButton } from '../ui/Button.tsx';
 
 // `save` gives back the name the server kept; `onDone` gets it once it is saved, null when the
@@ -32,13 +32,13 @@ export function RenameField({ value, label, saveLabel, maxLength, save, onDone }
   };
   return (
     <>
-      <div className={fields.newProject}>
+      <div className={fields.field}>
         {/* The field opens on the person's «Переименовать»: focusing it is what they asked for. */}
-        <input className={fields.newInput} autoFocus value={name} maxLength={maxLength} aria-label={label} onChange={(e) => setName(e.target.value)} onKeyDown={onKey} onBlur={() => unchanged && onDone(null, false)} />
+        <input className={fields.input} autoFocus value={name} maxLength={maxLength} aria-label={label} onChange={(e) => setName(e.target.value)} onKeyDown={onKey} onBlur={() => unchanged && onDone(null, false)} />
         {/* Pressing ✓ must not take the focus away from the field first. */}
         <IconButton icon="check" variant="primary" size="sm" label={saveLabel} onMouseDown={(e) => e.preventDefault()} onClick={() => void submit()} disabled={!name.trim() || busy} />
       </div>
-      {error ? <p className={fields.fieldError}>{error.message}</p> : null}
+      {error ? <p className={fields.error}>{error.message}</p> : null}
     </>
   );
 }

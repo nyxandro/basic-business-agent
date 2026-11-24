@@ -10,7 +10,8 @@ import { Modal } from '../ui/Modal.tsx';
 import { AccessPicker, accessIsEmpty } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
 import models from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import chips from '../ui/chips.module.css';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import { ExecutorField, HookAddress, MailFilterFields, MailReach } from './TaskEventFields.tsx';
 import { listOf, scheduleText, WEEKDAYS } from './tasks-text.ts';
@@ -107,17 +108,17 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
       <fieldset className={models.prices}>
         <legend className={models.legend}>Когда запускать</legend>
         {task ? <p className={section.note}>Вид запуска у созданной задачи не меняется.</p> : null}
-        <div role="group" aria-label="Когда запускать" className={models.chips}>
+        <div role="group" aria-label="Когда запускать" className={chips.row}>
           {STARTS.map((k) => (
-            <button key={k.value} type="button" disabled={task !== null} aria-pressed={start === k.value} className={cx(models.chip, start === k.value && models.chipOn)} onClick={() => setTrigger(k.value === 'schedule' ? 'schedule' : 'mail')}>
+            <button key={k.value} type="button" disabled={task !== null} aria-pressed={start === k.value} className={cx(chips.chip, start === k.value && chips.on)} onClick={() => setTrigger(k.value === 'schedule' ? 'schedule' : 'mail')}>
               {k.label}
             </button>
           ))}
         </div>
         {start === 'event' ? (
-          <div role="group" aria-label="Источник события" className={models.chips}>
+          <div role="group" aria-label="Источник события" className={chips.row}>
             {SOURCES.map((k) => (
-              <button key={k.value} type="button" disabled={task !== null} aria-pressed={trigger === k.value} className={cx(models.chip, trigger === k.value && models.chipOn)} onClick={() => setTrigger(k.value)}>
+              <button key={k.value} type="button" disabled={task !== null} aria-pressed={trigger === k.value} className={cx(chips.chip, trigger === k.value && chips.on)} onClick={() => setTrigger(k.value)}>
                 {k.label}
               </button>
             ))}
@@ -149,9 +150,9 @@ function TaskFormBody({ task, agents, departments, users, onClose, onSaved }: { 
       <fieldset className={models.prices}>
         <legend className={models.legend}>Расписание</legend>
         {!scheduleTouched && task ? <p className={section.note}>Сейчас: {scheduleText(null, task.cron)}. Выберите вариант ниже, чтобы заменить его.</p> : null}
-        <div role="group" aria-label="Расписание" className={models.chips}>
+        <div role="group" aria-label="Расписание" className={chips.row}>
           {KINDS.map((k) => (
-            <button key={k.value} type="button" aria-pressed={scheduleTouched && kind === k.value} className={cx(models.chip, scheduleTouched && kind === k.value && models.chipOn)} onClick={() => touch(setKind)(k.value)}>
+            <button key={k.value} type="button" aria-pressed={scheduleTouched && kind === k.value} className={cx(chips.chip, scheduleTouched && kind === k.value && chips.on)} onClick={() => touch(setKind)(k.value)}>
               {k.label}
             </button>
           ))}

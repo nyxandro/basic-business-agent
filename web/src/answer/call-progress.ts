@@ -8,7 +8,7 @@ import { COMPUTER_TOOLS } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
 import { createContext, useContext } from 'react';
 import { toolMessageOf } from './messages.ts';
-import type { ToolCall } from './turn-items.ts';
+import type { ToolCall } from '../chat/turn-items.ts';
 
 // What the turn a call is in does now: its answer is being written; it ended with the question «Да» open under it; it
 // ended. Not the chat's «answering»: a call an earlier answer left unfinished is not under way while the next is written.

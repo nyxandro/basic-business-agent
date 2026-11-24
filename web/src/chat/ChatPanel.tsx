@@ -4,11 +4,11 @@ import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
 import { CopilotChat, useInterrupt } from '@copilotkit/react-core';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
-import { useGenuiRenderers } from '../genui/renderers.tsx';
+import { useGenuiRenderers } from './renderers.tsx';
 import { copilotLabels } from '../i18n/copilot-labels.ts';
 import { ApprovalCard, type ApprovalInterrupt } from './ApprovalCard.tsx';
 import { chatFailureOf, type ChatFailure } from './chat-errors.ts';
-import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
+import { ChatExtrasContext, type ChatExtras } from '../answer/chat-context.ts';
 import { ChatView } from './ChatView.tsx';
 
 const APPROVAL_REASON = 'mastra:tool_approval';

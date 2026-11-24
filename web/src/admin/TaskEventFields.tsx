@@ -9,7 +9,7 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { accessIsEmpty } from './AccessPicker.tsx';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import models from './models.module.css';
 import styles from './tasks.module.css';

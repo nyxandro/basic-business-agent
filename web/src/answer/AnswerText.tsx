@@ -5,8 +5,7 @@
 import { StreamingMarkdownDefaultRenderer } from '@copilotkit/react-core';
 import type { ComponentProps, CSSProperties } from 'react';
 import { ru } from '../i18n/ru.ts';
-import shimmerStyles from './answer-text.module.css';
-import styles from './chat.module.css';
+import styles from './answer-text.module.css';
 import { SHIMMER_FADE_MS, useShimmer } from './shimmer.ts';
 
 const FADE_STYLE = { '--shimmer-fade': `${SHIMMER_FADE_MS}ms` } as CSSProperties;
@@ -52,7 +51,7 @@ export function AnswerText({ text, streaming, failed }: { text: string; streamin
   const lit = useShimmer(streaming) && !failed;
   const shimmer = !lit ? undefined : streaming ? 'writing' : 'fading';
   return (
-    <div className={shimmerStyles.answer} data-answer-text data-shimmer={shimmer} style={FADE_STYLE}>
+    <div className={styles.answer} data-answer-text data-shimmer={shimmer} style={FADE_STYLE}>
       <StreamingMarkdownDefaultRenderer content={text} isStreaming={streaming} caret={false} className={styles.markdown} nodeRenderers={OWN_PICTURES_ONLY} />
     </div>
   );

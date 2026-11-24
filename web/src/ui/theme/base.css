@@ -197,7 +197,7 @@ p {
   }
 }
 
-/* A conversation waiting for the person's decision (layout/ThreadState.tsx): a soft halo grows and fades now and then. */
+/* A conversation waiting for the person's decision (threads/ThreadState.tsx): a soft halo grows and fades now and then. */
 @keyframes bba-attention {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn-mark) 60%, transparent);
@@ -208,7 +208,7 @@ p {
   }
 }
 
-/* The bell with something new (layout/ChatHeader.tsx): still most of the time, a short swing now and then. */
+/* The bell with something new (shell/ChatHeader.tsx): still most of the time, a short swing now and then. */
 @keyframes bba-bell-rare {
   0%,
   92%,
@@ -264,7 +264,7 @@ p {
   }
 }
 
-/* The light over the words of an answer being written (chat/shimmer.ts): its strength is registered
+/* The light over the words of an answer being written (answer/shimmer.ts): its strength is registered
    as a percentage so that it can glide out — a custom property the browser does not know only jumps. */
 @property --shimmer-strength {
   syntax: '<percentage>';

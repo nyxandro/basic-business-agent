@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { threadPath } from '../layout/ThreadRow.tsx';
+import { threadPath } from '../threads/ThreadRow.tsx';
 import { fetchProjects, updateProject } from '../projects/api.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';

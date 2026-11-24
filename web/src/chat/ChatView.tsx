@@ -17,8 +17,8 @@ import { answerAgain, failureSubscriber, lastTurnIds, liveVerdict } from './answ
 import { useAttachQueue } from './attach.ts';
 import { AgentMark } from './AgentMark.tsx';
 import { AssistantTurn } from './AssistantMessage.tsx';
-import { answersInBrowser, callsUnderWay } from './call-progress.ts';
-import { useChatExtras } from './chat-context.ts';
+import { answersInBrowser, callsUnderWay } from '../answer/call-progress.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 import styles from './chat.module.css';
 import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
@@ -28,7 +28,7 @@ import { withAttachments, type AgentSummary } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
-import { ChatSendContext } from './chat-send.ts';
+import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
 
 // The feed sticks to the bottom while the person is within this distance of it.

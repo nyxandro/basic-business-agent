@@ -7,8 +7,8 @@ import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ApiRequestError, asApiError, SESSION_EXPIRED } from '../api/client.ts';
 import { ru } from '../i18n/ru.ts';
-import { uploadFile } from './api.ts';
-import { useChatExtras } from './chat-context.ts';
+import { uploadFile } from '../threads/api.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 import { UploadProgress } from './upload-progress.ts';
 
 export interface AttachFailure {

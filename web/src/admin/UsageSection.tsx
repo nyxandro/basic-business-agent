@@ -5,7 +5,7 @@ import { cx } from '../ui/Button.tsx';
 import { Card, EmptyState } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { dateTime, rub } from '../ui/format.ts';
+import { dateTime, rub } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { numCell, Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';

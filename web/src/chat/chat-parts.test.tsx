@@ -4,10 +4,10 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { mockServer } from '../test/fetch-mock.ts';
 import { ApprovalCard } from './ApprovalCard.tsx';
-import { TurnStateContext, type TurnState } from './call-progress.ts';
+import { TurnStateContext, type TurnState } from '../answer/call-progress.ts';
 import { COMPUTER_TOOLS, splitAttachments, withAttachments } from '@bba/contracts';
 import { systemOf } from './systems.ts';
-import { parseToolResult } from './tool-result.ts';
+import { parseToolResult } from '../answer/tool-result.ts';
 import { ToolRow, type ToolRowProps } from './ToolRow.tsx';
 import { ToolStack } from './ToolStack.tsx';
 

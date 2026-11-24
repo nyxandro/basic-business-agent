@@ -2,7 +2,7 @@
 // a background task's result not yet opened is marked «новое»; what the search found is marked in the name and the words.
 import type { TextMarks } from '@bba/contracts';
 import { ru } from '../i18n/ru.ts';
-import { dayLabel } from '../ui/format.ts';
+import { dayLabel } from '../i18n/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Marked } from './Marked.tsx';
 import styles from './search.module.css';

@@ -13,7 +13,7 @@ import { Button, IconButton } from '../ui/Button.tsx';
 import { Card } from '../ui/Display.tsx';
 import { turnToSand } from '../ui/dissolve.ts';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { fileSize } from '../ui/format.ts';
+import { fileSize } from '../i18n/format.ts';
 import { FileIcon } from '../ui/FileIcon.tsx';
 import { fileStackClass, FileStackHead, kindsLine } from '../ui/FileStack.tsx';
 import { Icon } from '../ui/Icon.tsx';

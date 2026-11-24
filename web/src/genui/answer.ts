@@ -2,7 +2,7 @@
 // agent's message that asked — its words without the block of files. Null until there is one.
 import { splitAttachments } from '@bba/contracts';
 import type { Message } from '@copilotkit/react-core';
-import { textOf } from '../chat/messages.ts';
+import { textOf } from '../answer/messages.ts';
 
 export function answerOf(messages: readonly Message[], toolCallId: string): string | null {
   const index = messages.findIndex((m) => m.role === 'assistant' && (m.toolCalls ?? []).some((c) => c.id === toolCallId));

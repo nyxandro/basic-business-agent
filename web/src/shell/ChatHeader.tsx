@@ -6,12 +6,11 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { notificationTexts } from '../i18n/notifications.ts';
 import { ru } from '../i18n/ru.ts';
-import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
-import { useNotifications } from './notifications-context.ts';
-import { useMedia, WIDE_QUERY } from './use-media.ts';
+import { useNotifications } from '../notifications/notifications-context.ts';
+import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 import styles from './shell.module.css';
 
 const PANEL_WIDTH_PX = 420;
@@ -20,7 +19,7 @@ const PANEL_WIDTH_PX = 420;
 // and swings now and then (owner, 22.11). On a computer the panel hangs under it; on a phone it opens as a sheet
 // (layout/notifications.tsx).
 function Bell() {
-  const { counts, panel, openPanel, closePanel } = useNotifications();
+  const { counts, panel, openPanel, closePanel, Panel } = useNotifications();
   const wide = useMedia(WIDE_QUERY);
   const waiting = counts?.pendingApprovals ?? 0;
   const unread = counts?.unread ?? 0;
@@ -46,7 +45,7 @@ function Bell() {
     <MenuAnchor>
       {button}
       <Menu open={panel.open} onClose={closePanel} label={notificationTexts.bell} role="dialog" placement="bottom-end" width={PANEL_WIDTH_PX}>
-        <NotificationsPanel compact={false} onClose={closePanel} />
+        <Panel compact={false} onClose={closePanel} />
       </Menu>
     </MenuAnchor>
   );

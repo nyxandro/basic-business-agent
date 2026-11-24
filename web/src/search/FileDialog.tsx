@@ -10,7 +10,7 @@ import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { FileIcon } from '../ui/FileIcon.tsx';
-import { dayLabel, fileSize } from '../ui/format.ts';
+import { dayLabel, fileSize } from '../i18n/format.ts';
 import { Modal } from '../ui/Modal.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { fetchFileStatus, filePreviewUrl, fileUrl } from './api.ts';

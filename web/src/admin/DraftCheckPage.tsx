@@ -4,7 +4,7 @@ import { CopilotKit } from '@copilotkit/react-core';
 import { WIDGETS_CONFIG } from '../widgets/catalog.ts';
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { COPILOT_OPTIONS } from '../app/copilot.ts';
+import { COPILOT_OPTIONS } from '../chat/copilot.ts';
 import { ChatPanel } from '../chat/ChatPanel.tsx';
 import { chatMarkOf } from './AgentMarkEditor.tsx';
 import { agentPath } from './AgentPage.tsx';

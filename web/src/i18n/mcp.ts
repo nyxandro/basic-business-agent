@@ -1,7 +1,7 @@
 // Texts of the MCP servers the admin adds (docs/specs/[20.11.2026]-mcp-connections.md, section 12): the dialog and
 // the cards of «Подключения» in the admin panel, the cards of «Настройки → Подключения» of an employee.
 import type { McpAuthKind, McpServerStatus } from '@bba/contracts';
-import { plural } from '../ui/format.ts';
+import { plural } from './format.ts';
 
 const quoted = (names: string[]) => names.map((name) => `«${name}»`).join(', ');
 

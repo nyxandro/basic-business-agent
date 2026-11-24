@@ -14,11 +14,11 @@ import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { MenuAnchor } from '../ui/Menu.tsx';
 import { LimitMeter } from './LimitMeter.tsx';
-import { useNotifications } from './notifications-context.ts';
+import { useNotifications } from '../notifications/notifications-context.ts';
 import { ProjectList } from '../projects/ProjectList.tsx';
 import { RecentThreads } from './RecentThreads.tsx';
 import { SettingsMenu } from './SettingsMenu.tsx';
-import styles from './shell.module.css';
+import styles from '../shell/shell.module.css';
 
 export type AgentsState = { status: 'loading' } | { status: 'ready'; agents: AgentSummary[] } | { status: 'error'; error: ApiRequestError; retry: () => void };
 

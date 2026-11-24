@@ -4,14 +4,13 @@
 // отчёт» — a file for Excel.
 import { WORK_KINDS, type ValueCounts, type ValueReport, type WorkKind } from '@bba/contracts';
 import { useCallback, useState } from 'react';
-import { Feedback, useAction } from '../admin/parts.tsx';
-import section from '../admin/section.module.css';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import { ru } from '../i18n/ru.ts';
 import { Button, ButtonLink } from '../ui/Button.tsx';
 import { Card, EmptyState, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { fullDate, rub } from '../ui/format.ts';
+import { fullDate, rub } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { saveNorms, valueCsvUrl, valueReport } from './api.ts';
@@ -161,7 +160,7 @@ export function ValueSection() {
   const load = useCallback(() => valueReport(from, to), [from, to]);
   const { state, reload } = useLoad(load);
   return (
-    <div className={section.stack}>
+    <div className={styles.stack}>
       <PageHead title={t.title} lead={t.lead} actions={<ButtonLink href={valueCsvUrl(from, to)} download icon="download">{t.download}</ButtonLink>} />
       <div className={styles.months}>
         <Field label={t.from}>

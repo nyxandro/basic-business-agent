@@ -11,7 +11,7 @@ import { Field, Input } from '../ui/Field.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './tasks.module.css';
 
 const t = notificationTexts.modes;

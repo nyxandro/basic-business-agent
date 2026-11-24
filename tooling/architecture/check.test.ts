@@ -210,11 +210,11 @@ describe('checkArchitecture: circular imports', () => {
       'web/src/c/C.tsx': "import { a } from '../a/A.tsx';\nexport const c = () => a;\n",
     });
     const found = await checkArchitecture(r);
-    expect(found.length).toBeGreaterThan(0);
-    for (const v of found) {
-      expect(v.rule).toBe('no-circular');
-      expect(v.detail?.split(' -> ').sort()).toEqual(['web/src/a/A.tsx', 'web/src/b/B.tsx', 'web/src/c/C.tsx']);
-    }
+    const files = found.filter((v) => v.rule === 'no-circular');
+    expect(files.length).toBeGreaterThan(0);
+    for (const v of files) expect(v.detail?.split(' -> ').sort()).toEqual(['web/src/a/A.tsx', 'web/src/b/B.tsx', 'web/src/c/C.tsx']);
+    // The same circle is a circle of the folders a, b and c.
+    expect(lines(found.filter((v) => v.rule !== 'no-circular'))).toEqual(['no-circular-modules: web/src/a -> web/src/b']);
   });
 
   it('finds a circle of run-time imports even when the files also take types from each other the other way', async () => {
@@ -301,8 +301,8 @@ describe('checkArchitecture: core/server is where everything is assembled', () =
   });
 });
 
-describe('checkArchitecture: core modules do not depend on each other both ways', () => {
-  it('flags two core modules that import each other at run time, once, with a file of each direction', async () => {
+describe('checkArchitecture: modules of core and folders of web do not import each other in a circle', () => {
+  it('flags two core modules that import each other at run time, once, with a file import for each arrow', async () => {
     const r = repo({
       'core/approvals/continue.ts': "import { run } from '../chat/run.ts';\nexport const go = () => run;\n",
       'core/approvals/requests.ts': OK,
@@ -311,7 +311,7 @@ describe('checkArchitecture: core modules do not depend on each other both ways'
     });
     expect(await checkArchitecture(r)).toEqual([
       {
-        rule: 'core-no-mutual-modules',
+        rule: 'no-circular-modules',
         from: 'core/approvals',
         to: 'core/chat',
         detail: 'core/approvals/continue.ts -> core/chat/run.ts; core/chat/connect.ts -> core/approvals/requests.ts',
@@ -319,7 +319,43 @@ describe('checkArchitecture: core modules do not depend on each other both ways'
     ]);
   });
 
-  it('does not count imports of types only, or imports made by tests', async () => {
+  it('flags a circle of three core modules that no two of them make alone, with the shortest circle', async () => {
+    const r = repo({
+      'core/auth/users.ts': "import { shared } from '../projects/access.ts';\nexport const u = shared;\n",
+      'core/auth/guards.ts': OK,
+      'core/projects/access.ts': OK,
+      'core/projects/trash.ts': "import { area } from '../storage/areas.ts';\nexport const t = area;\n",
+      'core/storage/areas.ts': OK,
+      'core/storage/routes.ts': "import { g } from '../auth/guards.ts';\nexport const s = g;\n",
+    });
+    expect(await checkArchitecture(r)).toEqual([
+      {
+        rule: 'no-circular-modules',
+        from: 'core/auth',
+        to: 'core/projects',
+        detail: 'core/auth/users.ts -> core/projects/access.ts; core/projects/trash.ts -> core/storage/areas.ts; core/storage/routes.ts -> core/auth/guards.ts',
+      },
+    ]);
+  });
+
+  it('flags a circle of folders of web even when no file is in a circle', async () => {
+    const r = repo({
+      'web/src/layout/AppShell.tsx': "import { list } from '../projects/ProjectList.tsx';\nexport const shell = list;\n",
+      'web/src/layout/use-shell.ts': OK,
+      'web/src/projects/ProjectList.tsx': OK,
+      'web/src/projects/ProjectPage.tsx': "import { use } from '../layout/use-shell.ts';\nexport const page = use;\n",
+    });
+    expect(await checkArchitecture(r)).toEqual([
+      {
+        rule: 'no-circular-modules',
+        from: 'web/src/layout',
+        to: 'web/src/projects',
+        detail: 'web/src/layout/AppShell.tsx -> web/src/projects/ProjectList.tsx; web/src/projects/ProjectPage.tsx -> web/src/layout/use-shell.ts',
+      },
+    ]);
+  });
+
+  it('does not count imports of types only, or imports made by tests and test helpers', async () => {
     const r = repo({
       'core/http/http.ts': "import type { Access } from '../auth/access.ts';\nexport type Env = { access: Access };\n",
       'core/auth/access.ts': 'export type Access = { userId: string };\n',
@@ -328,6 +364,46 @@ describe('checkArchitecture: core modules do not depend on each other both ways'
       'core/memory/routes.ts': "import '../projects/access.ts';\n",
       'core/projects/access.ts': OK,
       'core/projects/access.test.ts': "import '../memory/routes.ts';\n",
+      'core/mail/test-server.ts': "import '../projects/access.ts';\n",
+      'core/projects/mail.ts': "import '../mail/test-server.ts';\n",
+      'web/src/main.tsx': "import './app/App.tsx';\n",
+      'web/src/app/App.tsx': "import '../projects/ProjectPage.tsx';\n",
+      'web/src/projects/ProjectPage.tsx': OK,
+      'web/src/projects/test-server.ts': "import '../test/fetch-mock.ts';\n",
+      'web/src/test/fetch-mock.ts': OK,
+      'web/src/test/render.tsx': "import '../app/App.tsx';\n",
+      'web/src/app/App.test.tsx': "import '../test/render.tsx';\n",
+    });
+    expect(await checkArchitecture(r)).toEqual([]);
+  });
+});
+
+describe('checkArchitecture: base folders of web', () => {
+  it('flags ui, i18n or api importing code of another folder of web', async () => {
+    const r = repo({
+      'web/src/ui/Banner.tsx': "import { open } from '../chat/open.ts';\nexport const b = open;\n",
+      'web/src/i18n/ru.ts': "import { at } from '../layout/clock.ts';\nexport const ru = at;\n",
+      'web/src/api/client.ts': "import { s } from '../auth/session.ts';\nexport const c = s;\n",
+      'web/src/chat/open.ts': OK,
+      'web/src/layout/clock.ts': OK,
+      'web/src/auth/session.ts': OK,
+    });
+    expect(lines(await checkArchitecture(r))).toEqual([
+      'web-base-stays-base: web/src/api/client.ts -> web/src/auth/session.ts',
+      'web-base-stays-base: web/src/i18n/ru.ts -> web/src/layout/clock.ts',
+      'web-base-stays-base: web/src/ui/Banner.tsx -> web/src/chat/open.ts',
+    ]);
+  });
+
+  it('lets base folders use each other, contracts and npm packages, take types of a folder and be tested with anything', async () => {
+    const r = repo({
+      'web/src/ui/Banner.tsx': "import { client } from '../api/client.ts';\nimport { ru } from '../i18n/ru.ts';\nimport { useState } from 'react';\nexport const b = [client, ru, useState];\n",
+      'web/src/api/client.ts': "import { ru } from '../i18n/ru.ts';\nimport '../../../contracts/src/index.ts';\nexport const client = ru;\n",
+      'web/src/i18n/ru.ts': "import type { MarkKind } from '../viewer/marks/types.ts';\nexport const ru: Record<MarkKind, string> = { pen: 'карандаш' };\n",
+      'web/src/viewer/marks/types.ts': "export type MarkKind = 'pen';\n",
+      'web/src/ui/Banner.test.tsx': "import '../chat/ChatPage.tsx';\n",
+      'web/src/chat/ChatPage.tsx': OK,
+      'contracts/src/index.ts': OK,
     });
     expect(await checkArchitecture(r)).toEqual([]);
   });

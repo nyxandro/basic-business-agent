@@ -7,7 +7,7 @@ import { useMe } from '../auth/session.tsx';
 import { cx } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import styles from './agent-mark.module.css';
-import { useChatExtras } from './chat-context.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 
 type Size = 'small' | 'large';
 const ICON_SIZE: Record<Size, number> = { small: 16, large: 24 };

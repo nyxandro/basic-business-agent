@@ -1,5 +1,5 @@
 // Texts of complaints, samples and the report of value (docs/specs/[20.11.2026]-feedback-and-value.md, section 12).
-import { plural } from '../ui/format.ts';
+import { plural } from './format.ts';
 
 export const feedbackTexts = {
   complaint: {

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RequireAuth, SessionProvider } from '../auth/session.tsx';
 import { ME, mockServer } from '../test/fetch-mock.ts';
 import { ToastProvider } from '../ui/Toast.tsx';
-import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
+import { ChatExtrasContext, type ChatExtras } from '../answer/chat-context.ts';
 import { ChatView } from './ChatView.tsx';
 import { WebSearch } from './WebSearch.tsx';
 

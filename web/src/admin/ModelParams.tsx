@@ -8,7 +8,7 @@ import { Field, Select } from '../ui/Field.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { adminApi } from './api.ts';
 import styles from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 export function ModelParams({ models, settings, onSaved }: { models: ModelDto[]; settings: ModelSettings; onSaved: () => void }) {

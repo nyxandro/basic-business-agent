@@ -5,7 +5,7 @@ import { fileBlockResultSchema, GENUI_TOOL, toolTableResultSchema, WIDGET_TOOL, 
 import { ru } from '../i18n/ru.ts';
 import { drawableOperations } from '../widgets/operations.ts';
 import { systemOf } from './systems.ts';
-import { parseToolResult, type ToolOutcome } from './tool-result.ts';
+import { parseToolResult, type ToolOutcome } from '../answer/tool-result.ts';
 
 // CopilotKit's state of a call, or ours for a call without its result that is not under way (call-progress.ts).
 export type ToolStatus = 'inProgress' | 'executing' | 'complete' | 'waiting' | 'stopped';

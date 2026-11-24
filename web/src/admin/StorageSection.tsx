@@ -13,12 +13,12 @@ import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, PageHead, Pill } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
-import { dateTime, fileSize } from '../ui/format.ts';
+import { dateTime, fileSize } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './storage.module.css';
 

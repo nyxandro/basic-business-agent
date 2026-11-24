@@ -19,7 +19,7 @@ import { cx, IconButton } from '../ui/Button.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import shell from '../layout/shell.module.css';
+import shell from '../shell/shell.module.css';
 import { useToast } from '../ui/Toast.tsx';
 import { archiveProject, fetchProjects, orderProjects, unarchiveProject, updateProject } from './api.ts';
 import { AccessDialog, NewProjectDialog } from './ProjectDialog.tsx';

@@ -5,7 +5,7 @@
 // toolbar of the mockup: «Копировать», and «Ответить заново» only under the last answer that broke
 // (decision of the owner, 15.11; spec, section 9.1), which also says «Ответ прервался». A light runs
 // over the words being written and goes out when they are (AnswerText.tsx).
-// CopilotKit draws each tool call with the renderer registered for it (genui/renderers.tsx). What the agent does now is
+// CopilotKit draws each tool call with the renderer registered for it (chat/renderers.tsx). What the agent does now is
 // in the live line under the answer (LiveLine.tsx); a call comes in here once it is done, and what comes in while the
 // answer is written grows into its place instead of appearing at once (decision of the owner 21.11).
 import type { AssistantMessage as AgentMessage, Message } from '@copilotkit/react-core';
@@ -17,11 +17,11 @@ import { IconButton } from '../ui/Button.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { ComplainDialog } from '../feedback/ComplainDialog.tsx';
 import { AgentMark } from './AgentMark.tsx';
-import { AnswerText } from './AnswerText.tsx';
-import { TurnStateContext } from './call-progress.ts';
-import { useChatExtras } from './chat-context.ts';
+import { AnswerText } from '../answer/AnswerText.tsx';
+import { TurnStateContext } from '../answer/call-progress.ts';
+import { useChatExtras } from '../answer/chat-context.ts';
 import styles from './chat.module.css';
-import { toolMessageOf } from './messages.ts';
+import { toolMessageOf } from '../answer/messages.ts';
 import { ToolStack } from './ToolStack.tsx';
 import { ToolRow } from './ToolRow.tsx';
 import { argumentsOf, showsByResult, turnItems, type ToolCall, type TurnItem } from './turn-items.ts';

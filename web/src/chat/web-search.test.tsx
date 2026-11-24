@@ -6,7 +6,7 @@ import { CHAT_EVENTS, WEB_RESEARCH_TOOL, type WebStep } from '@bba/contracts';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TurnStateContext } from './call-progress.ts';
+import { TurnStateContext } from '../answer/call-progress.ts';
 import { LiveLine } from './LiveLine.tsx';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber, type WebProgressStore } from './web-progress.ts';
 import { WebSearch } from './WebSearch.tsx';

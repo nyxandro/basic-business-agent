@@ -2,7 +2,7 @@
 // phone with «Меню» too), then the title, the lead and the content in an 820 px column (mockup).
 import type { ReactNode } from 'react';
 import { PageHead } from '../ui/Display.tsx';
-import { useShell } from './AppShell.tsx';
+import { useShell } from './shell-context.ts';
 import { ChatHeaderBar } from './ChatHeader.tsx';
 import styles from './page.module.css';
 

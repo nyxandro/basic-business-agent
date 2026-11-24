@@ -19,11 +19,11 @@ import { MemoryPage } from '../settings/MemoryPage.tsx';
 import { UsagePage } from '../settings/UsagePage.tsx';
 import { MyRequestsPage } from '../feedback/MyRequestsPage.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
-import { loadAdminCode } from './admin-code.ts';
+import { loadAdminCode } from '../admin/admin-code.ts';
 import { ThemeProvider } from '../ui/theme/ThemeProvider.tsx';
 import { ConfirmProvider } from '../ui/Confirm.tsx';
 import { ToastProvider } from '../ui/Toast.tsx';
-import { COPILOT_OPTIONS } from './copilot.ts';
+import { COPILOT_OPTIONS } from '../chat/copilot.ts';
 
 const AdminRoutes = lazy(loadAdminCode);
 

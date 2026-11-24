@@ -11,7 +11,7 @@ import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
 import { OrgAssets } from './OrgAssets.tsx';
 import styles from './org.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 type Profile = { name: string; tone: string; requisites: string; industry: string };

@@ -10,8 +10,8 @@
 import { GENUI_TOOL, toolTableResultSchema, WEB_RESEARCH_TOOL, WIDGET_TOOL } from '@bba/contracts';
 import type { AssistantMessage, Message } from '@copilotkit/react-core';
 import { drawableOperations, drawsWhileWritten } from '../widgets/operations.ts';
-import { toolMessageOf } from './messages.ts';
-import { parseToolResult } from './tool-result.ts';
+import { toolMessageOf } from '../answer/messages.ts';
+import { parseToolResult } from '../answer/tool-result.ts';
 
 export type ToolCall = NonNullable<AssistantMessage['toolCalls']>[number];
 

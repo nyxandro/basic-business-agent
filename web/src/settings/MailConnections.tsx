@@ -10,7 +10,7 @@ import { Button } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
 import { Card, IconTile, Pill } from '../ui/Display.tsx';
 import { ErrorBanner, Notice } from '../ui/ErrorBanner.tsx';
-import { dateTime } from '../ui/format.ts';
+import { dateTime } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { useLoad } from '../ui/use-load.ts';

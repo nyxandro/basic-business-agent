@@ -1,7 +1,7 @@
 // The code of the admin panel is a piece of its own (the employees without rights never load it); for
 // those with rights it is loaded in the background after the start, so a click opens it at once (spec,
 // section 8.22).
-export const loadAdminCode = () => import('../admin/AdminRoutes.tsx');
+export const loadAdminCode = () => import('./AdminRoutes.tsx');
 
 export function preloadAdminCode(): void {
   const load = () => void loadAdminCode();

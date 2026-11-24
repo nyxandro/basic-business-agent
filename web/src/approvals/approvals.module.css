@@ -1,4 +1,4 @@
-/* «Ждёт подтверждения» (mockup: the page on a computer; on a phone the bell's sheet, notifications/NotificationsPanel.tsx). */
+/* «Ждёт подтверждения» (mockup: the page on a computer; on a phone the bell's sheet, layout/NotificationsPanel.tsx). */
 .list {
   display: flex;
   flex-direction: column;

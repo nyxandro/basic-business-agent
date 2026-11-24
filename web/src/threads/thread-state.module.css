@@ -1,4 +1,4 @@
-/* The mark of a conversation in the lists (layout/ThreadState.tsx; decision of the owner 22.11). */
+/* The mark of a conversation in the lists (threads/ThreadState.tsx; decision of the owner 22.11). */
 .ring,
 .dot {
   width: 16px;

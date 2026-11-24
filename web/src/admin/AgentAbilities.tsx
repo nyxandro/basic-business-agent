@@ -9,7 +9,7 @@ import { Card, CardHead } from '../ui/Display.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { adminApi } from './api.ts';
 import styles from './agents.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 const t = ru.admin.agents.abilities;

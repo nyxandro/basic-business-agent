@@ -1,6 +1,6 @@
 import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
 import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
-import type { ChatFailure } from './chat-errors.ts';
+import type { ChatFailure } from '../chat/chat-errors.ts';
 
 // What the chat window slot needs from the page: CopilotChat renders the slot itself, so the
 // values travel through context instead of props.

@@ -11,8 +11,8 @@ import { cx } from '../ui/Button.tsx';
 import { Collapse } from '../ui/Collapse.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import chat from './chat.module.css';
-import { useUnfinished } from './call-progress.ts';
-import { parseToolResult } from './tool-result.ts';
+import { useUnfinished } from '../answer/call-progress.ts';
+import { parseToolResult } from '../answer/tool-result.ts';
 import { useWebCall } from './web-progress.ts';
 import styles from './web-search.module.css';
 

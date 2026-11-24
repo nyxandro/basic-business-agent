@@ -15,7 +15,7 @@ import { Modal } from '../ui/Modal.tsx';
 import { Table } from '../ui/Table.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { adminApi } from './api.ts';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './people.module.css';
 import { PERMISSION_LABELS } from './sections.ts';
 import section from './section.module.css';

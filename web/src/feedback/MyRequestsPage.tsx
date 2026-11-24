@@ -2,10 +2,10 @@
 // their state and the answer of the support. Never memorised: the answer comes while the page is closed, and its
 // notification opens it fresh.
 import { ru } from '../i18n/ru.ts';
-import { PageFrame } from '../layout/PageFrame.tsx';
+import { PageFrame } from '../shell/PageFrame.tsx';
 import { Card, EmptyState, Pill } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
-import { dateTime } from '../ui/format.ts';
+import { dateTime } from '../i18n/format.ts';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
 import { myTickets } from './api.ts';

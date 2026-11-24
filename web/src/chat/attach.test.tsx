@@ -12,7 +12,7 @@ import { apiError, ME, mockServer, type MockCall, type Reply } from '../test/fet
 import { ToastProvider } from '../ui/Toast.tsx';
 import { attachFailure, type WaitingFile } from './attach.ts';
 import { Attachments } from './Attachments.tsx';
-import { ChatExtrasContext, type ChatExtras } from './chat-context.ts';
+import { ChatExtrasContext, type ChatExtras } from '../answer/chat-context.ts';
 import { UploadProgress } from './upload-progress.ts';
 import { ChatView } from './ChatView.tsx';
 

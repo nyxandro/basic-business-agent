@@ -9,10 +9,10 @@ import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { Switch } from '../ui/Switch.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import { useMedia, WIDE_QUERY } from '../layout/use-media.ts';
+import { useMedia, WIDE_QUERY } from '../ui/use-media.ts';
 import { adminApi } from './api.ts';
 import styles from './masking.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 
 type Kind = (typeof MASKING_KIND_IDS)[number];

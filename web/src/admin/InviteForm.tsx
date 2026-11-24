@@ -5,7 +5,7 @@ import { Button } from '../ui/Button.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { Modal } from '../ui/Modal.tsx';
 import { adminApi } from './api.ts';
-import { Checklist, Feedback, useAction } from './parts.tsx';
+import { Checklist, Feedback, useAction } from '../ui/form-parts.tsx';
 import styles from './section.module.css';
 
 export const INVITE_CREATED = 'Приглашение создано. Ссылка действует 7 дней — отправьте её сотруднику.';

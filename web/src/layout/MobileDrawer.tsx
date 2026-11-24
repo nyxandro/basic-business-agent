@@ -4,7 +4,7 @@ import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { useDialogFocus } from '../ui/dialog-focus.ts';
 import { Sidebar, type SidebarProps } from './Sidebar.tsx';
-import styles from './shell.module.css';
+import styles from '../shell/shell.module.css';
 
 export function MobileDrawer({ open, onClose, ...sidebar }: Omit<SidebarProps, 'onNavigate' | 'topRight' | 'approvalsAsSheet'> & { open: boolean; onClose: () => void }) {
   const box = useDialogFocus(open, onClose);

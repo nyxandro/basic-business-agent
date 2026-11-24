@@ -1,6 +1,6 @@
 // Words of «Режимы работы» (spec, section 13): the schedule, the last fire and a person's run.
 import type { AdminTask, RunOutcomeName, TaskEventDto, TaskEventOutcome, TaskFireSummary, TaskRunDto, TaskSchedule } from '@bba/contracts';
-import { plural } from '../ui/format.ts';
+import { plural } from '../i18n/format.ts';
 
 export const WEEKDAYS = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 const WEEKDAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];

@@ -5,7 +5,7 @@ import { THREAD_TITLE_MAX, type ThreadState, type ThreadSummaryDto } from '@bba/
 import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
-import { deleteThread, renameThread } from '../chat/api.ts';
+import { deleteThread, renameThread } from './api.ts';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
 import { useConfirm } from '../ui/Confirm.tsx';
@@ -14,7 +14,7 @@ import { Menu, MenuAnchor, MenuItem } from '../ui/Menu.tsx';
 import { useToast } from '../ui/Toast.tsx';
 import { RenameField } from './RenameField.tsx';
 import { ThreadStateMark } from './ThreadState.tsx';
-import styles from './shell.module.css';
+import styles from '../shell/shell.module.css';
 
 export const threadPath = (t: Pick<ThreadSummaryDto, 'agentId' | 'id'>) => `/agents/${encodeURIComponent(t.agentId)}?thread=${encodeURIComponent(t.id)}`;
 

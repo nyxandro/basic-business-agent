@@ -16,7 +16,8 @@ import { useLoad } from '../ui/use-load.ts';
 import { api } from '../api/client.ts';
 import { adminApi } from './api.ts';
 import models from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import chips from '../ui/chips.module.css';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './tasks.module.css';
 
@@ -85,11 +86,11 @@ function RuleForm({ rule, actions, people, onClose, onSaved }: { rule: ApprovalR
               </Select>
               <p className={section.note}>{stage.length > 0 ? `Согласует: ${stageText(stage, people)}` : 'Укажите хотя бы одного согласующего.'}</p>
               {stage.some((a) => a.kind === 'user') ? (
-                <div className={models.chips}>
+                <div className={chips.row}>
                   {stage.flatMap((a) =>
                     a.kind === 'user'
                       ? [
-                          <button key={a.userId} type="button" className={models.chip} onClick={() => setStage(i, stage.filter((x) => !(x.kind === 'user' && x.userId === a.userId)))}>
+                          <button key={a.userId} type="button" className={chips.chip} onClick={() => setStage(i, stage.filter((x) => !(x.kind === 'user' && x.userId === a.userId)))}>
                             {people.find((p) => p.id === a.userId)?.name ?? 'сотрудник удалён'} ×
                           </button>,
                         ]

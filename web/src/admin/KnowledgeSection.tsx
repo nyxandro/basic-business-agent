@@ -13,8 +13,8 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Field, Input } from '../ui/Field.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
-import models from './models.module.css';
-import { Feedback, useAction } from './parts.tsx';
+import chips from '../ui/chips.module.css';
+import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
 import styles from './tasks.module.css';
 
@@ -210,21 +210,21 @@ export function KnowledgeSection() {
   return (
     <div className={section.stack}>
       {head}
-      <div role="group" aria-label={t.basesLabel} className={models.chips}>
+      <div role="group" aria-label={t.basesLabel} className={chips.row}>
         {bases.map((b) => (
-          <button key={b.id ?? 'org'} type="button" aria-pressed={current === b.id} className={cx(models.chip, current === b.id && models.chipOn)} onClick={() => setBase(b.id)}>
+          <button key={b.id ?? 'org'} type="button" aria-pressed={current === b.id} className={cx(chips.chip, current === b.id && chips.on)} onClick={() => setBase(b.id)}>
             {b.name}
           </button>
         ))}
       </div>
-      <div role="group" aria-label={t.tabsLabel} className={models.chips}>
-        <button type="button" aria-pressed={tab === 'documents'} className={cx(models.chip, tab === 'documents' && models.chipOn)} onClick={() => setTab('documents')}>
+      <div role="group" aria-label={t.tabsLabel} className={chips.row}>
+        <button type="button" aria-pressed={tab === 'documents'} className={cx(chips.chip, tab === 'documents' && chips.on)} onClick={() => setTab('documents')}>
           {t.documents}
         </button>
-        <button type="button" aria-pressed={tab === 'examples'} className={cx(models.chip, tab === 'examples' && models.chipOn)} onClick={() => setTab('examples')}>
+        <button type="button" aria-pressed={tab === 'examples'} className={cx(chips.chip, tab === 'examples' && chips.on)} onClick={() => setTab('examples')}>
           {t.examples}
         </button>
-        <button type="button" aria-pressed={tab === 'synonyms'} className={cx(models.chip, tab === 'synonyms' && models.chipOn)} onClick={() => setTab('synonyms')}>
+        <button type="button" aria-pressed={tab === 'synonyms'} className={cx(chips.chip, tab === 'synonyms' && chips.on)} onClick={() => setTab('synonyms')}>
           {t.synonyms}
         </button>
       </div>

@@ -6,10 +6,10 @@ import { cx } from '../ui/Button.tsx';
 import attachments from './attachments.module.css';
 import styles from './chat.module.css';
 import { splitAttachments } from '@bba/contracts';
-import { ChatExtrasContext } from './chat-context.ts';
+import { ChatExtrasContext } from '../answer/chat-context.ts';
 import { StillFileName } from './FileName.tsx';
 import { peekOf, useImagePeek } from './image-peek.tsx';
-import { textOf } from './messages.ts';
+import { textOf } from '../answer/messages.ts';
 
 export function UserMessage({ content }: { content: unknown }) {
   const { text, files } = splitAttachments(textOf(content));

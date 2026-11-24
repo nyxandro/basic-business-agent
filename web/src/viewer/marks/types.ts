@@ -35,7 +35,7 @@ export interface MarksTarget {
   version: string;
 }
 
-// How the marks reach the agent: the chat's own sending (web/src/chat/chat-send.ts); false — nothing was sent.
+// How the marks reach the agent: the chat's own sending (web/src/answer/chat-send.ts); false — nothing was sent.
 export interface MarksChannel {
   send: (text: string) => boolean;
   running: boolean;

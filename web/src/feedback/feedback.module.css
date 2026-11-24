@@ -1,3 +1,10 @@
+/* A section of the admin made by this folder («Поддержка», «Польза»): its blocks one under another, as in the other sections. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 /* Complaints, samples, «Поддержка», «Мои обращения», «Польза от агентов» (docs/specs/[20.11.2026]-feedback-and-value.md). */
 .form {
   padding: 18px;
@@ -196,4 +203,16 @@
   border-top: 0;
   color: var(--muted);
   font-weight: 500;
+}
+
+/* «Хороший образец» under a file of the chat (ExampleButton.tsx): the mark of a file kept, the error of the try. */
+.exampleSaved {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.exampleError {
+  margin: 6px 0 0;
+  color: var(--bad);
+  font-size: 13px;
 }
