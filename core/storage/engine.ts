@@ -13,7 +13,7 @@ import type { Db } from '../db/pool.ts';
 import { AppError, isAppError } from '../errors/app-error.ts';
 import { logEvent } from '../log/log.ts';
 import { walkRegularFiles } from '../workspace/held-folder.ts';
-import { existingInside, isDraftPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, removeFileInside, resolveInside } from '../workspace/layout.ts';
+import { existingInside, isAgedPath, isFileInside, listFiles, MAX_LISTED_FILES, openFileInside, removeFileInside, resolveInside } from '../workspace/layout.ts';
 import { areaDir, areaKey, filesPrefix, localAreas, parseAreaKey, projectArea, userArea, type Area } from './areas.ts';
 import { adopt, bringBack, dropStored, hasMarker, makeCopy, removeCopy, removeStoredFile, storeChanges, unreadableNames, type CopyDeps } from './copies.ts';
 import { storedAreas, storedRows, storedTotals } from './manifest.ts';
@@ -57,8 +57,9 @@ export interface FileStorage {
   list(area: Area): Promise<{ path: string; bytes: number }[]>;
   // A file of the area removed for good (the trash empties itself).
   removeFile(area: Area, rel: string): Promise<void>;
-  // The agent's drafts (spec, section 8.33) not changed since `before` (ms), removed for good in every area, from the
-  // disk and the bucket. An area held now is left to the next time: an answer may be using an old script.
+  // The agent's drafts (spec, section 8.33) and the versions a write onto the person's computer replaced (8.25) not changed
+  // since `before` (ms), removed for good in every area, from the disk and the bucket. An area held now is left to the
+  // next time: an answer may be using an old script.
   removeStaleDrafts(before: number): Promise<{ files: number; bytes: number }>;
   // The area removed for good with all its files.
   drop(area: Area): Promise<void>;
@@ -385,20 +386,21 @@ export function createFileStorage(deps: StorageDeps): FileStorage {
           if (stateOf(area).holders > 0) return;
           const dir = areaDir(workspaceRoot, area);
           const prefix = filesPrefix(area);
-          // A draft is old when neither its copy on the disk nor the bucket has it changed since `before`.
+          // A draft — or a version replaced on the person's computer (spec, 8.25) — is old when neither its copy on the disk
+          // nor the bucket has it changed since `before`.
           const drafts = new Map<string, { bytes: number; modifiedMs: number }>();
           if (existsSync(dir)) {
             walkRegularFiles(
               join(dir, prefix),
               (f) => {
-                if (isDraftPath(f.rel)) drafts.set(prefix + f.rel, { bytes: f.size, modifiedMs: f.modifiedMs });
+                if (isAgedPath(f.rel)) drafts.set(prefix + f.rel, { bytes: f.size, modifiedMs: f.modifiedMs });
               },
               true,
             );
           }
           if (remote()) {
             for (const row of await storedRows(db, areaKey(area), prefix)) {
-              if (!isDraftPath(row.path.slice(prefix.length))) continue;
+              if (!isAgedPath(row.path.slice(prefix.length))) continue;
               const disk = drafts.get(row.path);
               drafts.set(row.path, { bytes: disk?.bytes ?? row.bytes, modifiedMs: Math.max(disk?.modifiedMs ?? 0, row.mtimeMs) });
             }

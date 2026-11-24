@@ -113,14 +113,36 @@ describe('search', () => {
       ['user', [text(withAttachments('Посмотри смету', [{ name: 'Смета.xlsx', path: 'uploads/Смета.xlsx' }, { name: 'ТЗ.pdf', path: 'uploads/ТЗ.pdf' }]))]],
       ['assistant', [shown('out/КП Ёлка.docx'), text('Готово.')]],
       ['assistant', [shown('out/КП Ёлка.docx'), shown('out/Пропал.docx', false)]],
+      // A file written onto the person's computer (spec, 8.25): its snapshot is a file of the conversation; a failed write is not.
+      [
+        'assistant',
+        [
+          {
+            type: 'tool-invocation',
+            toolInvocation: {
+              state: 'result',
+              toolCallId: randomUUID(),
+              toolName: 'computer_folder_write',
+              args: {},
+              result: {
+                folder: 'Тендер',
+                items: [
+                  { to: 'КП/Смета.xlsx', written: true, name: 'Смета.xlsx', bytes: 5, snapshot: '.computer-saved/u/s1/Смета.xlsx', previous: null, replaced: false },
+                  { to: 'КП/Акт.docx', written: false, error: 'файл занят' },
+                ],
+              },
+            },
+          },
+        ],
+      ],
     ]);
     const plain = await conversation(olgaId, 'Без файлов про Ёлку', [['user', [text('Привет, Ёлка')]]]);
 
     const found = (await search('ёлка')).threads;
-    expect(found.find((x) => x.id === id)?.files).toBe(3);
+    expect(found.find((x) => x.id === id)?.files).toBe(4);
     expect(found.find((x) => x.id === plain)?.files).toBe(0);
     const listed = (await (await t.call('GET', '/app/api/threads?limit=50', { cookie: olga })).json()) as ThreadPage;
-    expect(listed.threads.find((x) => x.id === id)?.files).toBe(3);
+    expect(listed.threads.find((x) => x.id === id)?.files).toBe(4);
     expect(listed.threads.find((x) => x.id === plain)?.files).toBe(0);
   });
 

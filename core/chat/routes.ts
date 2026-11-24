@@ -1,7 +1,7 @@
 // Chat routes (spec, section 17.5): the agent list, the CopilotKit runtime, conversations,
 // and attachments.
 import { basename } from 'node:path';
-import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, MARKS_FOLDER, MODEL_PICTURE_MAX_BYTES, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
+import { COMPUTER_ACTION_TITLES, COMPUTER_COPIES, COMPUTER_SYSTEM, COMPUTER_TOOLS, MARKS_FOLDER, MAX_UPLOAD_BYTES, MODEL_PICTURE_MAX_BYTES, renameThreadSchema, retryTurnSchema, type AgentListResponse, type RenameThreadResponse, type RetryTurnResponse, type ThreadFileStatus, type ThreadNameResponse } from '@bba/contracts';
 import type { Hono } from 'hono';
 import { AppError } from '../errors/app-error.ts';
 import { agentActions, describeTools, subagentCalls } from '../approvals/describe.ts';
@@ -21,6 +21,8 @@ import { trashedAt } from '../projects/trash.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { startNaming } from './naming.ts';
 import { inThreadFolder, threadFoldersOf } from './thread-folder.ts';
+import { prepareComputerSave } from './computer-saves.ts';
+import { logEvent } from '../log/log.ts';
 import { assertAgentOpen, assertNewTurnAllowed, endRun, newMessageOf, noteStopped, prepareRun, SAFE_THREAD_ID, settleRun, type ChatDeps, type RunInput } from './run.ts';
 import { connectResponse, declinedCallEvents } from './connect.ts';
 import { serverKey } from '../connections/manager.ts';
@@ -68,8 +70,8 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
   // The mail actions are the same for every person; the chat line says «Почта · …» (spec, section 8.24).
   const mailActions = describeTools(createMailTools({ db: deps.db, mail: deps.mail, workspaceRoot: deps.workspaceRoot, listNote: false, chains: deps.chains }));
   const mailSystems = Object.fromEntries(MAIL_TOOL_NAMES.map((name) => [name, MAIL_SYSTEM]));
-  // The tools of the browser for a folder of the person's computer (spec, section 8.25): read-only.
-  const computerActions = Object.fromEntries(Object.entries(COMPUTER_ACTION_TITLES).map(([name, title]) => [name, { title, fields: {}, readOnly: true }]));
+  // The tools of the browser for a folder of the person's computer (spec, section 8.25): only the write changes anything.
+  const computerActions = Object.fromEntries(Object.entries(COMPUTER_ACTION_TITLES).map(([name, title]) => [name, { title, fields: {}, readOnly: name !== COMPUTER_TOOLS.write }]));
   const computerSystems = Object.fromEntries(Object.values(COMPUTER_TOOLS).map((name) => [name, COMPUTER_SYSTEM]));
   const translate = (userId: string, failure: unknown): Promise<TranslatedError> => translateRunFailure(deps.gateway, userId, failure);
 
@@ -266,6 +268,24 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
       pruneOlderThan(folder, `${COMPUTER_COPIES}/${userId}`, COMPUTER_COPY_KEEP_MS);
       return putInFolder(folder, `${COMPUTER_COPIES}/${userId}`, path, data);
     });
+    return c.json(saved, 201);
+  });
+
+  // A file the agent writes onto the person's computer (spec, section 8.25, «Запись в папку»): before the browser writes
+  // it, a snapshot of it and the version on the computer it replaces (sent by the browser) are kept in «.computer-saved».
+  app.post('/app/api/threads/:threadId/computer-saves', async (c) => {
+    const userId = access(c).userId;
+    const threadId = c.req.param('threadId');
+    const found = await threadFolders(userId, threadId);
+    const body = await c.req.parseBody();
+    const { source, target } = body;
+    if (typeof source !== 'string' || !source.trim() || typeof target !== 'string' || !target.trim()) {
+      throw appError('APP_VALIDATION_FAILED', 'no source or target of a computer save', { userMessage: 'Не указан файл или место на компьютере.' });
+    }
+    const previous = body.previous instanceof File ? new Uint8Array(await body.previous.arrayBuffer()) : null;
+    if (previous && previous.byteLength > MAX_UPLOAD_BYTES) throw appError('APP_UPLOAD_TOO_LARGE', `previous version of ${previous.byteLength} bytes`, { userMessage: 'Файл на компьютере больше 20 МБ — его прежнюю версию не сохранить, запись отменена.' });
+    const saved = await inFolder(found, 'write', (folder) => prepareComputerSave(folder, { userId, source, target, previous }));
+    logEvent('info', 'computer_save_prepared', { userId, threadId, bytes: saved.bytes, replaces: previous !== null });
     return c.json(saved, 201);
   });
 

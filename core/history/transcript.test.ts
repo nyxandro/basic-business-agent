@@ -48,6 +48,24 @@ describe('visibleOf', () => {
     ]);
   });
 
+  // A write onto the person's computer (spec, 8.25): what lies where now, what failed; «Нет» of the person is said too.
+  it('tells what was written onto the computer and what failed, and that the person said «Нет»', () => {
+    const written = {
+      folder: 'Тендер',
+      items: [
+        { to: 'КП/КП Ёлка.docx', written: true, name: 'КП Ёлка.docx', bytes: 10, snapshot: '.computer-saved/u/s1/КП Ёлка.docx', previous: '.computer-saved/u/s1/before/КП Ёлка.docx', replaced: true },
+        { to: 'КП/Смета.xlsx', written: true, name: 'Смета.xlsx', bytes: 5, snapshot: '.computer-saved/u/s1/Смета.xlsx', previous: null, replaced: false },
+        { to: 'КП/Акт.docx', written: false, error: 'файл занят' },
+      ],
+    };
+    const { marks } = visibleOf({ role: 'assistant', content: message([call('computer_folder_write', { files: [] }, written), call('computer_folder_write', { files: [] }, { declined: true, message: 'нет' })]) }, none);
+    expect(marks).toEqual([
+      'записано на компьютер в папку «Тендер»: КП/КП Ёлка.docx (заменён прежний файл), КП/Смета.xlsx',
+      'не записано на компьютер: КП/Акт.docx — файл занят',
+      'сотрудник отказался записывать файлы на компьютер',
+    ]);
+  });
+
   it('shows the first rows of a long table and says how many more there are', () => {
     const rows = Array.from({ length: 25 }, (_, i) => ({ n: `строка ${i + 1}` }));
     const { marks } = visibleOf({ role: 'assistant', content: message([call(GENUI_TOOL.table, { columns: [{ key: 'n', label: 'Что' }], rows }, { shown: true })]) }, none);

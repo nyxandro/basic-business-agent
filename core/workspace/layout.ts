@@ -9,7 +9,7 @@ import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdir
 import { inFolderOf, walkRegularFiles } from './held-folder.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
+import { COMPUTER_BEFORE, COMPUTER_SAVES, MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from '@bba/contracts';
 import { appError } from '../errors/catalog.ts';
 
 const SAFE_USER_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -67,6 +67,16 @@ export function draftsPath(threadId: string, inProject: boolean): string {
 }
 
 export const isDraftPath = (rel: string): boolean => rel.split('/').includes(DRAFTS);
+
+// The version of a file a write onto the person's computer replaced (spec, section 8.25): `.computer-saved/<person>/<number>/before/…`.
+export function isComputerBeforePath(rel: string): boolean {
+  const parts = rel.split('/');
+  const at = parts.indexOf(COMPUTER_SAVES);
+  return at >= 0 && parts[at + 3] === COMPUTER_BEFORE;
+}
+
+// What the daily sweep removes when not changed for DRAFTS_KEEP_DAYS: the agent's drafts and the versions replaced on the computer.
+export const isAgedPath = (rel: string): boolean => isDraftPath(rel) || isComputerBeforePath(rel);
 
 // The folder a conversation works in (spec, section 8.33): its project's, shared by all the project's conversations
 // (`ownerId` — the project's creator), or its own; created on first use.

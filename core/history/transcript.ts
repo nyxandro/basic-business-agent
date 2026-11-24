@@ -4,7 +4,7 @@
 // sub-agents, what systems returned — the person did not see, and the agent reading an old conversation
 // does not get it either. The rule is a list of what is known: a new block of the interface needs its line
 // here (the test fails for one that has none).
-import { GENUI_TOOL, splitAttachments, tableBlockSchema, WIDGET_TOOL, type TableBlock } from '@bba/contracts';
+import { COMPUTER_TOOLS, computerWriteResultSchema, GENUI_TOOL, splitAttachments, tableBlockSchema, WIDGET_TOOL, type TableBlock } from '@bba/contracts';
 import { widgetVisibleText } from '../widgets/visible-text.ts';
 
 // How the action of a call ended, from its request for «Да» (app.approval_requests).
@@ -123,10 +123,22 @@ function actionLine(call: Invocation, outcome: ApprovalOutcome): string {
   }
 }
 
+// A write onto the person's computer (spec, section 8.25): the browser asked «Да» itself, the result says what came of it.
+function computerWriteLines(result: unknown): string[] {
+  const parsed = computerWriteResultSchema.safeParse(result);
+  if (!parsed.success) return [];
+  if ('declined' in parsed.data) return ['сотрудник отказался записывать файлы на компьютер'];
+  if ('error' in parsed.data) return [];
+  const written = parsed.data.items.flatMap((i) => (i.written ? [`${i.to}${i.replaced ? ' (заменён прежний файл)' : ''}`] : []));
+  const failed = parsed.data.items.flatMap((i) => (i.written ? [] : [`не записано на компьютер: ${i.to} — ${i.error}`]));
+  return [...(written.length > 0 ? [`записано на компьютер в папку «${parsed.data.folder}»: ${written.join(', ')}`] : []), ...failed];
+}
+
 function callLines(call: Invocation, approvals: ReadonlyMap<string, ApprovalOutcome>): string[] {
   const name = str(call.toolName);
   const outcome = approvals.get(str(call.toolCallId));
   if (outcome) return [actionLine(call, outcome)];
+  if (name === COMPUTER_TOOLS.write) return call.state === 'result' ? computerWriteLines(call.result) : [];
   // Anything else the person saw only once the call was done, and only if it did not fail.
   if (call.state !== 'result' || failed(call.result)) return [];
   if (MEMORY_WHERE[name]) return memoryLines(MEMORY_WHERE[name], call.result);

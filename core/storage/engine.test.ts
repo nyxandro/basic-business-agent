@@ -252,6 +252,19 @@ describe('the drafts of the agent', () => {
     expect(existsSync(join(project, 'files/Смета.xlsx'))).toBe(true);
   });
 
+  // The version a write onto the person's computer replaced (spec, section 8.25): kept 30 days, as drafts; the snapshot
+  // of what was written stays with the project.
+  it('removes the earlier versions of files replaced on the computer after 30 days; the snapshots of what was written stay', async () => {
+    const project = areaDir(root, tender);
+    const bytes = aged(project, 'files/.computer-saved/u1/s1/before/Договор.docx', 31);
+    aged(project, 'files/.computer-saved/u1/s2/before/Смета.xlsx', 10);
+    aged(project, 'files/.computer-saved/u1/s1/Договор.docx', 31);
+    expect(await sweepDrafts(storage, now)).toEqual({ files: 1, bytes });
+    expect(existsSync(join(project, 'files/.computer-saved/u1/s1/before/Договор.docx'))).toBe(false);
+    expect(existsSync(join(project, 'files/.computer-saved/u1/s2/before/Смета.xlsx'))).toBe(true);
+    expect(existsSync(join(project, 'files/.computer-saved/u1/s1/Договор.docx'))).toBe(true);
+  });
+
   it('never removes through a link the agent made of its drafts folder', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'bba-outside-'));
     try {

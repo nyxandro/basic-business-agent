@@ -91,6 +91,7 @@ describe('chat', () => {
           // The mailbox (8.24) and the folder of the computer (8.25) are named for every agent.
           mailbox_send: expect.objectContaining({ title: 'Отправить письмо из почты сотрудника', readOnly: false }),
           computer_folder_read: { title: 'Чтение файла из папки с компьютера', fields: {}, readOnly: true },
+          computer_folder_write: { title: 'Запись файлов в папку на компьютере', fields: {}, readOnly: false },
         }),
         systems: { tools: { ...Object.fromEntries(MAIL_TOOL_NAMES.map((n) => [n, 'Почта'])), ...Object.fromEntries(Object.values(COMPUTER_TOOLS).map((n) => [n, 'Компьютер'])) }, prefixes: {} },
       },
