@@ -2,7 +2,7 @@
 // blocks, the confirmation card for AG-UI interrupts and readable errors.
 import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
 import { CopilotChat, useCopilotKit, useInterrupt } from '@copilotkit/react-core';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
 import { useGenuiRenderers } from './renderers.tsx';
 import { copilotLabels } from '../i18n/copilot-labels.ts';
@@ -47,10 +47,7 @@ export function ChatPanel({
   // No connection to the server's runtime (the page opened while it restarted): said plainly, tried again by itself; when
   // it is back the conversation connects anew (chat/runtime-recovery.ts).
   const { copilotkit } = useCopilotKit();
-  const { lost, generation } = useRuntimeRecovery(copilotkit, COPILOT_RUNTIME_URL);
-  useEffect(() => {
-    if (generation > 0) setFailure(null);
-  }, [generation]);
+  const { lost, generation } = useRuntimeRecovery(copilotkit, COPILOT_RUNTIME_URL, () => setFailure(null));
   const shownFailure = lost ? CONNECTION_LOST : failure;
 
   useGenuiRenderers(agent);

@@ -27,14 +27,18 @@ function fakeCore(status: Status) {
 }
 
 const asCore = (core: ReturnType<typeof fakeCore>) => core as unknown as RuntimeCore;
+const onRecovered = vi.fn();
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+  onRecovered.mockClear();
+});
 afterEach(() => vi.useRealTimers());
 
 describe('useRuntimeRecovery', () => {
   it('does nothing while the connection is fine', () => {
     const core = fakeCore(Status.Connected);
-    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL));
+    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
     act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 3));
     expect(result.current.lost).toBe(false);
     expect(core.urls).toEqual([]);
@@ -42,7 +46,7 @@ describe('useRuntimeRecovery', () => {
 
   it('tries the connection again, less and less often, until it is back; then the chat connects anew', () => {
     const core = fakeCore(Status.Error);
-    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL));
+    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
     expect(result.current.lost).toBe(true);
     expect(core.urls).toEqual([]);
     act(() => void vi.advanceTimersByTime(RETRY_FIRST_MS));
@@ -56,13 +60,14 @@ describe('useRuntimeRecovery', () => {
     act(() => core.become(Status.Connected));
     expect(result.current.lost).toBe(false);
     expect(result.current.generation).toBe(generation + 1);
+    expect(onRecovered).toHaveBeenCalledTimes(1);
     act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 3));
     expect(core.urls).toHaveLength(4);
   });
 
   it('notices a connection that breaks later and keeps the tries no rarer than the limit', () => {
     const core = fakeCore(Status.Connected);
-    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL));
+    const { result } = renderHook(() => useRuntimeRecovery(asCore(core), URL, onRecovered));
     act(() => core.become(Status.Error));
     expect(result.current.lost).toBe(true);
     act(() => void vi.advanceTimersByTime(RETRY_MAX_MS * 20));
