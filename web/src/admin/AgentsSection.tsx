@@ -1,5 +1,5 @@
 // «Агенты и промпты» (spec, scenario 5; owner's list 16.11): the agents as a list — the mark, the name,
-// the departments and a mark of an edited prompt; a click opens the agent's page (AgentPage.tsx).
+// who may use it and a mark of an edited prompt; a click opens the agent's page (AgentPage.tsx).
 // Below: agents that departments still point at but the installation no longer has, and tasks
 // stopped because of that.
 import { Link } from 'react-router';
@@ -10,6 +10,7 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { useLoad } from '../ui/use-load.ts';
+import { agentAccessText } from './AgentAccess.tsx';
 import { chatMarkOf } from './AgentMarkEditor.tsx';
 import { agentPath } from './AgentPage.tsx';
 import { adminApi } from './api.ts';
@@ -19,8 +20,8 @@ import section from './section.module.css';
 const t = ru.admin.agents;
 
 async function load() {
-  const [agents, tasks] = await Promise.all([adminApi.agents(), adminApi.tasks()]);
-  return { ...agents, stopped: tasks.tasks.filter((task) => task.pausedReason === 'agent_missing') };
+  const [agents, tasks, departments, people] = await Promise.all([adminApi.agents(), adminApi.tasks(), adminApi.departments(), adminApi.people()]);
+  return { ...agents, departments: departments.departments, people: people.people, stopped: tasks.tasks.filter((task) => task.pausedReason === 'agent_missing') };
 }
 
 export function AgentsSection() {
@@ -28,7 +29,7 @@ export function AgentsSection() {
   const head = <PageHead title={t.title} lead={t.lead} />;
   if (state.status === 'loading') return <div className={section.stack}>{head}<DelayedBar /></div>;
   if (state.status === 'error') return <div className={section.stack}>{head}<ErrorBanner error={state.error} onRetry={reload} /></div>;
-  const { agents, missingAgents, stopped } = state.data;
+  const { agents, missingAgents, stopped, departments, people } = state.data;
   return (
     <div className={section.stack}>
       {head}
@@ -49,7 +50,7 @@ export function AgentsSection() {
                 <AgentMarkView mark={chatMarkOf(a.mark)} />
                 <span className={styles.agentText}>
                   <span className={styles.agentName}>{a.name}</span>
-                  <span className={styles.agentDepts}>{a.departmentNames.length > 0 ? a.departmentNames.join(', ') : t.noDepartments}</span>
+                  <span className={styles.agentDepts}>{agentAccessText(a.access, departments, people)}</span>
                 </span>
                 {a.promptChanged ? <Pill tone="warn">{t.changed}</Pill> : null}
                 <Icon name="right" size={16} className={styles.agentGo} />

@@ -8,7 +8,7 @@ import { ARCHIVE_MAX_BYTES } from './archive.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { MULTIPART_OVERHEAD_BYTES } from '../projects/routes.ts';
-import { requirePermission } from '../auth/guards.ts';
+import { requireAnyPermission, requirePermission } from '../auth/guards.ts';
 import { access, parseJson, type AppEnv } from '../http/http.ts';
 import { createSkill, deleteSkill, listSkills, previewSkill, replaceSkill, setAgentSkills, updateSkill, type SkillsDeps } from './store.ts';
 
@@ -39,7 +39,8 @@ function agentsField(raw: unknown): string[] {
 export function registerSkillRoutes(app: Hono<AppEnv>, deps: SkillsDeps): void {
   const skills = requirePermission('skills');
 
-  app.get('/app/api/admin/skills', skills, async (c) => c.json(await listSkills(deps)));
+  // The right «Агенты» reads the list too: the page of an agent ticks its skills from it.
+  app.get('/app/api/admin/skills', requireAnyPermission('skills', 'agents'), async (c) => c.json(await listSkills(deps)));
 
   app.post('/app/api/admin/skills', skills, async (c) => {
     const { archive, fields } = await upload(c);

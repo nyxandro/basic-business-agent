@@ -6,8 +6,13 @@ import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['agents'] };
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, departmentNames: ['Отдел продаж'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true, widgets: true } };
-const ASSISTANT = { ...AGENT, id: 'assistant', name: 'Общий помощник', description: 'Вопросы', departmentNames: [], promptChanged: false, mark: { kind: 'image', icon: 'spark', image: { url: '/app/api/agents/assistant/image?v=0123456789ab' } } };
+const D1 = '00000000-0000-4000-8000-0000000000d1';
+const DEPARTMENTS = [{ id: D1, name: 'Отдел продаж', userIds: [], agentIds: ['sales'], headIds: [] }];
+const PEOPLE = [{ id: 'u2', name: 'Пётр Иванов' }];
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, access: { org: false, departmentIds: [D1], userIds: [] as string[] }, skillNames: ['kp-builder'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true, widgets: true } };
+const ASSISTANT = { ...AGENT, id: 'assistant', name: 'Общий помощник', description: 'Вопросы', access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], promptChanged: false, mark: { kind: 'image', icon: 'spark', image: { url: '/app/api/agents/assistant/image?v=0123456789ab' } } };
+const skill = (name: string, title: string, system = false) => ({ name, title, description: '', sizeBytes: 1, files: [], hasScripts: false, enabled: true, agentIds: [], system, uploadedAt: null, uploadedBy: null });
+const SKILLS = [skill('docx', 'Документы Word', true), skill('contract-check', 'Проверка договора'), skill('kp-builder', 'Коммерческое предложение')];
 const PROMPT = {
   agentId: 'sales',
   fileInstructions: 'Ты агент продаж.',
@@ -27,29 +32,32 @@ function server(prompt: object = PROMPT, agents: object[] = [AGENT], missing: st
     'GET /app/api/admin/agents': { body: { agents, missingAgents: missing } },
     'GET /app/api/admin/tasks': { body: { tasks: [] } },
     'GET /app/api/admin/agents/sales/prompt': { body: prompt },
+    'GET /app/api/admin/departments': { body: { departments: DEPARTMENTS } },
+    'GET /app/api/admin/people': { body: { people: PEOPLE } },
+    'GET /app/api/admin/skills': { body: { skills: SKILLS, sandbox: { programs: [], python: [], node: [] } } },
   });
 }
 
 const tabs = () => screen.getByRole('navigation', { name: 'Разделы агента' });
 
 describe('«Агенты и промпты»: the list', () => {
-  it('lists the agents with their marks, departments and an edited prompt; a click opens the agent’s page', async () => {
+  it('lists the agents with their marks, who may use them and an edited prompt; a click opens the agent’s page', async () => {
     server(PROMPT, [AGENT, ASSISTANT]);
     renderApp('/admin/agents');
     const list = await screen.findByRole('list', { name: 'Агенты' });
     const rows = within(list).getAllByRole('link');
     expect(rows.map((r) => r.getAttribute('href'))).toEqual(['/admin/agents/sales', '/admin/agents/assistant']);
-    expect(within(rows[0]!).getByText('Отдел продаж')).toBeInTheDocument();
+    expect(within(rows[0]!).getByText('Отделы: Отдел продаж')).toBeInTheDocument();
     expect(within(rows[0]!).getByText('Изменён в админке')).toBeInTheDocument();
     expect(rows[0]!.querySelector('[data-agent-mark="icon"]')).toHaveAttribute('data-icon', 'headset');
-    expect(within(rows[1]!).getByText('Не назначен отделам')).toBeInTheDocument();
+    expect(within(rows[1]!).getByText('Никому не доступен')).toBeInTheDocument();
     expect(rows[1]!.querySelector('[data-agent-mark="image"] img')).toHaveAttribute('src', ASSISTANT.mark.image.url);
     // No editor on the list: the prompt is on the agent's page.
     expect(screen.queryByRole('textbox', { name: 'Промпт агента' })).not.toBeInTheDocument();
 
     await userEvent.setup().click(rows[0]!);
     expect(await screen.findByRole('heading', { name: 'Продажи', level: 1 })).toBeInTheDocument();
-    expect(within(tabs()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Инструкции', 'Настройки', 'Значок']);
+    expect(within(tabs()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Инструкции', 'Настройки', 'Скиллы', 'Доступ', 'Значок']);
     expect(within(tabs()).getByRole('link', { name: 'Инструкции' })).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByRole('textbox', { name: 'Промпт агента' })).toBeInTheDocument();
   });
@@ -67,7 +75,7 @@ describe('the page of an agent', () => {
     renderApp('/admin/agents/sales');
     const layers = await screen.findByRole('list', { name: 'Слои промпта' });
     expect(within(layers).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект: память, разговоры, файлы', 'Личная память']);
-    expect(screen.getByText('Отдел продаж')).toBeInTheDocument();
+    expect(screen.getByText('Отделы: Отдел продаж')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Проверить в чате' })).toHaveAttribute('href', '/admin/agents/sales/check');
     // The model and the starters are in «Настройки».
     expect(screen.queryByRole('combobox', { name: 'Модель агента' })).not.toBeInTheDocument();
@@ -187,6 +195,65 @@ describe('the page of an agent', () => {
 
     await user.click(screen.getByRole('button', { name: 'Опубликовать' }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Промпт агента' })).toHaveValue('Опубликованный промпт.'));
+  });
+
+  it('«Доступ»: opens the agent to departments and employees at once, or to the whole organisation', async () => {
+    const s = server();
+    s.set('PUT /app/api/admin/agents/sales/access', (call) => ({ body: { access: call.body } }));
+    renderApp('/admin/agents/sales/access');
+    const user = userEvent.setup();
+    const group = await screen.findByRole('group', { name: 'Кому доступен агент' });
+    expect(within(group).getByRole('button', { name: 'Отделы' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(group).getByRole('button', { name: 'Сотрудники' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('checkbox', { name: 'Отдел продаж' })).toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Сохранить доступ' })).not.toBeInTheDocument();
+    // Employees by name next to the department.
+    await user.click(within(group).getByRole('button', { name: 'Сотрудники' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Пётр Иванов' }));
+    expect(screen.getByRole('checkbox', { name: 'Отдел продаж' })).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Сохранить доступ' }));
+    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/access'))?.body).toEqual({ org: false, departmentIds: [D1], userIds: ['u2'] }));
+    // The whole organisation leaves no lists.
+    await user.click(within(group).getByRole('button', { name: 'Вся организация' }));
+    expect(screen.queryByRole('checkbox', { name: 'Отдел продаж' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Сохранить доступ' }));
+    await waitFor(() => expect(s.calls.filter((c) => c.path.endsWith('/access')).at(-1)?.body).toEqual({ org: true, departmentIds: [], userIds: [] }));
+  });
+
+  it('«Доступ»: closing a list forgets what was ticked in it', async () => {
+    const s = server(PROMPT, [{ ...AGENT, access: { org: false, departmentIds: [D1], userIds: ['u2'] } }]);
+    s.set('PUT /app/api/admin/agents/sales/access', (call) => ({ body: { access: call.body } }));
+    renderApp('/admin/agents/sales/access');
+    const user = userEvent.setup();
+    const group = await screen.findByRole('group', { name: 'Кому доступен агент' });
+    await user.click(within(group).getByRole('button', { name: 'Отделы' }));
+    expect(screen.queryByRole('checkbox', { name: 'Отдел продаж' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Сохранить доступ' }));
+    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/access'))?.body).toEqual({ org: false, departmentIds: [], userIds: ['u2'] }));
+  });
+
+  it('«Скиллы»: ticks the skills of the base for the agent; the system ones are always on', async () => {
+    const s = server();
+    s.set('PUT /app/api/admin/agents/sales/skills', (call) => ({ body: call.body }));
+    renderApp('/admin/agents/sales/skills');
+    const user = userEvent.setup();
+    expect(await screen.findByRole('checkbox', { name: 'Коммерческое предложение' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Проверка договора' })).not.toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: 'Документы Word' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Документы Word/)).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Проверка договора' }));
+    await user.click(screen.getByRole('button', { name: 'Сохранить скиллы' }));
+    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/skills') && c.method === 'PUT')?.body).toEqual({ skillNames: ['kp-builder', 'contract-check'] }));
+  });
+
+  it('«Скиллы»: says the system skills are off with the commands and leads to «Скиллы» when the base is empty', async () => {
+    const s = server(PROMPT, [{ ...AGENT, skillNames: [], abilities: { web: true, commands: false, widgets: true } }]);
+    s.set('GET /app/api/me', { body: { ...ADMIN, permissions: ['agents', 'skills'] } });
+    s.set('GET /app/api/admin/skills', { body: { skills: [SKILLS[0]], sandbox: { programs: [], python: [], node: [] } } });
+    renderApp('/admin/agents/sales/skills');
+    expect(await screen.findByText(/выключены вместе с командами терминала/)).toBeInTheDocument();
+    expect(screen.getByText(/В базе пока нет загруженных скиллов/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть «Скиллы»' })).toHaveAttribute('href', '/admin/skills');
   });
 
   it('says an agent is gone from the installation and leads back to the list', async () => {

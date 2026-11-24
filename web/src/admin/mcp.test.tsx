@@ -51,7 +51,7 @@ const server = (over: Partial<McpServerView> = {}): McpServerView => ({
 });
 
 const ACTIONS = [action('crm.deal.list', 'Найти сделки', 420, { readOnlyHint: true }), action('crm.deal.add', 'Создать сделку', 610)];
-const AGENTS = { agents: [{ id: 'sales', name: 'Продажи', description: '', modelId: null, departmentNames: [], starters: [], startersCustom: false }], missingAgents: [] };
+const AGENTS = { agents: [{ id: 'sales', name: 'Продажи', description: '', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], starters: [], startersCustom: false }], missingAgents: [] };
 
 describe('a new server', () => {
   it('goes from the address to «Включить»: the server tells the way of sign-in, the admin turns on actions and agents', async () => {

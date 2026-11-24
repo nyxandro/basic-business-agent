@@ -13,6 +13,7 @@ import type {
   McpServerPatch,
   McpServerView,
   AgentAbilities,
+  AgentAccess,
   AgentIcon,
   AgentMarkAdminState,
   AgentMarkKind,
@@ -44,7 +45,6 @@ import type {
   ModelSettings,
   ModelsResponse,
   ModelUpdate,
-  SkillAccess,
   SkillDto,
   SkillPreview,
   SkillsResponse,
@@ -67,11 +67,11 @@ type OrgProfile = { name: string; tone: string; requisites: string; industry: st
 
 const A = '/app/api/admin';
 
-// A `.skill` file and, when saving a new one, who gets it.
-function skillForm(file: File, access?: SkillAccess): FormData {
+// A `.skill` file and, when saving a new one, the agents ticked for it.
+function skillForm(file: File, agentIds?: string[]): FormData {
   const form = new FormData();
   form.append('file', file);
-  if (access) form.append('access', JSON.stringify(access));
+  if (agentIds) form.append('agentIds', JSON.stringify(agentIds));
   return form;
 }
 type Ok = { ok: true };
@@ -127,6 +127,9 @@ export const adminApi = {
   setModel: (agentId: string, modelId: string | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/model`, { modelId }),
   setStarters: (agentId: string, starters: string[] | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/starters`, { starters }),
   setAbilities: (agentId: string, patch: Partial<AgentAbilities>) => api<{ abilities: AgentAbilities }>('PUT', `${A}/agents/${enc(agentId)}/abilities`, patch),
+  // «Доступ» and «Скиллы» of an agent (owner's decision 24.11).
+  setAgentAccess: (agentId: string, access: AgentAccess) => api<{ access: AgentAccess }>('PUT', `${A}/agents/${enc(agentId)}/access`, access),
+  setAgentSkills: (agentId: string, skillNames: string[]) => api<{ skillNames: string[] }>('PUT', `${A}/agents/${enc(agentId)}/skills`, { skillNames }),
   tasks: () => api<{ tasks: AdminTask[] }>('GET', `${A}/tasks`),
   approvalSettings: () => api<ApprovalSettingsDto>('GET', `${A}/approval-settings`),
   saveApprovalSettings: (body: ApprovalSettingsDto) => api<ApprovalSettingsDto>('PUT', `${A}/approval-settings`, body),
@@ -152,7 +155,7 @@ export const adminApi = {
 
   skills: () => api<SkillsResponse>('GET', `${A}/skills`),
   checkSkill: (file: File) => apiForm<SkillPreview>(`${A}/skills?check=1`, skillForm(file)),
-  createSkill: (file: File, access: SkillAccess) => apiForm<SkillDto>(`${A}/skills`, skillForm(file, access)),
+  createSkill: (file: File, agentIds: string[]) => apiForm<SkillDto>(`${A}/skills`, skillForm(file, agentIds)),
   replaceSkill: (name: string, file: File) => apiFormPut<SkillDto>(`${A}/skills/${enc(name)}`, skillForm(file)),
   updateSkill: (name: string, change: SkillUpdate) => api<SkillDto>('PUT', `${A}/skills/${enc(name)}`, change),
   deleteSkill: (name: string) => api<Ok>('DELETE', `${A}/skills/${enc(name)}`),

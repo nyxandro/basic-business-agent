@@ -8,6 +8,7 @@ import { feedbackTexts } from './feedback.ts';
 import { knowledgeTexts } from './knowledge.ts';
 import { orgTexts } from './org.ts';
 import { interfaceTexts } from './interface.ts';
+import { agentAccessTexts } from './agent-access.ts';
 
 // Why a page of a search did not open, in a word or two (spec, section 8.30).
 const PAGE_FAILURES: Record<string, string> = {
@@ -586,7 +587,6 @@ export const ru = {
     forbidden: 'Этот раздел вам недоступен. Если он нужен для работы, обратитесь к администратору.',
     // «Скиллы»: system skills of the core and what the sandbox has (spec, section 8.18).
     skills: {
-      who: 'Кому:',
       system: 'Системный',
       builtIn: 'Встроен в ядро, всегда включён',
       noOwnTitle: 'Своих скиллов пока нет',
@@ -599,16 +599,17 @@ export const ru = {
     // «Агенты и промпты»: the list and the page of an agent (owner's list 16.11).
     agents: {
       title: 'Агенты и промпты',
-      lead: 'Агенты установки. Откройте агента, чтобы поправить его инструкции, настройки и значок.',
+      lead: 'Агенты установки. Откройте агента, чтобы поправить его инструкции, настройки, скиллы, доступ и значок.',
       listLabel: 'Агенты',
-      noDepartments: 'Не назначен отделам',
       changed: 'Изменён в админке',
       emptyTitle: 'В установке нет агентов',
       emptyText: 'Агенты ставятся вместе с установкой: папка agents/ на сервере.',
       back: 'Все агенты',
       gone: 'Такого агента нет в установке. Вернитесь к списку агентов.',
       tabsLabel: 'Разделы агента',
-      tabs: { instructions: 'Инструкции', settings: 'Настройки', mark: 'Значок' },
+      tabs: { instructions: 'Инструкции', settings: 'Настройки', skills: 'Скиллы', access: 'Доступ', mark: 'Значок' },
+      // «Скиллы» and «Доступ» of an agent (owner's decision 24.11).
+      access: agentAccessTexts,
       settingsTitle: 'Настройки агента',
       settingsSub: 'Модель, на которой он отвечает, и подсказки в пустом чате.',
       // «Что агенту можно» (spec, section 8.30).

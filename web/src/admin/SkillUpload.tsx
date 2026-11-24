@@ -1,16 +1,18 @@
 // «Добавить скилл» (spec, scenario 10): a `.skill` file is checked before saving — its name, what it
-// does, the files and whether it has scripts; then who gets it. A skill with the same name is
-// replaced with the new version («Заменить»), its access stays. A refused archive says why.
-import type { AdminDepartment, AdminPerson, SkillAccess, SkillPreview } from '@bba/contracts';
+// does, the files and whether it has scripts; then the agents that get it — none ticked at the start (owner's decision
+// 24.11). A skill with the same name is replaced with the new version («Заменить»), its agents stay. A refused archive
+// says why.
+import type { AdminAgent, SkillPreview } from '@bba/contracts';
 import { useRef, useState } from 'react';
 import { Button } from '../ui/Button.tsx';
 import { fileSize, plural } from '../i18n/format.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Modal } from '../ui/Modal.tsx';
-import { AccessPicker, accessIsEmpty } from './AccessPicker.tsx';
+import { ru } from '../i18n/ru.ts';
 import { adminApi } from './api.ts';
 import { Feedback, useAction } from '../ui/form-parts.tsx';
 import section from './section.module.css';
+import { SkillAgentsPicker } from './SkillAgentsPicker.tsx';
 import styles from './skills.module.css';
 
 const SHOWN_FILES = 8;
@@ -40,16 +42,16 @@ function Preview({ preview }: { preview: SkillPreview }) {
           Есть скрипты — они выполняются в песочнице: своя папка у каждого сотрудника, без сети.
         </p>
       ) : null}
-      {preview.exists ? <p className={styles.replace}>Скилл с таким именем уже загружен — сохранение заменит его новой версией, доступ останется прежним.</p> : null}
+      {preview.exists ? <p className={styles.replace}>Скилл с таким именем уже загружен — сохранение заменит его новой версией, агенты останутся прежними.</p> : null}
     </div>
   );
 }
 
-function UploadBody({ departments, users, onClose, onSaved }: { departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
+function UploadBody({ agents, onClose, onSaved }: { agents: AdminAgent[]; onClose: () => void; onSaved: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<SkillPreview | null>(null);
-  const [access, setAccess] = useState<SkillAccess>({ scope: 'org', departmentIds: [], userIds: [] });
+  const [agentIds, setAgentIds] = useState<string[]>([]);
   const { busy, error, run, clearError } = useAction();
 
   async function choose(next: File) {
@@ -60,7 +62,7 @@ function UploadBody({ departments, users, onClose, onSaved }: { departments: Adm
   }
   async function save() {
     if (!file || !preview) return;
-    const ok = preview.exists ? await run(() => adminApi.replaceSkill(preview.name, file), 'Скилл заменён') : await run(() => adminApi.createSkill(file, access), 'Скилл добавлен');
+    const ok = preview.exists ? await run(() => adminApi.replaceSkill(preview.name, file), 'Скилл заменён') : await run(() => adminApi.createSkill(file, agentIds), 'Скилл добавлен');
     if (ok) onSaved();
   }
 
@@ -86,10 +88,15 @@ function UploadBody({ departments, users, onClose, onSaved }: { departments: Adm
       </button>
       <Feedback error={error} />
       {preview ? <Preview preview={preview} /> : null}
-      {preview && !preview.exists ? <AccessPicker value={access} onChange={setAccess} departments={departments} users={users} /> : null}
+      {preview && !preview.exists ? (
+        <>
+          <SkillAgentsPicker agents={agents} value={agentIds} onChange={setAgentIds} />
+          {agentIds.length === 0 ? <p className={section.note}>{ru.admin.agents.access.skillAgents.uploadHint}</p> : null}
+        </>
+      ) : null}
       <div className={section.formActions}>
         <Button onClick={onClose}>Отмена</Button>
-        <Button variant="primary" disabled={busy || !preview || (!preview.exists && accessIsEmpty(access))} onClick={() => void save()}>
+        <Button variant="primary" disabled={busy || !preview} onClick={() => void save()}>
           {preview?.exists ? 'Заменить' : 'Сохранить'}
         </Button>
       </div>
@@ -97,7 +104,7 @@ function UploadBody({ departments, users, onClose, onSaved }: { departments: Adm
   );
 }
 
-export function SkillUpload(props: { departments: AdminDepartment[]; users: AdminPerson[]; onClose: () => void; onSaved: () => void }) {
+export function SkillUpload(props: { agents: AdminAgent[]; onClose: () => void; onSaved: () => void }) {
   return (
     <Modal open onClose={props.onClose} label="Добавить скилл">
       <UploadBody {...props} />

@@ -168,10 +168,17 @@ describe('skills of the installation', () => {
     expect(statSync(after!).mode & 0o777).toBe(0o555);
   });
 
-  it('is open only to roles with the right «Скиллы»', async () => {
+  it('is open only to roles with the right «Скиллы»; the right «Агенты» reads the list to tick the skills of an agent', async () => {
     const olga = await t.signIn('olga@example.com');
     expect((await t.call('GET', '/app/api/admin/skills', { cookie: olga })).status).toBe(403);
     expect((await send('POST', '/app/api/admin/skills?check=1', form(PACKED), olga)).status).toBe(403);
+    const role = (await t.db.query<{ id: string }>(`INSERT INTO app.roles (name, permissions) VALUES ('Агенты', '["agents"]') RETURNING id`)).rows[0]!.id;
+    await t.createUser({ email: 'anna@example.com', roleIds: [role] });
+    const anna = await t.signIn('anna@example.com');
+    expect((await t.call('GET', '/app/api/admin/skills', { cookie: anna })).status).toBe(200);
+    expect((await send('POST', '/app/api/admin/skills?check=1', form(PACKED), anna)).status).toBe(403);
+    expect((await t.call('PUT', `/app/api/admin/skills/${NAME}`, { cookie: anna, body: { agentIds: [] } })).status).toBe(403);
+    expect((await setAgentSkills('sales', [NAME], anna)).status).toBe(200);
   });
 
   it('removes the skill with its copy and its link to the agents', async () => {

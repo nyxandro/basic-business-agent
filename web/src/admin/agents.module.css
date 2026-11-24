@@ -122,6 +122,13 @@
   border-bottom-color: var(--acc);
 }
 
+/* A phone: five sections scroll sideways, a bit closer together. */
+@media (max-width: 600px) {
+  .tab {
+    padding: 10px;
+  }
+}
+
 .settingsBody {
   display: flex;
   flex-direction: column;

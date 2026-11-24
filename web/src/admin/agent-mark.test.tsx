@@ -16,13 +16,16 @@ const SPARK: AgentMarkAdminState = { kind: 'icon', icon: 'spark', image: null };
 const PICTURE_URL = '/app/api/agents/sales/image?v=0123456789ab';
 const PAGE = '/admin/agents/sales/mark';
 const PUT = 'PUT /app/api/admin/agents/sales/mark';
-const agent = (mark: AgentMarkAdminState) => ({ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', modelId: null, departmentNames: ['Отдел продаж'], starters: [], startersCustom: false, promptChanged: false, mark });
+const agent = (mark: AgentMarkAdminState) => ({ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], starters: [], startersCustom: false, promptChanged: false, mark });
 
 function server(state: AgentMarkAdminState = SPARK, saved: AgentMarkAdminState = state, me: object = ADMIN) {
   let current = state;
   const s = mockServer({
     'GET /app/api/me': { body: me },
     'GET /app/api/admin/agents': () => ({ body: { agents: [agent(current)], missingAgents: [] } }),
+    'GET /app/api/admin/departments': { body: { departments: [] } },
+    'GET /app/api/admin/people': { body: { people: [] } },
+    'GET /app/api/admin/skills': { body: { skills: [], sandbox: { programs: [], python: [], node: [] } } },
     [PUT]: () => ((current = saved), { body: saved }),
   });
   return s;

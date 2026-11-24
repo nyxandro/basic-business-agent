@@ -79,6 +79,11 @@
   font-weight: 500;
 }
 
+/* A skill with no agent: nobody uses it until agents are ticked (owner's decision 24.11). */
+.whoNone {
+  color: var(--warn);
+}
+
 .drop {
   display: flex;
   flex-direction: column;
