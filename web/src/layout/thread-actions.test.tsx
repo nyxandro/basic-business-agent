@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} }, mark: { kind: 'icon', icon: 'spark' } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', actions: {}, systems: { tools: {}, prefixes: {} }, mark: { kind: 'icon', icon: 'spark' } }];
 const thread = (id: string, title: string) => ({ id, title, kind: 'chat', unread: false, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId: null });
 const BOTH = { threads: [thread('t1', 'Сделки без движения'), thread('t2', 'Смета склада')], next: null };
 

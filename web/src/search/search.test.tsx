@@ -5,7 +5,7 @@ import { apiError, ME, mockServer, type MockCall, type Route } from '../test/fet
 import { PHONE_WIDTH, stubSystemTheme } from '../test/match-media.ts';
 import { renderApp } from '../test/render.tsx';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const PROJECTS = [
   { id: 'p1', name: 'Тендер Северный', instructions: '', threadCount: 2, createdAt: '2026-11-10T08:00:00Z' },
   { id: 'p2', name: 'Ключевые клиенты', instructions: '', threadCount: 1, createdAt: '2026-11-11T08:00:00Z', role: 'member', owner: { id: 'u9', name: 'Игорь Петров' }, shared: true },

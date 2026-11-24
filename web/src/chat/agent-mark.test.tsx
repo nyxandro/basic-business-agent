@@ -10,8 +10,8 @@ import { AgentMarkView } from './AgentMark.tsx';
 
 const PICTURE_URL = '/app/api/agents/sales/image?v=0123456789ab';
 const agents = (mark: AgentMark) => [
-  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark, actions: {}, systems: { tools: {}, prefixes: {} } },
-  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', starters: [], mark: { kind: 'icon', icon: 'star' }, actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', mark, actions: {}, systems: { tools: {}, prefixes: {} } },
+  { id: 'assistant', name: 'Общий помощник', description: 'Вопросы и заметки', mark: { kind: 'icon', icon: 'star' }, actions: {}, systems: { tools: {}, prefixes: {} } },
 ];
 
 function openNewConversation(mark: AgentMark, showAgentMark = true, path = '/agents/sales') {

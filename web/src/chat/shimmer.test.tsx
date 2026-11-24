@@ -91,7 +91,7 @@ describe('the light over an answer being written', () => {
 
 describe('the light in a turn of the agent', () => {
   const EXTRAS: ChatExtras = {
-    agent: { id: 'sales', name: 'Продажи', description: '', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
+    agent: { id: 'sales', name: 'Продажи', description: '', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } },
     agentId: 'sales',
     threadId: 't1',
     draft: false,

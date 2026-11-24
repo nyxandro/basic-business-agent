@@ -1,30 +1,18 @@
-// An empty conversation (mockup): «Чем помочь, {имя}?», what the agent does, up to three questions
-// to start with. A question leaves at once as the person's first message.
+// An empty conversation (mockup): «Чем помочь, {имя}?» and what the agent does. No questions to start with: the owner
+// removed them on 24.11 («никаких подсказок в пустом чате не нужно»).
 import type { AgentSummary } from '@bba/contracts';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { AgentMark } from './AgentMark.tsx';
 import styles from './chat.module.css';
 
-const STARTERS_SHOWN = 3;
-
-// `offline` — no connection to the server yet (chat/runtime-recovery.ts): a question would leave into nowhere.
-export function Welcome({ agent, onStart, offline }: { agent: AgentSummary; onStart: (text: string) => void; offline: boolean }) {
+export function Welcome({ agent }: { agent: AgentSummary }) {
   const firstName = useMe().user.name.split(/\s+/)[0] ?? '';
   return (
     <div className={styles.welcome}>
       <AgentMark size="large" className={styles.welcomeMark} />
       <h2 className={styles.welcomeTitle}>{ru.chat.greeting(firstName)}</h2>
       <p className={styles.welcomeText}>{agent.description}</p>
-      {agent.starters.length > 0 ? (
-        <div className={styles.starters}>
-          {agent.starters.slice(0, STARTERS_SHOWN).map((s) => (
-            <button key={s} type="button" className={styles.starter} disabled={offline} onClick={() => onStart(s)}>
-              {s}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

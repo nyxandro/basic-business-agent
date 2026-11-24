@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiError, ME, mockServer, type Reply } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const THREADS = {
   threads: [{ id: 't2', title: 'Другой разговор', kind: 'chat', unread: false, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId: null }],
   next: null,

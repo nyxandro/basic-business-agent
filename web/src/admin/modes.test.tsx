@@ -6,7 +6,7 @@ import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['agents'] };
 const SALES_DEP = '00000000-0000-4000-8000-0000000000d1';
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], starters: [], startersCustom: false, promptChanged: false }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], promptChanged: false }];
 const COUNTS = { queued: 0, running: 0, done: 7, 'awaiting-approval': 0, failed: 0, skipped: 1 };
 const TASK = {
   id: 't1',

@@ -1,7 +1,7 @@
 // «Инструкции» on the page of an agent (spec, scenario 5; mockup; owner's list 16.11): how the prompt
 // is put together, the prompt as an edit over instructions.md → a draft → «Проверить в чате» →
 // «Опубликовать». A conflicting edit keeps the person's text in the field. The agent's model and
-// starters are «Настройки» (AgentSettings.tsx), its mark — «Значок».
+// «Что агенту можно» are «Настройки» (AgentSettings.tsx), its mark — «Значок».
 import type { PromptState } from '@bba/contracts';
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router';

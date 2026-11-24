@@ -26,7 +26,7 @@ let memory: Memory;
 
 function buildAgent(models: Record<string, string>, stepMs = MODEL_CALL_MAX_MS): Agent {
   const rt: AgentRuntime = {
-    passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [], starters: [] },
+    passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [] },
     dir: '/x',
     instructions: 'Ты помощник.',
     tools: {},

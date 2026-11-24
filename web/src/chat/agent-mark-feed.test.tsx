@@ -20,7 +20,7 @@ vi.mock('@copilotkit/react-core', async (original) => ({
   useRenderToolCall: () => () => null,
 }));
 
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], actions: {}, systems: { tools: {}, prefixes: {} } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', actions: {}, systems: { tools: {}, prefixes: {} } };
 const PICTURE_URL = '/app/api/agents/sales/image?v=0123456789ab';
 const QUESTION: Message = { id: 'u1', role: 'user', content: 'Сколько сделок за неделю?' };
 const ANSWER: Message = { id: 'a1', role: 'assistant', content: 'Двенадцать сделок.' };

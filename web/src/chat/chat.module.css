@@ -110,51 +110,6 @@
   margin: 6px 0 0;
 }
 
-.starters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 28px;
-}
-
-.starter {
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  animation: global(bba-rise) 0.5s var(--ease-rise) both;
-  transition: background-color 0.2s ease, transform 0.15s ease;
-}
-
-.starter:nth-child(1) {
-  animation-delay: 0.08s;
-}
-.starter:nth-child(2) {
-  animation-delay: 0.16s;
-}
-.starter:nth-child(3) {
-  animation-delay: 0.24s;
-}
-
-.starter:hover {
-  background: var(--hover);
-}
-
-/* No connection to the server yet (chat/runtime-recovery.ts): the question would leave into nowhere. */
-.starter:disabled {
-  cursor: default;
-  opacity: 0.6;
-  background: var(--surface);
-}
-
-.starter:active {
-  transform: scale(0.97);
-}
-
 /* Messages. */
 .user {
   align-self: flex-end;

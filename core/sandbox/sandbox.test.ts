@@ -123,7 +123,7 @@ beforeAll(async () => {
   workspaceRoot = mkdtempSync(join(tmpdir(), 'bba-ws-'));
   model = await startFakeModel();
   const rt: AgentRuntime = {
-    passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [], starters: [] },
+    passport: { id: 'assistant', name: 'Помощник', description: 'x', plugins: [], readOnly: [] },
     dir: '/x',
     instructions: 'Ты помощник.',
     tools: {},

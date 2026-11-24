@@ -227,12 +227,6 @@
   line-height: 1.6;
 }
 
-.starters {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .inline {
   display: flex;
   gap: 6px;

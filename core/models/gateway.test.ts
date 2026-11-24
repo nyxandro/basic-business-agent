@@ -151,7 +151,7 @@ describe('model gateway', () => {
       const before = provider.requests.length;
       provider.script({ text: 'Пр', cut: 'drop' }, { text: 'Привет! Чем помочь?' });
       const rt: AgentRuntime = {
-        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [], starters: [] },
+        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [] },
         dir: '/x',
         instructions: 'Ты помощник.',
         tools: {},
@@ -190,7 +190,7 @@ describe('model gateway', () => {
       const sent = provider.requests.length;
       provider.script({ text: before, cut: 'hang' }, { text: 'Привет! Чем помочь?' });
       const rt: AgentRuntime = {
-        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [], starters: [] },
+        passport: { id: 'sales', name: 'Продажи', description: 'x', plugins: [], readOnly: [] },
         dir: '/x',
         instructions: 'Ты помощник.',
         tools: {},

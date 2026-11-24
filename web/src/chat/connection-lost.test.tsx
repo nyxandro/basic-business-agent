@@ -7,7 +7,7 @@ import { renderApp } from '../test/render.tsx';
 import { connectionTexts } from '../i18n/connection.ts';
 import { RETRY_FIRST_MS } from './runtime-recovery.ts';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const INFO: Reply = { body: { version: '2.0.0', agents: { sales: { name: 'sales', description: '', className: 'MastraAgent' } } } };
 
 describe('the chat without a connection to the server', () => {

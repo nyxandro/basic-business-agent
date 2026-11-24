@@ -38,7 +38,7 @@ const AGENT = {
   id: 'sales',
   name: 'Продажи',
   description: 'Сделки и клиенты',
-  starters: [],
+ 
   mark: { kind: 'icon' as const, icon: 'spark' as const },
   actions: { [COMMAND]: { title: 'Команда в рабочей папке', fields: {}, readOnly: false } },
   systems: { tools: {}, prefixes: {} },

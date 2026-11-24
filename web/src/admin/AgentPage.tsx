@@ -1,10 +1,10 @@
 // The page of an agent (owner's list 16.11): its mark, name, description and who may use it, and its
 // settings by sections, each saved on its own — «Инструкции» (the prompt over instructions.md, the
-// draft, the check in the chat, the publication), «Настройки» (the model and the starters of the
-// empty chat), «Скиллы» and «Доступ» (owner's decision 24.11: skills belong to the agent, people get
-// them through its access), «Значок» (an icon or a picture). Every section has its own address, so
+// draft, the check in the chat, the publication), «Настройки» (the model and what the agent may do),
+// «Скиллы» and «Доступ» (owner's decision 24.11: skills belong to the agent, people get them through
+// its access), «Значок» (an icon or a picture). Every section has its own address, so
 // «Назад» of the browser and a link lead to it. One route serves them all and every section stays
-// mounted while hidden: a prompt or starters typed and not saved survive a look at another section.
+// mounted while hidden: a prompt typed and not saved survives a look at another section.
 import type { AdminAgent, AdminDepartment, AdminPerson, PromptState, SkillDto } from '@bba/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router';
@@ -55,7 +55,7 @@ function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: Age
   // A form starts from what it loads: loaded anew at every opening, never from memory (spec, section 8.22).
   const { state, reload } = useLoad(load);
   // The prompt field is drawn anew only after «Опубликовать» or «Вернуть версию из файла», once
-  // their fresh version has come: a saved draft, a new model or new starters keep the text being
+  // their fresh version has come: a saved draft or a new model keep the text being
   // typed in it.
   const [edition, setEdition] = useState(0);
   const awaiting = useRef<PromptState | null>(null);
@@ -65,7 +65,7 @@ function PromptSections({ agent, tab, onChanged }: { agent: AdminAgent; tab: Age
     awaiting.current = null;
     setEdition((n) => n + 1);
   }, [data]);
-  // Hidden, not gone, on another section: the prompt or the starters being typed wait there.
+  // Hidden, not gone, on another section: the prompt being typed waits there.
   const own = tab === 'instructions' || tab === 'settings';
   if (state.status === 'loading') return own ? <DelayedBar /> : null;
   if (state.status === 'error') return own ? <ErrorBanner error={state.error} onRetry={reload} /> : null;

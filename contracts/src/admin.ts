@@ -40,7 +40,6 @@ export const agentSkillsSchema = z.object({ skillNames: z.array(z.string().min(1
 
 export const agentModelSchema = z.object({ modelId: z.string().nullable() });
 // null — the starter questions of the agent's passport.
-export const agentStartersSchema = z.object({ starters: z.array(z.string().trim().min(1).max(200)).max(3).nullable() });
 
 export interface UsageDay {
   // YYYY-MM-DD in the installation's time zone.
@@ -131,9 +130,6 @@ export interface AdminAgent {
   access: AgentAccess;
   // The uploaded skills the agent has (the system skills of documents are with every agent that may run commands).
   skillNames: string[];
-  // Starter questions of the empty chat: the admin's when set (startersCustom), else the passport's.
-  starters: string[];
-  startersCustom: boolean;
   // A version of the prompt edited in the admin panel is in use.
   promptChanged: boolean;
   // «Значок» of the agent (spec, section 8.17).

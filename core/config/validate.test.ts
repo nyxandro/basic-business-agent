@@ -19,7 +19,7 @@ function sources(patch: Partial<InstallationSources> = {}): InstallationSources 
     agents: [
       {
         dir: 'sales',
-        passport: { id: 'sales', name: 'Продажи', description: 'Помогает отделу продаж', plugins: ['mail'], readOnly: [], starters: ['Покажи мои сделки'] },
+        passport: { id: 'sales', name: 'Продажи', description: 'Помогает отделу продаж', plugins: ['mail'], readOnly: [] },
         instructions: 'Ты агент отдела продаж.',
       },
     ],

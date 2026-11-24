@@ -16,7 +16,7 @@ const SPARK: AgentMarkAdminState = { kind: 'icon', icon: 'spark', image: null };
 const PICTURE_URL = '/app/api/agents/sales/image?v=0123456789ab';
 const PAGE = '/admin/agents/sales/mark';
 const PUT = 'PUT /app/api/admin/agents/sales/mark';
-const agent = (mark: AgentMarkAdminState) => ({ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], starters: [], startersCustom: false, promptChanged: false, mark });
+const agent = (mark: AgentMarkAdminState) => ({ id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], promptChanged: false, mark });
 
 function server(state: AgentMarkAdminState = SPARK, saved: AgentMarkAdminState = state, me: object = ADMIN) {
   let current = state;

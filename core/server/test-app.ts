@@ -155,7 +155,7 @@ function randomIp(): string {
 
 function testAgent(id: string, name: string, tools: AgentRuntime['tools']): AgentRuntime {
   return {
-    passport: { id, name, description: `Тестовый агент ${name}`, plugins: [], readOnly: [], starters: ['Покажи мои сделки'] },
+    passport: { id, name, description: `Тестовый агент ${name}`, plugins: [], readOnly: [] },
     dir: `/agents/${id}`,
     instructions: `Ты тестовый агент «${name}».`,
     tools,

@@ -611,7 +611,7 @@ export const ru = {
       // «Скиллы» and «Доступ» of an agent (owner's decision 24.11).
       access: agentAccessTexts,
       settingsTitle: 'Настройки агента',
-      settingsSub: 'Модель, на которой он отвечает, и подсказки в пустом чате.',
+      settingsSub: 'Модель, на которой он отвечает.',
       // «Что агенту можно» (spec, section 8.30).
       abilities: {
         title: 'Что агенту можно',

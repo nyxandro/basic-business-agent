@@ -42,28 +42,23 @@ describe('stage 2 additions', () => {
     expect(JSON.stringify(t.model.requests.at(-1)!.messages.filter((m) => m.role === 'system'))).toContain('Название: ООО «Альфа-Строй»');
   });
 
-  it('replaces the starter questions of the passport with the admin’s, and goes back to them', async () => {
-    const starters = async () => (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!.starters;
-    expect(await starters()).toEqual(['Покажи мои сделки']);
-    expect((await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['Сделки без движения', 'Сводка за неделю'] } })).status).toBe(200);
-    expect(await starters()).toEqual(['Сделки без движения', 'Сводка за неделю']);
-    expect((await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['1', '2', '3', '4'] } })).status).toBe(400);
-    await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: null } });
-    expect(await starters()).toEqual(['Покажи мои сделки']);
+  it('has no starter questions of the empty chat any more (owner 24.11): not in the list of agents, no address to set them', async () => {
+    const sales = (await json<AgentListResponse>(await t.call('GET', '/app/api/agents', { cookie: olga }))).agents.find((a) => a.id === 'sales')!;
+    expect(sales).not.toHaveProperty('starters');
+    expect((await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['Сводка'] } })).status).toBe(404);
   });
 
-  it('lists the agents for the admin with who may use them, their skills, starters and a mark of an edited prompt', async () => {
-    type Agent = { id: string; access: { org: boolean; departmentIds: string[]; userIds: string[] }; skillNames: string[]; starters: string[]; startersCustom: boolean; promptChanged: boolean };
+  it('lists the agents for the admin with who may use them, their skills and a mark of an edited prompt', async () => {
+    type Agent = { id: string; access: { org: boolean; departmentIds: string[]; userIds: string[] }; skillNames: string[]; promptChanged: boolean };
     const sales = async () => (await json<{ agents: Agent[] }>(await t.call('GET', '/app/api/admin/agents', { cookie: admin }))).agents.find((a) => a.id === 'sales')!;
     const department = (await t.db.query<{ id: string }>(`SELECT id FROM app.departments WHERE name = 'Продажи'`)).rows[0]!.id;
-    expect(await sales()).toMatchObject({ access: { org: false, departmentIds: [department], userIds: [] }, skillNames: [], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: false });
-    await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: ['Сводка за неделю'] } });
+    expect(await sales()).toMatchObject({ access: { org: false, departmentIds: [department], userIds: [] }, skillNames: [], promptChanged: false });
+    expect(await sales()).not.toHaveProperty('starters');
     const draft = await json<{ draftVersionId: string }>(await t.call('PUT', '/app/api/admin/agents/sales/prompt/draft', { cookie: admin, body: { text: 'Ты агент продаж. Кратко.', baseDraftVersionId: null } }));
     expect(draft.draftVersionId).toBeTruthy();
     await t.call('POST', '/app/api/admin/agents/sales/prompt/publish', { cookie: admin, body: {} });
-    expect(await sales()).toMatchObject({ starters: ['Сводка за неделю'], startersCustom: true, promptChanged: true });
+    expect(await sales()).toMatchObject({ promptChanged: true });
     await t.call('POST', '/app/api/admin/agents/sales/prompt/revert', { cookie: admin, body: {} });
-    await t.call('PUT', '/app/api/admin/agents/sales/starters', { cookie: admin, body: { starters: null } });
   });
 
   it('offers the agent’s model by names, only while agents may choose', async () => {

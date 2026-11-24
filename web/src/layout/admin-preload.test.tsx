@@ -8,7 +8,7 @@ import { renderApp } from '../test/render.tsx';
 
 vi.mock('../admin/admin-code.ts', () => ({ loadAdminCode: vi.fn(() => new Promise(() => undefined)), preloadAdminCode: vi.fn() }));
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: 'Сделки', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 
 function server(me: typeof ME) {
   mockServer({

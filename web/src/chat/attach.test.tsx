@@ -22,7 +22,7 @@ vi.mock('@copilotkit/react-core', async (original) => ({
   useRenderToolCall: () => () => null,
 }));
 
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
 const UPLOAD = 'POST /app/api/threads/t1/files';
 const DROP_HINT = 'Отпустите, чтобы прикрепить';
 

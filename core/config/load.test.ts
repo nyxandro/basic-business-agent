@@ -27,7 +27,7 @@ const BASE = {
   'config/app.ts': `export default { name: 'Альфа-Строй', timezone: 'Europe/Moscow', masking: { initialKinds: ['passport'] }, limits: { initialOrgMonthlyRub: null, initialUserMonthlyRub: 3000, initialDailySubscriptionTokens: null }, approvals: { initialChatTtlHours: 24, initialBackgroundTtlHours: 72 } };`,
   'config/plugins.ts': `export default { notes: { folder: 'Заметки' } };`,
   'plugins/notes/plugin.ts': `import { z } from 'zod';\nexport default { name: 'notes', title: 'Заметки', settings: z.object({ folder: z.string() }), secrets: [], readOnly: ['list'] };`,
-  'agents/assistant/agent.ts': `export default { id: 'assistant', name: 'Помощник', description: 'Общий помощник', plugins: ['notes'], readOnly: [], starters: [] };`,
+  'agents/assistant/agent.ts': `export default { id: 'assistant', name: 'Помощник', description: 'Общий помощник', plugins: ['notes'], readOnly: [] };`,
   'agents/assistant/instructions.md': 'Ты общий помощник.',
 };
 

@@ -75,8 +75,6 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
 
   app.get('/app/api/agents', async (c) => {
     const a = access(c);
-    const { rows } = await deps.db.query<{ agent_id: string; starters: string[] }>('SELECT agent_id, starters FROM app.agent_overrides WHERE starters IS NOT NULL');
-    const ownStarters = new Map(rows.map((r) => [r.agent_id, r.starters]));
     const marks = await agentMarks(deps.db);
     const seen = deps.connections.actionsSeen();
     // The stamp and the signature: the card names the stamp only in an organisation that has one.
@@ -89,7 +87,6 @@ export function registerChatRoutes(app: Hono<AppEnv>, deps: ChatDeps & { copilot
         id: rt.passport.id,
         name: rt.passport.name,
         description: rt.passport.description,
-        starters: ownStarters.get(rt.passport.id) ?? rt.passport.starters,
         mark: chatMark(marks.get(rt.passport.id) ?? DEFAULT_MARK),
         actions: {
           ...WORKSPACE_ACTIONS,

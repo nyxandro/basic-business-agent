@@ -47,7 +47,6 @@ export const agentPassportSchema = z.strictObject({
   description: z.string().min(1),
   plugins: z.array(z.string()),
   readOnly: z.array(z.string()),
-  starters: z.array(z.string().min(1)).max(3),
   editable: z.strictObject({ instructions: z.boolean() }).optional(),
   // Spec 8.3: core rules are switched off only explicitly.
   baseRules: z.boolean().optional(),

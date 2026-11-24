@@ -18,8 +18,6 @@ export interface AgentSummary {
   id: string;
   name: string;
   description: string;
-  // The admin's starter questions when set, otherwise the passport's.
-  starters: string[];
   // Its mark next to its words in the chat (spec, section 8.17), shown while «Интерфейс» allows.
   mark: AgentMark;
   // Actions of the agent and of its sub-agents by tool name; tools of connected systems appear

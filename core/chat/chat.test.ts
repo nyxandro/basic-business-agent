@@ -81,7 +81,6 @@ describe('chat', () => {
         id: 'sales',
         name: 'Продажи',
         description: 'Тестовый агент Продажи',
-        starters: ['Покажи мои сделки'],
         // Its own mark (spec, section 8.17): the spark until an admin sets another.
         mark: { kind: 'icon', icon: 'spark' },
         actions: expect.objectContaining({

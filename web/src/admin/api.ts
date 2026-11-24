@@ -125,7 +125,6 @@ export const adminApi = {
   publish: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/publish`, {}),
   revert: (agentId: string) => api<Ok>('POST', `${A}/agents/${enc(agentId)}/prompt/revert`, {}),
   setModel: (agentId: string, modelId: string | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/model`, { modelId }),
-  setStarters: (agentId: string, starters: string[] | null) => api<Ok>('PUT', `${A}/agents/${enc(agentId)}/starters`, { starters }),
   setAbilities: (agentId: string, patch: Partial<AgentAbilities>) => api<{ abilities: AgentAbilities }>('PUT', `${A}/agents/${enc(agentId)}/abilities`, patch),
   // «Доступ» and «Скиллы» of an agent (owner's decision 24.11).
   setAgentAccess: (agentId: string, access: AgentAccess) => api<{ access: AgentAccess }>('PUT', `${A}/agents/${enc(agentId)}/access`, access),

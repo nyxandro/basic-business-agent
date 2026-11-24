@@ -280,7 +280,7 @@ export function ChatView(props: CopilotChatViewProps) {
             <div ref={feed} className={styles.feed}>
               {/* Nothing while it connects, the line after a second (spec, section 8.22). */}
               {empty && isConnecting ? <DelayedBar /> : null}
-              {empty && !isConnecting ? <Welcome agent={extras.agent} onStart={send} offline={extras.offline} /> : null}
+              {empty && !isConnecting ? <Welcome agent={extras.agent} /> : null}
               <MotionConfig reducedMotion="user" transition={{ duration: still ? 0 : MOVE_S, ease: EASING }}>
                 <Feed messages={messages} running={isRunning} asking={extras.interrupt !== null} failures={failures} agent={extras.agent} />
               </MotionConfig>

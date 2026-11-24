@@ -5,7 +5,7 @@ import { apiError, ME, mockServer, type MockCall } from '../test/fetch-mock.ts';
 import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['skills'] };
-const agent = (id: string, name: string) => ({ id, name, description: '', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], starters: [], startersCustom: false, promptChanged: false, mark: { kind: 'icon', icon: 'spark', image: null }, abilities: { web: true, commands: true, widgets: true } });
+const agent = (id: string, name: string) => ({ id, name, description: '', modelId: null, access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], promptChanged: false, mark: { kind: 'icon', icon: 'spark', image: null }, abilities: { web: true, commands: true, widgets: true } });
 const AGENTS = [agent('sales', 'Продажи'), agent('assistant', 'Общий помощник')];
 const SKILL = {
   name: 'contract-check',

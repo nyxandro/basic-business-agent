@@ -29,7 +29,7 @@ vi.mock('@copilotkit/react-core', async (original) => ({
     },
 }));
 
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', starters: [], mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки и клиенты', mark: { kind: 'icon' as const, icon: 'spark' as const }, actions: {}, systems: { tools: {}, prefixes: {} } };
 const search = (id: string) => ({ id, type: 'function' as const, function: { name: WEB_RESEARCH_TOOL, arguments: '{"task":"Найди цены"}' } });
 
 function extras(interrupt: ChatExtras['interrupt'] = null): ChatExtras {

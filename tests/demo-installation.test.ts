@@ -42,9 +42,8 @@ afterAll(async () => {
 
 describe('demo installation', () => {
   it('opens the general helper with its starter questions to the department', async () => {
-    const { agents } = (await (await t.call('GET', '/app/api/agents', { cookie })).json()) as { agents: { id: string; starters: string[]; systems: { tools: Record<string, string> } }[] };
+    const { agents } = (await (await t.call('GET', '/app/api/agents', { cookie })).json()) as { agents: { id: string; systems: { tools: Record<string, string> } }[] };
     expect(agents.map((a) => a.id)).toEqual(['assistant']);
-    expect(agents[0]!.starters).toContain('Покажи мои заметки');
     // The notes of the plugin; the mailbox and the folder of the computer are the core's own (spec, 8.24, 8.25).
     expect(agents[0]!.systems.tools).toMatchObject({ notes_list: 'Заметки', notes_add: 'Заметки', mailbox_send: 'Почта', computer_folder_read: 'Компьютер' });
   });

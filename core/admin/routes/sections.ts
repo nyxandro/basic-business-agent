@@ -4,7 +4,6 @@ import {
   agentAbilitiesPatchSchema,
   agentAccessSchema,
   agentModelSchema,
-  agentStartersSchema,
   journalQuerySchema,
   limitSettingsSchema,
   maskingSettingsSchema,
@@ -69,8 +68,8 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
   app.get('/app/api/admin/agents', requireAnyPermission('agents', 'departments', 'skills'), async (c) => {
     const accessOf = await listAgentAccess(db);
     const skillsOf = await skillNamesByAgent(db);
-    const own = await db.query<{ agent_id: string; model_id: string | null; starters: string[] | null; published_version_id: string | null }>(
-      'SELECT agent_id, model_id, starters, published_version_id FROM app.agent_overrides',
+    const own = await db.query<{ agent_id: string; model_id: string | null; published_version_id: string | null }>(
+      'SELECT agent_id, model_id, published_version_id FROM app.agent_overrides',
     );
     const override = new Map(own.rows.map((r) => [r.agent_id, r]));
     const marks = await agentMarks(db);
@@ -86,8 +85,6 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
           modelId: o?.model_id ?? null,
           access: accessOf.get(a.passport.id) ?? { org: false, departmentIds: [], userIds: [] },
           skillNames: skillsOf.get(a.passport.id) ?? [],
-          starters: o?.starters ?? a.passport.starters,
-          startersCustom: o?.starters !== null && o?.starters !== undefined,
           promptChanged: Boolean(o?.published_version_id),
           mark: marks.get(a.passport.id) ?? DEFAULT_MARK,
           // Every agent of the registry has its row from the start of the server (core/abilities/abilities.ts).
@@ -111,16 +108,6 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
     await revertToFile(deps.editor, access(c).userId, c.req.param('id'));
     return c.json({ ok: true });
   });
-  // The admin's starter questions instead of the passport's; null brings the passport's back.
-  app.put('/app/api/admin/agents/:id/starters', agents, async (c) => {
-    const id = c.req.param('id');
-    if (!deps.registry.get(id)) throw appError('APP_NOT_FOUND', `agent ${id} is not loaded`);
-    const { starters } = await parseJson(c, agentStartersSchema);
-    await db.query('INSERT INTO app.agent_overrides (agent_id, starters) VALUES ($1, $2) ON CONFLICT (agent_id) DO UPDATE SET starters = EXCLUDED.starters', [id, starters]);
-    await writeAudit(db, { actorUserId: access(c).userId, action: 'agent.starters', target: id, details: { starters } });
-    return c.json({ ok: true });
-  });
-
   // «Доступ» (owner's decision 24.11, spec section 8.15): from the next request of every employee.
   app.put('/app/api/admin/agents/:id/access', agents, async (c) => {
     const id = c.req.param('id');

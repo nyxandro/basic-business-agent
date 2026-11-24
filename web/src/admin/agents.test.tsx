@@ -9,7 +9,7 @@ const ADMIN = { ...ME, permissions: ['agents'] };
 const D1 = '00000000-0000-4000-8000-0000000000d1';
 const DEPARTMENTS = [{ id: D1, name: 'Отдел продаж', userIds: [], agentIds: ['sales'], headIds: [] }];
 const PEOPLE = [{ id: 'u2', name: 'Пётр Иванов' }];
-const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, access: { org: false, departmentIds: [D1], userIds: [] as string[] }, skillNames: ['kp-builder'], starters: ['Покажи мои сделки'], startersCustom: false, promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true, widgets: true } };
+const AGENT = { id: 'sales', name: 'Продажи', description: 'Сделки', modelId: null, access: { org: false, departmentIds: [D1], userIds: [] as string[] }, skillNames: ['kp-builder'], promptChanged: true, mark: { kind: 'icon', icon: 'headset', image: null }, abilities: { web: true, commands: true, widgets: true } };
 const ASSISTANT = { ...AGENT, id: 'assistant', name: 'Общий помощник', description: 'Вопросы', access: { org: false, departmentIds: [], userIds: [] }, skillNames: [], promptChanged: false, mark: { kind: 'image', icon: 'spark', image: { url: '/app/api/agents/assistant/image?v=0123456789ab' } } };
 const skill = (name: string, title: string, system = false) => ({ name, title, description: '', sizeBytes: 1, files: [], hasScripts: false, enabled: true, agentIds: [], system, uploadedAt: null, uploadedBy: null });
 const SKILLS = [skill('docx', 'Документы Word', true), skill('contract-check', 'Проверка договора'), skill('kp-builder', 'Коммерческое предложение')];
@@ -77,7 +77,7 @@ describe('the page of an agent', () => {
     expect(within(layers).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['Правила ядра', 'Промпт агента', 'Профиль организации', 'Профиль сотрудника', 'Проект: память, разговоры, файлы', 'Личная память']);
     expect(screen.getByText('Отделы: Отдел продаж')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Проверить в чате' })).toHaveAttribute('href', '/admin/agents/sales/check');
-    // The model and the starters are in «Настройки».
+    // The model is in «Настройки».
     expect(screen.queryByRole('combobox', { name: 'Модель агента' })).not.toBeInTheDocument();
   });
 
@@ -93,19 +93,14 @@ describe('the page of an agent', () => {
     expect(field).toHaveValue('Ты агент продаж. Отвечай кратко.');
   });
 
-  it('«Настройки»: saves the starter questions and brings back those of the file', async () => {
-    const s = server(PROMPT, [{ ...AGENT, starters: ['Сводка'], startersCustom: true }]);
-    s.set('PUT /app/api/admin/agents/sales/starters', { body: { ok: true } });
+  it('«Настройки»: the model and «Что агенту можно», no starter questions of the empty chat (owner 24.11)', async () => {
+    server();
     renderApp('/admin/agents/sales/settings');
-    const user = userEvent.setup();
     expect(within(await screen.findByRole('navigation', { name: 'Разделы агента' })).getByRole('link', { name: 'Настройки' })).toHaveAttribute('aria-current', 'page');
-    const field = await screen.findByRole('textbox', { name: 'Подсказки в пустом чате' });
-    await user.clear(field);
-    await user.type(field, 'Сделки без движения; Сводка по воронке');
-    await user.click(screen.getByRole('button', { name: 'Сохранить подсказки' }));
-    await waitFor(() => expect(s.calls.find((c) => c.path.endsWith('/starters'))?.body).toEqual({ starters: ['Сделки без движения', 'Сводка по воронке'] }));
-    await user.click(screen.getByRole('button', { name: 'Вернуть подсказки из файла' }));
-    await waitFor(() => expect(s.calls.filter((c) => c.path.endsWith('/starters')).at(-1)?.body).toEqual({ starters: null }));
+    expect(await screen.findByRole('combobox', { name: 'Модель агента' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Доступ к сети интернет' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Подсказки в пустом чате' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/подсказки/i)).not.toBeInTheDocument();
   });
 
   it('«Настройки»: «Что агенту можно» saves a switch at once and keeps it as it was when the server fails', async () => {

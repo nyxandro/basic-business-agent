@@ -34,7 +34,7 @@ const PROJECT = '0b8e2a9a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 
 function runtime(passport: Partial<AgentPassport> & { id: string }, instructions: string): AgentRuntime {
   return {
-    passport: { name: passport.id, description: 'x', plugins: [], readOnly: [], starters: [], ...passport },
+    passport: { name: passport.id, description: 'x', plugins: [], readOnly: [], ...passport },
     dir: `/agents/${passport.id}`,
     instructions,
     tools: {},

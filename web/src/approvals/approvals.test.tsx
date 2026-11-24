@@ -5,7 +5,7 @@ import { ME, mockServer } from '../test/fetch-mock.ts';
 import { PHONE_WIDTH, stubSystemTheme } from '../test/match-media.ts';
 import { renderApp } from '../test/render.tsx';
 
-const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', starters: [], mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
+const AGENTS = [{ id: 'sales', name: 'Продажи', description: '', mark: { kind: 'icon', icon: 'spark' }, actions: {}, systems: { tools: {}, prefixes: {} } }];
 const QUESTION = {
   id: 'a1',
   agent: 'Продажи',
