@@ -67,7 +67,7 @@ function agentOf(thread: { id: string; metadata?: Record<string, unknown> | null
 // All conversations of the person, of every agent, newest first (ties by id, so pages are stable).
 // The project of each conversation is added by core/projects.
 // `taskId` — a conversation of an event of a background task (event-tasks.md): the panel groups them by task.
-export async function listOwnThreads(memory: Memory, userId: string): Promise<(Omit<ThreadSummary, 'projectId'> & { taskId: string | null })[]> {
+export async function listOwnThreads(memory: Memory, userId: string): Promise<(Omit<ThreadSummary, 'projectId' | 'files'> & { taskId: string | null })[]> {
   const { threads } = await memory.listThreads({ filter: { resourceId: userId }, perPage: false, orderBy: { field: 'updatedAt', direction: 'DESC' } });
   return threads
     .map((t) => ({

@@ -10,6 +10,7 @@ import { inTransaction, type Db } from '../db/pool.ts';
 import { AppError } from '../errors/app-error.ts';
 import { appError } from '../errors/catalog.ts';
 import { listOwnThreads } from '../memory/memory.ts';
+import { fileCountsOf } from '../memory/shown-files.ts';
 import { logEvent } from '../log/log.ts';
 import { projectArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
@@ -333,7 +334,10 @@ export async function setThreadProject(deps: ProjectsDeps, userId: string, threa
   );
 }
 
-function cursorOf(t: ThreadSummaryDto): string {
+// A conversation of a list before its files are counted: only the page shown is counted.
+type ListedThread = Omit<ThreadSummaryDto, 'files'>;
+
+function cursorOf(t: ListedThread): string {
   return `${t.updatedAt}|${t.id}`;
 }
 
@@ -354,10 +358,12 @@ export async function listThreadPage(deps: ProjectsDeps, userId: string, query: 
     })
     .filter((t) => (!query.projectId || t.projectId === query.projectId) && (!query.agentId || t.agentId === query.agentId) && (!query.task || t.taskId === query.task));
   const listed = query.group === 'tasks' ? await groupByTask(deps.db, all) : all.map(({ taskId: _taskId, ...t }) => t);
-  return pageOf(listed, query.before, limit);
+  const page = pageOf(listed, query.before, limit);
+  const files = await fileCountsOf(deps.db, userId, page.threads.map((t) => t.id));
+  return { threads: page.threads.map((t) => ({ ...t, files: files.get(t.id) ?? 0 })), next: page.next };
 }
 
-function pageOf(all: ThreadSummaryDto[], before: string | undefined, limit: number): ThreadPage {
+function pageOf(all: ListedThread[], before: string | undefined, limit: number): { threads: ListedThread[]; next: string | null } {
   const start = before ? all.findIndex((t) => cursorOf(t) === before) + 1 : 0;
   if (before && start === 0) throw appError('APP_VALIDATION_FAILED', `unknown cursor ${before}`, { userMessage: 'Список разговоров изменился. Обновите страницу.' });
   const page = all.slice(start, start + limit);
@@ -366,7 +372,7 @@ function pageOf(all: ThreadSummaryDto[], before: string | undefined, limit: numb
 }
 
 // The conversations of the events of one task as one row: the newest, with the task's name and counts.
-async function groupByTask(db: Db, threads: (ThreadSummaryDto & { taskId: string | null })[]): Promise<ThreadSummaryDto[]> {
+async function groupByTask(db: Db, threads: (ListedThread & { taskId: string | null })[]): Promise<ListedThread[]> {
   const taskIds = [...new Set(threads.map((t) => t.taskId).filter((id): id is string => id !== null))];
   if (taskIds.length === 0) return threads.map(({ taskId: _taskId, ...t }) => t);
   const titles = new Map((await db.query<{ id: string; title: string }>('SELECT id, title FROM app.background_tasks WHERE id = ANY($1)', [taskIds])).rows.map((r) => [r.id, r.title]));
@@ -378,7 +384,7 @@ async function groupByTask(db: Db, threads: (ThreadSummaryDto & { taskId: string
     if (t.unread) c.fresh++;
     counts.set(t.taskId, c);
   }
-  const out: ThreadSummaryDto[] = [];
+  const out: ListedThread[] = [];
   const shown = new Set<string>();
   for (const { taskId, ...t } of threads) {
     if (!taskId) {

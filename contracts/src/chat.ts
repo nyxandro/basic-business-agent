@@ -171,6 +171,8 @@ export interface ThreadSummaryDto {
   updatedAt: string;
   agentId: string;
   projectId: string | null;
+  // Files the conversation brought: attached by the person or shown by the agent with «Скачать», each once.
+  files: number;
   // «Недавние» (docs/specs/[20.11.2026]-event-tasks.md): the conversations of the events of one task are one row — the
   // newest of them, with the task's name, how many there are and how many are new.
   group?: { taskId: string; taskTitle: string; total: number; fresh: number };
@@ -219,7 +221,7 @@ export interface SearchFiles {
 
 export interface SearchResponse {
   projects: { id: string; name: string; nameMarks: TextMarks; threadCount: number; shared: boolean; ownerName: string | null }[];
-  threads: { id: string; agentId: string; title: string; titleMarks: TextMarks; snippet: string; snippetMarks: TextMarks; projectId: string | null; updatedAt: string }[];
+  threads: { id: string; agentId: string; title: string; titleMarks: TextMarks; snippet: string; snippetMarks: TextMarks; projectId: string | null; updatedAt: string; files: number }[];
   files: SearchFiles;
 }
 

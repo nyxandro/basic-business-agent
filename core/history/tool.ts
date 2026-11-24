@@ -16,12 +16,13 @@ import { runProjectOf } from '../projects/access.ts';
 import { optionalContextValue, REQUEST_KEYS, requireContextValue } from '../run-context/request-keys.ts';
 import { findConversations } from '../search/search.ts';
 import { logEvent } from '../log/log.ts';
+import { shownFilesOf } from '../memory/shown-files.ts';
 import { projectArea, userArea } from '../storage/areas.ts';
 import type { FileStorage } from '../storage/engine.ts';
 import { chatRoot, conversationRoot, filesRoot, openFileInside, saveInFolder } from '../workspace/layout.ts';
 import { dayOf, fragmentOf, readPage, type ReadMessage } from './read.ts';
 import { conversationMessages, conversationsByIds, listConversations, refOf, resolveConversation, type ConversationRow, type ProjectPlace } from './store.ts';
-import { shownFilesOf, visibleOf } from './transcript.ts';
+import { visibleOf } from './transcript.ts';
 
 export const CONVERSATIONS_TOOL = 'conversations';
 export const CONVERSATIONS_ACTIONS: Record<string, ActionDescription> = {

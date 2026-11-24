@@ -6,7 +6,8 @@ import { SUPPORT_FILES_MAX_BYTES, type SupportSnapshotMessage } from '@bba/contr
 import { isAppError } from '../errors/app-error.ts';
 import type { StoredMessage } from '../history/store.ts';
 import { isServiceTurn } from '../chat/service-turns.ts';
-import { shownFilesOf, visibleOf, type ApprovalOutcome } from '../history/transcript.ts';
+import { visibleOf, type ApprovalOutcome } from '../history/transcript.ts';
+import { shownFilesOf } from '../memory/shown-files.ts';
 import { readFileInside } from '../workspace/layout.ts';
 
 const TURN_TAIL_MS = 60_000;

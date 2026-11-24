@@ -6,6 +6,7 @@ import type { SearchResponse, SearchScope, TextMarks } from '@bba/contracts';
 import type pg from 'pg';
 import type { Db } from '../db/pool.ts';
 import { appError } from '../errors/catalog.ts';
+import { fileCountsOf } from '../memory/shown-files.ts';
 import { listProjects, type ProjectsDeps } from '../projects/projects.ts';
 import { correctionsOf, directCondition, inSearch, matchNames, normalizedSql, piecesCondition, SqlParams, typoCondition, typoPieces } from './match-sql.ts';
 import { collectFiles, searchFiles } from './files.ts';
@@ -205,6 +206,7 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
       files: collected ? await searchFiles(client, collected, words) : NO_FILES,
     };
   });
+  const threadFiles = await fileCountsOf(deps.db, userId, threads.map(({ row }) => row.id));
   // A conversation whose project the person no longer sees is shown without one (spec, 8.20).
   const seenIds = new Set(seen.map((p) => p.id));
   const projects = [...projectHits].sort((a, b) => Number(b.direct) - Number(a.direct)).map((hit) => ({ p: seen[hit.index]!, direct: hit.direct }));
@@ -222,6 +224,7 @@ export async function search(deps: ProjectsDeps, userId: string, query: { q: str
         snippetMarks: marksOf(snippet, corrected, direct ? 'direct' : 'message-typo'),
         projectId: row.project_id && seenIds.has(row.project_id) ? row.project_id : null,
         updatedAt: row.updated.toISOString(),
+        files: threadFiles.get(row.id) ?? 0,
       };
     }),
     projects: projects.map(({ p, direct }) => ({ id: p.id, name: p.name, nameMarks: marksOf(p.name, words, direct ? 'direct' : 'name-typo'), threadCount: p.threadCount, shared: p.shared, ownerName: p.role === 'member' ? p.owner.name : null })),

@@ -16,8 +16,8 @@ const FOUND = {
   files: NO_FILES,
   projects: [{ id: 'p1', name: 'Тендер Северный', threadCount: 2 }],
   threads: [
-    { id: 't7', agentId: 'sales', title: 'Договор поставки', snippet: '…договор со Стройресурс на поставку…', projectId: 'p1', updatedAt: new Date().toISOString() },
-    { id: 't8', agentId: 'sales', title: 'Письмо Стройресурс', snippet: '…ответ по договору…', projectId: null, updatedAt: '2026-11-02T10:00:00Z' },
+    { id: 't7', agentId: 'sales', title: 'Договор поставки', snippet: '…договор со Стройресурс на поставку…', projectId: 'p1', updatedAt: new Date().toISOString(), files: 5 },
+    { id: 't8', agentId: 'sales', title: 'Письмо Стройресурс', snippet: '…ответ по договору…', projectId: null, updatedAt: '2026-11-02T10:00:00Z', files: 0 },
   ],
 };
 
@@ -49,9 +49,9 @@ const RECENT = { files: [KP, CONTRACT, WORKING_COPY, ESTIMATE, BILL, OLD], unrea
 const searches = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/search');
 const lists = (s: { calls: MockCall[] }) => s.calls.filter((c) => c.path === '/app/api/threads' && c.query.limit !== '10');
 
-const conversation = (id: string, title: string, projectId: string | null, unread = false) => ({ id, title, kind: 'chat', unread, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId });
-// 31 conversations: the panel asks 7, the window asks pages of 30; the last page is one, the oldest.
-const ALL = Array.from({ length: 30 }, (_, i) => conversation(`t${i}`, `Тема ${i}`, i === 0 ? 'p1' : null, i === 1));
+const conversation = (id: string, title: string, projectId: string | null, unread = false, files = 0) => ({ id, title, kind: 'chat', unread, updatedAt: '2026-11-14T08:00:00Z', agentId: 'sales', projectId, files });
+// 31 conversations: the panel asks 10, the window asks pages of 30; the last page is one, the oldest.
+const ALL = Array.from({ length: 30 }, (_, i) => conversation(`t${i}`, `Тема ${i}`, i === 0 ? 'p1' : null, i === 1, i === 2 ? 12 : 0));
 const OLDEST = conversation('t30', 'Самый старый разговор', null);
 const threadList: Route = (call) => {
   if (call.query.before === 'cursor-30') return { body: { threads: [OLDEST], next: null } };
@@ -95,6 +95,7 @@ describe('search over conversations and projects', () => {
     const rows = titles.map((title) => title.closest('button')!);
     expect(within(rows[0]!).getByText('Тендер Северный')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('новое')).toBeInTheDocument();
+    expect(within(rows[2]!).getByRole('img', { name: '12 файлов' })).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Показать ещё' }));
     expect(await within(dialog).findByRole('button', { name: /Самый старый разговор/ })).toBeInTheDocument();
@@ -270,6 +271,10 @@ describe('search over conversations and projects', () => {
     expect(within(thread).getByText('сегодня')).toBeInTheDocument();
     expect(within(thread).getByText('Тендер Северный')).toBeInTheDocument();
     expect(within(within(dialog).getByRole('button', { name: /Письмо Стройресурс/ })).getByText('Без проекта')).toBeInTheDocument();
+    // How many files the conversation brought; none — no mark.
+    expect(within(thread).getByRole('img', { name: '5 файлов' })).toBeInTheDocument();
+    expect(within(thread).getByText('5')).toBeInTheDocument();
+    expect(within(within(dialog).getByRole('button', { name: /Письмо Стройресурс/ })).queryByRole('img', { name: /файл/ })).not.toBeInTheDocument();
     await user.click(thread);
     expect(screen.queryByRole('dialog', { name: 'Поиск' })).not.toBeInTheDocument();
   });

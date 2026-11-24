@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { GENUI_TOOL_IDS, type SearchResponse } from '@bba/contracts';
+import { GENUI_TOOL_IDS, withAttachments, type SearchResponse, type ThreadPage } from '@bba/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ensureThread } from '../memory/memory.ts';
 import { createTestApp, type TestApp } from '../server/test-app.ts';
@@ -102,6 +102,26 @@ describe('search', () => {
     expect((await search('бенефициар')).threads.map((x) => x.id)).toEqual([form]);
     expect((await search('невидимка')).threads).toEqual([]);
     expect((await search('тайносекрет')).threads).toEqual([]);
+  });
+
+  it('counts the files a conversation brought, in the search and in the list of conversations: attached or shown with «Скачать», each once', async () => {
+    const shown = (path: string, ok = true): Part => ({
+      type: 'tool-invocation',
+      toolInvocation: { state: 'result', toolCallId: randomUUID(), toolName: 'show_file', args: { path }, result: ok ? { name: path.split('/').pop(), path, bytes: 10, shown: true } : { error: true, message: 'нет файла' } },
+    });
+    const id = await conversation(olgaId, 'Документы по Ёлке', [
+      ['user', [text(withAttachments('Посмотри смету', [{ name: 'Смета.xlsx', path: 'uploads/Смета.xlsx' }, { name: 'ТЗ.pdf', path: 'uploads/ТЗ.pdf' }]))]],
+      ['assistant', [shown('out/КП Ёлка.docx'), text('Готово.')]],
+      ['assistant', [shown('out/КП Ёлка.docx'), shown('out/Пропал.docx', false)]],
+    ]);
+    const plain = await conversation(olgaId, 'Без файлов про Ёлку', [['user', [text('Привет, Ёлка')]]]);
+
+    const found = (await search('ёлка')).threads;
+    expect(found.find((x) => x.id === id)?.files).toBe(3);
+    expect(found.find((x) => x.id === plain)?.files).toBe(0);
+    const listed = (await (await t.call('GET', '/app/api/threads?limit=50', { cookie: olga })).json()) as ThreadPage;
+    expect(listed.threads.find((x) => x.id === id)?.files).toBe(3);
+    expect(listed.threads.find((x) => x.id === plain)?.files).toBe(0);
   });
 
   it('has words in the search for every block of the interface: a new block without them fails here', async () => {

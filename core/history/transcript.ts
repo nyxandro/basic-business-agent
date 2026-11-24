@@ -147,20 +147,6 @@ function partsOf(content: string): unknown[] {
   }
 }
 
-// The files a stored message showed the person — attached to it, or shown by the agent with «Скачать» — by name and
-// by their path in the folder of the conversation (spec, section 8.33: the agent takes them from there).
-export function shownFilesOf(message: { role: 'user' | 'assistant'; content: string }): { name: string; path: string }[] {
-  const files: { name: string; path: string }[] = [];
-  for (const part of partsOf(message.content)) {
-    if (!isObject(part)) continue;
-    if (part.type === 'text' && message.role === 'user' && typeof part.text === 'string') files.push(...splitAttachments(part.text).files);
-    if (part.type !== 'tool-invocation' || !isObject(part.toolInvocation) || part.toolInvocation.toolName !== GENUI_TOOL.file) continue;
-    const result = part.toolInvocation.result;
-    if (isObject(result) && result.shown === true && typeof result.path === 'string' && result.path !== '') files.push({ name: str(result.name) || (result.path.split('/').pop() ?? result.path), path: result.path });
-  }
-  return files;
-}
-
 export function visibleOf(message: { role: 'user' | 'assistant'; content: string }, approvals: ReadonlyMap<string, ApprovalOutcome>): Visible {
   const words: string[] = [];
   const marks: string[] = [];
