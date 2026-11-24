@@ -30,6 +30,7 @@ import { titleSubscriber } from './title-events.ts';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
 import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
+import { PartBoundary } from '../ui/ErrorBoundary.tsx';
 
 // The feed sticks to the bottom while the person is within this distance of it.
 const STICK_PX = 140;
@@ -101,22 +102,30 @@ function Feed({ messages, running, asking, failures, agent }: { messages: Messag
   return (
     <>
       {rows.map((row, i) => {
-        if (row.kind === 'user') return <UserMessage key={row.message.id} content={row.message.content} />;
+        // Each message draws on its own: one that fails shows a note, the conversation stays (review 24.11).
+        if (row.kind === 'user') {
+          return (
+            <PartBoundary key={row.message.id}>
+              <UserMessage content={row.message.content} />
+            </PartBoundary>
+          );
+        }
         const isLast = i === rows.length - 1;
         const broken = (isLast && lastBroken) || row.turn.some((m) => failures.interrupted.has(m.id));
         return (
-          <AssistantTurn
-            key={row.key}
-            turn={row.turn}
-            messages={messages}
-            streaming={running && isLast}
-            underWay={underWayIds}
-            asking={!running && isLast && asking}
-            interrupted={broken}
-            live={isLast ? live : null}
-            {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
-            turnNumber={row.number}
-          />
+          <PartBoundary key={row.key}>
+            <AssistantTurn
+              turn={row.turn}
+              messages={messages}
+              streaming={running && isLast}
+              underWay={underWayIds}
+              asking={!running && isLast && asking}
+              interrupted={broken}
+              live={isLast ? live : null}
+              {...(isLast && lastBroken && failures.onAnswerAgain ? { onAnswerAgain: failures.onAnswerAgain } : {})}
+              turnNumber={row.number}
+            />
+          </PartBoundary>
         );
       })}
     </>

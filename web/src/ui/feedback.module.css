@@ -153,3 +153,18 @@
   font-weight: 600;
   color: var(--text);
 }
+
+/* A part of a screen that failed to draw (PartBoundary): a quiet note in its place. */
+.partCrash {
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.partCode {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
