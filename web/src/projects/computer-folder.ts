@@ -73,13 +73,25 @@ export function canKeepFolder(): boolean {
 
 const DB = 'bba-computer-folders';
 const STORE = 'folders';
+// Version 2 keeps a folder under the person and the project: the folders kept by the project alone before it are dropped —
+// whose they were cannot be told, and a browser is shared by whoever signs in to it.
+const DB_VERSION = 2;
+
+// Under whom a folder is kept in this browser: the person signed in and the project. The browser's leave to read a folder is
+// the site's, not the person's — another person signed in to the same browser must never get it.
+export const folderKey = (userId: string, projectId: string): string => `${userId}:${projectId}`;
+
+// Below, `key` is a folderKey.
 const inMemory = new Map<string, ComputerFolder>();
-const listeners = new Set<(projectId: string) => void>();
+const listeners = new Set<(key: string) => void>();
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+    const request = indexedDB.open(DB, DB_VERSION);
+    request.onupgradeneeded = () => {
+      if (request.result.objectStoreNames.contains(STORE)) request.result.deleteObjectStore(STORE);
+      request.result.createObjectStore(STORE);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('IndexedDB is not available'));
   });
@@ -98,34 +110,34 @@ async function withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectSto
   }
 }
 
-const told = (projectId: string) => listeners.forEach((l) => l(projectId));
+const told = (key: string) => listeners.forEach((l) => l(key));
 
-export function onFolderChange(listener: (projectId: string) => void): () => void {
+export function onFolderChange(listener: (key: string) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export async function folderOf(projectId: string): Promise<ComputerFolder | null> {
-  const kept = inMemory.get(projectId);
+export async function folderOf(key: string): Promise<ComputerFolder | null> {
+  const kept = inMemory.get(key);
   if (kept) return kept;
   if (!canKeepFolder()) return null;
-  const stored = await withStore<StoredFolder | undefined>('readonly', (s) => s.get(projectId) as IDBRequest<StoredFolder | undefined>).catch(() => undefined);
+  const stored = await withStore<StoredFolder | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredFolder | undefined>).catch(() => undefined);
   if (!stored) return null;
   const folder: ComputerFolder = { kind: 'handle', name: stored.name, handle: stored.handle, mode: stored.mode ?? 'read' };
-  inMemory.set(projectId, folder);
+  inMemory.set(key, folder);
   return folder;
 }
 
-async function keep(projectId: string, folder: HandleFolder): Promise<void> {
+async function keep(key: string, folder: HandleFolder): Promise<void> {
   const stored: StoredFolder = { name: folder.name, handle: folder.handle, mode: folder.mode };
-  await withStore('readwrite', (s) => s.put(stored, projectId));
-  inMemory.set(projectId, folder);
-  told(projectId);
+  await withStore('readwrite', (s) => s.put(stored, key));
+  inMemory.set(key, folder);
+  told(key);
 }
 
 // Chrome and its kin: the folder is chosen and kept, the browser asked for the mode's right at once. Null when the person
 // closed the window. The browser refuses a folder it deems too sensitive (a system folder) the same way.
-export async function pickFolder(projectId: string, mode: FolderMode): Promise<ComputerFolder | null> {
+export async function pickFolder(key: string, mode: FolderMode): Promise<ComputerFolder | null> {
   const picker = (window as unknown as { showDirectoryPicker: Picker }).showDirectoryPicker;
   let handle: DirectoryHandle;
   try {
@@ -135,25 +147,25 @@ export async function pickFolder(projectId: string, mode: FolderMode): Promise<C
     throw error;
   }
   const folder = { kind: 'handle' as const, name: handle.name, handle, mode };
-  await keep(projectId, folder);
+  await keep(key, folder);
   return folder;
 }
 
 // Another mode for a folder kept (by a click: «Читать и записывать» asks the browser for the right to write). The answer of
 // the browser; a refusal leaves the folder as it was.
-export async function changeMode(projectId: string, folder: ComputerFolder, mode: FolderMode): Promise<FolderAccess> {
+export async function changeMode(key: string, folder: ComputerFolder, mode: FolderMode): Promise<FolderAccess> {
   if (folder.kind !== 'handle') throw new FolderError('Эту папку браузер даёт только читать.');
   const access = await folder.handle.requestPermission({ mode });
   if (access !== 'granted') {
-    told(projectId);
+    told(key);
     return access;
   }
-  await keep(projectId, { ...folder, mode });
+  await keep(key, { ...folder, mode });
   return access;
 }
 
 // Firefox and Safari: the files of a folder chosen with an input, for this tab.
-export function adoptFiles(projectId: string, list: FileList): ComputerFolder | null {
+export function adoptFiles(key: string, list: FileList): ComputerFolder | null {
   const files = new Map<string, File>();
   let name = '';
   for (const file of Array.from(list)) {
@@ -163,15 +175,15 @@ export function adoptFiles(projectId: string, list: FileList): ComputerFolder | 
   }
   if (!name) return null;
   const folder: ComputerFolder = { kind: 'files', name, files };
-  inMemory.set(projectId, folder);
-  told(projectId);
+  inMemory.set(key, folder);
+  told(key);
   return folder;
 }
 
-export async function forgetFolder(projectId: string): Promise<void> {
-  inMemory.delete(projectId);
-  if (canKeepFolder()) await withStore('readwrite', (s) => s.delete(projectId)).catch(() => undefined);
-  told(projectId);
+export async function forgetFolder(key: string): Promise<void> {
+  inMemory.delete(key);
+  if (canKeepFolder()) await withStore('readwrite', (s) => s.delete(key)).catch(() => undefined);
+  told(key);
 }
 
 // The browser's answer for the right of `mode` (the folder's own by default): reading needs only the right to read.
@@ -196,10 +208,10 @@ async function reachable(handle: DirectoryHandle): Promise<boolean> {
 }
 
 // Needs a click of the person: the browser asks them, for the right of the folder's mode.
-export async function allowAccess(projectId: string, folder: ComputerFolder): Promise<FolderAccess> {
+export async function allowAccess(key: string, folder: ComputerFolder): Promise<FolderAccess> {
   if (folder.kind === 'files') return 'granted';
   const access = await folder.handle.requestPermission({ mode: folder.mode });
-  told(projectId);
+  told(key);
   return access;
 }
 

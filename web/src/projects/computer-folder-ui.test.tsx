@@ -13,20 +13,24 @@ import { ComputerFolderChip } from './ComputerFolderChip.tsx';
 // The chip registers the agent's tools of the folder; CopilotKit is not what is tested here.
 vi.mock('@copilotkit/react-core', () => ({ useFrontendTools: () => undefined }));
 
-const card = (projectId: string) =>
+// The person signed in now: a folder is theirs (key `<person>:<project>`), never another's who used this browser.
+const ME = 'u-igor';
+const key = (projectId: string, userId = ME) => `${userId}:${projectId}`;
+
+const card = (projectId: string, userId = ME) =>
   render(
     <MemoryRouter>
       <ToastProvider>
-        <ComputerFolderCard projectId={projectId} />
+        <ComputerFolderCard projectId={projectId} userId={userId} />
       </ToastProvider>
     </MemoryRouter>,
   );
 
-const chip = (projectId: string) =>
+const chip = (projectId: string, userId = ME) =>
   render(
     <MemoryRouter>
       <ToastProvider>
-        <ComputerFolderChip projectId={projectId} threadId="t1" />
+        <ComputerFolderChip projectId={projectId} userId={userId} threadId="t1" />
       </ToastProvider>
     </MemoryRouter>,
   );
@@ -46,6 +50,28 @@ describe('«Папка на компьютере»', () => {
     expect(await screen.findByText('Чтение и запись · доступна агенту')).toBeInTheDocument();
   });
 
+  // The folder is the person's, in this browser: a colleague of the project does not see it.
+  it('says the folder is the person’s own and only in this browser', () => {
+    stubFolderStore();
+    stubPicker(fakeFolder({}).handle);
+    card('p-own');
+    expect(screen.getByText('Папка — только ваша и только в этом браузере: коллеги по проекту её не видят и могут подключить свою.')).toBeInTheDocument();
+  });
+
+  // A shared computer: another person signed in to the same browser opens the same shared project — the folder of the one
+  // before is not theirs, and the browser's leave to read it is the site's, not the person's.
+  it('never gives another person signed in to the same browser the folder of the one before', async () => {
+    const kept = stubFolderStore();
+    stubPicker(fakeFolder({}).handle);
+    kept.set(key('p-shared', 'u-igor'), { name: 'Папка Игоря', handle: fakeFolder({}).handle, mode: 'readwrite' });
+    const olga = card('p-shared', 'u-olga');
+    expect(await screen.findByRole('button', { name: 'Подключить папку' })).toBeInTheDocument();
+    expect(screen.queryByText('Папка Игоря')).not.toBeInTheDocument();
+    olga.unmount();
+    card('p-shared', 'u-igor');
+    expect(await screen.findByText('Папка Игоря')).toBeInTheDocument();
+  });
+
   it('a browser that cannot write offers reading only, and says where writing works', () => {
     stubFolderStore();
     stubPicker(fakeFolder({}).handle, { write: false });
@@ -57,7 +83,7 @@ describe('«Папка на компьютере»', () => {
   it('turns writing on for a connected folder by the browser’s leave, and keeps reading when the browser refuses', async () => {
     const kept = stubFolderStore();
     const fake = fakeFolder({}, { access: { read: 'granted', readwrite: 'prompt' } });
-    kept.set('p-switch', { name: 'Тендер', handle: fake.handle, mode: 'read' });
+    kept.set(key('p-switch'), { name: 'Тендер', handle: fake.handle, mode: 'read' });
     stubPicker(fake.handle);
     card('p-switch');
     const user = userEvent.setup();
@@ -67,7 +93,7 @@ describe('«Папка на компьютере»', () => {
     expect(await screen.findByText('Чтение и запись · доступна агенту')).toBeInTheDocument();
 
     const refusing = fakeFolder({}, { request: 'denied' });
-    kept.set('p-refuse', { name: 'Тендер', handle: refusing.handle, mode: 'read' });
+    kept.set(key('p-refuse'), { name: 'Тендер', handle: refusing.handle, mode: 'read' });
     card('p-refuse');
     const radios = await screen.findAllByRole('radio', { name: /Читать и записывать/ });
     await user.click(radios.at(-1)!);
@@ -77,9 +103,9 @@ describe('«Папка на компьютере»', () => {
   it('says what to do when the access must be confirmed, the browser forbade editing, or the folder is gone', async () => {
     const kept = stubFolderStore();
     stubPicker(null);
-    kept.set('p-prompt', { name: 'Тендер', handle: fakeFolder({}, { access: { readwrite: 'prompt' } }).handle, mode: 'readwrite' });
-    kept.set('p-denied', { name: 'Тендер', handle: fakeFolder({}, { access: { readwrite: 'denied' } }).handle, mode: 'readwrite' });
-    kept.set('p-gone', { name: 'Тендер', handle: fakeFolder({}, { gone: true }).handle, mode: 'read' });
+    kept.set(key('p-prompt'), { name: 'Тендер', handle: fakeFolder({}, { access: { readwrite: 'prompt' } }).handle, mode: 'readwrite' });
+    kept.set(key('p-denied'), { name: 'Тендер', handle: fakeFolder({}, { access: { readwrite: 'denied' } }).handle, mode: 'readwrite' });
+    kept.set(key('p-gone'), { name: 'Тендер', handle: fakeFolder({}, { gone: true }).handle, mode: 'read' });
     const prompt = card('p-prompt');
     expect(await screen.findByText('Нужно подтвердить доступ')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Разрешить доступ' })).toBeInTheDocument();
@@ -100,16 +126,16 @@ describe('the chip of the folder in the input', () => {
     const kept = stubFolderStore();
     stubPicker(null);
     const fake = fakeFolder({});
-    kept.set('c-write', { name: 'Тендер', handle: fake.handle, mode: 'readwrite' });
-    kept.set('c-prompt', { name: 'Тендер', handle: fakeFolder({}, { access: { read: 'prompt' } }).handle, mode: 'read' });
-    kept.set('c-gone', { name: 'Тендер', handle: fakeFolder({}, { gone: true }).handle, mode: 'read' });
+    kept.set(key('c-write'), { name: 'Тендер', handle: fake.handle, mode: 'readwrite' });
+    kept.set(key('c-prompt'), { name: 'Тендер', handle: fakeFolder({}, { access: { read: 'prompt' } }).handle, mode: 'read' });
+    kept.set(key('c-gone'), { name: 'Тендер', handle: fakeFolder({}, { gone: true }).handle, mode: 'read' });
     const user = userEvent.setup();
     const write = chip('c-write');
     const button = await screen.findByRole('button', { name: 'Папка с компьютера: Тендер · чтение и запись' });
     await user.click(button);
     await user.click(screen.getByRole('menuitem', { name: 'Только читать' }));
     expect(await screen.findByRole('button', { name: 'Папка с компьютера: Тендер · только чтение' })).toBeInTheDocument();
-    await waitFor(() => expect((kept.get('c-write') as { mode: string }).mode).toBe('read'));
+    await waitFor(() => expect((kept.get(key('c-write')) as { mode: string }).mode).toBe('read'));
     write.unmount();
     const prompt = chip('c-prompt');
     expect(await screen.findByRole('button', { name: /Разрешить доступ/ })).toBeInTheDocument();
@@ -122,7 +148,7 @@ describe('the chip of the folder in the input', () => {
   it('turns a folder whose editing the browser forbade to reading', async () => {
     const kept = stubFolderStore();
     stubPicker(null);
-    kept.set('c-denied', { name: 'Тендер', handle: fakeFolder({}, { access: { read: 'granted', readwrite: 'denied' } }).handle, mode: 'readwrite' });
+    kept.set(key('c-denied'), { name: 'Тендер', handle: fakeFolder({}, { access: { read: 'granted', readwrite: 'denied' } }).handle, mode: 'readwrite' });
     chip('c-denied');
     await userEvent.setup().click(await screen.findByRole('button', { name: /Только читать/ }));
     expect(await screen.findByRole('button', { name: 'Папка с компьютера: Тендер · только чтение' })).toBeInTheDocument();

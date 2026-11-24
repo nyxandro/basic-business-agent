@@ -27,8 +27,8 @@ function statusOf(access: FolderAccess, mode: FolderMode): { tone: 'ok' | 'warn'
   }
 }
 
-export function ComputerFolderCard({ projectId }: { projectId: string }) {
-  const state = useComputerFolder(projectId);
+export function ComputerFolderCard({ projectId, userId }: { projectId: string; userId: string }) {
+  const state = useComputerFolder(projectId, userId);
   const toast = useToast();
   // The mode for a folder not connected yet: the picker asks the browser for its right at once.
   const [wanted, setWanted] = useState<FolderMode>('read');
@@ -56,6 +56,7 @@ export function ComputerFolderCard({ projectId }: { projectId: string }) {
         )}
       </div>
       <p className={styles.lead}>{t.lead}</p>
+      <p className={styles.lead}>{t.personal}</p>
       {!state.keeps ? <p className={styles.lead}>{t.tabOnly}</p> : null}
       <div role="radiogroup" aria-label={t.modes} className={styles.folderModes}>
         {(['read', 'readwrite'] as const).map((m) => (

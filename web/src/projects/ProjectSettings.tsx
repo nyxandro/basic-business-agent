@@ -4,6 +4,7 @@
 import type { ProjectDto } from '@bba/contracts';
 import { useState } from 'react';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
+import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { MemoryEntries } from '../memory/MemoryEntries.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -63,6 +64,7 @@ function Instructions({ project, onSaved }: { project: ProjectDto; onSaved: (p: 
 
 export function ProjectSettings({ project, onSaved }: { project: ProjectDto; onSaved: (p: ProjectDto) => void }) {
   const archived = project.archivedAt !== null;
+  const me = useMe();
   return (
     <>
       {/* The page may show the project from memory first: the server's instructions, when different,
@@ -73,7 +75,7 @@ export function ProjectSettings({ project, onSaved }: { project: ProjectDto; onS
         <MemoryEntries projectId={project.id} title={ru.memory.projectTitle} hint={ru.memory.projectHint} empty={ru.memory.projectEmpty} failed={ru.memory.projectFailed} readOnlyNote={ru.memory.projectArchived} />
       </Card>
       {/* A folder of this browser's computer for the agent (spec, section 8.25); not for an archived project. */}
-      {archived ? null : <ComputerFolderCard projectId={project.id} />}
+      {archived ? null : <ComputerFolderCard projectId={project.id} userId={me.user.id} />}
     </>
   );
 }

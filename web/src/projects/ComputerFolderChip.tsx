@@ -15,8 +15,8 @@ import { useComputerFolder } from './use-computer-folder.ts';
 
 const t = ru.computer;
 
-export function ComputerFolderChip({ projectId, threadId }: { projectId: string; threadId: string }) {
-  const state = useComputerFolder(projectId);
+export function ComputerFolderChip({ projectId, userId, threadId }: { projectId: string; userId: string; threadId: string }) {
+  const state = useComputerFolder(projectId, userId);
   const [open, setOpen] = useState(false);
   const toast = useToast();
   useComputerTools(state.folder, threadId);

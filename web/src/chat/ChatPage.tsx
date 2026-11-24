@@ -97,7 +97,7 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
             <>
               <ProjectChip threadId={threadId} {...project} />
               {/* A folder of the computer is given to a project (spec, section 8.25). */}
-              {project.state.status === 'ready' && project.state.data ? <ComputerFolderChip key={project.state.data.id} projectId={project.state.data.id} threadId={threadId} /> : null}
+              {project.state.status === 'ready' && project.state.data ? <ComputerFolderChip key={project.state.data.id} projectId={project.state.data.id} userId={me.user.id} threadId={threadId} /> : null}
             </>
           }
           composerNotice={project.lost ? <LostProjectNotice threadId={threadId} lost={project.lost} onDone={() => project.changed(null)} /> : null}
