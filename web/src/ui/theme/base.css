@@ -72,14 +72,32 @@ p {
   font-family: var(--font-mono);
 }
 
+/* A thin, quiet scrollbar of the theme (owner 25.11): 4 px seen in a 10 px strip — the mouse still catches it; plainer
+   on hover. */
+.scroll-thin {
+  --scroll-thumb: color-mix(in srgb, var(--muted) 35%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--muted) 65%, transparent);
+}
+
 .scroll-thin::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+}
+
+.scroll-thin::-webkit-scrollbar-track,
+.scroll-thin::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 8px;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 10px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-thumb-hover);
 }
 
 /* Firefox has no ::-webkit-scrollbar — the standard properties there. Not for Chrome: with scrollbar-color set, it
@@ -87,7 +105,7 @@ p {
 @supports not selector(::-webkit-scrollbar) {
   .scroll-thin {
     scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    scrollbar-color: var(--scroll-thumb) transparent;
   }
 }
 
