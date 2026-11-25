@@ -2,7 +2,7 @@
 // Without ?thread a new conversation starts with a fresh id. Until the admin sets models up the
 // employee sees why instead of the input.
 import type { AgentSummary } from '@bba/contracts';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { asApiError, type ApiRequestError } from '../api/client.ts';
 import { useMe } from '../auth/session.tsx';
@@ -22,6 +22,8 @@ import { useThreadProject } from '../projects/use-thread-project.ts';
 import { LostProjectNotice } from '../projects/LostProjectNotice.tsx';
 import { deleteThread } from '../threads/api.ts';
 import { ChatPanel } from './ChatPanel.tsx';
+import { ContextFillButton } from './ContextFill.tsx';
+import { useContextFill } from './context-fill.ts';
 import { RenameThreadDialog } from './RenameThreadDialog.tsx';
 
 function ThreadActions({ threadId, onDeleted, onRenamed }: { threadId: string; onDeleted: () => void; onRenamed: (title: string) => void }) {
@@ -83,16 +85,34 @@ function Conversation({ agent, agents, threadId }: { agent: AgentSummary; agents
     refreshThreads();
     void navigate(`/agents/${encodeURIComponent(agent.id)}?thread=${crypto.randomUUID()}`, { replace: true });
   };
+  // How full the conversation is (spec, section 8.34): asked when it opens and after every answer, told by the stream
+  // while the agent answers.
+  const context = useContextFill(threadId);
+  const { reload: reloadContext } = context;
+  const onRunFinished = useCallback(() => {
+    refreshThreads();
+    reloadContext();
+  }, [refreshThreads, reloadContext]);
+  // «Новый разговор» of a full conversation: with the same agent, in the same project (decision of the owner 15.11).
+  const projectId = project.state.status === 'ready' ? (project.state.data?.id ?? null) : null;
+  const openNew = () => void navigate(`/agents/${encodeURIComponent(agent.id)}?thread=${crypto.randomUUID()}${projectId ? `&project=${encodeURIComponent(projectId)}` : ''}`);
+  const actions = (
+    <>
+      <ContextFillButton fill={context.fill} onNewConversation={openNew} />
+      <ThreadActions threadId={threadId} onDeleted={startNew} onRenamed={(title) => (nameThread(threadId, title), refreshThreads())} />
+    </>
+  );
   return (
     <>
-      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={<ThreadActions threadId={threadId} onDeleted={startNew} onRenamed={(title) => (nameThread(threadId, title), refreshThreads())} />} />
+      <ChatHeader agent={agent} agents={agents} wide={wide} onOpenMenu={openMenu} actions={actions} />
       {me.modelsConfigured ? (
         <ChatPanel
           key={threadId}
           agent={agent}
           threadId={threadId}
-          onRunFinished={refreshThreads}
+          onRunFinished={onRunFinished}
           onThreadTitled={refreshThreads}
+          onContextFill={context.onLive}
           composerExtra={
             <>
               <ProjectChip threadId={threadId} {...project} />

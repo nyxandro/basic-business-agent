@@ -1,6 +1,6 @@
 // One conversation: CopilotChat bound to the agent and the thread, drawn by our ChatView, with our
 // blocks, the confirmation card for AG-UI interrupts and readable errors.
-import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
+import type { AgentSummary, FailedTurns, ThreadContextFill, UploadedFile } from '@bba/contracts';
 import { CopilotChat, useCopilotKit, useInterrupt } from '@copilotkit/react-core';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ApiRequestError, asApiError } from '../api/client.ts';
@@ -22,6 +22,7 @@ export function ChatPanel({
   threadId,
   onRunFinished,
   onThreadTitled,
+  onContextFill,
   composerExtra,
   composerNotice,
   draft = false,
@@ -31,6 +32,8 @@ export function ChatPanel({
   draft?: boolean;
   onRunFinished: () => void;
   onThreadTitled: () => void;
+  // How full the conversation is (spec, section 8.34); the check of a prompt's draft has no indicator.
+  onContextFill?: (context: ThreadContextFill | null) => void;
   composerExtra?: ReactNode;
   composerNotice?: ReactNode;
 }) {
@@ -73,6 +76,7 @@ export function ChatPanel({
       onSubmitted: () => setFailure(null),
       onRunFinished,
       onThreadTitled,
+      ...(onContextFill ? { onContextFill } : {}),
       onUploadError: (raw) => setFailure({ error: asApiError(raw), broken: false }),
       interrupt: interrupt ?? null,
       failure: shownFailure,
@@ -85,7 +89,7 @@ export function ChatPanel({
       composerNotice,
       stopRun: (running) => copilotkit.stopAgent({ agent: running }),
     }),
-    [agent, threadId, draft, attachments, onRunFinished, onThreadTitled, interrupt, shownFailure, lost, interruptedIds, onTurnsFailed, composerExtra, composerNotice, copilotkit],
+    [agent, threadId, draft, attachments, onRunFinished, onThreadTitled, onContextFill, interrupt, shownFailure, lost, interruptedIds, onTurnsFailed, composerExtra, composerNotice, copilotkit],
   );
 
   return (

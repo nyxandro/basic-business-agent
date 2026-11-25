@@ -1,4 +1,4 @@
-import type { AgentSummary, FailedTurns, UploadedFile } from '@bba/contracts';
+import type { AgentSummary, FailedTurns, ThreadContextFill, UploadedFile } from '@bba/contracts';
 import type { useAgent } from '@copilotkit/react-core';
 import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
 import type { ChatFailure } from '../chat/chat-errors.ts';
@@ -19,6 +19,9 @@ export interface ChatExtras {
   onRunFinished: () => void;
   // The conversation got its name while the agent answered (spec, section 8.16).
   onThreadTitled: () => void;
+  // How full the conversation is, told after every call of the model (spec, section 8.34). Absent in the check of a
+  // prompt's draft: it shows no indicator.
+  onContextFill?: (context: ThreadContextFill | null) => void;
   onUploadError: (error: unknown) => void;
   // The confirmation card of a waiting action, placed under the feed.
   interrupt: ReactElement | null;

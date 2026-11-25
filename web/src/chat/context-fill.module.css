@@ -1,0 +1,148 @@
+/* How full a conversation is (spec, section 8.34): the ring in the header and its window. The colour follows the
+   level — the accent of the theme, amber from 70%, red from 90% — and every change glides. */
+.button {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.button:hover {
+  background: var(--hover);
+}
+
+.button:active {
+  transform: scale(0.94);
+}
+
+.button[aria-expanded='true'] {
+  background: var(--hover);
+}
+
+.ring {
+  display: block;
+  overflow: visible;
+}
+
+.track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2.5;
+}
+
+.arc {
+  fill: none;
+  stroke: var(--acc);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.7s var(--ease-out),
+    stroke 0.4s ease;
+}
+
+.button[data-level='high'] .arc {
+  stroke: var(--warn-mark);
+}
+
+.button[data-level='full'] .arc {
+  stroke: var(--bad);
+}
+
+.panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px 10px 8px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.percent {
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--acc-text);
+  transition: color 0.4s ease;
+}
+
+.panel[data-level='high'] .percent {
+  color: var(--warn);
+}
+
+.panel[data-level='full'] .percent {
+  color: var(--bad);
+}
+
+.bar {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--acc);
+  transition:
+    width 0.7s var(--ease-out),
+    background-color 0.4s ease;
+}
+
+.panel[data-level='high'] .barFill {
+  background: var(--warn-mark);
+}
+
+.panel[data-level='full'] .barFill {
+  background: var(--bad);
+}
+
+.tokens {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.warning {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.action {
+  justify-self: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .arc,
+  .percent,
+  .barFill {
+    transition: none;
+  }
+}

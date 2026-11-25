@@ -27,6 +27,7 @@ import { LiveLine } from './LiveLine.tsx';
 import { withAttachments, withPasted, type AgentSummary } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
+import { contextFillSubscriber } from './context-fill.ts';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
 import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
@@ -205,6 +206,14 @@ export function ChatView(props: CopilotChatViewProps) {
     const subscription = agent.subscribe(titleSubscriber(threadId, onThreadTitled));
     return () => subscription.unsubscribe();
   }, [agent, threadId, onThreadTitled]);
+
+  // How full the conversation is, after every call of the model (spec, section 8.34).
+  const { onContextFill } = extras;
+  useEffect(() => {
+    if (!onContextFill) return undefined;
+    const subscription = agent.subscribe(contextFillSubscriber(threadId, onContextFill));
+    return () => subscription.unsubscribe();
+  }, [agent, threadId, onContextFill]);
 
   const lastContent = messages.at(-1)?.content;
   const lastRole = messages.at(-1)?.role;

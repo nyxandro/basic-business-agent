@@ -93,7 +93,6 @@
       "bba_ledger",
       "bba_account_events"
     ],
-    "always_include_stream_usage": true,
     "turn_off_message_logging": true
   },
   "callback_settings": {
@@ -146,6 +145,7 @@
   "general_settings": {
     "master_key": "os.environ/LITELLM_MASTER_KEY",
     "database_url": "os.environ/DATABASE_URL",
-    "store_model_in_db": true
+    "store_model_in_db": true,
+    "always_include_stream_usage": true
   }
 }

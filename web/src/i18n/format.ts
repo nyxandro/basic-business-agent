@@ -9,6 +9,11 @@ export const rub = (value: number): string => `${Math.round(value).toLocaleStrin
 // «120 тыс.» for token counts.
 export const thousands = (value: number): string => (value >= THOUSAND ? `${Math.round(value / THOUSAND).toLocaleString('ru-RU')} тыс.` : value.toLocaleString('ru-RU'));
 
+const MILLION = 1_000_000;
+
+// «52 тыс.», «1,05 млн» — for counts that reach millions (the size of the context of a model).
+export const largeCount = (value: number): string => (value >= MILLION ? `${(value / MILLION).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} млн` : thousands(value));
+
 // «1 декабря» from a date like 2026-12-01 (a calendar day, no time zone shift).
 export function dayMonth(isoDate: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);

@@ -53,7 +53,6 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
     litellm_settings: {
       timezone: opts.timezone,
       callbacks: [LEDGER_CALLBACK_NAME, ACCOUNT_EVENTS_CALLBACK_NAME],
-      always_include_stream_usage: true,
       turn_off_message_logging: true,
     },
     callback_settings: {
@@ -94,6 +93,11 @@ export function buildLiteLLMConfig(opts: LiteLLMConfigOptions): Record<string, u
       database_url: 'os.environ/DATABASE_URL',
       // Provider keys in LiteLLM's database are encrypted with LITELLM_SALT_KEY.
       store_model_in_db: true,
+      // Every stream ends with the count of tokens of its call, asked or not (spec, section 8.34): Mastra does not ask
+      // for it (stream_options) for a model on its own address, and the chat shows how full a conversation is by it.
+      // Read from general_settings only (LiteLLM 1.109.1, proxy/common_request_processing.py); without it the gateway
+      // asks the provider for the count for its own ledger and cuts it out of the answer.
+      always_include_stream_usage: true,
     },
   };
 }

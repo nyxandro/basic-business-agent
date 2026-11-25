@@ -16,6 +16,7 @@ import { createSecretBox } from '../crypto/secret-box.ts';
 import { startFakeChatGpt, FAKE_SUBSCRIPTION_ANSWER, type FakeChatGpt } from './fake-chatgpt.ts';
 import { TEST_CALLBACK_PORT, TEST_CHATGPT_PORT, TEST_SEARXNG_PORT } from './test-catalog.ts';
 import { startFakeSearxng, type FakeSearxng } from '../web/fake-searxng.ts';
+import { callTokens } from '../context-fill/processor.ts';
 import { createGatewaySearcher } from '../web/search.ts';
 import { TEST_ENCRYPTION_KEYS } from '../server/test-app.ts';
 
@@ -83,6 +84,23 @@ describe('model gateway', () => {
     const [row] = await waitForUsage(userId, 1);
     expect(row).toMatchObject({ model: 'test-paid', deployment: 'paid-1', agent_id: 'sales', is_subscription: false });
     expect(Number(row!.cost_rub)).toBeGreaterThan(0);
+  });
+
+  // Mastra does not ask for the count in the stream (stream_options) for a model on its own address: the gateway
+  // gives it to every stream itself — general_settings.always_include_stream_usage.
+  it('gives the agent the count of tokens of every call in the stream: the chat shows how full a conversation is (spec, 8.34)', async () => {
+    const userId = await t.createUser({ email: 'stream-usage@example.com' });
+    const counted: (number | null)[] = [];
+    const agent = new Agent({
+      id: 'sales',
+      name: 'sales',
+      instructions: 'Ты помощник.',
+      model: await t.gateway.modelConfig('test-paid', userId, 'sales'),
+      inputProcessors: [{ id: 'count', processLLMResponse: ({ chunks }) => void counted.push(callTokens(chunks)) }],
+    });
+    await (await agent.stream('привет')).consumeStream();
+    expect(counted).toHaveLength(1);
+    expect(counted[0]).toBeGreaterThan(0);
   });
 
   it('spreads subscription calls over the pool at zero cost', async () => {
