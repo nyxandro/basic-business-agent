@@ -13,6 +13,7 @@ import { canRecord } from '../voice/recorder.ts';
 import { useVoice } from '../voice/use-voice.ts';
 import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
 import { Attachments } from './Attachments.tsx';
+import { PastedText } from './PastedText.tsx';
 import type { WaitingFile } from './attach.ts';
 import type { UploadProgress } from './upload-progress.ts';
 import { useChatExtras } from '../answer/chat-context.ts';
@@ -20,8 +21,8 @@ import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
 
 const MAX_HEIGHT = 220;
-// A pasted text longer than this goes up as a file instead of into the field (request of the owner 25.11).
-const PASTED_AS_FILE = 1000;
+// A pasted text longer than this folds into a block instead of going into the field (request of the owner 25.11).
+const PASTED_FOLDS = 1000;
 
 const appendText = (current: string, text: string) => (current.trim() ? `${current.trimEnd()} ${text}` : text);
 
@@ -81,6 +82,9 @@ export function Composer({
   uploading,
   progress,
   onAttach,
+  pasted,
+  onPasteText,
+  onRemovePasted,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -92,12 +96,16 @@ export function Composer({
   uploading: readonly WaitingFile[];
   progress: UploadProgress;
   onAttach: (files: File[]) => void;
+  // Long texts pasted, folded (PastedText.tsx): they go as a part of the message.
+  pasted: readonly string[];
+  onPasteText: (text: string) => void;
+  onRemovePasted: (index: number) => void;
 }) {
   const extras = useChatExtras();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  // Words, or files alone — a pasted text needs no words of its own.
-  const ready = (value.trim().length > 0 || extras.attachments.length > 0) && uploading.length === 0 && !extras.offline;
+  // Words, or a pasted text or files alone.
+  const ready = (value.trim().length > 0 || pasted.length > 0 || extras.attachments.length > 0) && uploading.length === 0 && !extras.offline;
   const me = useMe();
   const deliver = useDeliverText(extras.agentId, extras.threadId, value, onChange);
   useDraftChanges(extras.agentId, extras.threadId, onChange);
@@ -111,13 +119,13 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
 
-  // A long text pasted goes up as a file of its own, a chip like any attachment (request of the owner 25.11): the field
-  // stays readable, and the agent reads it as an attachment (spec, section 8.29).
+  // A long text pasted folds into a block of its own (request of the owner 25.11): the field stays readable; the text goes
+  // as a part of the message.
   function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const text = event.clipboardData.getData('text/plain');
-    if (text.length <= PASTED_AS_FILE) return;
+    if (text.length <= PASTED_FOLDS) return;
     event.preventDefault();
-    onAttach([new File([text], ru.chat.pastedName(text.length), { type: 'text/plain' })]);
+    onPasteText(text);
   }
 
   function pick(target: HTMLInputElement) {
@@ -138,6 +146,13 @@ export function Composer({
   return (
     <div className={styles.composer}>
       <Attachments uploading={uploading} progress={progress} voice={voiceLine} />
+      {pasted.length > 0 ? (
+        <div className={styles.pastedList}>
+          {pasted.map((text, i) => (
+            <PastedText key={`${i}-${text.length}`} text={text} onRemove={() => onRemovePasted(i)} />
+          ))}
+        </div>
+      ) : null}
       <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={paste} />
       <div className={styles.composerRow}>
         <input ref={fileInput} type="file" hidden multiple accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => pick(e.currentTarget)} />

@@ -3,6 +3,7 @@ export * from './auth.ts';
 export * from './genui.ts';
 export * from './admin.ts';
 export * from './chat.ts';
+export * from './pasted.ts';
 export * from './memory.ts';
 export * from './projects.ts';
 export * from './settings.ts';

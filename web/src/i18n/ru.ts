@@ -393,8 +393,9 @@ export const ru = {
     no: 'Нет',
     executing: 'Выполняю…',
     attach: 'Прикрепить файл',
-    // A long text pasted into the input goes up as this file; plain spaces: a file name keeps no other (safeFileName).
-    pastedName: (chars: number) => `Вставленный текст (${String(chars).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${plural(chars, ['знак', 'знака', 'знаков'])}).txt`,
+    // A long text pasted into the input, folded in the input and in the bubble (request of the owner 25.11).
+    pasted: (chars: number) => `Вставленный текст · ${chars.toLocaleString('ru-RU')} ${plural(chars, ['знак', 'знака', 'знаков'])}`,
+    pastedRemove: 'Убрать вставленный текст',
     uploading: 'Загружаю файл…',
     uploadingName: (name: string) => `Загружаю ${name}…`,
     removeAttachment: 'Убрать',

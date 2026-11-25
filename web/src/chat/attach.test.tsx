@@ -361,32 +361,56 @@ describe('many files in one card (decision of the owner 17.11)', () => {
 });
 
 // A long text pasted into the input (request of the owner 25.11): over 1 000 characters it is not put into the field but
-// goes up as a file of its own — «Вставленный текст (1 230 знаков).txt», a chip like any attachment; the agent reads it as
-// an attachment (spec, section 8.29). A short text is pasted as ever.
+// folds into a block «Вставленный текст · 1 232 знака» that unfolds and can be taken out; it goes as a part of the message
+// itself — no file. A short text is pasted as ever.
 describe('a long text pasted into the input', () => {
   const paste = (text: string) => {
     const input = screen.getByLabelText('Сообщение агенту');
     const event = createEvent.paste(input, { clipboardData: { getData: (type: string) => (type === 'text/plain' ? text : ''), types: ['text/plain'], files: [] } });
-    fireEvent(input, event);
+    act(() => void fireEvent(input, event));
     return event;
   };
+  const LONG = 'Пункт договора. '.repeat(77);
 
-  it('goes up as a file named by its length, not into the field', async () => {
+  it('folds into a block, not into the field and not into a file, and goes with the words as a part of the message', async () => {
     const onInputChange = vi.fn();
-    const { ex, uploads } = await showChat(uploaded, { inputValue: '', onInputChange });
-    const text = 'Пункт договора. '.repeat(77);
-    expect(text.length).toBe(1232);
-    const event = paste(text);
-    expect(event.defaultPrevented).toBe(true);
-    await waitFor(() => expect(ex.addAttachment).toHaveBeenCalledOnce());
-    expect(uploads()).toEqual(['Вставленный текст (1 232 знака).txt']);
+    const onSubmitMessage = vi.fn();
+    const { uploads } = await showChat(uploaded, { inputValue: 'Что тут?', onInputChange, onSubmitMessage });
+    expect(LONG.length).toBe(1232);
+    expect(paste(LONG).defaultPrevented).toBe(true);
+    const user = userEvent.setup();
+    const block = screen.getByRole('button', { name: /^Вставленный текст · 1\s232 знака$/ });
+    expect(block).toHaveAttribute('aria-expanded', 'false');
+    await user.click(block);
+    expect(screen.getByText(/Пункт договора\. Пункт договора\./)).toBeInTheDocument();
     expect(onInputChange).not.toHaveBeenCalled();
+    expect(uploads()).toEqual([]);
+    await user.click(screen.getByRole('button', { name: 'Отправить' }));
+    expect(onSubmitMessage).toHaveBeenCalledWith(`Что тут?\n\n--- Вставленный текст ---\n${LONG}\n--- Конец вставленного текста ---`);
+    expect(screen.queryByRole('button', { name: /Вставленный текст/ })).not.toBeInTheDocument();
+  });
+
+  it('goes alone without words, and is taken out by its cross', async () => {
+    const onSubmitMessage = vi.fn();
+    await showChat(uploaded, { inputValue: '', onInputChange: vi.fn(), onSubmitMessage });
+    const user = userEvent.setup();
+    const send = screen.getByRole('button', { name: 'Отправить' });
+    expect(send).toBeDisabled();
+    paste(LONG);
+    paste(`${LONG}ещё`);
+    expect(screen.getAllByRole('button', { name: /^Вставленный текст ·/ })).toHaveLength(2);
+    await user.click(screen.getAllByRole('button', { name: 'Убрать вставленный текст' })[0]!);
+    expect(screen.getAllByRole('button', { name: /^Вставленный текст ·/ })).toHaveLength(1);
+    expect(send).toBeEnabled();
+    await user.click(send);
+    expect(onSubmitMessage).toHaveBeenCalledWith(`--- Вставленный текст ---\n${LONG}ещё\n--- Конец вставленного текста ---`);
   });
 
   it('puts a short text into the field as ever', async () => {
     const { uploads } = await showChat(uploaded, { inputValue: '', onInputChange: vi.fn() });
     expect(paste('Короткий текст').defaultPrevented).toBe(false);
     expect(paste('я'.repeat(1000)).defaultPrevented).toBe(false);
+    expect(screen.queryByRole('button', { name: /Вставленный текст/ })).not.toBeInTheDocument();
     expect(uploads()).toEqual([]);
   });
 });

@@ -24,7 +24,7 @@ import { Composer } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
 import { useFileDrop } from './FileDrop.tsx';
 import { LiveLine } from './LiveLine.tsx';
-import { withAttachments, type AgentSummary } from '@bba/contracts';
+import { withAttachments, withPasted, type AgentSummary } from '@bba/contracts';
 import { UserMessage } from './UserMessage.tsx';
 import { titleSubscriber } from './title-events.ts';
 import { createWebProgressStore, WebProgressContext, webProgressSubscriber } from './web-progress.ts';
@@ -32,6 +32,8 @@ import { ChatSendContext } from '../answer/chat-send.ts';
 import { Welcome } from './Welcome.tsx';
 import { PartBoundary } from '../ui/ErrorBoundary.tsx';
 import { pendingWrite, stopPendingWrites, useWriteAsked } from '../projects/computer-saves.ts';
+
+const NO_PASTED: string[] = [];
 
 // The feed sticks to the bottom while the person is within this distance of it.
 const STICK_PX = 140;
@@ -141,6 +143,12 @@ export function ChatView(props: CopilotChatViewProps) {
   // A write onto the computer waits for «Да» (spec, section 8.25): the input waits as while the agent answers, and «Стоп»
   // lets the write go — a new message would run beside the write still to come.
   const writeAsked = useWriteAsked(extras.threadId);
+  // Long texts pasted into the input, folded (request of the owner 25.11): the conversation's own — another conversation
+  // opened in the same window starts without them.
+  const [pastedOf, setPastedOf] = useState<{ threadId: string; texts: string[] }>({ threadId: extras.threadId, texts: [] });
+  const pasted = pastedOf.threadId === extras.threadId ? pastedOf.texts : NO_PASTED;
+  const setPasted = (change: (texts: string[]) => string[]) =>
+    setPastedOf((prev) => ({ threadId: extras.threadId, texts: change(prev.threadId === extras.threadId ? prev.texts : []) }));
   const busy = isRunning || writeAsked;
   // The run of the agent ended with the call, and CopilotChat gives no «Стоп» then: the run the browser's tool belongs to
   // is stopped here, or CopilotKit would go on with the agent once the write gave up.
@@ -234,12 +242,13 @@ export function ChatView(props: CopilotChatViewProps) {
     onSubmitMessage(text);
   };
   const send = (value: string) => {
-    if (!onSubmitMessage || (!value.trim() && extras.attachments.length === 0)) return;
+    if (!onSubmitMessage || (!value.trim() && pasted.length === 0 && extras.attachments.length === 0)) return;
     // Moving on from a broken answer keeps its mark; «Ответить заново» is only for the last one.
     if (extras.failure?.broken) extras.keepInterrupted(lastTurnIds(messages));
     writeDraft(extras.agentId, extras.threadId, '');
     extras.clearAttachments();
-    submit(withAttachments(value.trim(), extras.attachments));
+    setPasted(() => []);
+    submit(withAttachments(withPasted(value.trim(), pasted), extras.attachments));
     onInputChange?.('');
   };
   // A message from outside the input — the marks of the viewer (chat-send.ts): the input, its draft and attachments
@@ -320,6 +329,9 @@ export function ChatView(props: CopilotChatViewProps) {
                 uploading={uploads.waiting}
                 progress={uploads.progress}
                 onAttach={uploads.attach}
+                pasted={pasted}
+                onPasteText={(text) => setPasted((texts) => [...texts, text])}
+                onRemovePasted={(index) => setPasted((texts) => texts.filter((_, i) => i !== index))}
               />
             </div>
           </div>

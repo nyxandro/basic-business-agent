@@ -131,6 +131,16 @@
   margin-bottom: 8px;
 }
 
+/* Long texts pasted, folded (PastedText.tsx): in the bubble below the files, in the input above the field. */
+.userPasted,
+.pastedList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  white-space: normal;
+}
+
 .assistant {
   display: flex;
   gap: 14px;
