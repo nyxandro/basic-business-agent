@@ -2,6 +2,7 @@
 // the requisites — they go into the prompt of every agent. The tone is a preset or one's own words. Below — the
 // letterhead, the stamp and the director (OrgAssets.tsx).
 import { useState } from 'react';
+import { useSession } from '../auth/session.tsx';
 import { Button, cx } from '../ui/Button.tsx';
 import { Card, PageHead } from '../ui/Display.tsx';
 import { ErrorBanner } from '../ui/ErrorBanner.tsx';
@@ -25,6 +26,8 @@ const TONES = [
 function ProfileForm({ initial }: { initial: Profile }) {
   const [form, setForm] = useState(initial);
   const { busy, error, run } = useAction();
+  // The name stands under «Админка» and under «Бизнес-агент» of the chat (from /me): read again after saving.
+  const { refresh } = useSession();
   const set = (key: keyof Profile) => (e: { target: { value: string } }) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
   const tone = TONES.find((t) => t.text === form.tone)?.name ?? null;
   return (
@@ -52,7 +55,13 @@ function ProfileForm({ initial }: { initial: Profile }) {
       </Field>
       <div className={styles.foot}>
         <span className={section.sub}>Подставляется в промпт всех агентов при каждом запросе.</span>
-        <Button variant="primary" disabled={busy || !form.name.trim()} onClick={() => void run(() => adminApi.saveOrgProfile(form))}>
+        <Button variant="primary" disabled={busy || !form.name.trim()} onClick={() =>
+            void run(async () => {
+              await adminApi.saveOrgProfile(form);
+              await refresh();
+            })
+          }
+        >
           Сохранить
         </Button>
       </div>

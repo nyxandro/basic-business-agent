@@ -50,6 +50,14 @@ describe('the frame of the application', () => {
     expect(screen.queryByText('ТС')).not.toBeInTheDocument();
   });
 
+  // Like «Админка»: the name of the organisation from «Профиль организации» under the name of the product (owner 25.11).
+  it('shows the organisation under «Бизнес-агент»', async () => {
+    server({ ...ME, organisation: { name: 'ООО «Бета»' } });
+    renderApp('/agents/sales');
+    const brand = (await screen.findByText('Бизнес-агент')).parentElement!;
+    expect(within(brand).getByText('ООО «Бета»')).toBeInTheDocument();
+  });
+
   it('opens a new conversation with the last agent on «/»', async () => {
     localStorage.setItem(LAST_AGENT_KEY, 'assistant');
     server();

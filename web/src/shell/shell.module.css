@@ -59,6 +59,23 @@
   flex: none;
 }
 
+/* The product and the organisation stand close, as one block (owner 25.11); the same in admin.module.css. */
+.brandText {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* As .brandOrg of the admin panel (admin.module.css). */
+.brandOrg {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .topRow {
   display: flex;
   gap: 6px;

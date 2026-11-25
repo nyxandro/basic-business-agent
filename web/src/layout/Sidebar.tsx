@@ -124,7 +124,11 @@ export function Sidebar(props: SidebarProps) {
         <span className={styles.brandMark}>
           <Icon name="spark" />
         </span>
-        <span>{ru.shell.brand}</span>
+        {/* Under the product — the organisation from «Профиль организации», as under «Админка» (owner 25.11). */}
+        <div className={styles.brandText}>
+          <div>{ru.shell.brand}</div>
+          <div className={styles.brandOrg}>{me.organisation.name}</div>
+        </div>
         {props.topRight}
       </div>
       <div className={styles.topRow}>

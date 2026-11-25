@@ -68,6 +68,28 @@ describe('«Профиль организации»', () => {
     expect(await screen.findByText('Сохранено')).toBeInTheDocument();
     expect(s.calls.find((c) => c.method === 'PUT')?.body).toEqual({ name: 'ООО «Альфа-Строй»', tone: 'Дружелюбный: на «вы», тепло и просто, без канцелярита.', requisites: '', industry: '' });
   });
+
+  // The name stands under «Админка» and under «Бизнес-агент» of the chat: both show the new one without reloading the page.
+  it('shows the saved name under «Админка» at once', async () => {
+    let name = 'Альфа-Строй';
+    mockServer({
+      'GET /app/api/me': () => ({ body: { ...ADMIN, organisation: { name } } }),
+      'GET /app/api/admin/org-profile': { body: { name, tone: '', requisites: '', industry: '' } },
+      'PUT /app/api/admin/org-profile': (call) => {
+        name = (call.body as { name: string }).name;
+        return { body: { ok: true } };
+      },
+    });
+    renderApp('/admin/org-profile');
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText('Название');
+    const brand = screen.getByText('Админка').parentElement!;
+    expect(within(brand).getByText('Альфа-Строй')).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, 'ООО «Бета»');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(await within(brand).findByText('ООО «Бета»')).toBeInTheDocument();
+  });
 });
 
 describe('«Подключения» and «Журнал действий»', () => {

@@ -38,8 +38,10 @@
   place-items: center;
 }
 
+/* «Админка» and the organisation stand close, as one block (owner 25.11); the same in shell.module.css. */
 .brandText {
   min-width: 0;
+  line-height: 1.25;
 }
 
 .brandTitle {
