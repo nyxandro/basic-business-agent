@@ -35,7 +35,7 @@ export interface SectionDeps {
   db: Db;
   registry: Registry;
   editor: EditorDeps;
-  gateway: Pick<ModelGateway, 'syncOrgBudget'>;
+  gateway: Pick<ModelGateway, 'syncOrgBudget' | 'syncDefaultUserBudgets'>;
   connections: ConnectionManager;
 }
 
@@ -50,6 +50,7 @@ export function registerAdminSections(app: Hono<AppEnv>, deps: SectionDeps): voi
       [input.orgMonthlyRub, input.defaultUserMonthlyRub, input.defaultDailySubscriptionTokens, access(c).userId],
     );
     await deps.gateway.syncOrgBudget();
+    await deps.gateway.syncDefaultUserBudgets();
     await writeAudit(db, { actorUserId: access(c).userId, action: 'limits.update', target: null, details: input });
     return c.json({ ok: true });
   });

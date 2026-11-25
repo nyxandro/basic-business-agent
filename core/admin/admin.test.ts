@@ -33,6 +33,22 @@ describe('admin sections', () => {
     expect((await t.litellm.keyBalance(key)).maxBudget).toBe(1000);
   });
 
+  // Inside a long answer only the key's budget holds the limit (the app checks it between answers): a key made under the
+  // old default kept it, so a lowered default did not stop a person mid-answer.
+  it('pushes a new default limit to the keys of people without a personal limit', async () => {
+    const anna = await t.createUser({ email: 'anna@example.com', name: 'Анна' });
+    const boris = await t.createUser({ email: 'boris@example.com', name: 'Борис' });
+    await t.call('PUT', '/app/api/admin/limits', { cookie: admin, body: { orgMonthlyRub: 50000, defaultUserMonthlyRub: 3000, defaultDailySubscriptionTokens: null } });
+    const annaKey = (await t.gateway.modelConfig('test-paid', anna, 'sales')).apiKey;
+    const borisKey = (await t.gateway.modelConfig('test-paid', boris, 'sales')).apiKey;
+    await t.call('PUT', `/app/api/admin/users/${boris}/limits`, { cookie: admin, body: { monthlyRub: 500, dailySubscriptionTokens: null } });
+    expect((await t.litellm.keyBalance(annaKey)).maxBudget).toBe(3000);
+
+    expect((await t.call('PUT', '/app/api/admin/limits', { cookie: admin, body: { orgMonthlyRub: 50000, defaultUserMonthlyRub: 300, defaultDailySubscriptionTokens: null } })).status).toBe(200);
+    expect((await t.litellm.keyBalance(annaKey)).maxBudget).toBe(300);
+    expect((await t.litellm.keyBalance(borisKey)).maxBudget).toBe(500);
+  });
+
   it('edits the agent prompt over the file and lists the background tasks', async () => {
     const before = await json<{ fileInstructions: string; draftVersionId: string | null }>(await t.call('GET', '/app/api/admin/agents/sales/prompt', { cookie: admin }));
     const saved = await json<{ draftVersionId: string }>(await t.call('PUT', '/app/api/admin/agents/sales/prompt/draft', { cookie: admin, body: { text: 'Отвечай кратко.', baseDraftVersionId: before.draftVersionId } }));

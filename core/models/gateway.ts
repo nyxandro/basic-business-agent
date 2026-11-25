@@ -26,6 +26,9 @@ export interface ModelGateway {
   translateError(error: unknown, userId: string): Promise<AppError>;
   syncOrgBudget(): Promise<void>;
   syncUserBudget(userId: string): Promise<void>;
+  // A new default monthly limit reaches the keys of everyone without a personal one: inside a long answer only the key's
+  // budget holds the limit.
+  syncDefaultUserBudgets(): Promise<void>;
   // Removes the employee's LiteLLM key (deletion of an employee).
   forgetUser(userId: string): Promise<void>;
   health(): Promise<boolean>;
@@ -103,6 +106,13 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       ]);
       return key;
     });
+  }
+
+  async function syncUserBudget(userId: string): Promise<void> {
+    const key = await storedKey(userId);
+    if (!key) return; // the key gets the current limit when it is created on the first request
+    const { monthlyRub } = await effectiveUserLimits(db, userId);
+    await client.updateKey(key, monthlyRub);
   }
 
   return {
@@ -184,11 +194,14 @@ export function createModelGateway(deps: GatewayDeps): ModelGateway {
       await client.ensureTeam(settings.orgMonthlyRub);
     },
 
-    async syncUserBudget(userId) {
-      const key = await storedKey(userId);
-      if (!key) return; // the key gets the current limit when it is created on the first request
-      const { monthlyRub } = await effectiveUserLimits(db, userId);
-      await client.updateKey(key, monthlyRub);
+    syncUserBudget,
+
+    async syncDefaultUserBudgets() {
+      const { rows } = await db.query<{ user_id: string }>(
+        `SELECT k.user_id FROM app.model_keys k
+          WHERE NOT EXISTS (SELECT 1 FROM app.user_limits l WHERE l.user_id = k.user_id AND l.monthly_rub IS NOT NULL)`,
+      );
+      for (const { user_id } of rows) await syncUserBudget(user_id);
     },
 
     async forgetUser(userId) {
