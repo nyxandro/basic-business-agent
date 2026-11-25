@@ -75,7 +75,7 @@ export const ru = {
     brand: 'Бизнес-агент',
     newThread: 'Новый разговор',
     agents: 'Агенты',
-    recent: 'Недавние',
+    threads: 'Разговоры',
     recentEmpty: 'Разговоров пока нет',
     moreThreads: 'Ещё',
     // A background task's conversations of events, one row (docs/specs/[20.11.2026]-event-tasks.md).

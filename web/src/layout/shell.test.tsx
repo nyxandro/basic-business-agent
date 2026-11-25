@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { apiError, ME, mockServer } from '../test/fetch-mock.ts';
@@ -31,6 +31,9 @@ function server(me: object = ME, agents: unknown = { agents: AGENTS }) {
   });
 }
 
+// The whole side panel: «Разговоры» stands in its head row with «+».
+const sidePanel = async () => (await screen.findByText('Разговоры')).parentElement!.parentElement!;
+
 describe('the frame of the application', () => {
   // The agents of the panel carry the mark set on each agent — an icon or a picture, the spark when none was set —
   // even with «Показывать значок агента в чате» off: that switch is about the chat (request of the owner 17.11).
@@ -56,6 +59,20 @@ describe('the frame of the application', () => {
     renderApp('/agents/sales');
     const brand = (await screen.findByText('Бизнес-агент')).parentElement!;
     expect(within(brand).getByText('ООО «Бета»')).toBeInTheDocument();
+  });
+
+  // «+» stands by «Разговоры», as by «Проекты»; the row of «Поиск» keeps the search alone (owner 25.11).
+  it('starts a new conversation from «+» by «Разговоры»', async () => {
+    server();
+    renderApp('/agents/sales?thread=t1');
+    const head = (await screen.findByText('Разговоры')).parentElement!;
+    expect(screen.getAllByRole('button', { name: 'Новый разговор' })).toHaveLength(1);
+    const open = await screen.findByRole('link', { name: /Сделки без движения/ });
+    expect(open).toHaveAttribute('aria-current', 'page');
+    await userEvent.setup().click(within(head).getByRole('button', { name: 'Новый разговор' }));
+    // The same agent, a conversation not in the list yet.
+    await waitFor(() => expect(screen.getByRole('link', { name: /Сделки без движения/ })).not.toHaveAttribute('aria-current'));
+    expect(screen.getByRole('link', { name: /Продажи/ })).toHaveAttribute('aria-current', 'page');
   });
 
   it('opens a new conversation with the last agent on «/»', async () => {
@@ -98,8 +115,7 @@ describe('the frame of the application', () => {
     // The result of a background task not opened yet, and an answer under way (owner, 22.11).
     s.set('GET /app/api/me/notifications', { body: { pendingApprovals: 0, unread: 0, latest: null, threads: { t2: 'done', t1: 'running' } } });
     renderApp('/');
-    const side = await screen.findByText('Недавние');
-    const panel = side.parentElement!;
+    const panel = await sidePanel();
     const fresh = await within(panel).findByRole('link', { name: /Задача: Утренняя сводка/ });
     expect(fresh).toHaveAttribute('href', '/agents/sales?thread=t2');
     expect(await within(fresh).findByRole('img', { name: 'Ответ готов' })).toBeInTheDocument();
@@ -123,7 +139,7 @@ describe('the frame of the application', () => {
   it('hides «Админка» from a person without rights and shows it with one', async () => {
     server();
     const first = renderApp('/');
-    await screen.findByText('Недавние');
+    await screen.findByText('Разговоры');
     expect(screen.queryByRole('link', { name: 'Админка' })).not.toBeInTheDocument();
     first.unmount();
     server({ ...ME, permissions: ['users'] });
@@ -171,12 +187,12 @@ describe('the frame of the application', () => {
     expect(await screen.findByRole('link', { name: /Продажи/ })).toHaveAttribute('href', '/agents/sales');
   });
 
-  it('renames a conversation from its three dots in «Недавние», in place', async () => {
+  it('renames a conversation from its three dots in «Разговоры», in place', async () => {
     const s = server();
     s.set('PATCH /app/api/threads/t1', (call) => ({ body: { thread: { id: 't1', title: (call.body as { title: string }).title } } }));
     renderApp('/');
     const user = userEvent.setup();
-    const panel = (await screen.findByText('Недавние')).parentElement!;
+    const panel = await sidePanel();
     await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
     await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));
     const field = within(panel).getByRole('textbox', { name: 'Название разговора' });
@@ -199,7 +215,7 @@ describe('the frame of the application', () => {
     s.set('PATCH /app/api/threads/t1', apiError('APP_NOT_FOUND', 'Разговор не найден.', 404));
     renderApp('/');
     const user = userEvent.setup();
-    const panel = (await screen.findByText('Недавние')).parentElement!;
+    const panel = await sidePanel();
     const rename = async () => {
       await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
       await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));

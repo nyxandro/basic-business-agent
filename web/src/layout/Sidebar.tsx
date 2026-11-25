@@ -29,7 +29,7 @@ export interface SidebarProps {
   currentThreadId: string | null;
   // Bumped after a run: the recent list loads again.
   threadsKey: number;
-  // Names given by hand in this tab — in «Недавние» or in the header of the conversation — over a
+  // Names given by hand in this tab — in «Разговоры» or in the header of the conversation — over a
   // list loaded before the server had them.
   threadNames: Readonly<Record<string, string>>;
   onThreadNamed: (threadId: string, title: string) => void;
@@ -41,7 +41,7 @@ export interface SidebarProps {
   onProjectsChanged: () => void;
   onNewThread: () => void;
   onSearch: () => void;
-  // «Ещё» under «Недавние»: all conversations in the window of «Поиск».
+  // «Ещё» under «Разговоры»: all conversations in the window of «Поиск».
   onShowAllThreads: () => void;
   onShowAllProjects: () => void;
   // A phone closes the drawer after a choice.
@@ -131,20 +131,21 @@ export function Sidebar(props: SidebarProps) {
         </div>
         {props.topRight}
       </div>
-      <div className={styles.topRow}>
-        <button type="button" className={styles.searchButton} onClick={props.onSearch}>
-          <Icon name="search" size={15} />
-          {ru.search.open}
-        </button>
-        <IconButton icon="plus" label={ru.shell.newThread} onClick={props.onNewThread} />
-      </div>
+      <button type="button" className={styles.searchButton} onClick={props.onSearch}>
+        <Icon name="search" size={15} />
+        {ru.search.open}
+      </button>
 
       <div className={styles.sectionLabel}>{ru.shell.agents}</div>
       <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
 
       <ProjectList refreshKey={props.projectsKey} failure={props.projectsFailure} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
 
-      <div className={styles.sectionLabel}>{ru.shell.recent}</div>
+      {/* «+» by the title, as by «Проекты» (owner 25.11). */}
+      <div className={styles.sectionHead}>
+        <span className={styles.sectionLabel}>{ru.shell.threads}</span>
+        <IconButton icon="plus" size="sm" label={ru.shell.newThread} onClick={props.onNewThread} />
+      </div>
       <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} states={threadStates} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />
 
       <div className={styles.spacer} />
