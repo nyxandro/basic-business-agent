@@ -393,6 +393,8 @@ export const ru = {
     no: 'Нет',
     executing: 'Выполняю…',
     attach: 'Прикрепить файл',
+    // A long text pasted into the input goes up as this file; plain spaces: a file name keeps no other (safeFileName).
+    pastedName: (chars: number) => `Вставленный текст (${String(chars).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ${plural(chars, ['знак', 'знака', 'знаков'])}).txt`,
     uploading: 'Загружаю файл…',
     uploadingName: (name: string) => `Загружаю ${name}…`,
     removeAttachment: 'Убрать',

@@ -359,3 +359,60 @@ describe('many files in one card (decision of the owner 17.11)', () => {
     expect(within(card).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
   });
 });
+
+// A long text pasted into the input (request of the owner 25.11): over 1 000 characters it is not put into the field but
+// goes up as a file of its own — «Вставленный текст (1 230 знаков).txt», a chip like any attachment; the agent reads it as
+// an attachment (spec, section 8.29). A short text is pasted as ever.
+describe('a long text pasted into the input', () => {
+  const paste = (text: string) => {
+    const input = screen.getByLabelText('Сообщение агенту');
+    const event = createEvent.paste(input, { clipboardData: { getData: (type: string) => (type === 'text/plain' ? text : ''), types: ['text/plain'], files: [] } });
+    fireEvent(input, event);
+    return event;
+  };
+
+  it('goes up as a file named by its length, not into the field', async () => {
+    const onInputChange = vi.fn();
+    const { ex, uploads } = await showChat(uploaded, { inputValue: '', onInputChange });
+    const text = 'Пункт договора. '.repeat(77);
+    expect(text.length).toBe(1232);
+    const event = paste(text);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(ex.addAttachment).toHaveBeenCalledOnce());
+    expect(uploads()).toEqual(['Вставленный текст (1 232 знака).txt']);
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it('puts a short text into the field as ever', async () => {
+    const { uploads } = await showChat(uploaded, { inputValue: '', onInputChange: vi.fn() });
+    expect(paste('Короткий текст').defaultPrevented).toBe(false);
+    expect(paste('я'.repeat(1000)).defaultPrevented).toBe(false);
+    expect(uploads()).toEqual([]);
+  });
+});
+
+// A message of attachments alone: a pasted text needs no words of its own to go (request of the owner 25.11).
+describe('a message of attachments alone', () => {
+  it('can be sent without words, the files named in it', async () => {
+    const onSubmitMessage = vi.fn();
+    mockServer({ 'GET /app/api/me': { body: ME } });
+    const ex = { ...extras(), attachments: [{ name: 'Вставленный текст (1 232 знака).txt', path: 'Вставленный текст (1 232 знака).txt', bytes: 2400 }] };
+    render(
+      <MemoryRouter>
+        <SessionProvider>
+          <ToastProvider>
+            <RequireAuth>
+              <ChatExtrasContext value={ex}>
+                <ChatView messages={[{ id: 'u1', role: 'user', content: 'Привет' }]} isRunning={false} inputValue="" onInputChange={vi.fn()} onSubmitMessage={onSubmitMessage} />
+              </ChatExtrasContext>
+            </RequireAuth>
+          </ToastProvider>
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    const send = await screen.findByRole('button', { name: 'Отправить' });
+    expect(send).toBeEnabled();
+    await userEvent.setup().click(send);
+    expect(onSubmitMessage).toHaveBeenCalledWith('\n\nВложения:\n- Вставленный текст (1 232 знака).txt (файл в рабочей папке: Вставленный текст (1 232 знака).txt)');
+  });
+});

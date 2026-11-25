@@ -234,7 +234,7 @@ export function ChatView(props: CopilotChatViewProps) {
     onSubmitMessage(text);
   };
   const send = (value: string) => {
-    if (!onSubmitMessage || !value.trim()) return;
+    if (!onSubmitMessage || (!value.trim() && extras.attachments.length === 0)) return;
     // Moving on from a broken answer keeps its mark; «Ответить заново» is only for the last one.
     if (extras.failure?.broken) extras.keepInterrupted(lastTurnIds(messages));
     writeDraft(extras.agentId, extras.threadId, '');

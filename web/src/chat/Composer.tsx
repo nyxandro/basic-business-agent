@@ -4,7 +4,7 @@
 // has a recognition model) turns the input into the recording bar; the recognised text is added
 // to the field, or to the draft of this conversation if the person has left it meanwhile.
 import { UPLOAD_EXTENSIONS } from '@bba/contracts';
-import { useCallback, useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useMe } from '../auth/session.tsx';
 import { ru } from '../i18n/ru.ts';
 import { cx, IconButton } from '../ui/Button.tsx';
@@ -20,6 +20,8 @@ import { readDraft, writeDraft } from './drafts.ts';
 import styles from './chat.module.css';
 
 const MAX_HEIGHT = 220;
+// A pasted text longer than this goes up as a file instead of into the field (request of the owner 25.11).
+const PASTED_AS_FILE = 1000;
 
 const appendText = (current: string, text: string) => (current.trim() ? `${current.trimEnd()} ${text}` : text);
 
@@ -94,7 +96,8 @@ export function Composer({
   const extras = useChatExtras();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const ready = value.trim().length > 0 && uploading.length === 0 && !extras.offline;
+  // Words, or files alone — a pasted text needs no words of its own.
+  const ready = (value.trim().length > 0 || extras.attachments.length > 0) && uploading.length === 0 && !extras.offline;
   const me = useMe();
   const deliver = useDeliverText(extras.agentId, extras.threadId, value, onChange);
   useDraftChanges(extras.agentId, extras.threadId, onChange);
@@ -107,6 +110,15 @@ export function Composer({
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
+
+  // A long text pasted goes up as a file of its own, a chip like any attachment (request of the owner 25.11): the field
+  // stays readable, and the agent reads it as an attachment (spec, section 8.29).
+  function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const text = event.clipboardData.getData('text/plain');
+    if (text.length <= PASTED_AS_FILE) return;
+    event.preventDefault();
+    onAttach([new File([text], ru.chat.pastedName(text.length), { type: 'text/plain' })]);
+  }
 
   function pick(target: HTMLInputElement) {
     const files = [...(target.files ?? [])];
@@ -126,7 +138,7 @@ export function Composer({
   return (
     <div className={styles.composer}>
       <Attachments uploading={uploading} progress={progress} voice={voiceLine} />
-      <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} />
+      <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={paste} />
       <div className={styles.composerRow}>
         <input ref={fileInput} type="file" hidden multiple accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => pick(e.currentTarget)} />
         <IconButton icon="clip" variant="outline" label={ru.chat.attach} onClick={() => fileInput.current?.click()} />
