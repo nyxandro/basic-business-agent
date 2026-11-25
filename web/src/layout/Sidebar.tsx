@@ -119,7 +119,7 @@ export function Sidebar(props: SidebarProps) {
   const { threadStates } = useNotifications();
   const hasAdmin = availableSections(me).length > 0;
   return (
-    <div className={styles.side}>
+    <div className={cx(styles.side, 'scroll-thin')}>
       <div className={styles.brand}>
         <span className={styles.brandMark}>
           <Icon name="spark" />
