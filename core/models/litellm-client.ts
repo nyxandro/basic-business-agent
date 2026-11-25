@@ -50,8 +50,8 @@ export interface LiteLLMClient {
   // LiteLLM 1.109.1 takes the probe's model_info from a deployment of the same provider model when one
   // exists, and then the number given here is not used.
   checkConnection(params: Record<string, string | number | boolean>, mode: CheckMode, probeMaxTokens?: number): Promise<ConnectionCheck>;
-  // LiteLLM's model map, about 3 MB (output-limit.ts reads it): asked only when a model is added and
-  // at start for models without a limit of an answer.
+  // LiteLLM's model map, about 3 MB (model-map.ts reads it): asked when a model is added, when the admin empties the
+  // size of its context and at start for models without a limit of an answer or a size of the context.
   modelMap(): Promise<Record<string, unknown>>;
 }
 

@@ -15,6 +15,7 @@ import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerMeRoutes } from '../me/routes.ts';
 import type { CopilotHandler } from '../chat/copilot.ts';
 import { registerChatRoutes } from '../chat/routes.ts';
+import { registerContextFillRoutes } from '../context-fill/routes.ts';
 import type { ChatDeps } from '../chat/run.ts';
 import { registerMcpAdminRoutes } from '../connections/admin-routes.ts';
 import type { ConnectionManager } from '../connections/manager.ts';
@@ -115,6 +116,7 @@ export function createApp(deps: ServerDeps): Hono<AppEnv> {
   registerConnectionRoutes(app, { ...deps, registry: deps.chat.registry });
   registerMcpAdminRoutes(app, { db: deps.db, box: deps.box, publicUrl: deps.publicUrl, runner: deps.mcpRunner, registry: deps.chat.registry });
   registerChatRoutes(app, { ...deps.chat, preview: deps.preview });
+  registerContextFillRoutes(app, { db: deps.db });
   const projects = { db: deps.db, memory: deps.chat.memory, workspaceRoot: deps.chat.workspaceRoot, storage: deps.storage };
   registerProjectRoutes(app, { ...projects, preview: deps.preview });
   registerProjectMemoryRoutes(app, { db: deps.db });

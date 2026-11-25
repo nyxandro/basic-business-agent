@@ -30,6 +30,8 @@ export const REQUEST_KEYS = {
   // Chat runs only: a function told each step of the researcher of the internet, for the live block of its
   // search in the chat (spec, section 8.30).
   webProgress: 'bba.webProgress',
+  // Chat runs only: a function told how full the conversation is after every call of the model (spec, section 8.34).
+  contextFill: 'bba.contextFill',
   // The widgets the agent showed in this answer (core/widgets/tools.ts): a later call may change one in place. Put
   // before the first model call of a request by core/widgets/history.ts — with the screens shown before a pause on
   // «Да» or the browser — or by `render_ui` itself when it runs before any (core/widgets/answer-screens.ts).

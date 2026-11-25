@@ -97,7 +97,24 @@ export const CHAT_EVENTS = {
   threadTitled: 'bba.thread_titled',
   // A step of the researcher of the internet, for the live block of its search (spec, section 8.30).
   webProgress: 'bba.web_progress',
+  // How full the conversation is after a call of the model (spec, section 8.34).
+  contextFill: 'bba.context_fill',
 } as const;
+
+// How full a conversation is (spec, section 8.34): the tokens of the last call of the model of its agent — what went
+// in and what came out, as the provider counted them — of the size of the context of that model. `hidden` — the agent
+// no longer sees the beginning of the conversation: Mastra gives it the last 30 messages.
+export const threadContextFillSchema = z.object({ tokens: z.number().int().nonnegative(), limit: z.number().int().positive(), hidden: z.boolean() });
+export type ThreadContextFill = z.infer<typeof threadContextFillSchema>;
+
+// GET /app/api/threads/:threadId/context. null — nothing to show: no answer yet, a model without a size of the
+// context, or a conversation that is not the person's own.
+export interface ThreadContextResponse {
+  context: ThreadContextFill | null;
+}
+
+// CUSTOM event of the chat stream after every call of the model of the agent.
+export const contextFillEventSchema = z.object({ threadId: z.string().min(1), context: threadContextFillSchema.nullable() });
 
 // The errand of the internet of an agent (spec, section 8.30): the chat draws its call as the live block of the search.
 export const WEB_RESEARCH_TOOL = 'web_research';

@@ -8,6 +8,7 @@ import type { AbstractAgent } from '@ag-ui/client';
 import { EventType, type BaseEvent } from '@ag-ui/core';
 import { CHAT_EVENTS } from '@bba/contracts';
 import { filter, finalize, Observable, Subject, tap } from 'rxjs';
+import type { ContextFillTell } from '../context-fill/processor.ts';
 import type { WebProgress } from '../web/trail.ts';
 import { resolveAgent, type EditorDeps } from '../editor/prompts.ts';
 import { REQUEST_KEYS } from '../run-context/request-keys.ts';
@@ -63,6 +64,10 @@ export function createCopilotHandler(deps: { editor: EditorDeps }): CopilotHandl
     const progress = new Subject<BaseEvent>();
     const tell: WebProgress = (toolCallId, step) => progress.next({ type: EventType.CUSTOM, name: CHAT_EVENTS.webProgress, value: { toolCallId, step } });
     requestContext.set(REQUEST_KEYS.webProgress, tell);
+    // How full the conversation is, after every call of the model (spec, section 8.34): the same way, between the
+    // agent's events — the call ends before its tools run and before the next call.
+    const fill: ContextFillTell = (threadId, context) => progress.next({ type: EventType.CUSTOM, name: CHAT_EVENTS.contextFill, value: { threadId, context } });
+    requestContext.set(REQUEST_KEYS.contextFill, fill);
     // A middleware survives the copy of the agent CopilotKit makes for a run; `finalize` fires once
     // the agent's events end — completed, failed or unsubscribed by «Стоп».
     // The «state of the agent» is cut both ways (spec, 8.26): the chat does not use it, and the adapter of

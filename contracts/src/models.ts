@@ -9,6 +9,9 @@ export type ModelConnection = (typeof MODEL_CONNECTIONS)[number];
 // Roubles per 1 million tokens of each kind; an image — roubles each. Every kind is filled in:
 // an empty one would let LiteLLM fall back to its own dollar price.
 const price = z.number().min(0).max(1_000_000).nullable();
+// The size of the context of a chat model, in tokens (spec, section 8.34): optional — null or absent, the gateway's
+// model map gives it, or the model has none and the chat shows no indicator of how full a conversation is.
+const contextSize = z.number().int().min(1).max(100_000_000).nullish();
 export const tokenPricesInputSchema = z.object({ input: price, output: price, cacheRead: price, cacheWrite: price, reasoning: price, image: price });
 export type TokenPricesInput = z.infer<typeof tokenPricesInputSchema>;
 
@@ -29,6 +32,7 @@ export const modelCreateSchema = z.discriminatedUnion('connection', [
     // model map gives it; the server asks for it (APP_MODEL_OUTPUT_LIMIT_REQUIRED) when the gateway
     // does not know the model. A recognition model has none.
     maxOutputTokens: z.number().int().min(1).max(10_000_000).nullable(),
+    maxInputTokens: contextSize,
   }),
   // «Подписка ChatGPT»: a chat model served by the accounts of the pool, without a key or prices.
   z.object({
@@ -38,6 +42,7 @@ export const modelCreateSchema = z.discriminatedUnion('connection', [
     // chatgpt/<model>, e.g. chatgpt/gpt-5.4.
     providerModel: z.string(),
     vision: z.boolean(),
+    maxInputTokens: contextSize,
   }),
 ]);
 export type ModelCreate = z.infer<typeof modelCreateSchema>;
@@ -51,6 +56,8 @@ export const modelUpdateSchema = z.object({
   enabled: z.boolean().optional(),
   prices: tokenPricesInputSchema.nullable().optional(),
   pricePerMinute: price.optional(),
+  // Absent — unchanged; null — the gateway's again, or none.
+  maxInputTokens: contextSize,
 });
 export type ModelUpdate = z.infer<typeof modelUpdateSchema>;
 
@@ -94,6 +101,8 @@ export interface ModelDto {
   // The longest answer in tokens, sent with every request to the model; null — none (recognition,
   // subscription) or not known for a model added before 15.11.2026.
   maxOutputTokens: number | null;
+  // The size of the context (spec, section 8.34); null — the gateway does not know it and the admin gave none.
+  maxInputTokens: number | null;
   keys: ModelKeyDto[];
   // Agents whose own model it is (admin's choice in «Агенты и промпты»).
   agentIds: string[];

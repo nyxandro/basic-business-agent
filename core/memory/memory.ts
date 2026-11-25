@@ -88,6 +88,7 @@ export async function deleteThread(memory: Memory, db: Db, userId: string, threa
   await memory.deleteThread(threadId);
   await db.query('DELETE FROM app.masking_map WHERE thread_id = $1', [threadId]);
   await db.query('DELETE FROM app.thread_projects WHERE thread_id = $1', [threadId]);
+  await db.query('DELETE FROM app.thread_context WHERE thread_id = $1', [threadId]);
 }
 
 // The working memory Mastra kept of the person before 8.26 (`mastra.mastra_resources`), of their conversations

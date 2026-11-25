@@ -19,6 +19,7 @@ export interface ModelRow {
   price_image: string | null;
   price_per_minute: string | null;
   max_output_tokens: number | null;
+  max_input_tokens: number | null;
 }
 
 export const num = (v: string | null): number | null => (v === null ? null : Number(v));

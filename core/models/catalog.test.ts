@@ -430,3 +430,67 @@ describe('the length of an answer (spec, section 8.19)', () => {
     expect(rows[0]!.max_output_tokens).toBeNull();
   });
 });
+
+describe('the size of the context (spec, section 8.34)', () => {
+  const sizeOf = async (id: string) => (await t.db.query<{ max_input_tokens: number | null }>('SELECT max_input_tokens FROM app.models WHERE id = $1', [id])).rows[0]!.max_input_tokens;
+  const put = (id: string, body: Record<string, unknown>) => t.call('PUT', `/app/api/admin/models/${id}`, { cookie: igor, body });
+
+  it('takes the size of a model the gateway knows; a model it does not know is saved without one, the admin is not asked', async () => {
+    expect((await create({ label: 'Окно из шлюза' })).maxInputTokens).toBe(1_047_576);
+    const unknown = await create({ label: 'Окно неизвестно', providerModel: 'openai/bba-unknown-context', maxOutputTokens: 4096 });
+    expect(unknown.maxInputTokens).toBeNull();
+    expect(await sizeOf(unknown.id)).toBeNull();
+  });
+
+  it('keeps the admin’s number over the gateway’s, refuses one that is not a whole positive number', async () => {
+    expect((await create({ label: 'Окно администратора', maxInputTokens: 128_000 })).maxInputTokens).toBe(128_000);
+    const zero = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: newModel({ label: 'Окно ноль', maxInputTokens: 0 }) });
+    expect((await errorCode(zero)).code).toBe('APP_VALIDATION_FAILED');
+  });
+
+  it('gives a model of the ChatGPT subscription the size the gateway knows', async () => {
+    const res = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: { connection: 'chatgpt', kind: 'chat', label: 'Подписка с окном', providerModel: 'chatgpt/gpt-5.4', vision: true } });
+    expect(res.status).toBe(201);
+    expect((await json<ModelDto>(res)).maxInputTokens).toBe(1_050_000);
+  });
+
+  it('gives no size to a recognition model', async () => {
+    const whisper = newModel({ kind: 'transcription', providerModel: 'openai/whisper-1', prices: null, pricePerMinute: 0.6 });
+    const refused = await t.call('POST', '/app/api/admin/models', { cookie: igor, body: { ...whisper, label: 'Распознавание с окном', maxInputTokens: 1000 } });
+    expect(await errorCode(refused)).toMatchObject({ code: 'APP_VALIDATION_FAILED', message: 'У модели распознавания речи нет размера контекста — оставьте поле пустым.' });
+    const saved = await create({ ...whisper, label: 'Распознавание без окна' });
+    expect(saved.maxInputTokens).toBeNull();
+    const changed = await put(saved.id, { maxInputTokens: 1000 });
+    expect((await errorCode(changed)).code).toBe('APP_VALIDATION_FAILED');
+  });
+
+  it('changes the size in «Изменить»; an emptied field takes the gateway’s again, or none', async () => {
+    const known = await create({ label: 'Окно меняется' });
+    const set = await put(known.id, { maxInputTokens: 200_000 });
+    expect(set.status, await set.clone().text()).toBe(200);
+    expect((await json<ModelDto>(set)).maxInputTokens).toBe(200_000);
+    expect((await json<ModelDto>(await put(known.id, { maxInputTokens: null }))).maxInputTokens).toBe(1_047_576);
+    expect((await json<ModelDto>(await put(known.id, { label: 'Окно меняется, имя другое' }))).maxInputTokens).toBe(1_047_576);
+
+    const unknown = await create({ label: 'Окно вписано руками', providerModel: 'openai/bba-unknown-context-2', maxOutputTokens: 4096 });
+    expect((await json<ModelDto>(await put(unknown.id, { maxInputTokens: 32_000 }))).maxInputTokens).toBe(32_000);
+    expect((await json<ModelDto>(await put(unknown.id, { maxInputTokens: null }))).maxInputTokens).toBeNull();
+    expect((await errorCode(await put(unknown.id, { maxInputTokens: 1.5 }))).code).toBe('APP_VALIDATION_FAILED');
+  });
+
+  it('fills an empty size from the gateway at start and leaves a model the gateway does not know without one', async () => {
+    const known = await create({ label: 'Окно до индикатора' });
+    const unknown = await create({ label: 'Окно до индикатора, неизвестная', providerModel: 'openai/bba-unknown-context-3', maxOutputTokens: 4096 });
+    await t.db.query('UPDATE app.models SET max_input_tokens = NULL WHERE id = $1', [known.id]);
+    await t.models.sync();
+    expect(await sizeOf(known.id)).toBe(1_047_576);
+    expect(await sizeOf(unknown.id)).toBeNull();
+  });
+
+  it('the database itself refuses a size that is not positive or belongs to a recognition model', async () => {
+    const chat = await create({ label: 'Окно в базе' });
+    await expect(t.db.query('UPDATE app.models SET max_input_tokens = 0 WHERE id = $1', [chat.id])).rejects.toThrow(/models_max_input_tokens_check/);
+    const whisper = await create({ kind: 'transcription', label: 'Распознавание в базе', providerModel: 'openai/whisper-1', prices: null, pricePerMinute: 0.6 });
+    await expect(t.db.query('UPDATE app.models SET max_input_tokens = 1000 WHERE id = $1', [whisper.id])).rejects.toThrow(/models_max_input_tokens_check/);
+  });
+});

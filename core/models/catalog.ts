@@ -19,7 +19,7 @@ import { answerParams, pendingModels, type SyncModel, type SyncResult } from './
 import type { GatewayWriter } from './gateway-writer.ts';
 import type { LiteLLMClient } from './litellm-client.ts';
 import { num, pricesOf, type ModelRow } from './model-rows.ts';
-import { outputLimitIn } from './output-limit.ts';
+import { inputLimitIn, outputLimitIn } from './model-map.ts';
 
 export const LABEL_MAX = 80;
 const KEY_MAX = 500;
@@ -30,6 +30,7 @@ const PROVIDER_MODEL = /^[a-z0-9][a-z0-9_-]*\/\S{1,190}$/;
 const SUBSCRIPTION_MODEL = /^chatgpt\/\S{1,190}$/;
 
 const PRICES_MISSING = 'Укажите все цены в рублях — без них расход посчитается неверно.';
+const RECOGNITION_CONTEXT = 'У модели распознавания речи нет размера контекста — оставьте поле пустым.';
 const NO_VISION = 'Эта модель не видит картинки — агенты перестанут читать сканы. Выберите модель с картинками.';
 
 export interface CatalogDeps {
@@ -50,8 +51,9 @@ export interface ModelCatalog {
   addKey(actorUserId: string, modelId: string, key: string): Promise<ModelKeyDto>;
   removeKey(actorUserId: string, modelId: string, keyId: string): Promise<void>;
   updateSettings(actorUserId: string, input: ModelSettings): Promise<ModelSettings>;
-  // The full copy into LiteLLM, at the start of the server; models without a limit of an answer get
-  // it from the gateway's model map first (section 8.19), an empty «Основная модель» — a model that can answer.
+  // The full copy into LiteLLM, at the start of the server; models without a limit of an answer or a size of the
+  // context get them from the gateway's model map first (sections 8.19, 8.34), an empty «Основная модель» — a model
+  // that can answer.
   sync(): Promise<SyncResult>;
 }
 
@@ -156,25 +158,69 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     throw failure;
   }
 
+  // The gateway's model map is about 3 MB: one request serves all that one change or one start needs of it.
+  function mapOnce(): () => Promise<Record<string, unknown>> {
+    let map: Promise<Record<string, unknown>> | null = null;
+    return () => (map ??= client.modelMap());
+  }
+
   // The admin's limit, or the one the gateway knows; none — the admin is asked for it (section 8.19).
-  async function outputLimit(input: Extract<ModelCreate, { connection: 'api_key' }>, providerModel: string): Promise<number | null> {
+  async function outputLimit(input: Extract<ModelCreate, { connection: 'api_key' }>, providerModel: string, map: () => Promise<Record<string, unknown>>): Promise<number | null> {
     if (input.kind === 'transcription') {
       if (input.maxOutputTokens !== null) throw invalid('a recognition model with a limit of an answer', 'У модели распознавания речи нет длины ответа — оставьте поле пустым.');
       return null;
     }
     if (input.maxOutputTokens !== null) return input.maxOutputTokens;
-    const known = outputLimitIn(await client.modelMap(), providerModel);
+    const known = outputLimitIn(await map(), providerModel);
     if (known === null) throw appError('APP_MODEL_OUTPUT_LIMIT_REQUIRED', `the gateway does not know the limit of an answer of ${providerModel}`);
     return known;
   }
 
+  // The size of the context (section 8.34): the admin's number, else the one the gateway knows, else none — then the
+  // chat shows no indicator (decision of the owner 25.11: the admin is never made to give it). Being optional, it does
+  // not stop a change when the map does not answer: it stays empty and the next start looks for it again.
+  async function contextSize(kind: ModelKind, providerModel: string, given: number | null | undefined, map: () => Promise<Record<string, unknown>>): Promise<number | null> {
+    const own = given ?? null;
+    if (kind === 'transcription') {
+      if (own !== null) throw invalid('a recognition model with a size of the context', RECOGNITION_CONTEXT);
+      return null;
+    }
+    if (own !== null) return own;
+    try {
+      return inputLimitIn(await map(), providerModel);
+    } catch (error) {
+      logEvent('warn', 'model_context_size_unavailable', { providerModel, code: isAppError(error) ? error.code : 'APP_MODEL_GATEWAY_UNAVAILABLE', error });
+      return null;
+    }
+  }
+
+  // Chat models without a size of the context — added before 25.11.2026, or when the map did not answer — get the
+  // size the gateway knows; a model it does not know stays without one.
+  async function fillContextSizes(map: () => Promise<Record<string, unknown>>): Promise<void> {
+    const { rows: missing } = await db.query<{ id: string; provider_model: string }>("SELECT id, provider_model FROM app.models WHERE kind = 'chat' AND max_input_tokens IS NULL");
+    if (missing.length === 0) return;
+    let known: Record<string, unknown>;
+    try {
+      known = await map();
+    } catch (error) {
+      logEvent('error', 'model_context_sizes_unavailable', { code: isAppError(error) ? error.code : 'APP_MODEL_GATEWAY_UNAVAILABLE', modelIds: missing.map((m) => m.id), error });
+      return;
+    }
+    for (const m of missing) {
+      const size = inputLimitIn(known, m.provider_model);
+      if (size === null) continue;
+      await db.query('UPDATE app.models SET max_input_tokens = $2, updated_at = now() WHERE id = $1 AND max_input_tokens IS NULL', [m.id, size]);
+      logEvent('info', 'model_context_size_filled', { modelId: m.id, providerModel: m.provider_model, maxInputTokens: size });
+    }
+  }
+
   // Models added before 15.11.2026 have no limit: the gateway's model map gives what it knows.
-  async function fillOutputLimits(): Promise<void> {
+  async function fillOutputLimits(mapOf: () => Promise<Record<string, unknown>>): Promise<void> {
     const missing = (await syncState()).models.filter((m) => m.connection === 'api_key' && m.kind === 'chat' && m.maxOutputTokens === null);
     if (missing.length === 0) return;
     let map: Record<string, unknown>;
     try {
-      map = await client.modelMap();
+      map = await mapOf();
     } catch (error) {
       // These models keep their deployments as they were (section 8.19); the start goes on bringing
       // the gateway in line, and the next start looks for their limits again.
@@ -205,6 +251,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
       prices: pricesOf(r),
       pricePerMinute: num(r.price_per_minute),
       maxOutputTokens: r.max_output_tokens,
+      maxInputTokens: r.max_input_tokens,
       keys: keys.filter((k) => k.model_id === r.id).map((k) => ({ id: k.id, last4: k.key_last4, createdAt: k.created_at.toISOString() })),
       agentIds,
     };
@@ -223,7 +270,9 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     const { prices, perMinute } = checkPrices(input.kind, input.prices, input.pricePerMinute);
     const key = cleanKey(input.key);
     // Before the provider is called: a model without a known limit waits for the admin's number.
-    const maxOutputTokens = await outputLimit(input, providerModel);
+    const map = mapOnce();
+    const maxOutputTokens = await outputLimit(input, providerModel, map);
+    const maxInputTokens = await contextSize(input.kind, providerModel, input.maxInputTokens, map);
     const model: SyncModel = { id: newId('m'), kind: input.kind, connection: 'api_key', providerModel, apiBase, enabled: true, prices, pricePerMinute: perMinute, maxOutputTokens };
     await checkKey(model, key, true);
     const keyId = newId('k');
@@ -234,9 +283,9 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     await inTransaction(db, async (c) => {
       await c.query(
         `INSERT INTO app.models (id, kind, label, connection, provider_model, api_base, vision, price_input, price_output, price_cache_read,
-                                 price_cache_write, price_reasoning, price_image, price_per_minute, max_output_tokens, created_by)
-         VALUES ($1, $2, $3, 'api_key', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-        [model.id, model.kind, label, providerModel, apiBase, vision, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, maxOutputTokens, actorUserId],
+                                 price_cache_write, price_reasoning, price_image, price_per_minute, max_output_tokens, max_input_tokens, created_by)
+         VALUES ($1, $2, $3, 'api_key', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        [model.id, model.kind, label, providerModel, apiBase, vision, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, maxOutputTokens, maxInputTokens, actorUserId],
       );
       await c.query('INSERT INTO app.model_provider_keys (id, model_id, key_ciphertext, key_iv, key_version, key_last4, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
         keyId,
@@ -247,7 +296,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         key.slice(-KEY_TAIL),
         actorUserId,
       ]);
-      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: model.kind, providerModel, maxOutputTokens, keyLast4: key.slice(-KEY_TAIL) } });
+      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: model.kind, providerModel, maxOutputTokens, maxInputTokens, keyLast4: key.slice(-KEY_TAIL) } });
       await fillPrimaryModel(c, actorUserId);
     });
     return dtoOf(model.id);
@@ -259,17 +308,19 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     const providerModel = input.providerModel.trim();
     if (!SUBSCRIPTION_MODEL.test(providerModel)) throw invalid(`subscription model "${providerModel}"`, 'Модель подписки пишется как chatgpt/ и название модели, например chatgpt/gpt-5.4.');
     const model: SyncModel = { id: newId('m'), kind: 'chat', connection: 'chatgpt', providerModel, apiBase: null, enabled: true, prices: null, pricePerMinute: null, maxOutputTokens: null };
+    const maxInputTokens = await contextSize('chat', providerModel, input.maxInputTokens, mapOnce());
     const state = await syncState();
     await apply({ ...state, models: [...state.models, model] });
     await inTransaction(db, async (c) => {
-      await c.query(`INSERT INTO app.models (id, kind, label, connection, provider_model, vision, created_by) VALUES ($1, 'chat', $2, 'chatgpt', $3, $4, $5)`, [
+      await c.query(`INSERT INTO app.models (id, kind, label, connection, provider_model, vision, max_input_tokens, created_by) VALUES ($1, 'chat', $2, 'chatgpt', $3, $4, $5, $6)`, [
         model.id,
         label,
         providerModel,
         input.vision,
+        maxInputTokens,
         actorUserId,
       ]);
-      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: 'chat', providerModel, connection: 'chatgpt' } });
+      await writeAudit(c, { actorUserId, action: 'model.create', target: model.id, details: { label, kind: 'chat', providerModel, connection: 'chatgpt', maxInputTokens } });
       await fillPrimaryModel(c, actorUserId);
     });
     return dtoOf(model.id);
@@ -330,6 +381,8 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
           apiBase = cleanApiBase(change.apiBase);
         }
         const moved = apiBase !== row.api_base;
+        // Ours only: the gateway does not use it (section 8.34).
+        const maxInputTokens = change.maxInputTokens === undefined ? row.max_input_tokens : await contextSize(row.kind, row.provider_model, change.maxInputTokens, mapOnce());
         // The keys of a model are never shown to anyone; a new address would receive them all.
         if (moved && !isSuperadmin) {
           throw appError('APP_ADMIN_FORBIDDEN', `model ${modelId}: only a superadmin moves a model to another address`, {
@@ -347,10 +400,10 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         await inTransaction(db, async (c) => {
           await c.query(
             `UPDATE app.models SET label = $2, vision = $3, enabled = $4, price_input = $5, price_output = $6, price_cache_read = $7, price_cache_write = $8,
-                    price_reasoning = $9, price_image = $10, price_per_minute = $11, api_base = $12, updated_at = now() WHERE id = $1`,
-            [modelId, label, vision, enabled, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, apiBase],
+                    price_reasoning = $9, price_image = $10, price_per_minute = $11, api_base = $12, max_input_tokens = $13, updated_at = now() WHERE id = $1`,
+            [modelId, label, vision, enabled, prices?.input ?? null, prices?.output ?? null, prices?.cacheRead ?? null, prices?.cacheWrite ?? null, prices?.reasoning ?? null, prices?.image ?? null, perMinute, apiBase, maxInputTokens],
           );
-          await writeAudit(c, { actorUserId, action: 'model.update', target: modelId, details: { ...change, ...(change.apiBase !== undefined ? { apiBase } : {}) } });
+          await writeAudit(c, { actorUserId, action: 'model.update', target: modelId, details: { ...change, ...(change.apiBase !== undefined ? { apiBase } : {}), ...(change.maxInputTokens !== undefined ? { maxInputTokens } : {}) } });
           await fillPrimaryModel(c, actorUserId);
         });
         return dtoOf(modelId);
@@ -441,7 +494,9 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
 
     sync: () =>
       serial(async () => {
-        await fillOutputLimits();
+        const map = mapOnce();
+        await fillOutputLimits(map);
+        await fillContextSizes(map);
         await fillPrimaryModel(db, null);
         return apply(await syncState());
       }),

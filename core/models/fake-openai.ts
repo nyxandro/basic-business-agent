@@ -35,14 +35,20 @@ export interface GatewayStreamError {
   code: string;
 }
 
+// What the provider says the call took (spec, section 8.34); without it — 10 in and 5 out.
+export interface FakeUsage {
+  prompt: number;
+  completion: number;
+}
+
 export type FakeTurn =
   // `cut` breaks the stream after the text: 'drop' closes the connection as a provider that went
   // away (what LiteLLM sees), an error frame is what LiteLLM then sends on, 'hang' goes silent with
   // the connection open.
-  | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut }
+  | { text: string; chunkSize?: number; delayMs?: number; cut?: StreamCut; usage?: FakeUsage }
   // `text` comes before the calls in the same answer, as a model that writes its answer and calls a tool at once.
   // `delayMs` — the model thinks this long before it answers (a test closes the tab meanwhile).
-  | { toolCalls: { name: string; args: Record<string, unknown> }[]; text?: string; delayMs?: number }
+  | { toolCalls: { name: string; args: Record<string, unknown> }[]; text?: string; delayMs?: number; usage?: FakeUsage }
   | { status: number; error: string }
   // The connection closes before any answer, as a provider or a proxy that restarted.
   | { reset: true };
@@ -76,14 +82,15 @@ export interface FakeModel {
   close(): Promise<void>;
 }
 
-const USAGE = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+const USAGE: FakeUsage = { prompt: 10, completion: 5 };
+const usageOf = (u: FakeUsage = USAGE) => ({ prompt_tokens: u.prompt, completion_tokens: u.completion, total_tokens: u.prompt + u.completion });
 // As OpenAI and Groq answer: LiteLLM's Groq provider reads it from every whole answer.
 const SERVICE_TIER = 'default';
 export const FAKE_TRANSCRIPT = 'Тестовая речь';
 
 type StreamCut = 'drop' | 'hang' | GatewayStreamError;
 
-function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string, cut?: StreamCut): void {
+function sse(res: import('node:http').ServerResponse, chunks: object[], finish: string, cut?: StreamCut, usage?: FakeUsage): void {
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const base = { id: 'fake', object: 'chat.completion.chunk', created: 1, model: 'fake' };
   for (const delta of chunks) res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
@@ -95,7 +102,7 @@ function sse(res: import('node:http').ServerResponse, chunks: object[], finish: 
   }
   if (cut === 'hang') return;
   if (cut) res.write(`data: ${JSON.stringify({ error: cut })}\n\n`);
-  else res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: USAGE })}\n\n`);
+  else res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: usageOf(usage) })}\n\n`);
   res.write('data: [DONE]\n\n');
   res.end();
 }
@@ -112,19 +119,19 @@ function respond(res: import('node:http').ServerResponse, turn: FakeTurn, stream
   if ('toolCalls' in turn) {
     const calls = turn.toolCalls.map((c, i) => ({ id: `call_${Date.now()}_${i}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
     const toolCalls = calls.map((c, index) => ({ index, ...c }));
-    if (stream) return sse(res, turn.text ? [{ role: 'assistant', content: turn.text }, { tool_calls: toolCalls }] : [{ role: 'assistant', tool_calls: toolCalls }], 'tool_calls');
+    if (stream) return sse(res, turn.text ? [{ role: 'assistant', content: turn.text }, { tool_calls: toolCalls }] : [{ role: 'assistant', tool_calls: toolCalls }], 'tool_calls', undefined, turn.usage);
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text ?? null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: USAGE, service_tier: SERVICE_TIER }));
+    res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text ?? null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: usageOf(turn.usage), service_tier: SERVICE_TIER }));
     return;
   }
   if (stream) {
     const size = turn.chunkSize ?? 8;
     const parts: object[] = [];
     for (let i = 0; i < turn.text.length; i += size) parts.push(i === 0 ? { role: 'assistant', content: turn.text.slice(i, i + size) } : { content: turn.text.slice(i, i + size) });
-    return sse(res, parts.length ? parts : [{ role: 'assistant', content: '' }], 'stop', turn.cut);
+    return sse(res, parts.length ? parts : [{ role: 'assistant', content: '' }], 'stop', turn.cut, turn.usage);
   }
   res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: USAGE, service_tier: SERVICE_TIER }));
+  res.end(JSON.stringify({ id: 'fake', object: 'chat.completion', created: 1, model: 'fake', choices: [{ index: 0, message: { role: 'assistant', content: turn.text }, finish_reason: 'stop' }], usage: usageOf(turn.usage), service_tier: SERVICE_TIER }));
 }
 
 // `fallback` answers when the script is empty (the browser stand answers by keywords); without it

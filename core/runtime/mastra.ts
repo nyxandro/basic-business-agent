@@ -31,6 +31,7 @@ import { createSignTools, signActionsFor, type SignDeps } from '../org-docs/sign
 import { SIGN_TOOL } from '../org-docs/prompt.ts';
 import type { ChainService } from '../approvals/chains.ts';
 import { createKnowledgeTools } from '../knowledge/tools.ts';
+import { createContextFillProcessor } from '../context-fill/processor.ts';
 import { createWorkFacts } from '../work-facts/facts.ts';
 
 export interface MastraRuntimeDeps {
@@ -72,6 +73,7 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
   const memory = deps.memory;
   const imageView = deps.sandbox ? [createImageViewProcessor(deps.sandbox.deps.workspaceRoot)] : [];
   const widgetHistory = createWidgetHistoryProcessor();
+  const contextFill = createContextFillProcessor({ db: deps.db });
   const docText = createDocTextProcessor({ service: deps.docText, workspaceRoot: deps.workspaceRoot });
   const agents: Record<string, Agent> = {};
   // The researcher of the internet: masked like every agent, its broken streams asked again (spec, section 8.30).
@@ -138,6 +140,9 @@ export function createMastraRuntime(deps: MastraRuntimeDeps): Mastra {
           // never masked (its data is skipped), the text of the request is.
           ...imageView,
           masking,
+          // How full the conversation is (spec, section 8.34): only the agent the person talks to — a sub-agent's
+          // calls are requests of their own.
+          ...(level === 'top' ? [contextFill] : []),
         ],
         // A sub-agent's request for "Да" reaches the parent's stream too: it is recorded there once,
         // under the run id the chat answers to.
