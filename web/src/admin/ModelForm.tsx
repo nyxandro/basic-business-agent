@@ -7,7 +7,9 @@
 // model's keys first, so the button says «Проверить и сохранить» then. The keys go to the new
 // address, so only the superadmin may change it; others see it. The longest answer of a chat model comes from the gateway; only when the gateway
 // does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) or the provider refuses its limit
-// (APP_MODEL_OUTPUT_LIMIT_REJECTED) the form asks for it (spec, section 8.19).
+// (APP_MODEL_OUTPUT_LIMIT_REJECTED) the form asks for it (spec, section 8.19). The size of the context of a chat model
+// is optional (decision of the owner 25.11, section 8.34): empty — the gateway's, or none, and then the chat does not
+// show how full a conversation is.
 import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
 import { useMe } from '../auth/session.tsx';
@@ -38,6 +40,9 @@ const LIMIT_HINTS: Record<string, string> = {
 };
 const LIMIT_LABEL = 'Наибольшая длина ответа, токенов';
 const INVALID_LIMIT = 'Длина ответа — целое число токенов больше нуля.';
+const CONTEXT_LABEL = 'Размер контекста, токенов';
+const CONTEXT_HINT = 'Можно не заполнять: шлюз знает размер большинства моделей. Без него в чате не видно, насколько заполнен разговор.';
+const INVALID_CONTEXT = 'Размер контекста — целое число токенов больше нуля. Или оставьте поле пустым.';
 type Prices = Record<keyof TokenPricesInput, string>;
 type Billing = 'tokens' | 'minute';
 
@@ -86,6 +91,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
   const [prices, setPrices] = useState<Prices>(pricesOf(model));
   const [perMinute, setPerMinute] = useState(toField(model?.pricePerMinute ?? null));
   const [limit, setLimit] = useState('');
+  const [context, setContext] = useState(toField(model ? model.maxInputTokens : null));
   // The code that asked for the limit: stays once asked, the server's error goes away with the next attempt.
   const [limitAskedBy, setLimitAskedBy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -121,14 +127,24 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
     const maxOutputTokens = askLimit ? fromField(limit.replace(/\s/g, ''), 'tokens') : null;
     if (askLimit) setLimitAskedBy(askedBy);
     if (maxOutputTokens === 'invalid' || (askLimit && maxOutputTokens === null)) return setProblem(INVALID_LIMIT);
+    const maxInputTokens = transcription ? null : fromField(context.replace(/\s/g, ''), 'tokens');
+    if (maxInputTokens === 'invalid') return setProblem(INVALID_CONTEXT);
     if (editing) {
-      const change = { label: label.trim(), vision: transcription ? false : vision, ...(subscription ? {} : { prices: tokenPrices, pricePerMinute }), ...(moved ? { apiBase: address } : {}) };
+      // An unchanged size is not sent; an emptied one is null — the server takes the gateway's again.
+      const contextChanged = !transcription && maxInputTokens !== model.maxInputTokens;
+      const change = {
+        label: label.trim(),
+        vision: transcription ? false : vision,
+        ...(subscription ? {} : { prices: tokenPrices, pricePerMinute }),
+        ...(moved ? { apiBase: address } : {}),
+        ...(contextChanged ? { maxInputTokens } : {}),
+      };
       if (await run(() => adminApi.updateModel(model.id, change), moved ? 'Ключ подошёл' : undefined)) onSaved();
       return;
     }
     const input: ModelCreate = subscription
-      ? { kind: 'chat', label: label.trim(), connection: 'chatgpt', providerModel: providerModel.trim(), vision }
-      : { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: address, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim(), maxOutputTokens };
+      ? { kind: 'chat', label: label.trim(), connection: 'chatgpt', providerModel: providerModel.trim(), vision, maxInputTokens }
+      : { kind, label: label.trim(), connection: 'api_key', providerModel: providerModel.trim(), apiBase: address, vision: transcription ? false : vision, prices: tokenPrices, pricePerMinute, key: key.trim(), maxOutputTokens, maxInputTokens };
     if (await run(() => adminApi.createModel(input), subscription ? 'Модель добавлена' : 'Ключ подошёл')) onSaved();
   }
 
@@ -191,6 +207,11 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
           <Input inputMode="numeric" required value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="16 384" />
         </Field>
       ) : null}
+      {transcription ? null : (
+        <Field label={CONTEXT_LABEL} hint={CONTEXT_HINT}>
+          <Input inputMode="numeric" value={context} onChange={(e) => setContext(e.target.value)} placeholder="128 000" />
+        </Field>
+      )}
       {transcription ? null : (
         <div className={styles.switchRow}>
           <div>

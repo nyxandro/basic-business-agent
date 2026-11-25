@@ -6,7 +6,7 @@ import { renderApp } from '../test/render.tsx';
 
 const ADMIN = { ...ME, permissions: ['models'] };
 const PRICES = { input: 120, output: 360, cacheRead: 30, cacheWrite: 120, reasoning: 360, image: 2 };
-const GIGA = { id: 'gigachat', kind: 'chat', label: 'GigaChat 2 Max', connection: 'api_key', providerModel: 'gigachat/GigaChat-2-Max', apiBase: null, vision: true, enabled: true, prices: PRICES, pricePerMinute: null, keys: [{ id: 'k-00000001', last4: 'a1b2', createdAt: '2026-11-10T08:00:00Z' }], agentIds: [] };
+const GIGA = { id: 'gigachat', kind: 'chat', label: 'GigaChat 2 Max', connection: 'api_key', providerModel: 'gigachat/GigaChat-2-Max', apiBase: null, vision: true, enabled: true, prices: PRICES, pricePerMinute: null, keys: [{ id: 'k-00000001', last4: 'a1b2', createdAt: '2026-11-10T08:00:00Z' }], agentIds: [], maxOutputTokens: 16384, maxInputTokens: null };
 const TEXT_ONLY = { ...GIGA, id: 'yagpt', label: 'YandexGPT 5 Pro', providerModel: 'yandex/yandexgpt-5-pro', vision: false, keys: [{ id: 'k-00000002', last4: 'c3d4', createdAt: '2026-11-10T08:00:00Z' }] };
 const SETTINGS = { primaryModelId: 'gigachat', fallbackModelId: null, transcriptionModelId: null, agentsChooseModel: false };
 
@@ -68,6 +68,7 @@ describe('«Нейросеть»', () => {
       pricePerMinute: null,
       key: 'sk-test-0000000000',
       maxOutputTokens: null,
+      maxInputTokens: null,
     });
     // The gateway knows the model: the form does not ask for the length of an answer.
     expect(screen.queryByLabelText('Наибольшая длина ответа, токенов')).not.toBeInTheDocument();
@@ -291,6 +292,68 @@ describe('editing a model (owner\'s list 16.11)', () => {
     expect(within(dialog).getByText('Адрес меняет только суперадминистратор: на новый адрес уходят ключи модели.')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     expect(s.calls.find((c) => c.method === 'PUT')?.body).not.toHaveProperty('apiBase');
+  });
+
+  it('asks for the size of the context without requiring it, and sends the number given (spec, section 8.34)', async () => {
+    const s = server();
+    s.set('POST /app/api/admin/models', { status: 201, body: { ...GIGA, id: 'gpt-mini', maxInputTokens: 128_000 } });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await fillNewModel(user);
+    const size = within(dialog).getByLabelText('Размер контекста, токенов');
+    expect(size).not.toBeRequired();
+    expect(within(dialog).getByText('Можно не заполнять: шлюз знает размер большинства моделей. Без него в чате не видно, насколько заполнен разговор.')).toBeInTheDocument();
+    await user.type(size, '128 000');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();
+    expect(s.calls.find((c) => c.method === 'POST')?.body).toMatchObject({ maxInputTokens: 128_000 });
+  });
+
+  it('refuses a size of the context that is not a whole number of tokens', async () => {
+    const s = server();
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    const dialog = await fillNewModel(user);
+    await user.type(within(dialog).getByLabelText('Размер контекста, токенов'), '12,5');
+    await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Размер контекста — целое число токенов больше нуля. Или оставьте поле пустым.');
+    expect(s.calls.find((c) => c.method === 'POST')).toBeUndefined();
+  });
+
+  it('a recognition model has no size of the context', async () => {
+    server();
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Добавить модель' }));
+    const dialog = screen.getByRole('dialog', { name: 'Добавить модель' });
+    expect(within(dialog).getByLabelText('Размер контекста, токенов')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Распознавание речи' }));
+    expect(within(dialog).queryByLabelText('Размер контекста, токенов')).not.toBeInTheDocument();
+  });
+
+  it('shows the size of the context in «Изменить»: a changed one is sent, an emptied one as null, an unchanged one not at all', async () => {
+    const s = server([{ ...GIGA, maxInputTokens: 131_072 }]);
+    s.set('PUT /app/api/admin/models/gigachat', { body: GIGA });
+    renderApp('/admin/models');
+    const user = userEvent.setup();
+    let dialog = await edit(user, 'GigaChat 2 Max');
+    const size = within(dialog).getByLabelText('Размер контекста, токенов');
+    expect(size).toHaveValue('131072');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(s.calls.filter((c) => c.method === 'PUT').at(-1)?.body).not.toHaveProperty('maxInputTokens');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    dialog = await edit(user, 'GigaChat 2 Max');
+    await user.clear(within(dialog).getByLabelText('Размер контекста, токенов'));
+    await user.type(within(dialog).getByLabelText('Размер контекста, токенов'), '32000');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(s.calls.filter((c) => c.method === 'PUT').at(-1)?.body).toMatchObject({ maxInputTokens: 32_000 });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    dialog = await edit(user, 'GigaChat 2 Max');
+    await user.clear(within(dialog).getByLabelText('Размер контекста, токенов'));
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(s.calls.filter((c) => c.method === 'PUT').at(-1)?.body).toMatchObject({ maxInputTokens: null });
   });
 
   it('a subscription model has no provider address', async () => {
