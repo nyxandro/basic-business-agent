@@ -13,6 +13,7 @@ import { ErrorBanner } from '../ui/ErrorBanner.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { DelayedBar } from '../ui/Loading.tsx';
 import { MenuAnchor } from '../ui/Menu.tsx';
+import { ScrollArea } from '../ui/ScrollArea.tsx';
 import { LimitMeter } from './LimitMeter.tsx';
 import { useNotifications } from '../notifications/notifications-context.ts';
 import { ProjectList } from '../projects/ProjectList.tsx';
@@ -49,6 +50,9 @@ export interface SidebarProps {
   // The phone's drawer adds its «Закрыть меню» here and opens «Ждёт подтверждения» as a sheet.
   topRight?: ReactNode;
   approvalsAsSheet?: boolean;
+  // On a computer the head and the foot stay and only the lists scroll (owner 25.11); the phone's drawer scrolls whole:
+  // a fixed foot would leave the lists half of a small screen.
+  scrollWhole?: boolean;
 }
 
 // On a computer a link to the page; in the phone's drawer it opens the bell's sheet on «Ждут решения» (mockup).
@@ -118,6 +122,24 @@ export function Sidebar(props: SidebarProps) {
   const me = useMe();
   const { threadStates } = useNotifications();
   const hasAdmin = availableSections(me).length > 0;
+  // In the scrolling area of a computer a row's menu lies over the page: the area would cut the menu of a lower row.
+  const floatingMenus = !props.scrollWhole;
+  const lists = (
+    <>
+      <div className={styles.sectionLabel}>{ru.shell.agents}</div>
+      <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
+
+      <ProjectList refreshKey={props.projectsKey} failure={props.projectsFailure} chatProjectId={props.chatProjectId} floatingMenus={floatingMenus} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
+
+      {/* «+» by the title, as by «Проекты» (owner 25.11). */}
+      <div className={styles.sectionHead}>
+        <span className={styles.sectionLabel}>{ru.shell.threads}</span>
+        <IconButton icon="plus" size="sm" label={ru.shell.newThread} onClick={props.onNewThread} />
+      </div>
+      <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} states={threadStates} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} floatingMenus={floatingMenus} />
+    </>
+  );
+  // The panel itself scrolls only when the window is too low even for the head, the foot and a bit of the lists.
   return (
     <div className={cx(styles.side, 'scroll-thin')}>
       <div className={styles.brand}>
@@ -136,35 +158,32 @@ export function Sidebar(props: SidebarProps) {
         {ru.search.open}
       </button>
 
-      <div className={styles.sectionLabel}>{ru.shell.agents}</div>
-      <AgentList agents={props.agents} currentAgentId={props.currentAgentId} onNavigate={props.onNavigate} />
+      {props.scrollWhole ? (
+        <div className={cx(styles.lists, styles.listsWhole)}>{lists}</div>
+      ) : (
+        <ScrollArea className={styles.listsArea} contentClassName={cx(styles.lists, styles.listsInArea)}>
+          {lists}
+        </ScrollArea>
+      )}
 
-      <ProjectList refreshKey={props.projectsKey} failure={props.projectsFailure} chatProjectId={props.chatProjectId} onNavigate={props.onNavigate} onChanged={props.onProjectsChanged} onShowAll={props.onShowAllProjects} />
-
-      {/* «+» by the title, as by «Проекты» (owner 25.11). */}
-      <div className={styles.sectionHead}>
-        <span className={styles.sectionLabel}>{ru.shell.threads}</span>
-        <IconButton icon="plus" size="sm" label={ru.shell.newThread} onClick={props.onNewThread} />
+      <div className={styles.foot}>
+        <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />
+        {hasAdmin ? (
+          <Link to="/admin" onClick={props.onNavigate} className={styles.footLink}>
+            <Icon name="shield" />
+            {ru.shell.admin}
+          </Link>
+        ) : null}
+        <LimitMeter usage={props.usage} />
+        <MenuAnchor className={styles.user}>
+          <Avatar name={me.user.name} />
+          <div className={styles.userText}>
+            <div className={styles.userName}>{me.user.name}</div>
+            {me.departmentNames.length > 0 ? <div className={styles.userDept}>{me.departmentNames.join(', ')}</div> : null}
+          </div>
+          <SettingsMenu usage={props.usage} onNavigate={props.onNavigate} />
+        </MenuAnchor>
       </div>
-      <RecentThreads refreshKey={props.threadsKey} names={props.threadNames} states={threadStates} currentThreadId={props.currentThreadId} onNavigate={props.onNavigate} onShowAll={props.onShowAllThreads} onRenamed={props.onThreadNamed} onDeleted={props.onProjectsChanged} />
-
-      <div className={styles.spacer} />
-      <ApprovalsLink onNavigate={props.onNavigate} asSheet={props.approvalsAsSheet ?? false} />
-      {hasAdmin ? (
-        <Link to="/admin" onClick={props.onNavigate} className={styles.footLink}>
-          <Icon name="shield" />
-          {ru.shell.admin}
-        </Link>
-      ) : null}
-      <LimitMeter usage={props.usage} />
-      <MenuAnchor className={styles.user}>
-        <Avatar name={me.user.name} />
-        <div className={styles.userText}>
-          <div className={styles.userName}>{me.user.name}</div>
-          {me.departmentNames.length > 0 ? <div className={styles.userDept}>{me.departmentNames.join(', ')}</div> : null}
-        </div>
-        <SettingsMenu usage={props.usage} onNavigate={props.onNavigate} />
-      </MenuAnchor>
     </div>
   );
 }

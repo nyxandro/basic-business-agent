@@ -19,7 +19,7 @@ import styles from '../shell/shell.module.css';
 export const threadPath = (t: Pick<ThreadSummaryDto, 'agentId' | 'id'>) => `/agents/${encodeURIComponent(t.agentId)}?thread=${encodeURIComponent(t.id)}`;
 
 // `state` — its mark (decision of the owner 22.11): an agent works there, a question waits, the answer broke or is ready.
-export function ThreadRow({ thread, state, current, onNavigate, onRenamed, onDeleted }: { thread: ThreadSummaryDto; state: ThreadState | undefined; current: boolean; onNavigate: () => void; onRenamed: (title: string) => void; onDeleted: () => void }) {
+export function ThreadRow({ thread, state, current, floatingMenu, onNavigate, onRenamed, onDeleted }: { thread: ThreadSummaryDto; state: ThreadState | undefined; current: boolean; floatingMenu: boolean; onNavigate: () => void; onRenamed: (title: string) => void; onDeleted: () => void }) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<ApiRequestError | null>(null);
@@ -76,7 +76,7 @@ export function ThreadRow({ thread, state, current, onNavigate, onRenamed, onDel
         <div className={styles.threadMore}>
           <MenuAnchor>
             <IconButton icon="dots" size="sm" label={label} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} />
-            <Menu open={menu} onClose={() => setMenu(false)} label={label}>
+            <Menu open={menu} onClose={() => setMenu(false)} label={label} floating={floatingMenu}>
               <MenuItem
                 icon="edit"
                 onSelect={() => {

@@ -36,6 +36,25 @@ function floatingPlace(anchor: HTMLElement, menu: HTMLElement, placement: Placem
   };
 }
 
+// The boxes around the anchor that cut what leaves them (a scrolling list, a table): the anchor is seen only inside them.
+function clippingBoxes(anchor: HTMLElement): HTMLElement[] {
+  const boxes: HTMLElement[] = [];
+  for (let node = anchor.parentElement; node && node !== document.body; node = node.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(node);
+    if (overflowX !== 'visible' || overflowY !== 'visible') boxes.push(node);
+  }
+  return boxes;
+}
+
+// Wholly past an edge of one of its boxes — the anchor is out of sight; partly seen still counts.
+function inSight(anchor: HTMLElement, clips: HTMLElement[]): boolean {
+  const a = anchor.getBoundingClientRect();
+  return clips.every((clip) => {
+    const c = clip.getBoundingClientRect();
+    return a.bottom >= c.top && a.top <= c.bottom && a.right >= c.left && a.left <= c.right;
+  });
+}
+
 export function Menu({ open, onClose, label, placement = 'bottom-end', children, role = 'menu', width, floating }: { open: boolean; onClose: () => void; label: string; placement?: Placement; children: ReactNode; role?: 'menu' | 'dialog'; width?: number; floating?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   // A floating menu is drawn elsewhere: this mark stays in the anchor to find it.
@@ -79,18 +98,27 @@ export function Menu({ open, onClose, label, placement = 'bottom-end', children,
   }, [open, floating]);
 
   useLayoutEffect(() => {
-    if (!open || !floating) return;
-    const update = () => {
-      const anchor = spot.current?.parentElement;
-      if (anchor && box.current) setPlace(floatingPlace(anchor, box.current, placement));
+    const anchor = spot.current?.parentElement;
+    if (!open || !floating || !anchor) return;
+    const clips = clippingBoxes(anchor);
+    // Away from the page's flow, the menu follows its button every frame: a scroll, the window, and a list rebuilt
+    // under it (a conversation went up after an answer) move the button without a scroll or a resize. Its button
+    // scrolled out of sight, the menu closes: left where it was, it would hang over something else.
+    let frame = 0;
+    const follow = () => {
+      if (!inSight(anchor, clips)) {
+        close();
+        return;
+      }
+      if (box.current) {
+        const next = floatingPlace(anchor, box.current, placement);
+        setPlace((was) => (was && was.top === next.top && was.left === next.left ? was : next));
+      }
+      frame = requestAnimationFrame(follow);
     };
-    update();
-    // Away from the page's flow, the menu follows its button when anything scrolls or the window changes.
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
+    follow();
     return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
+      cancelAnimationFrame(frame);
       setPlace(null);
     };
   }, [open, floating, placement]);

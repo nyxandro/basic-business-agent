@@ -30,7 +30,7 @@ export function sharedHint(project: ProjectDto): string {
 }
 
 // `takeFocus` says once that the link takes the keyboard on being drawn (after «Закрепить»).
-export function ProjectRow({ project, sortable, current, page, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; sortable: boolean; current: boolean; page: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
+export function ProjectRow({ project, sortable, current, page, floatingMenu, onNavigate, onRenamed, onPin, onAccess, onArchive, takeFocus }: { project: ProjectDto; sortable: boolean; current: boolean; page: boolean; floatingMenu: boolean; onNavigate: () => void; onRenamed: (name: string) => void; onPin: (pinned: boolean) => void; onAccess: () => void; onArchive: () => void; takeFocus: () => boolean }) {
   const [menu, setMenu] = useState(false);
   const prefetch = usePrefetchProject();
   // The pointer that rests on the project, not one passing over the list, starts its loading.
@@ -96,7 +96,7 @@ export function ProjectRow({ project, sortable, current, page, onNavigate, onRen
           <div className={shell.threadMore}>
             <MenuAnchor>
               <IconButton icon="dots" size="sm" label={label} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} />
-              <Menu open={menu} onClose={() => setMenu(false)} label={label}>
+              <Menu open={menu} onClose={() => setMenu(false)} label={label} floating={floatingMenu}>
                 {owner ? (
                   <MenuItem
                     icon="edit"

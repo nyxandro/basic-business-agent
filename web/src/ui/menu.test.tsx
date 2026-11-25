@@ -1,7 +1,7 @@
 // A menu over the page (owner's list 16.11): a menu of a table row is not cut by the table's
 // scrolling box — it lies in the top layer of the page, at its button, and turns up when there is no
 // room below.
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -30,12 +30,15 @@ function RowMenu({ onPick }: { onPick: () => void }) {
   );
 }
 
+// The button at `top`; its scrolling box shows the whole window. Gives a way to move the button later.
 function place(button: HTMLElement, top: number) {
-  vi.spyOn(button.parentElement!, 'getBoundingClientRect').mockReturnValue(rect({ top, left: 600, width: 32, height: 32 }));
+  const at = vi.spyOn(button.parentElement!, 'getBoundingClientRect').mockReturnValue(rect({ top, left: 600, width: 32, height: 32 }));
+  vi.spyOn(screen.getByTestId('box'), 'getBoundingClientRect').mockReturnValue(rect({ top: 0, left: 0, width: 1200, height: VIEW_HEIGHT }));
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(MENU_HEIGHT);
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(220);
   vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(VIEW_HEIGHT);
   vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1200);
+  return { moveTo: (next: number) => at.mockReturnValue(rect({ top: next, left: 600, width: 32, height: 32 })) };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -59,6 +62,28 @@ describe('a floating menu', () => {
     place(button, 740);
     await userEvent.setup().click(button);
     expect(screen.getByRole('menu').style.top).toBe(`${740 - 6 - MENU_HEIGHT}px`);
+  });
+
+  // The list under it changes while it is open (a conversation went up after an answer): the menu stays by its own row.
+  it('follows its button when the row moves', async () => {
+    render(<RowMenu onPick={() => undefined} />);
+    const button = screen.getByRole('button', { name: 'Действия' });
+    const row = place(button, 100);
+    await userEvent.setup().click(button);
+    const menu = screen.getByRole('menu');
+    expect(menu.style.top).toBe('138px');
+    row.moveTo(300);
+    await waitFor(() => expect(menu.style.top).toBe('338px'));
+  });
+
+  // Scrolled out of its box, the button is not seen: a menu left by it would hang over something else.
+  it('closes when its button leaves the sight of its scrolling box', async () => {
+    render(<RowMenu onPick={() => undefined} />);
+    const button = screen.getByRole('button', { name: 'Действия' });
+    const row = place(button, 100);
+    await userEvent.setup().click(button);
+    row.moveTo(-40);
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 
   it('works by its items and closes on a click outside, not on a click inside', async () => {

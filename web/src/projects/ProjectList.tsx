@@ -47,7 +47,9 @@ function cancelClick(event: Event) {
 // The keyboard goes to «Ещё» once the project it was on is drawn there.
 const TO_MORE = 'more';
 
-export function ProjectList({ refreshKey, failure, chatProjectId, onNavigate, onChanged, onShowAll }: { refreshKey: number; failure: ApiRequestError | null; chatProjectId: string | null; onNavigate: () => void; onChanged: () => void; onShowAll: () => void }) {
+// `floatingMenus` — the rows' menus lie over the page: the list scrolls inside its own area, which would cut the menu of a
+// lower row.
+export function ProjectList({ refreshKey, failure, chatProjectId, floatingMenus, onNavigate, onChanged, onShowAll }: { refreshKey: number; failure: ApiRequestError | null; chatProjectId: string | null; floatingMenus: boolean; onNavigate: () => void; onChanged: () => void; onShowAll: () => void }) {
   const saves = useRef<Promise<unknown>>(Promise.resolve());
   // The list loads after the saves under way, and once more when a save starts while it loads:
   // it never brings back an order being saved.
@@ -166,6 +168,7 @@ export function ProjectList({ refreshKey, failure, chatProjectId, onNavigate, on
       sortable={p.pinned}
       current={p.id === current}
       page={p.id === page}
+      floatingMenu={floatingMenus}
       onNavigate={onNavigate}
       onRenamed={(name) => {
         show(list.map((x) => (x.id === p.id ? { ...x, name } : x)));

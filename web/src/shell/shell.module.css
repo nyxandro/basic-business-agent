@@ -290,9 +290,35 @@
   font-size: 13px;
 }
 
-.spacer {
-  flex: 1;
-  min-height: 16px;
+/* Agents, projects, conversations. On a computer they scroll in their own area between the head and the foot (owner
+   25.11): it reaches the panel's edges, so the scrollbar stands at the edge. */
+.lists {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.listsArea {
+  flex: 1 1 0;
+  /* A lower window scrolls the panel itself rather than leave no list at all. */
+  min-height: 120px;
+  margin: 0 -12px;
+}
+
+.listsInArea {
+  padding: 0 12px 4px;
+}
+
+/* The phone's drawer scrolls whole: the lists push the foot down when they are short. */
+.listsWhole {
+  flex: 1 0 auto;
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 14px;
 }
 
 .approvals {

@@ -31,6 +31,7 @@ export function RecentThreads({
   onShowAll,
   onRenamed,
   onDeleted,
+  floatingMenus,
 }: {
   refreshKey: number;
   names: Readonly<Record<string, string>>;
@@ -41,6 +42,8 @@ export function RecentThreads({
   onShowAll: () => void;
   onRenamed: (threadId: string, title: string) => void;
   onDeleted: () => void;
+  // The rows' menus lie over the page: the list scrolls inside its own area, which would cut the menu of a lower row.
+  floatingMenus: boolean;
 }) {
   // The conversations of each background task's events come as one row (docs/specs/[20.11.2026]-event-tasks.md).
   const first = useCallback(() => fetchThreadPage({ limit: RECENT_SHOWN, group: 'tasks' }), []);
@@ -66,6 +69,7 @@ export function RecentThreads({
             thread={thread}
             state={states[thread.id]}
             current={thread.id === currentThreadId}
+            floatingMenu={floatingMenus}
             onNavigate={onNavigate}
             onRenamed={(title) => onRenamed(thread.id, title)}
             onDeleted={() => {

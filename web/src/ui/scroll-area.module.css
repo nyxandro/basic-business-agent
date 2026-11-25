@@ -1,0 +1,56 @@
+/* How low the area may get is the place's to say (min-height): a rule here would outweigh it. */
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The browser's own scrollbar is hidden: the thumb below stands for it. */
+.viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* 10 px to catch with the mouse, 4 px seen — as .scroll-thin (base.css). */
+.thumb {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  touch-action: none;
+}
+
+.thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  transition: background-color 0.15s ease;
+}
+
+.root:not([data-overflow]) .thumb {
+  display: none;
+}
+
+/* Shows at once while the list scrolls, while the hand holds it, and under the mouse; fades out after. */
+.root[data-scrolling] .thumb,
+.root[data-dragging] .thumb,
+.thumb:hover {
+  opacity: 1;
+  transition-duration: 0.12s;
+}
+
+.root[data-dragging] .thumb::before,
+.thumb:hover::before {
+  background: color-mix(in srgb, var(--muted) 65%, transparent);
+}

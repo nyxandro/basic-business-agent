@@ -31,8 +31,8 @@ function server(me: object = ME, agents: unknown = { agents: AGENTS }) {
   });
 }
 
-// The whole side panel: «Разговоры» stands in its head row with «+».
-const sidePanel = async () => (await screen.findByText('Разговоры')).parentElement!.parentElement!;
+// The whole side panel: «Поиск» stands right in it, the lists are in its scrolling area.
+const sidePanel = async () => (await screen.findByRole('button', { name: 'Поиск' })).parentElement!;
 
 describe('the frame of the application', () => {
   // The agents of the panel carry the mark set on each agent — an icon or a picture, the spark when none was set —
@@ -73,6 +73,41 @@ describe('the frame of the application', () => {
     // The same agent, a conversation not in the list yet.
     await waitFor(() => expect(screen.getByRole('link', { name: /Сделки без движения/ })).not.toHaveAttribute('aria-current'));
     expect(screen.getByRole('link', { name: /Продажи/ })).toHaveAttribute('aria-current', 'page');
+  });
+
+  // Owner 25.11: on a computer the product, «Поиск», «Админка», the limit and the person stay; only the lists scroll.
+  it('scrolls only the lists on a computer: the head and the foot stay', async () => {
+    server({ ...ME, permissions: ['users'] });
+    renderApp('/');
+    const panel = await sidePanel();
+    const area = (await screen.findByText('Разговоры')).closest('[data-scroll-area]');
+    expect(panel).toContainElement(area as HTMLElement);
+    expect(area).toContainElement(within(panel).getByText('Агенты'));
+    for (const fixed of [within(panel).getByText('Бизнес-агент'), within(panel).getByRole('button', { name: 'Поиск' }), await within(panel).findByRole('link', { name: 'Админка' }), within(panel).getByText('Ольга'), within(panel).getByText('58%')]) {
+      expect(area).not.toContainElement(fixed);
+    }
+  });
+
+  // The lists scroll in their own area on a computer, which would cut the menu of a lower row: it lies over the page.
+  // The phone's drawer scrolls whole and keeps the menu in place.
+  it('opens the menu of a row over the page on a computer, in place in the drawer of a phone', async () => {
+    const menuOf = 'Действия с разговором «Сделки без движения»';
+    server();
+    const first = renderApp('/');
+    const user = userEvent.setup();
+    const panel = await sidePanel();
+    await user.click(await within(panel).findByRole('button', { name: menuOf }));
+    expect(panel).not.toContainElement(screen.getByRole('menu', { name: menuOf }));
+    first.unmount();
+
+    stubSystemTheme('light', PHONE_WIDTH);
+    server();
+    renderApp('/');
+    await user.click(await screen.findByRole('button', { name: 'Меню' }));
+    const drawer = screen.getByRole('dialog', { name: 'Меню' });
+    expect(drawer.querySelector('[data-scroll-area]')).toBeNull();
+    await user.click(await within(drawer).findByRole('button', { name: menuOf }));
+    expect(within(drawer).getByRole('menu', { name: menuOf })).toBeInTheDocument();
   });
 
   it('opens a new conversation with the last agent on «/»', async () => {
@@ -194,7 +229,7 @@ describe('the frame of the application', () => {
     const user = userEvent.setup();
     const panel = await sidePanel();
     await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
-    await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
     const field = within(panel).getByRole('textbox', { name: 'Название разговора' });
     expect(field).toHaveValue('Сделки без движения');
     expect(field).toHaveFocus();
@@ -218,7 +253,7 @@ describe('the frame of the application', () => {
     const panel = await sidePanel();
     const rename = async () => {
       await user.click(await within(panel).findByRole('button', { name: 'Действия с разговором «Сделки без движения»' }));
-      await user.click(within(panel).getByRole('menuitem', { name: 'Переименовать' }));
+      await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
       return within(panel).getByRole('textbox', { name: 'Название разговора' });
     };
 
