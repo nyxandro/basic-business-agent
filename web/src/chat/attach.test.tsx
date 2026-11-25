@@ -400,7 +400,8 @@ describe('a long text pasted into the input', () => {
     paste(`${LONG}ещё`);
     expect(screen.getAllByRole('button', { name: /^Вставленный текст ·/ })).toHaveLength(2);
     await user.click(screen.getAllByRole('button', { name: 'Убрать вставленный текст' })[0]!);
-    expect(screen.getAllByRole('button', { name: /^Вставленный текст ·/ })).toHaveLength(1);
+    // The block leaving fades out first (Motion), then is gone.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Вставленный текст ·/ })).toHaveLength(1));
     expect(send).toBeEnabled();
     await user.click(send);
     expect(onSubmitMessage).toHaveBeenCalledWith(`--- Вставленный текст ---\n${LONG}ещё\n--- Конец вставленного текста ---`);

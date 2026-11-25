@@ -7,18 +7,18 @@ import { cx, IconButton } from '../ui/Button.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import styles from './pasted-text.module.css';
 
-export function PastedText({ text, onRemove }: { text: string; onRemove?: () => void }) {
+export function PastedText({ text, onRemove }: { text: string; onRemove?: (block: HTMLElement | null) => void }) {
   const [open, setOpen] = useState(false);
   const body = useId();
   return (
-    <div className={styles.block}>
+    <div className={styles.block} data-pasted>
       <div className={styles.head}>
         <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={body} onClick={() => setOpen((o) => !o)}>
           <Icon name="file" size={15} className={styles.icon} />
           <span className={styles.label}>{ru.chat.pasted(text.length)}</span>
           <Icon name="down" size={13} className={cx(styles.chevron, open && styles.chevronOpen)} />
         </button>
-        {onRemove ? <IconButton icon="x" size="sm" label={ru.chat.pastedRemove} className={styles.remove} onClick={onRemove} /> : null}
+        {onRemove ? <IconButton icon="x" size="sm" label={ru.chat.pastedRemove} className={styles.remove} onClick={(e) => onRemove(e.currentTarget.closest<HTMLElement>('[data-pasted]'))} /> : null}
       </div>
       {open ? (
         <div id={body} className={cx(styles.text, 'scroll-thin')}>

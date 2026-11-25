@@ -20,7 +20,7 @@ import { AssistantTurn } from './AssistantMessage.tsx';
 import { answersInBrowser, callsUnderWay } from '../answer/call-progress.ts';
 import { useChatExtras } from '../answer/chat-context.ts';
 import styles from './chat.module.css';
-import { Composer } from './Composer.tsx';
+import { Composer, type PastedPiece } from './Composer.tsx';
 import { readDraft, writeDraft } from './drafts.ts';
 import { useFileDrop } from './FileDrop.tsx';
 import { LiveLine } from './LiveLine.tsx';
@@ -33,7 +33,7 @@ import { Welcome } from './Welcome.tsx';
 import { PartBoundary } from '../ui/ErrorBoundary.tsx';
 import { pendingWrite, stopPendingWrites, useWriteAsked } from '../projects/computer-saves.ts';
 
-const NO_PASTED: string[] = [];
+const NO_PASTED: PastedPiece[] = [];
 
 // The feed sticks to the bottom while the person is within this distance of it.
 const STICK_PX = 140;
@@ -145,10 +145,11 @@ export function ChatView(props: CopilotChatViewProps) {
   const writeAsked = useWriteAsked(extras.threadId);
   // Long texts pasted into the input, folded (request of the owner 25.11): the conversation's own — another conversation
   // opened in the same window starts without them.
-  const [pastedOf, setPastedOf] = useState<{ threadId: string; texts: string[] }>({ threadId: extras.threadId, texts: [] });
-  const pasted = pastedOf.threadId === extras.threadId ? pastedOf.texts : NO_PASTED;
-  const setPasted = (change: (texts: string[]) => string[]) =>
-    setPastedOf((prev) => ({ threadId: extras.threadId, texts: change(prev.threadId === extras.threadId ? prev.texts : []) }));
+  const [pastedOf, setPastedOf] = useState<{ threadId: string; pieces: PastedPiece[] }>({ threadId: extras.threadId, pieces: [] });
+  const pasted = pastedOf.threadId === extras.threadId ? pastedOf.pieces : NO_PASTED;
+  const nextPasted = useRef(0);
+  const setPasted = (change: (pieces: PastedPiece[]) => PastedPiece[]) =>
+    setPastedOf((prev) => ({ threadId: extras.threadId, pieces: change(prev.threadId === extras.threadId ? prev.pieces : []) }));
   const busy = isRunning || writeAsked;
   // The run of the agent ended with the call, and CopilotChat gives no «Стоп» then: the run the browser's tool belongs to
   // is stopped here, or CopilotKit would go on with the agent once the write gave up.
@@ -248,7 +249,7 @@ export function ChatView(props: CopilotChatViewProps) {
     writeDraft(extras.agentId, extras.threadId, '');
     extras.clearAttachments();
     setPasted(() => []);
-    submit(withAttachments(withPasted(value.trim(), pasted), extras.attachments));
+    submit(withAttachments(withPasted(value.trim(), pasted.map((p) => p.text)), extras.attachments));
     onInputChange?.('');
   };
   // A message from outside the input — the marks of the viewer (chat-send.ts): the input, its draft and attachments
@@ -330,8 +331,8 @@ export function ChatView(props: CopilotChatViewProps) {
                 progress={uploads.progress}
                 onAttach={uploads.attach}
                 pasted={pasted}
-                onPasteText={(text) => setPasted((texts) => [...texts, text])}
-                onRemovePasted={(index) => setPasted((texts) => texts.filter((_, i) => i !== index))}
+                onPasteText={(text) => setPasted((pieces) => [...pieces, { id: nextPasted.current++, text }])}
+                onRemovePasted={(id) => setPasted((pieces) => pieces.filter((p) => p.id !== id))}
               />
             </div>
           </div>

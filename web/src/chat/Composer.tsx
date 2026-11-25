@@ -14,6 +14,10 @@ import { useVoice } from '../voice/use-voice.ts';
 import { MicButton, RecordingBar, VoiceStatus } from '../voice/VoiceParts.tsx';
 import { Attachments } from './Attachments.tsx';
 import { PastedText } from './PastedText.tsx';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
+import { AutoHeight } from '../ui/AutoHeight.tsx';
+import { turnToSand } from '../ui/dissolve.ts';
+import { EASING, MOVE_S } from '../ui/motion.ts';
 import type { WaitingFile } from './attach.ts';
 import type { UploadProgress } from './upload-progress.ts';
 import { useChatExtras } from '../answer/chat-context.ts';
@@ -23,6 +27,12 @@ import styles from './chat.module.css';
 const MAX_HEIGHT = 220;
 // A pasted text longer than this folds into a block instead of going into the field (request of the owner 25.11).
 const PASTED_FOLDS = 1000;
+
+// A folded pasted text of the input; the number keeps the block the same while others come and go.
+export interface PastedPiece {
+  id: number;
+  text: string;
+}
 
 const appendText = (current: string, text: string) => (current.trim() ? `${current.trimEnd()} ${text}` : text);
 
@@ -97,9 +107,9 @@ export function Composer({
   progress: UploadProgress;
   onAttach: (files: File[]) => void;
   // Long texts pasted, folded (PastedText.tsx): they go as a part of the message.
-  pasted: readonly string[];
+  pasted: readonly PastedPiece[];
   onPasteText: (text: string) => void;
-  onRemovePasted: (index: number) => void;
+  onRemovePasted: (id: number) => void;
 }) {
   const extras = useChatExtras();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -146,13 +156,29 @@ export function Composer({
   return (
     <div className={styles.composer}>
       <Attachments uploading={uploading} progress={progress} voice={voiceLine} />
-      {pasted.length > 0 ? (
-        <div className={styles.pastedList}>
-          {pasted.map((text, i) => (
-            <PastedText key={`${i}-${text.length}`} text={text} onRemove={() => onRemovePasted(i)} />
-          ))}
-        </div>
-      ) : null}
+      {/* As the chips of files (Attachments.tsx): a block comes and goes smoothly, the box follows its height, and one
+          taken out turns to sand. */}
+      <MotionConfig reducedMotion="user" transition={{ duration: MOVE_S, ease: EASING }}>
+        <AutoHeight>
+          {pasted.length > 0 ? (
+            <div className={styles.pastedList}>
+              <AnimatePresence mode="popLayout" initial={false}>
+                {pasted.map((piece) => (
+                  <motion.div key={piece.id} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                    <PastedText
+                      text={piece.text}
+                      onRemove={(block) => {
+                        turnToSand(block);
+                        onRemovePasted(piece.id);
+                      }}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          ) : null}
+        </AutoHeight>
+      </MotionConfig>
       <textarea ref={area} className={styles.textarea} rows={2} value={value} placeholder={ru.chat.placeholder} aria-label={ru.chat.message} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onPaste={paste} />
       <div className={styles.composerRow}>
         <input ref={fileInput} type="file" hidden multiple accept={UPLOAD_EXTENSIONS.join(',')} aria-label={ru.chat.attach} onChange={(e) => pick(e.currentTarget)} />
