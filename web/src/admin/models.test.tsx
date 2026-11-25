@@ -302,7 +302,7 @@ describe('editing a model (owner\'s list 16.11)', () => {
     const dialog = await fillNewModel(user);
     const size = within(dialog).getByLabelText('Размер контекста, токенов');
     expect(size).not.toBeRequired();
-    expect(within(dialog).getByText('Можно не заполнять: шлюз знает размер большинства моделей. Без него в чате не видно, насколько заполнен разговор.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Можно не заполнять: размер знают шлюз и многие провайдеры. Без него в чате не видно, насколько заполнен разговор.')).toBeInTheDocument();
     await user.type(size, '128 000');
     await user.click(within(dialog).getByRole('button', { name: 'Проверить и сохранить' }));
     expect(await screen.findByText('Ключ подошёл')).toBeInTheDocument();

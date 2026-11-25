@@ -498,6 +498,53 @@ describe('the size of the context (spec, section 8.34)', () => {
     expect(await sizeOf(model.id)).toBe(1_047_576);
   });
 
+  it('asks the provider’s own list of models, with the model’s key, when the gateway does not know the model', async () => {
+    provider.listModels({ data: [{ id: 'bba-ctx-from-provider', limit: { context: 262_144 } }] });
+    try {
+      const before = provider.listKeys.length;
+      const model = await create({ label: 'Окно от провайдера', providerModel: 'openai/bba-ctx-from-provider', maxOutputTokens: 4096 });
+      expect(model.maxInputTokens).toBe(262_144);
+      expect(provider.listKeys.slice(before)).toEqual([`Bearer ${GOOD_KEY}`]);
+    } finally {
+      provider.listModels({ data: [] });
+    }
+  });
+
+  it('takes the gateway’s size first: the provider is not asked', async () => {
+    provider.listModels({ data: [{ id: 'gpt-4.1-mini', context_window: 5000 }] });
+    try {
+      const before = provider.listKeys.length;
+      expect((await create({ label: 'Окно шлюза главнее' })).maxInputTokens).toBe(1_047_576);
+      expect(provider.listKeys.length).toBe(before);
+    } finally {
+      provider.listModels({ data: [] });
+    }
+  });
+
+  it('saves a model without a size when the provider’s list fails; the start asks the list again', async () => {
+    provider.listModels({ status: 500 });
+    try {
+      const model = await create({ label: 'Окно, список упал', providerModel: 'openai/bba-ctx-later', maxOutputTokens: 4096 });
+      expect(model.maxInputTokens).toBeNull();
+      provider.listModels({ data: [{ id: 'bba-ctx-later', context_window: 65_536 }] });
+      await t.models.sync();
+      expect(await sizeOf(model.id)).toBe(65_536);
+    } finally {
+      provider.listModels({ data: [] });
+    }
+  });
+
+  it('an emptied field in «Изменить» takes the provider’s size when the gateway does not know the model', async () => {
+    const model = await create({ label: 'Окно, очищено', providerModel: 'openai/bba-ctx-emptied', maxOutputTokens: 4096, maxInputTokens: 1000 });
+    expect(model.maxInputTokens).toBe(1000);
+    provider.listModels({ data: [{ id: 'bba-ctx-emptied', max_model_len: 32_768 }] });
+    try {
+      expect((await json<ModelDto>(await put(model.id, { maxInputTokens: null }))).maxInputTokens).toBe(32_768);
+    } finally {
+      provider.listModels({ data: [] });
+    }
+  });
+
   it('the database itself refuses a size that is not positive or belongs to a recognition model', async () => {
     const chat = await create({ label: 'Окно в базе' });
     await expect(t.db.query('UPDATE app.models SET max_input_tokens = 0 WHERE id = $1', [chat.id])).rejects.toThrow(/models_max_input_tokens_check/);

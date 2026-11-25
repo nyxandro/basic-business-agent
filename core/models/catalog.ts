@@ -20,6 +20,7 @@ import type { GatewayWriter } from './gateway-writer.ts';
 import type { LiteLLMClient } from './litellm-client.ts';
 import { num, pricesOf, type ModelRow } from './model-rows.ts';
 import { inputLimitIn, outputLimitIn } from './model-map.ts';
+import { providerContextSize } from './provider-models.ts';
 
 export const LABEL_MAX = 80;
 const KEY_MAX = 500;
@@ -113,6 +114,13 @@ function hideKey(text: string, key: string): string {
   return text.split(key).join(`…${key.slice(-KEY_TAIL)}`);
 }
 
+// Where the size of the context comes from besides the admin (section 8.34): the gateway's map, then the provider's
+// own list of models, asked with a key of the model (provider-models.ts; decision of the owner 25.11).
+interface SizeSources {
+  map: () => Promise<Record<string, unknown>>;
+  provider: { apiBase: string | null; key: string } | null;
+}
+
 export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
   const { db, box, client, writer } = deps;
   const serial = writer.serial;
@@ -164,6 +172,13 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     return () => (map ??= client.modelMap());
   }
 
+  // A model on a key asks its provider's list with its first key, at its address (the new one, when it moves).
+  async function providerKeyOf(row: ModelRow, apiBase: string | null): Promise<SizeSources['provider']> {
+    if (row.connection !== 'api_key') return null;
+    const key = (await syncState()).keys.find((k) => k.modelId === row.id)?.secret;
+    return key ? { apiBase, key } : null;
+  }
+
   // The admin's limit, or the one the gateway knows; none — the admin is asked for it (section 8.19).
   async function outputLimit(input: Extract<ModelCreate, { connection: 'api_key' }>, providerModel: string, map: () => Promise<Record<string, unknown>>): Promise<number | null> {
     if (input.kind === 'transcription') {
@@ -176,38 +191,50 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     return known;
   }
 
-  // The size of the context (section 8.34): the admin's number, else the one the gateway knows, else none — then the
-  // chat shows no indicator (decision of the owner 25.11: the admin is never made to give it). Being optional, it does
-  // not stop a change when the map does not answer: it stays empty and the next start looks for it again.
-  async function contextSize(kind: ModelKind, providerModel: string, given: number | null | undefined, map: () => Promise<Record<string, unknown>>): Promise<number | null> {
-    const own = given ?? null;
-    if (kind === 'transcription') {
-      if (own !== null) throw invalid('a recognition model with a size of the context', RECOGNITION_CONTEXT);
-      return null;
-    }
-    if (own !== null) return own;
+  // The size is optional: a source that does not answer is logged and the next one asked; none answered — the size
+  // stays empty and the next start looks for it again.
+  async function askSource(source: 'gateway' | 'provider', providerModel: string, ask: () => Promise<number | null>): Promise<number | null> {
     try {
-      return inputLimitIn(await map(), providerModel);
+      return await ask();
     } catch (error) {
-      logEvent('warn', 'model_context_size_unavailable', { providerModel, code: isAppError(error) ? error.code : 'APP_MODEL_GATEWAY_UNAVAILABLE', error });
+      logEvent('warn', 'model_context_size_unavailable', { source, providerModel, ...(isAppError(error) ? { code: error.code } : {}), error });
       return null;
     }
   }
 
-  // Chat models without a size of the context — added before 25.11.2026, or when the map did not answer — get the
-  // size the gateway knows; a model it does not know stays without one.
+  async function knownContextSize(providerModel: string, sources: SizeSources): Promise<number | null> {
+    const fromMap = await askSource('gateway', providerModel, async () => inputLimitIn(await sources.map(), providerModel));
+    if (fromMap !== null || !sources.provider) return fromMap;
+    const { apiBase, key } = sources.provider;
+    return askSource('provider', providerModel, () => providerContextSize({ providerModel, apiBase }, key));
+  }
+
+  // The admin's number; a recognition model has none.
+  function ownContextSize(kind: ModelKind, given: number | null | undefined): number | null {
+    const own = given ?? null;
+    if (kind === 'transcription' && own !== null) throw invalid('a recognition model with a size of the context', RECOGNITION_CONTEXT);
+    return own;
+  }
+
+  // The admin's number, else the one the gateway or the provider knows, else none — then the chat shows no indicator
+  // (decision of the owner 25.11: the admin is never made to give it).
+  async function contextSize(kind: ModelKind, providerModel: string, given: number | null | undefined, sources: SizeSources): Promise<number | null> {
+    const own = ownContextSize(kind, given);
+    if (own !== null || kind === 'transcription') return own;
+    return knownContextSize(providerModel, sources);
+  }
+
+  // Chat models without a size of the context — added before 25.11.2026, or when no source answered — get the size the
+  // gateway or the provider knows; a model nobody knows stays without one.
   async function fillContextSizes(map: () => Promise<Record<string, unknown>>): Promise<void> {
-    const { rows: missing } = await db.query<{ id: string; provider_model: string }>("SELECT id, provider_model FROM app.models WHERE kind = 'chat' AND max_input_tokens IS NULL");
+    const { rows: missing } = await db.query<{ id: string; provider_model: string; api_base: string | null; connection: string }>(
+      "SELECT id, provider_model, api_base, connection FROM app.models WHERE kind = 'chat' AND max_input_tokens IS NULL",
+    );
     if (missing.length === 0) return;
-    let known: Record<string, unknown>;
-    try {
-      known = await map();
-    } catch (error) {
-      logEvent('error', 'model_context_sizes_unavailable', { code: isAppError(error) ? error.code : 'APP_MODEL_GATEWAY_UNAVAILABLE', modelIds: missing.map((m) => m.id), error });
-      return;
-    }
+    const { keys } = await syncState();
     for (const m of missing) {
-      const size = inputLimitIn(known, m.provider_model);
+      const key = m.connection === 'api_key' ? keys.find((k) => k.modelId === m.id)?.secret : undefined;
+      const size = await knownContextSize(m.provider_model, { map, provider: key ? { apiBase: m.api_base, key } : null });
       if (size === null) continue;
       await db.query('UPDATE app.models SET max_input_tokens = $2, updated_at = now() WHERE id = $1 AND max_input_tokens IS NULL', [m.id, size]);
       logEvent('info', 'model_context_size_filled', { modelId: m.id, providerModel: m.provider_model, maxInputTokens: size });
@@ -272,9 +299,11 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     // Before the provider is called: a model without a known limit waits for the admin's number.
     const map = mapOnce();
     const maxOutputTokens = await outputLimit(input, providerModel, map);
-    const maxInputTokens = await contextSize(input.kind, providerModel, input.maxInputTokens, map);
+    ownContextSize(input.kind, input.maxInputTokens);
     const model: SyncModel = { id: newId('m'), kind: input.kind, connection: 'api_key', providerModel, apiBase, enabled: true, prices, pricePerMinute: perMinute, maxOutputTokens };
     await checkKey(model, key, true);
+    // The provider's list is asked with a key that works.
+    const maxInputTokens = await contextSize(input.kind, providerModel, input.maxInputTokens, { map, provider: { apiBase, key } });
     const keyId = newId('k');
     const state = await syncState();
     await apply({ ...state, models: [...state.models, model], keys: [...state.keys, { id: keyId, modelId: model.id, secret: key }] });
@@ -308,7 +337,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
     const providerModel = input.providerModel.trim();
     if (!SUBSCRIPTION_MODEL.test(providerModel)) throw invalid(`subscription model "${providerModel}"`, 'Модель подписки пишется как chatgpt/ и название модели, например chatgpt/gpt-5.4.');
     const model: SyncModel = { id: newId('m'), kind: 'chat', connection: 'chatgpt', providerModel, apiBase: null, enabled: true, prices: null, pricePerMinute: null, maxOutputTokens: null };
-    const maxInputTokens = await contextSize('chat', providerModel, input.maxInputTokens, mapOnce());
+    const maxInputTokens = await contextSize('chat', providerModel, input.maxInputTokens, { map: mapOnce(), provider: null });
     const state = await syncState();
     await apply({ ...state, models: [...state.models, model] });
     await inTransaction(db, async (c) => {
@@ -382,7 +411,7 @@ export function createModelCatalog(deps: CatalogDeps): ModelCatalog {
         }
         const moved = apiBase !== row.api_base;
         // Ours only: the gateway does not use it (section 8.34).
-        const maxInputTokens = change.maxInputTokens === undefined ? row.max_input_tokens : await contextSize(row.kind, row.provider_model, change.maxInputTokens, mapOnce());
+        const maxInputTokens = change.maxInputTokens === undefined ? row.max_input_tokens : await contextSize(row.kind, row.provider_model, change.maxInputTokens, { map: mapOnce(), provider: await providerKeyOf(row, apiBase) });
         // The keys of a model are never shown to anyone; a new address would receive them all.
         if (moved && !isSuperadmin) {
           throw appError('APP_ADMIN_FORBIDDEN', `model ${modelId}: only a superadmin moves a model to another address`, {

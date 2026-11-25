@@ -77,6 +77,10 @@ export interface FakeModel {
   // it runs beside the agent's turn and must never take a turn scripted for the agent.
   namingRequests: FakeRequest[];
   scriptNaming(...turns: (FakeTurn | ((req: FakeRequest) => FakeTurn))[]): void;
+  // What GET …/models answers (spec, section 8.34): a list, or a failure; an empty list until set.
+  listModels(answer: { data: object[] } | { status: number }): void;
+  // The keys GET …/models was asked with.
+  listKeys: string[];
   // Forgets the scripted turns nobody asked for, so they do not answer the next test.
   clear(): void;
   close(): Promise<void>;
@@ -145,12 +149,20 @@ export async function startFakeModel(
   const transcriptions: FakeModel['transcriptions'] = [];
   const queue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
   const namingQueue: (FakeTurn | ((req: FakeRequest) => FakeTurn))[] = [];
+  let modelList: { data: object[] } | { status: number } = { data: [] };
+  const listKeys: string[] = [];
   const server: Server = createServer((req, res) => {
     let body = '';
     req.on('data', (c: Buffer) => (body += c.toString('latin1')));
     req.on('end', () => {
       if (opts.acceptKey && req.headers.authorization !== `Bearer ${opts.acceptKey}`) {
         res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: 'Incorrect API key provided', type: 'invalid_request_error', code: 'invalid_api_key' } }));
+        return;
+      }
+      if (req.method === 'GET' && req.url?.endsWith('/models')) {
+        listKeys.push(req.headers.authorization ?? '');
+        if ('status' in modelList) res.writeHead(modelList.status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: 'list failed', code: modelList.status } }));
+        else res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', ...modelList }));
         return;
       }
       if (req.url?.endsWith('/audio/transcriptions')) {
@@ -190,6 +202,8 @@ export async function startFakeModel(
     script: (...turns) => void queue.push(...turns),
     namingRequests,
     scriptNaming: (...turns) => void namingQueue.push(...turns),
+    listModels: (answer) => void (modelList = answer),
+    listKeys,
     clear: () => {
       queue.splice(0);
       namingQueue.splice(0);

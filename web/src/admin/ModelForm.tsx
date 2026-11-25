@@ -8,7 +8,7 @@
 // address, so only the superadmin may change it; others see it. The longest answer of a chat model comes from the gateway; only when the gateway
 // does not know the model (APP_MODEL_OUTPUT_LIMIT_REQUIRED) or the provider refuses its limit
 // (APP_MODEL_OUTPUT_LIMIT_REJECTED) the form asks for it (spec, section 8.19). The size of the context of a chat model
-// is optional (decision of the owner 25.11, section 8.34): empty — the gateway's, or none, and then the chat does not
+// is optional (decision of the owner 25.11, section 8.34): empty — the gateway's or the provider's, or none, and then the chat does not
 // show how full a conversation is.
 import { CONTEXT_SIZE_MAX, type ModelConnection, type ModelCreate, type ModelDto, type ModelKind, type TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
@@ -41,7 +41,7 @@ const LIMIT_HINTS: Record<string, string> = {
 const LIMIT_LABEL = 'Наибольшая длина ответа, токенов';
 const INVALID_LIMIT = 'Длина ответа — целое число токенов больше нуля.';
 const CONTEXT_LABEL = 'Размер контекста, токенов';
-const CONTEXT_HINT = 'Можно не заполнять: шлюз знает размер большинства моделей. Без него в чате не видно, насколько заполнен разговор.';
+const CONTEXT_HINT = 'Можно не заполнять: размер знают шлюз и многие провайдеры. Без него в чате не видно, насколько заполнен разговор.';
 const INVALID_CONTEXT = 'Размер контекста — целое число токенов больше нуля. Или оставьте поле пустым.';
 type Prices = Record<keyof TokenPricesInput, string>;
 type Billing = 'tokens' | 'minute';
