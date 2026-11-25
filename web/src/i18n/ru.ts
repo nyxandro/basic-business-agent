@@ -283,14 +283,6 @@ export const ru = {
   },
   chat: {
     newThread: 'Новый разговор',
-    // How full a conversation is (spec, section 8.34): «память» is taken by the memory of a project and one's own.
-    contextFill: {
-      title: 'Длина разговора',
-      label: (percent: number) => `Длина разговора: ${percent}%`,
-      tokens: (used: string, limit: string) => `${used} из ${limit} токенов`,
-      hidden: 'Начало разговора агент уже не видит',
-      high: 'Скоро разговор не поместится в модель. Начните новый — важное о вас агент помнит.',
-    },
     threadsEmpty: 'Здесь появятся ваши разговоры с этим агентом',
     threadsTitle: 'Разговоры',
     deleteThread: 'Удалить разговор',

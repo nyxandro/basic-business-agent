@@ -487,6 +487,17 @@ describe('the size of the context (spec, section 8.34)', () => {
     expect(await sizeOf(unknown.id)).toBeNull();
   });
 
+  it('saves a model without a size when the gateway’s model map does not answer; the start looks again', async () => {
+    const box = createSecretBox(TEST_ENCRYPTION_KEYS);
+    const client: LiteLLMClient = { ...t.litellm, modelMap: () => Promise.reject(gatewayUnavailable('LiteLLM GET /public/litellm_model_cost_map answered nothing')) };
+    const writer = createGatewayWriter({ db: t.db, box, client, owner: t.gatewayOwner, fileModelIds: TEST_MODEL_IDS, timeouts: GATEWAY_TIMEOUTS });
+    const silentMap = createModelCatalog({ db: t.db, box, client, writer, accounts: t.accounts, agentName: (id) => id });
+    const model = await silentMap.create(igorId, { ...(newModel({ label: 'Окно, справочник молчит', maxOutputTokens: 16_384 }) as Parameters<typeof silentMap.create>[1]) });
+    expect(model.maxInputTokens).toBeNull();
+    await t.models.sync();
+    expect(await sizeOf(model.id)).toBe(1_047_576);
+  });
+
   it('the database itself refuses a size that is not positive or belongs to a recognition model', async () => {
     const chat = await create({ label: 'Окно в базе' });
     await expect(t.db.query('UPDATE app.models SET max_input_tokens = 0 WHERE id = $1', [chat.id])).rejects.toThrow(/models_max_input_tokens_check/);

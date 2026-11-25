@@ -119,6 +119,7 @@ describe('«Пул аккаунтов подписки»', () => {
       connection: 'chatgpt',
       providerModel: 'chatgpt/gpt-5.4-mini',
       vision: true,
+      maxInputTokens: null,
     });
   });
 

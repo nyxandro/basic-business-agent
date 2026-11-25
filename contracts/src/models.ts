@@ -11,7 +11,8 @@ export type ModelConnection = (typeof MODEL_CONNECTIONS)[number];
 const price = z.number().min(0).max(1_000_000).nullable();
 // The size of the context of a chat model, in tokens (spec, section 8.34): optional — null or absent, the gateway's
 // model map gives it, or the model has none and the chat shows no indicator of how full a conversation is.
-const contextSize = z.number().int().min(1).max(100_000_000).nullish();
+export const CONTEXT_SIZE_MAX = 100_000_000;
+const contextSize = z.number().int().min(1).max(CONTEXT_SIZE_MAX).nullish();
 export const tokenPricesInputSchema = z.object({ input: price, output: price, cacheRead: price, cacheWrite: price, reasoning: price, image: price });
 export type TokenPricesInput = z.infer<typeof tokenPricesInputSchema>;
 

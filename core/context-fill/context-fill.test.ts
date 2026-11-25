@@ -110,6 +110,44 @@ describe('how full a conversation is (spec, section 8.34)', () => {
     expect(await fillOf(olga, threadId)).toMatchObject({ hidden: true });
   });
 
+  it('a write that fails does not break the answer: the answer comes whole, the ring stays as it was', async () => {
+    const threadId = randomUUID();
+    t.model.script({ text: 'Первый ответ.', usage: { prompt: 100, completion: 10 } });
+    await chat(threadId, 'Начнём');
+    await t.db.query(`CREATE FUNCTION app.test_refuse_fill() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused by the test'; END $$`);
+    await t.db.query('CREATE TRIGGER test_refuse_fill BEFORE UPDATE ON app.thread_context FOR EACH ROW EXECUTE FUNCTION app.test_refuse_fill()');
+    try {
+      t.model.script({ text: 'Второй ответ целиком.', usage: { prompt: 500, completion: 20 } });
+      const requests = t.model.requests.length;
+      const events = eventsOf(await chat(threadId, 'Дальше'));
+      expect(events.filter((e) => e.type === 'TEXT_MESSAGE_CONTENT').map((e) => (e as { delta?: string }).delta).join('')).toBe('Второй ответ целиком.');
+      expect(events.some((e) => e.type === 'RUN_ERROR')).toBe(false);
+      expect(events.filter(isFill)).toEqual([]);
+      // Nothing was asked of the model again.
+      expect(t.model.requests.length - requests).toBe(1);
+    } finally {
+      await t.db.query('DROP TRIGGER test_refuse_fill ON app.thread_context');
+      await t.db.query('DROP FUNCTION app.test_refuse_fill()');
+    }
+    expect(await fillOf(olga, threadId)).toEqual({ tokens: 110, limit: 1000, hidden: false });
+  });
+
+  it('keeps the model that answered: the fallback and the size of its context', async () => {
+    const fallback = 'test-down';
+    await t.db.query('UPDATE app.models SET max_input_tokens = 2000 WHERE id = $1', [fallback]);
+    await t.db.query('UPDATE app.model_settings SET fallback_model_id = $1', [fallback]);
+    try {
+      const threadId = randomUUID();
+      t.model.script({ status: 500, error: 'The primary is down' }, { text: 'Ответила запасная.', usage: { prompt: 700, completion: 50 } });
+      const events = eventsOf(await chat(threadId, 'Привет'));
+      expect(events.filter(isFill).map((e) => e.value)).toEqual([{ threadId, context: { tokens: 750, limit: 2000, hidden: false } }]);
+      const { rows } = await t.db.query<{ model_id: string }>('SELECT model_id FROM app.thread_context WHERE thread_id = $1', [threadId]);
+      expect(rows).toEqual([{ model_id: fallback }]);
+    } finally {
+      await t.db.query('UPDATE app.model_settings SET fallback_model_id = NULL');
+    }
+  });
+
   it('goes away with the conversation', async () => {
     const threadId = randomUUID();
     t.model.script({ text: 'Готово.' });

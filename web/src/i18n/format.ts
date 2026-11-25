@@ -11,8 +11,10 @@ export const thousands = (value: number): string => (value >= THOUSAND ? `${Math
 
 const MILLION = 1_000_000;
 
-// «52 тыс.», «1,05 млн» — for counts that reach millions (the size of the context of a model).
-export const largeCount = (value: number): string => (value >= MILLION ? `${(value / MILLION).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} млн` : thousands(value));
+// «52 тыс.», «1,05 млн» — for counts that reach millions (the size of the context of a model). What rounds to a
+// thousand thousands is a million already.
+export const largeCount = (value: number): string =>
+  Math.round(value / THOUSAND) >= THOUSAND ? `${(value / MILLION).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} млн` : thousands(value);
 
 // «1 декабря» from a date like 2026-12-01 (a calendar day, no time zone shift).
 export function dayMonth(isoDate: string): string {

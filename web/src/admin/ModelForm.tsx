@@ -10,7 +10,7 @@
 // (APP_MODEL_OUTPUT_LIMIT_REJECTED) the form asks for it (spec, section 8.19). The size of the context of a chat model
 // is optional (decision of the owner 25.11, section 8.34): empty — the gateway's, or none, and then the chat does not
 // show how full a conversation is.
-import type { ModelConnection, ModelCreate, ModelDto, ModelKind, TokenPricesInput } from '@bba/contracts';
+import { CONTEXT_SIZE_MAX, type ModelConnection, type ModelCreate, type ModelDto, type ModelKind, type TokenPricesInput } from '@bba/contracts';
 import { useState } from 'react';
 import { useMe } from '../auth/session.tsx';
 import { Button, cx } from '../ui/Button.tsx';
@@ -128,7 +128,7 @@ function ModelFormBody({ model, onClose, onSaved }: { model: ModelDto | null; on
     if (askLimit) setLimitAskedBy(askedBy);
     if (maxOutputTokens === 'invalid' || (askLimit && maxOutputTokens === null)) return setProblem(INVALID_LIMIT);
     const maxInputTokens = transcription ? null : fromField(context.replace(/\s/g, ''), 'tokens');
-    if (maxInputTokens === 'invalid') return setProblem(INVALID_CONTEXT);
+    if (maxInputTokens === 'invalid' || (maxInputTokens !== null && maxInputTokens > CONTEXT_SIZE_MAX)) return setProblem(INVALID_CONTEXT);
     if (editing) {
       // An unchanged size is not sent; an emptied one is null — the server takes the gateway's again.
       const contextChanged = !transcription && maxInputTokens !== model.maxInputTokens;

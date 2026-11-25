@@ -30,10 +30,11 @@ export function contextFillSubscriber(threadId: string, onFill: (context: Thread
 export function useContextFill(threadId: string): { fill: ThreadContextFill | null; onLive: (context: ThreadContextFill | null) => void; reload: () => void } {
   const load = useCallback(() => fetchThreadContext(threadId), [threadId]);
   const { state, reload } = useLoad(load, ['thread-context', threadId]);
-  const loaded = state.status === 'ready' ? state.data : null;
+  // A repeat that failed keeps what was shown.
+  const loaded = state.status === 'ready' ? state.data : state.status === 'error' ? (state.stale ?? null) : null;
   const [live, setLive] = useState<{ over: object | null; context: ThreadContextFill | null } | null>(null);
   const onLive = useCallback((context: ThreadContextFill | null) => setLive({ over: loaded, context }), [loaded]);
-  // The indicator is not worth a banner: a failed load shows nothing, the next answer asks again.
+  // The indicator is not worth a banner: a first load that failed shows nothing, the next answer asks again.
   const fill = live && live.over === loaded ? live.context : (loaded?.context ?? null);
   return { fill, onLive, reload };
 }

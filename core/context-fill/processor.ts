@@ -31,22 +31,24 @@ export function createContextFillProcessor(deps: { db: Db }) {
   return {
     id: 'bba-context-fill',
     async processLLMResponse({ chunks, model, requestContext, fromCache }) {
-      // A draft check of a prompt is no conversation of the chat; a replayed answer took nothing.
-      if (fromCache || optionalContextValue(requestContext, REQUEST_KEYS.runKind) === 'draft') return;
-      const threadId = requireContextValue(requestContext, REQUEST_KEYS.threadId);
-      const tokens = callTokens(chunks);
-      if (tokens === null) {
-        logEvent('warn', 'context_fill_usage_missing', { threadId, modelId: model.modelId });
-        return;
-      }
-      const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
-      // The indicator is not worth an answer: a failed write is logged and the answer goes on.
+      // A draft check of a prompt is no conversation of the chat; a replayed answer took nothing; a call without its
+      // last chunk (the stream broke) is not a call that answered.
+      if (fromCache || optionalContextValue(requestContext, REQUEST_KEYS.runKind) === 'draft' || !chunks.some((c) => c.type === 'finish')) return;
+      // The indicator is not worth an answer: whatever fails here is logged and the answer goes on — a throw would
+      // count as a failure of the model, and with a fallback the call would be made, and paid, again.
       try {
+        const threadId = requireContextValue(requestContext, REQUEST_KEYS.threadId);
+        const tokens = callTokens(chunks);
+        if (tokens === null) {
+          logEvent('warn', 'context_fill_usage_missing', { threadId, modelId: model.modelId });
+          return;
+        }
+        const userId = requireContextValue(requestContext, REQUEST_KEYS.userId);
         await recordFill(deps.db, { threadId, userId, modelId: model.modelId, tokens });
         const tell = requestContext?.get(REQUEST_KEYS.contextFill);
         if (typeof tell === 'function') (tell as ContextFillTell)(threadId, await fillOf(deps.db, userId, threadId));
       } catch (error) {
-        logEvent('error', 'context_fill_record_failed', { threadId, modelId: model.modelId, error });
+        logEvent('error', 'context_fill_record_failed', { modelId: model.modelId, error });
       }
     },
   } satisfies Processor;
